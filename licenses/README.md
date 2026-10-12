@@ -50,8 +50,8 @@ if a later change modifies the font software.
 To regenerate after installing the locked npm and Cargo dependencies:
 
 ```sh
-node desktop/scripts/collect-licenses.mjs
-node desktop/scripts/collect-licenses.mjs --check
+node scripts/collect-licenses.mjs
+node scripts/collect-licenses.mjs --check
 ```
 
 The collector also accepts a `cargo metadata --locked --features shell

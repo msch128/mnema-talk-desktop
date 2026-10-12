@@ -16,8 +16,8 @@ not evidence of actual hardware mode, successful GPU draws or visible pixels.
 Manual build/run on Windows **after review**:
 
 ```powershell
-cargo build --manifest-path desktop/Cargo.toml --locked --release --features owned-d3d11-fixture --bin mnema-owned-d3d11-fixture
-desktop/target/release/mnema-owned-d3d11-fixture.exe --owned-d3d11-fixture
+cargo build --manifest-path Cargo.toml --locked --release --features owned-d3d11-fixture --bin mnema-owned-d3d11-fixture
+target/release/mnema-owned-d3d11-fixture.exe --owned-d3d11-fixture
 ```
 
 It starts windowed, with synthetic voice off. F8 toggles synthetic voice; Alt+M

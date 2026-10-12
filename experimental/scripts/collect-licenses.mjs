@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { reviewedGlibPackage } from '../../scripts/checked-glib.mjs';
 
 const desktop = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const web = resolve(desktop, '../../web');
+const web = resolve(desktop, '../mnema-talk/web');
 const output = join(desktop, 'licenses');
 const check = process.argv.includes('--check');
 const args = process.argv.slice(2).filter((arg) => arg !== '--check');

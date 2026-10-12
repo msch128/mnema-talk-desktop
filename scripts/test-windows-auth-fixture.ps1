@@ -173,7 +173,7 @@ public static class MnemaFixtureCertificateImport {
   if ([Convert]::ToBase64String($installed.RawData) -ne [Convert]::ToBase64String($rootBytes)) { throw 'Owned fixture CA readback mismatch' }
   Write-Host 'Fixture phase: test CA verified, starting the published client probe'
   $env:GH_TOKEN = $token
-  & desktop/scripts/test-windows-release.ps1 -Tag $Tag -InstanceUrl $ready.origin -FixtureDirectory $directory -VoiceAcceptance:$VoiceAcceptance
+  & (Join-Path $PSScriptRoot 'test-windows-release.ps1') -Tag $Tag -InstanceUrl $ready.origin -FixtureDirectory $directory -VoiceAcceptance:$VoiceAcceptance
   if (!$?) { throw 'Authenticated desktop UI probe failed' }
   [IO.File]::WriteAllText((Join-Path $directory 'STOP'), 'done')
   if (!$server.WaitForExit(30000)) { throw 'Normal router fixture exit timed out' }

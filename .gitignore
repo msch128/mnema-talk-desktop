@@ -1,0 +1,4 @@
+/target/
+experimental/app/target/
+**/node_modules/
+/mnema-talk/

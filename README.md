@@ -1,9 +1,20 @@
+# Mnema Talk desktop
+
+This repository holds the native desktop host extracted from
+[mnema-talk](https://github.com/msch128/mnema-talk) for 0.7.4. The Vue app
+stays in that repository. CI checks out `mnema-talk/` and the Tauri host
+embeds that repository's `web/dist`, then loads the selected HTTPS instance.
+
+Releases through v0.7.3, including the Windows Desktop DEV ZIP, stay on
+[mnema-talk releases](https://github.com/msch128/mnema-talk/releases). Later
+desktop builds are published from this repository.
+
 # Windows desktop feasibility probe
 
 This directory contains the historical feasibility probe. The published
 Windows Desktop DEV client is [experimental/app](experimental/README.md) in
-`web-client` mode. See [product status](../doc/product-status.md) for downloads
-and actual runtime evidence. The limits below apply to the probe.
+`web-client` mode. See [product status](https://github.com/msch128/mnema-talk/blob/main/doc/product-status.md)
+for downloads and actual runtime evidence. The limits below apply to the probe.
 
 This is the first implementation stage of the desktop roadmap. It is **not a
 released 0.7 client**: it does not log in, join Voice, capture media, create an
@@ -33,28 +44,30 @@ Requires Node 26, Rust 1.99.0, the Visual Studio C++ build tools/Windows SDK and
 WebView2. From the repository root:
 
 ```powershell
-npm ci --prefix desktop/ui
-npm --prefix desktop/ui run test
-cargo test --locked --manifest-path desktop/Cargo.toml
-npm --prefix desktop run build
+npm ci --prefix ui
+npm --prefix ui run test
+cargo test --locked --manifest-path Cargo.toml
+npm run build
 ```
 
-The unbundled probe executable is `desktop/target/release/mnema-desktop-probe.exe`.
+The unbundled probe executable is `target/release/mnema-desktop-probe.exe`.
 Signing, installer packaging and production updates are later qualification
 stages. This command does not produce an official signed release.
-For local development: `npm --prefix desktop run dev`.
+For local development: `npm run dev`.
 
 Full checks require cargo-audit 0.22.2 (`cargo install cargo-audit --version
-0.22.2 --locked`). Run `make check-desktop` for the independent desktop checks
-or `make check` for all repository checks. The small `desktop/go.mod` is only a
-module boundary preventing Go server checks from scanning npm Go fixtures.
+0.22.2 --locked`). The Desktop probe workflow runs these checks. The probe UI
+typecheck extends `mnema-talk/web/tsconfig.base.json`, so check out
+[mnema-talk](https://github.com/msch128/mnema-talk) at `mnema-talk/` before
+`npm --prefix ui run check`. The small `go.mod` is only a module boundary
+preventing a parent Go module from scanning npm Go fixtures.
 
 Checks:
 
 ```text
-cargo fmt --manifest-path desktop/Cargo.toml --check
-cargo clippy --locked --manifest-path desktop/Cargo.toml --all-targets --features shell -- -D warnings
-npm --prefix desktop/ui run build
+cargo fmt --manifest-path Cargo.toml --check
+cargo clippy --locked --manifest-path Cargo.toml --all-targets --features shell -- -D warnings
+npm --prefix ui run build
 ```
 
 Non-Windows hosts can build the probe UI/shell and test portable policy, but
@@ -97,8 +110,8 @@ The app icons are generated from the project's existing `web/public/favicon.svg`
 
 ## Distribution evidence
 
-`node --test desktop/scripts/*.test.mjs` tests the development checksum receipt
-and license inventory checker. `node desktop/scripts/collect-licenses.mjs --check`
+`node --test scripts/*.test.mjs` tests the development checksum receipt
+and license inventory checker. `node scripts/collect-licenses.mjs --check`
 verifies notices against the current locked dependency graphs and copied fonts.
 Distribute the complete `licenses/` directory, this notice file and the root
 `LICENSE` beside a development binary. Checksums are not publisher signatures;
@@ -120,11 +133,11 @@ owner and shortcut types. A normal application launch keeps them inactive.
 Start the synthetic route explicitly:
 
 ```powershell
-npm ci --prefix desktop/ui
-npm --prefix desktop/ui run check
-cargo test --locked --manifest-path desktop/Cargo.toml --features gaming-fixture,custom-protocol --lib
-cargo build --locked --manifest-path desktop/Cargo.toml --release --features gaming-fixture,custom-protocol
-desktop/target/release/mnema-desktop-probe.exe --cooperating-game-session
+npm ci --prefix ui
+npm --prefix ui run check
+cargo test --locked --manifest-path Cargo.toml --features gaming-fixture,custom-protocol --lib
+cargo build --locked --manifest-path Cargo.toml --release --features gaming-fixture,custom-protocol
+target/release/mnema-desktop-probe.exe --cooperating-game-session
 ```
 
 The app starts one owned native child as a **synthetic game window**. F8 joins or
@@ -141,7 +154,7 @@ releases retained state and never fabricates a press.
 Configurable examples (launch arguments, not web/native renderer authority):
 
 ```powershell
-desktop/target/release/mnema-desktop-probe.exe --cooperating-game-session --overlay-key=CTRL+SHIFT+X --ptt-key=MOUSE4 --fixture-no-widget
+target/release/mnema-desktop-probe.exe --cooperating-game-session --overlay-key=CTRL+SHIFT+X --ptt-key=MOUSE4 --fixture-no-widget
 ```
 
 The fixture child grants foreground permission only to its independently

@@ -18,7 +18,7 @@ A separate [published v0.7.1 Windows acceptance](https://github.com/msch128/mnem
 has since verified generated-account login, persisted chat, live peer receipt
 without history fallback, and logout against an isolated normal server.
 It used PostgreSQL 17.11 and in-memory test media storage. This does not qualify
-S3 uploads, media capture, E2EE or games. [Product status](../../doc/product-status.md)
+S3 uploads, media capture, E2EE or games. [Product status](https://github.com/msch128/mnema-talk/blob/main/doc/product-status.md)
 is the current evidence reference. The instance currently supplies executable
 web code; the protected locally bundled client boundary remains outstanding.
 
@@ -32,9 +32,10 @@ Browser voice transport remains DTLS-SRTP to the SFU, which is not E2EE.
 Build the production web-client mode from this repository:
 
 ```sh
-npm --prefix web ci
-npm --prefix web run build
-cargo build --locked --release --manifest-path desktop/experimental/app/Cargo.toml --features shell,web-client,custom-protocol
+# From this repository's root, with mnema-talk checked out at mnema-talk/.
+npm --prefix mnema-talk/web ci
+npm --prefix mnema-talk/web run build
+cargo build --locked --release --manifest-path experimental/app/Cargo.toml --features shell,web-client,custom-protocol
 ```
 
 All desktop packages are explicitly unsigned DEV builds. No desktop automatic
@@ -79,7 +80,7 @@ independent source review and the full repository checks before publication.
 
 The protected native-crypto mode still lacks qualified native voice and complete
 web feature parity. The separate web-client mode uses the same Vue web app and
-provides the Windows Gaming DEV integration described in [desktop-app.md](../../doc/desktop-app.md#windows-gaming-dev).
+provides the Windows Gaming DEV integration described in [desktop-app.md](https://github.com/msch128/mnema-talk/blob/main/doc/desktop-app.md#windows-gaming-dev).
 The published v0.7.1 Windows web-client executable has startup/login/chat/logout
 evidence; this does not qualify native-crypto mode or real-game overlays. Development builds have no code-signing certificate or
 approved automatic updater. This checkpoint does not activate experimental
@@ -96,14 +97,14 @@ assets, because reloading cannot install a new desktop build.
 - `app/`: native Tauri host and local-window command permissions.
 - `crates/`: the canonical broker, native storage and cryptographic integration.
 - `vendor/`: pinned provider source required by the native dependency graph.
-- `../../web/`: the canonical interface and runtime-specific transport adapters.
+- `../mnema-talk/web/`: the canonical interface, checked out from mnema-talk.
 - `ui/`: historical checkpoint, no longer the application build input.
 
-From the repository root, install the shared frontend with `npm ci --prefix web`,
-then run `npm run build:client:dev --prefix desktop`. Native builds use Rust
+From this repository's root, install the shared frontend with `npm ci --prefix mnema-talk/web`,
+then run `npm run build:client:dev`. Native builds use Rust
 1.99.0 and the committed Cargo lockfile. The equivalent native command after
-building `web/dist` is
-`cargo build --locked --manifest-path desktop/experimental/app/Cargo.toml --features shell,native-crypto,custom-protocol`.
+building `mnema-talk/web/dist` is
+`cargo build --locked --manifest-path experimental/app/Cargo.toml --features shell,native-crypto,custom-protocol`.
 This produces an unsigned DEV executable without configuring an automatic updater.
 Operating-system toolchains are required for native dependency compilation.
 The synthetic transport and media fixture features are disabled by default.

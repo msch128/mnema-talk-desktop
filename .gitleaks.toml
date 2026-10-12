@@ -1,0 +1,33 @@
+# gitleaks configuration for the native desktop tree.
+#
+# The known-answer vectors and the listed Cargo.lock lines are public
+# upstream material. scripts/check-native-test-vectors.mjs rejects a vector
+# whose bytes differ from the reviewed hashes before this allowlist applies.
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "generic-api-key"
+
+[[rules.allowlists]]
+description = "Pinned OpenMLS/SFrame public hexadecimal known-answer vectors"
+condition = "AND"
+regexTarget = "match"
+paths = [
+  '''^(?:experimental/vendor/openmls/openmls/test_vectors/crypto\-basics\.json|experimental/vendor/openmls/openmls/test_vectors/kat_encryption_openmls\.json|experimental/vendor/openmls/openmls/test_vectors/kat_tree_kem_openmls\.json|experimental/vendor/openmls/openmls/test_vectors/key\-schedule\.json|experimental/vendor/openmls/openmls/test_vectors/message\-protection\.json|experimental/vendor/openmls/openmls/test_vectors/messages\.json|experimental/vendor/openmls/openmls/test_vectors/passive\-client\-handling\-commit\.json|experimental/vendor/openmls/openmls/test_vectors/passive\-client\-random\.json|experimental/vendor/openmls/openmls/test_vectors/passive\-client\-welcome\.json|experimental/vendor/openmls/openmls/test_vectors/psk_secret\.json|experimental/vendor/openmls/openmls/test_vectors/secret\-tree\.json|experimental/vendor/openmls/openmls/test_vectors/targeted\-messages\.json|experimental/vendor/openmls/openmls/test_vectors/transcript\-hashes\.json|experimental/vendor/openmls/openmls/test_vectors/treekem\.json|experimental/vendor/sframe/src/test_vectors/test\-vectors\.json)$'''
+]
+regexes = [
+  '''^\s*"?(?:application_key|commit_secret|confirmation_key|encryption_secret|epoch_authenticator|exporter_secret|external_secret|group_secrets|handshake_key|init_secret|initial_epoch_authenticator|initial_init_secret|joiner_secret|key|key_package|membership_key|mls_key_package|my_leaf_secret|my_path_secret|path_secret|pre_shared_key_proposal|psk_secret|root_secret_after_add|root_secret_after_update|secret|sender_data_secret|sframe_key|sframe_secret|welcome_secret)"\s*:\s*"[0-9a-fA-F]+"?\s*,?\s*$'''
+]
+
+[[rules.allowlists]]
+description = "Cargo dependency names, not a credential"
+condition = "AND"
+regexTarget = "match"
+paths = [
+  '''^(?:experimental/app/Cargo\.lock|experimental/crates/crypto\-owner/Cargo\.lock|experimental/crates/crypto\-owner/qualified\-sdk/Cargo\.lock|experimental/vendor/openmls/Cargo\.lock|experimental/vendor/openmls/compat_tests/Cargo\.lock)$'''
+]
+regexes = [
+  '''^\s*"?libcrux-secrets(?: 0\.0\.7)?",\s*"libcrux-sha3"[,]?\s*$'''
+]
