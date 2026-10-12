@@ -1,0 +1,13 @@
+# Sources keep deterministic LF line endings on Windows checkouts.
+# The GLib provenance check hashes the checked-out bytes.
+** text=auto eol=lf
+# These are verbatim upstream bytes bound by the distribution hash manifest.
+licenses/** -text
+experimental/licenses/** -text
+experimental/ui/src/assets/fonts/*.woff2 -text
+experimental/ui/src/assets/fonts/Inter-LICENSE.txt -text
+ui/src/assets/fonts/*.woff2 -text
+ui/src/assets/fonts/Inter-LICENSE.txt -text
+icons/** -text
+# Preserve the original MIT notice, including its final blank line.
+experimental/vendor/glib/LICENSE whitespace=-blank-at-eof
