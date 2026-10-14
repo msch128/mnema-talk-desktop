@@ -27,7 +27,10 @@ HTTPS chat links to other sites open in the default Windows browser after an
 explicit confirmation. Same-origin attachments open in a restricted child window sharing the app session;
 the chat window remains open. Non-HTTPS
 external links and custom URI schemes are blocked in this DEV build.
-Browser voice transport remains DTLS-SRTP to the SFU, which is not E2EE.
+Voice uses the instance's browser path: DTLS-SRTP to the SFU, with microphone,
+camera and screen payloads sealed in WebView2 before the SFU forwards them
+(trust limits: mnema-talk `SECURITY.md`). Sealed media is not yet qualified
+on WebView2.
 
 Build the production web-client mode from this repository:
 
