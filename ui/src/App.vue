@@ -26,6 +26,18 @@ const mediaHooks = {
   capture: typeof navigator.mediaDevices?.getDisplayMedia === 'function',
   frameTransform: 'RTCRtpScriptTransform' in globalThis
 }
+// The instance's web app signs every media frame with Ed25519 (WebCrypto);
+// without it, voice in web-client mode cannot be end-to-end encrypted.
+const ed25519 = ref<boolean | null>(null)
+async function probeEd25519(): Promise<boolean> {
+  try {
+    await globalThis.crypto.subtle.generateKey({ name: 'Ed25519' }, false, ['sign', 'verify'])
+    return true
+  } catch {
+    return false
+  }
+}
+void probeEd25519().then(result => { ed25519.value = result })
 const gameStatus = computed(() => snapshot.value?.platform === 'unsupported_probe_host'
   ? 'Diese Spielprüfung benötigt Windows.' : snapshot.value?.game ?? 'Kein freigegebenes Spiel im Vordergrund.')
 watch(address, () => { candidate.value = null; error.value = '' })
@@ -119,7 +131,7 @@ onUnmounted(() => {
     </section>
     <section aria-labelledby="media-title">
       <h2 id="media-title">Laufzeit-Funktionen</h2>
-      <ul class="runtime-list"><li>WebRTC-API <span>{{ mediaHooks.webRtc ? 'vorhanden' : 'fehlt' }}</span></li><li>Bildschirm-Capture-API <span>{{ mediaHooks.capture ? 'vorhanden' : 'fehlt' }}</span></li><li>Encoded-Frame-Transform-API <span>{{ mediaHooks.frameTransform ? 'vorhanden' : 'fehlt' }}</span></li></ul>
+      <ul class="runtime-list"><li>WebRTC-API <span>{{ mediaHooks.webRtc ? 'vorhanden' : 'fehlt' }}</span></li><li>Bildschirm-Capture-API <span>{{ mediaHooks.capture ? 'vorhanden' : 'fehlt' }}</span></li><li>Encoded-Frame-Transform-API <span>{{ mediaHooks.frameTransform ? 'vorhanden' : 'fehlt' }}</span></li><li data-testid="ed25519">Ed25519 (WebCrypto, Frame-Signaturen) <span>{{ ed25519 === null ? 'wird geprüft' : ed25519 ? 'vorhanden' : 'fehlt' }}</span></li></ul>
       <p class="help">API-Verfügbarkeit belegt weder Aufnahme, E2EE noch Hardware-Encoding. Dieser Client startet keine Aufnahme.</p>
     </section>
     <details><summary>Open-Source-Lizenzen und Abhängigkeiten</summary><pre>{{ thirdPartyNotices }}</pre></details>
