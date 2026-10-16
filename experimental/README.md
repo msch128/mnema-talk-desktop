@@ -6,8 +6,10 @@ chat, uploads and WebSockets use the existing same-origin browser APIs and
 cookies. Normal production instances advertise `web_client_api: 1` in
 `/api/health`; experimental native-preview routes are not required.
 
-Download the clearly named Windows **Desktop DEV** ZIP from GitHub Releases,
-extract the entire archive and run `Mnema Desktop DEV.exe`. The server is supplied
+Download the clearly named Windows **Desktop DEV** ZIP from the
+[mnema-talk releases](https://github.com/msch128/mnema-talk/releases) (v0.7.3
+and earlier; later mnema-talk releases do not attach it), extract the entire
+archive and run `Mnema Desktop DEV.exe`. The server is supplied
 as a Linux Docker image for amd64 and arm64. There are no server EXE downloads in
 new releases. The desktop client requires Microsoft Edge WebView2 Runtime.
 
