@@ -38,6 +38,26 @@ async function probeEd25519(): Promise<boolean> {
   }
 }
 void probeEd25519().then(result => { ed25519.value = result })
+// Since mnema-talk 0.8 the instance's web app sends a screen share as up to
+// three layers from one capture, so viewers can pick a quality. Each layer is
+// an ordinary sender whose encoding parameters scale the picture down and can
+// be switched off; no RTP simulcast is involved.
+const layers = ref<boolean | null>(null)
+async function probeLayers(): Promise<boolean> {
+  if (!('RTCPeerConnection' in globalThis)) return false
+  let pc: RTCPeerConnection | undefined
+  try {
+    pc = new RTCPeerConnection()
+    const { sender } = pc.addTransceiver('video', { direction: 'sendonly', sendEncodings: [{ scaleResolutionDownBy: 2, active: false }] })
+    const encoding = sender.getParameters().encodings?.[0]
+    return encoding?.scaleResolutionDownBy === 2 && encoding.active === false
+  } catch {
+    return false
+  } finally {
+    pc?.close()
+  }
+}
+void probeLayers().then(result => { layers.value = result })
 const gameStatus = computed(() => snapshot.value?.platform === 'unsupported_probe_host'
   ? 'Diese Spielprüfung benötigt Windows.' : snapshot.value?.game ?? 'Kein freigegebenes Spiel im Vordergrund.')
 watch(address, () => { candidate.value = null; error.value = '' })
@@ -131,7 +151,7 @@ onUnmounted(() => {
     </section>
     <section aria-labelledby="media-title">
       <h2 id="media-title">Laufzeit-Funktionen</h2>
-      <ul class="runtime-list"><li>WebRTC-API <span>{{ mediaHooks.webRtc ? 'vorhanden' : 'fehlt' }}</span></li><li>Bildschirm-Capture-API <span>{{ mediaHooks.capture ? 'vorhanden' : 'fehlt' }}</span></li><li>Encoded-Frame-Transform-API <span>{{ mediaHooks.frameTransform ? 'vorhanden' : 'fehlt' }}</span></li><li data-testid="ed25519">Ed25519 (WebCrypto, Frame-Signaturen) <span>{{ ed25519 === null ? 'wird geprüft' : ed25519 ? 'vorhanden' : 'fehlt' }}</span></li></ul>
+      <ul class="runtime-list"><li>WebRTC-API <span>{{ mediaHooks.webRtc ? 'vorhanden' : 'fehlt' }}</span></li><li>Bildschirm-Capture-API <span>{{ mediaHooks.capture ? 'vorhanden' : 'fehlt' }}</span></li><li>Encoded-Frame-Transform-API <span>{{ mediaHooks.frameTransform ? 'vorhanden' : 'fehlt' }}</span></li><li data-testid="ed25519">Ed25519 (WebCrypto, Frame-Signaturen) <span>{{ ed25519 === null ? 'wird geprüft' : ed25519 ? 'vorhanden' : 'fehlt' }}</span></li><li data-testid="layers">Sender-Parameter für Bildschirm-Ebenen (Skalierung, Abschalten) <span>{{ layers === null ? 'wird geprüft' : layers ? 'vorhanden' : 'fehlt' }}</span></li></ul>
       <p class="help">API-Verfügbarkeit belegt weder Aufnahme, E2EE noch Hardware-Encoding. Dieser Client startet keine Aufnahme.</p>
     </section>
     <details><summary>Open-Source-Lizenzen und Abhängigkeiten</summary><pre>{{ thirdPartyNotices }}</pre></details>
