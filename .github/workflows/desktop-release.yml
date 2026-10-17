@@ -193,14 +193,17 @@ jobs:
           tar -xzf "$RUNNER_TEMP/macos/"*.app.tar.gz -C "$check"
           app="$check/Mnema Desktop DEV.app"
           exe="$app/Contents/MacOS/mnema-native-client-preview"
-          lipo -archs "$exe" | tee /dev/stderr | grep -q arm64
-          lipo -archs "$exe" | grep -q x86_64
+          archs="$(lipo -archs "$exe")"
+          echo "Architectures: $archs"
+          [[ " $archs " == *" arm64 "* && " $archs " == *" x86_64 "* ]] || { echo '::error::the app is not universal'; exit 1; }
           codesign --verify --deep --strict --verbose=2 "$app"
-          codesign -dv "$app" 2>&1 | grep -q 'Signature=adhoc'
+          signature="$(codesign -dv "$app" 2>&1)"
+          [[ "$signature" == *"Signature=adhoc"* ]] || { echo '::error::the app is not ad-hoc signed'; exit 1; }
           plutil -extract NSMicrophoneUsageDescription raw "$app/Contents/Info.plist" >/dev/null
           plutil -extract NSCameraUsageDescription raw "$app/Contents/Info.plist" >/dev/null
           # Only a browser download is quarantined; the updater's download is not.
-          if xattr -lr "$app" | grep -q com.apple.quarantine; then echo '::error::the app carries a quarantine mark'; exit 1; fi
+          attributes="$(xattr -lr "$app" || true)"
+          [[ "$attributes" != *com.apple.quarantine* ]] || { echo '::error::the app carries a quarantine mark'; exit 1; }
           mount_dir="$RUNNER_TEMP/mount"
           mkdir -p "$mount_dir"
           hdiutil attach "$RUNNER_TEMP/macos/"*.dmg -mountpoint "$mount_dir" -nobrowse -quiet
@@ -213,7 +216,7 @@ jobs:
           for _ in $(seq 1 60); do
             sleep 0.5
             kill -0 "$pid" 2>/dev/null || { cat "$log"; echo '::error::the app exited'; exit 1; }
-            if grep -q 'main mnema://localhost/ -> 200' "$log"; then ready=1; break; fi
+            if grep -qF 'main mnema://localhost/ -> 200' "$log"; then ready=1; break; fi
           done
           kill "$pid" 2>/dev/null || true
           [ "$ready" = 1 ] || { cat "$log"; echo '::error::the app served no start page'; exit 1; }
