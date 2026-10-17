@@ -297,6 +297,23 @@ async fn handle(
                 serve_bundle(&session.held.bundle, &method, &path)
             }
         }
+        // The host's own update page; independent of the web bundle.
+        "updater" if !api => match super::native_updates::asset(&path) {
+            Some((kind, body)) if method == "GET" || method == "HEAD" => Resp {
+                status: 200,
+                headers: vec![
+                    ("content-type".into(), kind.into()),
+                    (
+                        "content-security-policy".into(),
+                        super::native_updates::UI_CSP.into(),
+                    ),
+                    ("x-content-type-options".into(), "nosniff".into()),
+                    ("cache-control".into(), "no-store".into()),
+                ],
+                body: body.as_bytes().to_vec(),
+            },
+            _ => plain(404, "Not found."),
+        },
         "main" | "sidepeek" | "gaming-overlay" | "gaming-settings" if !api => {
             match trusted.view() {
                 Some(held) => serve_bundle(&held.bundle, &method, &path),
@@ -514,6 +531,7 @@ fn refresh_in_background(app: &tauri::AppHandle) {
 
 pub(super) fn run() {
     let result = tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(std::sync::Mutex::new(super::web_gaming::Gaming::default()))
         .register_asynchronous_uri_scheme_protocol("mnema", |ctx, request, responder| {
             let label = ctx.webview_label().to_owned();
@@ -535,11 +553,15 @@ pub(super) fn run() {
             super::web_gaming::desktop_gaming_sync,
             super::web_gaming::desktop_gaming_snapshot,
             super::web_gaming::desktop_gaming_control,
-            super::web_gaming::desktop_gaming_settings
+            super::web_gaming::desktop_gaming_settings,
+            super::native_updates::native_update_state,
+            super::native_updates::native_update_action
         ])
         .on_menu_event(|app, event| {
             if event.id().as_ref() == "gaming-settings" {
                 let _ = super::web_gaming::open_settings(app);
+            } else if event.id().as_ref() == super::native_updates::MENU_ID {
+                super::native_updates::menu_clicked(app);
             }
         })
         .setup(|app| {
@@ -551,6 +573,7 @@ pub(super) fn run() {
                 }
             }
             app.manage(trusted);
+            super::native_updates::setup(app.handle());
             super::web_gaming::setup(app.handle());
             app_window(app.handle(), "main", "selector")
                 .title("Mnema Desktop DEV — Instance")

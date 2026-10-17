@@ -1037,6 +1037,21 @@
       "source": "https://raw.githubusercontent.com/spdx/license-list-data/v3.27.0/text/MIT.txt"
     }
   ],
+  "objc2-osa-kit@0.3.2": [
+    {
+      "name": "LICENSE.md",
+      "provenance": "crate-vcs-commit-upstream-root",
+      "sha256": "7f976f7e9cb2d87df7230606feb932c3f21ac0e664045a775b600046ff850c54",
+      "source": "https://raw.githubusercontent.com/madsmtm/objc2/7b1abfd750a2cacaea71d6a56ecfb83cb7de560b/LICENSE.md"
+    },
+    {
+      "license_selection": "MIT",
+      "name": "MIT.txt (standard text)",
+      "provenance": "standard-mit-text-selected-by-upstream-license-notice",
+      "sha256": "b05785f9f18e6716bab63424b11454513b9943a222595b70411009202fc592b5",
+      "source": "https://raw.githubusercontent.com/spdx/license-list-data/v3.27.0/text/MIT.txt"
+    }
+  ],
   "objc2-quartz-core@0.3.2": [
     {
       "name": "LICENSE.md",
@@ -1161,6 +1176,20 @@
       "provenance": "standard-mpl-2.0-text-from-registry",
       "sha256": "fab3dd6bdab226f1c08630b1dd917e11fcb4ec5e1e020e2c16f83a0a13863e85",
       "source": "https://crates.io/crates/cssparser/0.37.0"
+    }
+  ],
+  "tauri-plugin@2.7.1": [
+    {
+      "name": "LICENSE-APACHE-2.0",
+      "provenance": "crate-vcs-commit-upstream-root",
+      "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594",
+      "source": "https://raw.githubusercontent.com/tauri-apps/tauri/30da1fd6e17de6107ecc850c95dfb16b5729f2dd/LICENSE-APACHE-2.0"
+    },
+    {
+      "name": "LICENSE-MIT",
+      "provenance": "crate-vcs-commit-upstream-root",
+      "sha256": "9dd42ea92cff2ede5cd477cbfcce051b2d0115c0ac7f368ee88cb545055dff1d",
+      "source": "https://raw.githubusercontent.com/tauri-apps/tauri/30da1fd6e17de6107ecc850c95dfb16b5729f2dd/LICENSE-MIT"
     }
   ],
   "webview2-com-macros@0.8.1": [

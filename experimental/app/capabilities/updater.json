@@ -1,0 +1,11 @@
+{
+  "identifier": "updater",
+  "description": "The host's own update page; nothing else may drive the native self-update.",
+  "windows": [
+    "updater"
+  ],
+  "permissions": [
+    "allow-native-update-state",
+    "allow-native-update-action"
+  ]
+}

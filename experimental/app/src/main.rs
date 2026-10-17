@@ -6,6 +6,8 @@ include!("native_preview.rs");
 #[cfg(feature = "web-client")]
 mod local_route;
 #[cfg(feature = "web-client")]
+mod native_updates;
+#[cfg(feature = "web-client")]
 mod web_bundle;
 #[cfg(feature = "web-client")]
 mod web_client;
