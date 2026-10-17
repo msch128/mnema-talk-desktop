@@ -182,6 +182,40 @@ describe('desktop probe boundaries', () => {
     expect(w.get('footer').text()).toContain('kein veröffentlichter 0.7-Client')
     expect(w.text()).toContain('startet keine Aufnahme')
   })
+  it('reports whether senders can scale and switch off the layers of a screen share', async () => {
+    const closed = vi.fn()
+    const sender = (encoding: object) => ({ getParameters: () => ({ encodings: [encoding] }) })
+    const fake = (encoding: object | null) => vi.fn(function () {
+      return { close: closed, addTransceiver: () => { if (!encoding) throw new Error('NotSupportedError'); return { sender: sender(encoding) } } }
+    })
+    vi.stubGlobal('RTCPeerConnection', fake({ scaleResolutionDownBy: 2, active: false }))
+    const supported = app()
+    expect(supported.get('[data-testid="layers"]').text()).toContain('wird geprüft')
+    await flushPromises()
+    expect(supported.get('[data-testid="layers"]').text()).toContain('vorhanden')
+    expect(closed).toHaveBeenCalledOnce()
+
+    // A browser that ignores the encoding parameters, or one that throws, has no layers.
+    vi.stubGlobal('RTCPeerConnection', fake({}))
+    const ignoring = app()
+    await flushPromises()
+    expect(ignoring.get('[data-testid="layers"]').text()).toContain('fehlt')
+    vi.stubGlobal('RTCPeerConnection', fake(null))
+    const throwing = app()
+    await flushPromises()
+    expect(throwing.get('[data-testid="layers"]').text()).toContain('fehlt')
+    expect(closed).toHaveBeenCalledTimes(3)
+    vi.stubGlobal('RTCPeerConnection', vi.fn(function () { return { close: closed, addTransceiver: () => ({ sender: { getParameters: () => ({}) } }) } }))
+    const noEncodings = app()
+    await flushPromises()
+    expect(noEncodings.get('[data-testid="layers"]').text()).toContain('fehlt')
+    vi.unstubAllGlobals()
+    Reflect.deleteProperty(globalThis, 'RTCPeerConnection')
+    const none = app()
+    await flushPromises()
+    expect(none.get('[data-testid="layers"]').text()).toContain('fehlt')
+  })
+
   it('reports whether WebCrypto can sign media frames with Ed25519', async () => {
     const supported = app()
     await flushPromises()
