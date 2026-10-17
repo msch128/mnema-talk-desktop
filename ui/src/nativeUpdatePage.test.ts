@@ -76,8 +76,8 @@ describe('update page', () => {
   it('sends the chosen action to the host', async () => {
     await open({ phase: 'available', version: '0.2.0' })
     const [now, later] = [...document.querySelectorAll<HTMLButtonElement>('#actions button')]
-    now.click()
-    later.click()
+    now!.click()
+    later!.click()
     document.getElementById('skip')!.click()
     expect(invoke.mock.calls.filter((c) => c[0] === 'native_update_action').map((c) => c[1])).toEqual([
       { action: 'now' },
@@ -109,7 +109,7 @@ describe('update page', () => {
   })
 
   it('explains a failure without raw error text and offers a retry', async () => {
-    for (const [error, word] of [['offline', 'cannot be reached'], ['verify', 'signature'], ['install', 'unchanged'], ['unknown', 'wrong']]) {
+    for (const [error, word] of [['offline', 'cannot be reached'], ['verify', 'signature'], ['install', 'unchanged'], ['unknown', 'wrong']] as const) {
       await open({ phase: 'failed', error, version: '0.2.0', mode: 'now' })
       expect(text('detail')).toContain(word)
       expect(buttons()).toEqual(['Retry', 'Close'])
