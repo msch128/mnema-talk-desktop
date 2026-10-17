@@ -103,7 +103,7 @@ raised are cleared, those of trusted keys stay; a statement can also cap them
 with `max_version`), and refuses updates signed by a revoked updater key. A statement is
 valid for 180 days; while the one in force has expired, or its fetch failed in
 a round, the client installs nothing new and keeps running what it has. A
-client only counts a statement as fresh after fetching it in the current run.
+client only counts a statement as fresh after fetching it in the current run. An installer kept for the next start is applied at startup, before the main window loads, after that fetch succeeds and the installer has been re-verified against the fresh statement's keys; if the fetch fails it stays kept and the next start tries again.
 **The owner must re-sign about every 3 months** (`trust sign -renew`, see the
 mnema-talk doc). If a CI key leaks, the owner issues a new statement instead of racing the
 attacker with a release. The runbook is in mnema-talk
