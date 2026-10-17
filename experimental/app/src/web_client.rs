@@ -3,8 +3,8 @@
 //! through the host (`web_proxy`, `web_ws`), so it supplies data and never
 //! code. See mnema-talk `doc/desktop-trusted-client.md`.
 use crate::web_bundle::{Held, Refusal, ServerInfo, Store, TrustedKey, Version, trusted_keys};
-use crate::web_proxy::{Instance, Jar, Resp, client, forward, now, serve_bundle};
 use crate::web_trust::{Accepted, TrustState, root_key};
+use crate::web_proxy::{Instance, Jar, Limits, Resp, client, forward, now, serve_bundle};
 use crate::web_ws::{Sockets, WsEvent};
 use reqwest::{Client, redirect::Policy};
 use serde::Deserialize;
@@ -466,6 +466,7 @@ async fn desktop_open_instance(
             now(),
         ),
         origin,
+        limits: Limits::default(),
     });
     state.set_session(Some(Arc::new(Session { instance, held })));
     match open_instance_window(&window) {
