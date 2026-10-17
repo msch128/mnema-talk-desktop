@@ -107,7 +107,7 @@ pub async fn fetch_trust() -> Result<(Vec<u8>, Vec<u8>), String> {
 /// and installs it. `Ok(Some(v))` when a new bundle was installed.
 pub async fn check_and_install(
     store: &std::sync::Mutex<Store>,
-    keys: &[TrustedKey],
+    keys: &std::sync::Mutex<Vec<TrustedKey>>,
 ) -> Result<Option<Version>, String> {
     if disabled() {
         return Ok(None);
@@ -130,8 +130,7 @@ pub async fn check_and_install(
         }
     }
     let bytes = fetch(&client, url, "application/octet-stream", MAX_DOWNLOAD).await?;
-    let mut store = store.lock().map_err(|_| "busy")?;
-    store.install(&bytes, keys).map(Some)
+    crate::web_bundle::install_current(store, keys, &bytes).map(Some)
 }
 
 #[cfg(test)]
