@@ -147,7 +147,7 @@ from the signed `.app.tar.gz`; `latest.json` carries a `darwin-aarch64` and a
 `darwin-x86_64` entry that point at the same universal archive.
 
 At startup, enter the HTTPS address of your community's instance. Microsoft
-Edge WebView2 Runtime is required on Windows. Packages are unsigned, so
+Edge WebView2 Runtime is required on Windows; macOS uses the system WebKit. Packages are unsigned, so
 SmartScreen warns, and a checksum only detects a damaged download; it does not
 prove who built it.
 
