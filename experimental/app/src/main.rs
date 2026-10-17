@@ -16,6 +16,8 @@ mod web_gaming;
 #[cfg(feature = "web-client")]
 mod web_proxy;
 #[cfg(feature = "web-client")]
+mod web_trust;
+#[cfg(feature = "web-client")]
 mod web_updates;
 #[cfg(feature = "web-client")]
 mod web_vault;
