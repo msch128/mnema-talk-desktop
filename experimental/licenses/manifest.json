@@ -1,7 +1,7 @@
 {
   "schema": "mnema-desktop-license-bundle-v1",
   "scope": "Conservative locked Rust graph and production npm closure; not a claim that all packages are linked.",
-  "cargo_lock_sha256": "a63d71edf45f2cf0c8fa9077b05b7a43d7c94d92420cbf802818ca96adf9373c",
+  "cargo_lock_sha256": "f3a98b9c40221c2c1206c03e0963018ca8c1f89ff867a2a04029b8dd4c4dd5dd",
   "npm_lock_sha256": "dac10a85d34c2db5103ba4fce5701f251a893b6f1dd94d31c20d9217a13dc742",
   "supplemental": {
     "rust_standard_library": {
@@ -266,27 +266,6 @@
           "name": "LICENSE-MIT",
           "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3",
           "source": "https://crates.io/crates/anyhow/1.0.104",
-          "provenance": "crate-archive"
-        }
-      ]
-    },
-    {
-      "ecosystem": "cargo",
-      "name": "arbitrary",
-      "version": "1.5.0",
-      "license": "MIT OR Apache-2.0",
-      "source": "https://crates.io/crates/arbitrary/1.5.0",
-      "texts": [
-        {
-          "name": "LICENSE-APACHE",
-          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
-          "source": "https://crates.io/crates/arbitrary/1.5.0",
-          "provenance": "crate-archive"
-        },
-        {
-          "name": "LICENSE-MIT",
-          "sha256": "15656cc11a8331f28c0986b8ab97220d3e76f98e60ed388b5ffad37dfac4710c",
-          "source": "https://crates.io/crates/arbitrary/1.5.0",
           "provenance": "crate-archive"
         }
       ]
@@ -2265,27 +2244,6 @@
           "name": "LICENSE-MIT",
           "sha256": "231c837c45eb53f108fb48929e488965bc4fcc14e9ea21d35f50e6b99d98685b",
           "source": "https://crates.io/crates/deranged/0.5.8",
-          "provenance": "crate-archive"
-        }
-      ]
-    },
-    {
-      "ecosystem": "cargo",
-      "name": "derive_arbitrary",
-      "version": "1.5.0",
-      "license": "MIT OR Apache-2.0",
-      "source": "https://crates.io/crates/derive_arbitrary/1.5.0",
-      "texts": [
-        {
-          "name": "LICENSE-APACHE",
-          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
-          "source": "https://crates.io/crates/derive_arbitrary/1.5.0",
-          "provenance": "crate-archive"
-        },
-        {
-          "name": "LICENSE-MIT",
-          "sha256": "15656cc11a8331f28c0986b8ab97220d3e76f98e60ed388b5ffad37dfac4710c",
-          "source": "https://crates.io/crates/derive_arbitrary/1.5.0",
           "provenance": "crate-archive"
         }
       ]
@@ -12897,21 +12855,6 @@
           "name": "LICENSE",
           "sha256": "f367c1b8e1aa262435251e442901da4607b4650e0e63a026f5044473ecfb90f2",
           "source": "https://crates.io/crates/zerovec/0.11.8",
-          "provenance": "crate-archive"
-        }
-      ]
-    },
-    {
-      "ecosystem": "cargo",
-      "name": "zip",
-      "version": "4.6.1",
-      "license": "MIT",
-      "source": "https://crates.io/crates/zip/4.6.1",
-      "texts": [
-        {
-          "name": "LICENSE",
-          "sha256": "04dc52136d82400b11df5f474949863a70a5d05d2278dec45b99c479494450a6",
-          "source": "https://crates.io/crates/zip/4.6.1",
           "provenance": "crate-archive"
         }
       ]
