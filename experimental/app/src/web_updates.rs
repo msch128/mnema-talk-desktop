@@ -81,6 +81,28 @@ async fn fetch(client: &Client, url: Url, accept: &str, limit: usize) -> Result<
     Ok(out)
 }
 
+/// The current trust statement and its signature. Unverified: the caller hands
+/// both to `Trusted::apply_trust`, which checks the signature first.
+pub async fn fetch_trust() -> Result<(Vec<u8>, Vec<u8>), String> {
+    let client = client().map_err(|_| "cannot start HTTPS")?;
+    let get = |url: &str| {
+        let url = Url::parse(url).map_err(|_| "bad URL".to_owned());
+        let client = client.clone();
+        async move {
+            fetch(
+                &client,
+                url?,
+                "application/octet-stream",
+                crate::web_trust::MAX_STATEMENT,
+            )
+            .await
+        }
+    };
+    let doc = get(crate::web_trust::TRUST_URL).await?;
+    let sig = get(crate::web_trust::TRUST_SIG_URL).await?;
+    Ok((doc, sig))
+}
+
 /// Looks for a release newer than everything held, downloads it, verifies it
 /// and installs it. `Ok(Some(v))` when a new bundle was installed.
 pub async fn check_and_install(

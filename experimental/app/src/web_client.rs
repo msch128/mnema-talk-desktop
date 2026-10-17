@@ -4,6 +4,7 @@
 //! code. See mnema-talk `doc/desktop-trusted-client.md`.
 use crate::web_bundle::{Held, Refusal, ServerInfo, Store, TrustedKey, Version, trusted_keys};
 use crate::web_proxy::{Instance, Jar, Resp, client, forward, now, serve_bundle};
+use crate::web_trust::{Accepted, TrustState, root_key};
 use crate::web_ws::{Sockets, WsEvent};
 use reqwest::{Client, redirect::Policy};
 use serde::Deserialize;
@@ -54,7 +55,9 @@ pub(super) fn bundled(url: &Url) -> bool {
 /// and its sockets.
 pub struct Trusted {
     store: Mutex<Store>,
-    keys: Vec<TrustedKey>,
+    /// Bundle keys in force: the trust statement's, else the compiled-in ones.
+    keys: Mutex<Vec<TrustedKey>>,
+    trust: Mutex<TrustState>,
     session: Mutex<Option<Arc<Session>>>,
     sockets: Arc<Sockets>,
     data_dir: Option<std::path::PathBuf>,
@@ -67,7 +70,12 @@ pub struct Session {
 
 impl Trusted {
     fn new(data_dir: Option<std::path::PathBuf>, builtin: Option<&[u8]>) -> Trusted {
-        let keys = trusted_keys();
+        let trust = TrustState::load(
+            data_dir.as_ref().map(|d| d.join("web-trust")).as_deref(),
+            root_key(),
+        );
+        crate::web_trust::publish(trust.statement());
+        let keys = trust.effective_keys(trusted_keys());
         let store = Store::load(
             data_dir.as_ref().map(|d| d.join("web-bundles")).as_deref(),
             builtin,
@@ -75,10 +83,45 @@ impl Trusted {
         );
         Trusted {
             store: Mutex::new(store),
-            keys,
+            keys: Mutex::new(keys),
+            trust: Mutex::new(trust),
             session: Mutex::new(None),
             sockets: Arc::new(Sockets::default()),
             data_dir,
+        }
+    }
+
+    fn keys(&self) -> Vec<TrustedKey> {
+        self.keys.lock().map(|k| k.clone()).unwrap_or_default()
+    }
+
+    /// Takes a fetched trust statement. When it changes the keys in force,
+    /// held bundles are checked again and a running session on a withdrawn
+    /// bundle is ended. Returns whether the held bundles changed.
+    fn apply_trust(&self, doc: &[u8], sig: &[u8]) -> Result<bool, String> {
+        let mut trust = self.trust.lock().map_err(|_| "busy")?;
+        if trust.accept(doc, sig)? == Accepted::Unchanged {
+            return Ok(false);
+        }
+        let keys = trust.effective_keys(trusted_keys());
+        drop(trust);
+        if let Ok(mut current) = self.keys.lock() {
+            *current = keys.clone();
+        }
+        let dropped = self.store.lock().map_err(|_| "busy")?.reconcile(&keys);
+        if dropped
+            && let Some(session) = self.session()
+            && !keys.iter().any(|k| k.id == session.held.bundle.key_id)
+        {
+            self.set_session(None);
+        }
+        Ok(dropped)
+    }
+
+    /// Shows the statement in force to the native updater.
+    fn publish_trust(&self) {
+        if let Ok(trust) = self.trust.lock() {
+            crate::web_trust::publish(trust.statement());
         }
     }
 
@@ -233,7 +276,7 @@ async fn choose(trusted: &Trusted, server: &ServerInfo) -> Result<Held, String> 
     match first {
         Ok(held) => Ok(held),
         Err(Refusal::ServerNewer) => {
-            let _ = crate::web_updates::check_and_install(&trusted.store, &trusted.keys).await;
+            let _ = crate::web_updates::check_and_install(&trusted.store, &trusted.keys()).await;
             trusted
                 .store
                 .lock()
@@ -317,7 +360,14 @@ async fn handle(
         "main" | "sidepeek" | "gaming-overlay" | "gaming-settings" if !api => {
             match trusted.view() {
                 Some(held) => serve_bundle(&held.bundle, &method, &path),
-                None => plain(503, &Refusal::NoBundle.to_string()),
+                None => {
+                    let reason = trusted
+                        .store
+                        .lock()
+                        .map(|s| s.empty_reason())
+                        .unwrap_or(Refusal::NoBundle);
+                    plain(503, &reason.to_string())
+                }
             }
         }
         "main" | "sidepeek" | "gaming-overlay" | "gaming-settings" => plain(404, "Not found."),
@@ -502,31 +552,60 @@ fn app_api(url: &Url) -> bool {
 fn refresh_in_background(app: &tauri::AppHandle) {
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
-        let trusted = app.state::<Trusted>();
-        let had_bundle = trusted
-            .store
-            .lock()
-            .map(|s| s.newest().is_some())
-            .unwrap_or(false);
-        let due = trusted
-            .store
-            .lock()
-            .map(|s| s.check_due(now() as u64))
-            .unwrap_or(false);
-        if crate::web_updates::disabled() || (had_bundle && !due) {
-            return;
-        }
-        let installed = crate::web_updates::check_and_install(&trusted.store, &trusted.keys).await;
-        if let Ok(mut store) = trusted.store.lock() {
-            store.mark_checked(now() as u64);
-        }
-        if matches!(installed, Ok(Some(_)))
-            && !had_bundle
-            && let Some(main) = app.get_webview_window("main")
-        {
-            let _ = main.navigate(app_url());
+        let mut first = true;
+        loop {
+            refresh_once(&app, first).await;
+            first = false;
+            tokio::time::sleep(std::time::Duration::from_secs(
+                crate::web_bundle::CHECK_INTERVAL_SECS,
+            ))
+            .await;
         }
     });
+}
+
+/// One round: the trust statement first (a revoked key must stop counting
+/// before anything else is installed), then newer bundles.
+async fn refresh_once(app: &tauri::AppHandle, first: bool) {
+    let trusted = app.state::<Trusted>();
+    if crate::web_updates::disabled() {
+        return;
+    }
+    let mut dropped = false;
+    // Offline or unreachable: the last good statement stays in force.
+    if let Ok((doc, sig)) = crate::web_updates::fetch_trust().await {
+        match trusted.apply_trust(&doc, &sig) {
+            Ok(changed) => {
+                trusted.publish_trust();
+                dropped = changed;
+            }
+            Err(why) => eprintln!("Mnema Desktop: trust statement refused: {why}"),
+        }
+    }
+    let had_bundle = trusted
+        .store
+        .lock()
+        .map(|s| s.newest().is_some())
+        .unwrap_or(false);
+    let due = trusted
+        .store
+        .lock()
+        .map(|s| s.check_due(now() as u64))
+        .unwrap_or(false);
+    if had_bundle && !dropped && !(due || !first) {
+        return;
+    }
+    let installed = crate::web_updates::check_and_install(&trusted.store, &trusted.keys()).await;
+    if let Ok(mut store) = trusted.store.lock() {
+        store.mark_checked(now() as u64);
+    }
+    // A window that was showing a withdrawn bundle, or none, moves to the
+    // newly installed one, or shows why there is none.
+    if (dropped || (!had_bundle && matches!(installed, Ok(Some(_)))))
+        && let Some(main) = app.get_webview_window("main")
+    {
+        let _ = main.navigate(app_url());
+    }
 }
 
 pub(super) fn run() {
@@ -816,6 +895,25 @@ mod tests {
         let a = local_origin(&app("/")).unwrap();
         assert_eq!(Some(a), local_origin(&app("/c/1")));
         assert_eq!(local_origin(&url("https://community.example/")), None);
+    }
+
+    #[test]
+    fn only_a_statement_from_the_pinned_root_key_changes_the_keys_in_force() {
+        let trusted = Trusted::new(None, None);
+        let before: Vec<String> = trusted.keys().iter().map(|k| k.id.clone()).collect();
+        let doc = include_bytes!("../fixtures/trust.json");
+        let sig = include_bytes!("../fixtures/trust.json.sig");
+        let zero = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, [0u8; 64]);
+        assert!(trusted.apply_trust(doc, zero.as_bytes()).is_err());
+        let mut tampered = doc.to_vec();
+        tampered[12] ^= 1;
+        assert!(trusted.apply_trust(&tampered, sig).is_err());
+        // The real statement lists the pinned key: nothing is dropped.
+        assert_eq!(trusted.apply_trust(doc, sig), Ok(false));
+        let after: Vec<String> = trusted.keys().iter().map(|k| k.id.clone()).collect();
+        assert_eq!(before, after);
+        // Applying it again is a no-op.
+        assert_eq!(trusted.apply_trust(doc, sig), Ok(false));
     }
 
     #[test]

@@ -385,11 +385,12 @@ fn classify(error: &tauri_plugin_updater::Error) -> Failure {
 fn updater<R: Runtime>(
     app: &AppHandle<R>,
     source: &Source,
+    pubkey: &str,
     timeout: Duration,
 ) -> Result<tauri_plugin_updater::Updater, tauri_plugin_updater::Error> {
     let mut builder = app
         .updater_builder()
-        .pubkey(source.pubkey.clone())
+        .pubkey(pubkey.to_owned())
         .timeout(timeout);
     builder = builder.endpoints(source.endpoints.clone())?;
     if let Some(target) = &source.target {
@@ -402,12 +403,36 @@ fn updater<R: Runtime>(
 }
 
 async fn fetch<R: Runtime>(app: &AppHandle<R>, source: &Source) -> Result<Option<Update>, Failure> {
-    let updater = updater(app, source, DOWNLOAD_TIMEOUT).map_err(|e| classify(&e))?;
-    let found = tokio::time::timeout(CHECK_TIMEOUT, updater.check())
+    let found = check_with(app, source, &source.pubkey).await?;
+    // The trust statement decides which updater key an update may be signed
+    // with: a revoked key is refused, a listed replacement key is used.
+    let Some(update) = found else { return Ok(None) };
+    let key = crate::web_trust::updater_key(&source.pubkey, &update.signature)
+        .map_err(|_| Failure::Verify)?;
+    let update = if key == source.pubkey {
+        update
+    } else {
+        let again = check_with(app, source, &key)
+            .await?
+            .ok_or(Failure::Verify)?;
+        if again.version != update.version || again.signature != update.signature {
+            return Err(Failure::Verify);
+        }
+        again
+    };
+    Ok(Some(update).filter(|u| !source.github_only || download_url_ok(&u.download_url)))
+}
+
+async fn check_with<R: Runtime>(
+    app: &AppHandle<R>,
+    source: &Source,
+    pubkey: &str,
+) -> Result<Option<Update>, Failure> {
+    let updater = updater(app, source, pubkey, DOWNLOAD_TIMEOUT).map_err(|e| classify(&e))?;
+    tokio::time::timeout(CHECK_TIMEOUT, updater.check())
         .await
         .map_err(|_| Failure::Offline)?
-        .map_err(|e| classify(&e))?;
-    Ok(found.filter(|u| !source.github_only || download_url_ok(&u.download_url)))
+        .map_err(|e| classify(&e))
 }
 
 fn trim_notes(body: Option<String>) -> Option<String> {
@@ -525,6 +550,10 @@ pub async fn install<R: Runtime>(app: &AppHandle<R>, mode: Mode) {
         i.update.clone()
     });
     let Some(Some(update)) = taken else { return };
+    // The statement may have changed since the check.
+    if crate::web_trust::updater_key(&state.source.pubkey, &update.signature).is_err() {
+        return fail(&state, Failure::Verify);
+    }
     let progress = app.clone();
     let held = held_installer(&state, &update);
     let downloaded = if let Some(bytes) = held {
@@ -585,14 +614,10 @@ fn held_installer(state: &NativeUpdates, update: &Update) -> Option<Vec<u8>> {
         return None;
     }
     let bytes = std::fs::read(state.pending_path()?).ok()?;
-    verify_package(
-        &bytes,
-        &update.signature,
-        &state.source.pubkey,
-        &update.version,
-    )
-    .is_ok()
-    .then_some(bytes)
+    let key = crate::web_trust::updater_key(&state.source.pubkey, &update.signature).ok()?;
+    verify_package(&bytes, &update.signature, &key, &update.version)
+        .is_ok()
+        .then_some(bytes)
 }
 
 fn fail(state: &NativeUpdates, failure: Failure) {
@@ -645,9 +670,12 @@ pub fn prepare_pending<R: Runtime>(app: &AppHandle<R>) -> Option<(Update, Vec<u8
         _ => return None,
     };
     let bytes = state.pending_path().and_then(|p| std::fs::read(p).ok());
+    let key = crate::web_trust::updater_key(&source.pubkey, &update.signature).ok();
     let verified = bytes.as_deref().is_some_and(|b| {
         offerable(&current, &update.version).is_some()
-            && verify_package(b, &update.signature, &source.pubkey, &update.version).is_ok()
+            && key
+                .as_deref()
+                .is_some_and(|k| verify_package(b, &update.signature, k, &update.version).is_ok())
     });
     if !verified {
         discard_pending(&state);

@@ -93,6 +93,18 @@ key reached a client, that client must install the new version manually from
 the release page. Revoking a single release is done by publishing a higher
 version; clients never go back to a lower one.
 
+**Remote revocation.** The client also pins an offline root key (never in CI).
+At start and every six hours it fetches a statement signed by that key from
+`desktop-trust/` in the mnema-talk repository. The statement lists the web
+bundle keys and updater keys that are allowed and the ones that are revoked;
+the client keeps the last good one, refuses a lower serial, drops bundles
+signed by a revoked key, and refuses updates signed by a revoked updater key.
+If a CI key leaks, the owner issues a new statement instead of racing the
+attacker with a release. The runbook is in mnema-talk
+`doc/desktop-trusted-client.md` ("Key revocation"). A replacement updater key
+listed in the statement is used to verify updates, so the key in
+`tauri.conf.json` can be replaced without a client that has missed a release.
+
 macOS and Linux builds do not exist yet. The updater code is platform neutral
 (macOS would use `.app.tar.gz` updater artifacts and the same feed with a
 `darwin-aarch64` or `darwin-x86_64` entry), but only Windows is built and
