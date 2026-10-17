@@ -1,8 +1,8 @@
 name: Desktop release
 
 # Tag vX.Y.Z (a commit on main whose app version is X.Y.Z) builds, tests and
-# signs the Windows installer and publishes it with the updater feed
-# (latest.json). Installed clients find it at
+# signs the Windows installer and the universal macOS app (ad-hoc signed, not
+# notarized) and publishes them with the updater feed (latest.json). Installed clients find it at
 # https://github.com/msch128/mnema-talk-desktop/releases/latest/download/latest.json
 # and verify it against the public key pinned in tauri.conf.json.
 on:
@@ -122,8 +122,113 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+  macos-app:
+    needs: build
+    runs-on: macos-15
+    timeout-minutes: 40
+    # The signing key exists only in this protected environment (tags v*).
+    environment: desktop-updater-signing
+    env:
+      RUST_VERSION: 1.99.0
+      CARGO_TARGET_DIR: ${{ github.workspace }}/experimental/app/target
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: mnema-desktop-macos-exe-${{ needs.build.outputs.macos-revision }}
+          path: experimental/app/target/universal-apple-darwin/release
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 26
+      - name: Select pinned Rust toolchain
+        run: |
+          rustup toolchain install "$RUST_VERSION" --profile minimal
+          rustup default "$RUST_VERSION"
+      # Dependencies are installed before the key is in the environment, and
+      # without install scripts.
+      - name: Install the pinned Tauri CLI
+        working-directory: ui
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      # The executable is the tested one; the bundle step only wraps it, signs
+      # the app ad hoc (tauri.macos.conf.json) and signs the updater archive.
+      - name: Bundle the app from the tested executable
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        working-directory: experimental/app
+        run: |
+          set -euo pipefail
+          chmod +x target/universal-apple-darwin/release/mnema-native-client-preview
+          node ../../ui/node_modules/@tauri-apps/cli/tauri.js bundle --target universal-apple-darwin --bundles app --features shell,web-client,custom-protocol
+      - name: Name the release files
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          bundle="$CARGO_TARGET_DIR/universal-apple-darwin/release/bundle/macos"
+          app="$bundle/Mnema Desktop DEV.app"
+          archive="$bundle/Mnema Desktop DEV.app.tar.gz"
+          [ -d "$app" ] && [ -f "$archive" ] && [ -f "$archive.sig" ] || { echo '::error::signed app archive missing'; exit 1; }
+          out="$RUNNER_TEMP/macos"
+          mkdir -p "$out" "$RUNNER_TEMP/dmg"
+          version="${TAG#v}"
+          name="Mnema-Desktop-DEV_${version}_universal"
+          cp "$archive" "$out/$name.app.tar.gz"
+          cp "$archive.sig" "$out/$name.app.tar.gz.sig"
+          # A plain disk image (app and a link to /Applications). It is built
+          # with hdiutil, not by scripting the Finder, so it needs no desktop.
+          ditto "$app" "$RUNNER_TEMP/dmg/Mnema Desktop DEV.app"
+          ln -s /Applications "$RUNNER_TEMP/dmg/Applications"
+          cp LICENSE THIRD_PARTY_NOTICES.md "$RUNNER_TEMP/dmg/"
+          hdiutil create -volname "Mnema Desktop DEV" -srcfolder "$RUNNER_TEMP/dmg" -ov -format UDZO "$out/$name.dmg"
+      # What an updated client ends up with is the archive's app: unpack it the
+      # way the updater does and run that.
+      - name: The app is universal, ad-hoc signed, asks for the devices and starts
+        run: |
+          set -euo pipefail
+          check="$RUNNER_TEMP/check"
+          mkdir -p "$check"
+          tar -xzf "$RUNNER_TEMP/macos/"*.app.tar.gz -C "$check"
+          app="$check/Mnema Desktop DEV.app"
+          exe="$app/Contents/MacOS/mnema-native-client-preview"
+          archs="$(lipo -archs "$exe")"
+          echo "Architectures: $archs"
+          [[ " $archs " == *" arm64 "* && " $archs " == *" x86_64 "* ]] || { echo '::error::the app is not universal'; exit 1; }
+          codesign --verify --deep --strict --verbose=2 "$app"
+          signature="$(codesign -dv "$app" 2>&1)"
+          [[ "$signature" == *"Signature=adhoc"* ]] || { echo '::error::the app is not ad-hoc signed'; exit 1; }
+          plutil -extract NSMicrophoneUsageDescription raw "$app/Contents/Info.plist" >/dev/null
+          plutil -extract NSCameraUsageDescription raw "$app/Contents/Info.plist" >/dev/null
+          # Only a browser download is quarantined; the updater's download is not.
+          attributes="$(xattr -lr "$app" || true)"
+          [[ "$attributes" != *com.apple.quarantine* ]] || { echo '::error::the app carries a quarantine mark'; exit 1; }
+          mount_dir="$RUNNER_TEMP/mount"
+          mkdir -p "$mount_dir"
+          hdiutil attach "$RUNNER_TEMP/macos/"*.dmg -mountpoint "$mount_dir" -nobrowse -quiet
+          test -d "$mount_dir/Mnema Desktop DEV.app" && test -L "$mount_dir/Applications"
+          hdiutil detach "$mount_dir" -quiet
+          log="$RUNNER_TEMP/start.log"
+          MNEMA_DEBUG_PROTOCOL=1 MNEMA_DESKTOP_NO_UPDATE_CHECK=1 "$exe" >"$log" 2>&1 &
+          pid=$!
+          ready=0
+          for _ in $(seq 1 60); do
+            sleep 0.5
+            kill -0 "$pid" 2>/dev/null || { cat "$log"; echo '::error::the app exited'; exit 1; }
+            if grep -qF 'main mnema://localhost/ -> 200' "$log"; then ready=1; break; fi
+          done
+          kill "$pid" 2>/dev/null || true
+          [ "$ready" = 1 ] || { cat "$log"; echo '::error::the app served no start page'; exit 1; }
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: mnema-desktop-macos
+          path: ${{ runner.temp }}/macos/
+          if-no-files-found: error
+          retention-days: 1
+
   publish:
-    needs: [build, installer]
+    needs: [build, installer, macos-app]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -140,6 +245,10 @@ jobs:
           path: release
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
+          name: mnema-desktop-macos
+          path: release
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
           name: mnema-desktop-windows-DEV-UNSIGNED-${{ needs.build.outputs.revision }}
           path: portable
       - name: Publish the release (draft until complete)
@@ -147,13 +256,16 @@ jobs:
           set -euo pipefail
           version="${TAG#v}"
           installer="$(ls release/*-setup.exe)"
+          macos="$(ls release/*.app.tar.gz)"
           node scripts/update-manifest.mjs --version "$version" --repo "$GITHUB_REPOSITORY" \
-            --installer "$installer" --sig "$installer.sig" --out release/latest.json
+            --installer "$installer" --sig "$installer.sig" --mac "$macos" --mac-sig "$macos.sig" --out release/latest.json
+          # Every platform of the feed must verify against the key pinned in the app.
+          node scripts/verify-updater-signatures.mjs release/latest.json release windows-x86_64 darwin-aarch64 darwin-x86_64
           (cd portable && zip -qr "../release/Mnema-Desktop-DEV-${TAG}-windows-x64-portable.zip" .)
-          (cd release && sha256sum -- *.exe *.zip > SHA256SUMS)
+          (cd release && sha256sum -- *.exe *.zip *.dmg *.app.tar.gz > SHA256SUMS)
           gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --draft \
             --title "Mnema Desktop $TAG" \
-            --notes "Windows installer with automatic updates. Installed clients update themselves; the signature is checked against a key built into the app. The portable ZIP is unsigned and does not update itself." \
-            release/*.exe release/*.exe.sig release/*.zip release/latest.json release/SHA256SUMS
+            --notes "Windows installer and universal macOS app (Apple silicon and Intel) with automatic updates. Installed clients update themselves; the signature is checked against a key built into the app. The macOS app is not notarized: see the README for the first start. The portable ZIP is unsigned and does not update itself." \
+            release/*.exe release/*.exe.sig release/*.zip release/*.dmg release/*.app.tar.gz release/*.app.tar.gz.sig release/latest.json release/SHA256SUMS
           # Clients look at latest/download/latest.json: published last.
           gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false --latest

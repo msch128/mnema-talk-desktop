@@ -6,6 +6,9 @@ on:
       revision:
         description: Source revision that was built
         value: ${{ jobs.windows-client.outputs.revision }}
+      macos-revision:
+        description: Source revision that the macOS executable was built from
+        value: ${{ jobs.macos-client.outputs.revision }}
     inputs:
       ref:
         required: true
@@ -181,23 +184,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ inputs.tag }}
-        run: |
-          set -euo pipefail
-          mkdir -p experimental/app/bundle
-          found=""
-          for tag in $(gh release list --repo msch128/mnema-talk --limit 15 --json tagName --jq '.[].tagName'); do
-            if gh release download "$tag" --repo msch128/mnema-talk --pattern 'mnema-web-*.zip' --dir experimental/app/bundle --clobber 2>/dev/null; then
-              found="$tag"
-              break
-            fi
-          done
-          if [ -z "$found" ]; then
-            if [ -n "$RELEASE_TAG" ]; then echo "::error::no signed web bundle in the recent mnema-talk releases"; exit 1; fi
-            echo "::warning::no mnema-talk release carries a signed web bundle yet; this build has none built in"
-            exit 0
-          fi
-          mv experimental/app/bundle/mnema-web-*.zip experimental/app/bundle/builtin.zip
-          echo "Built-in web bundle from mnema-talk $found" >> "$GITHUB_STEP_SUMMARY"
+        run: bash scripts/stage-web-bundle.sh
 
       - name: Check and link the canonical protected native host on Windows
         if: inputs.acceptance_release == ''
@@ -310,5 +297,77 @@ jobs:
         with:
           name: mnema-desktop-windows-exe-${{ steps.source.outputs.sha }}
           path: experimental/app/target/release/mnema-native-client-preview.exe
+          if-no-files-found: error
+          retention-days: 1
+
+  # The same host on macOS: unit tests and Clippy on every change, and for a
+  # release the universal (arm64 + x86_64) executable that desktop-release.yml
+  # turns into the app bundle. The macOS build has no gaming overlay (the
+  # Windows-only parts are compiled out) and is ad-hoc signed, not notarized.
+  macos-client:
+    if: inputs.acceptance_release == ''
+    runs-on: macos-15
+    timeout-minutes: 60
+    outputs:
+      revision: ${{ steps.source.outputs.sha }}
+    env:
+      RUST_VERSION: 1.99.0
+      CARGO_TARGET_DIR: ${{ github.workspace }}/experimental/app/target
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.ref || github.sha }}
+      - name: Capture actual source revision
+        id: source
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 26
+      - name: Select pinned Rust toolchain
+        run: |
+          rustup toolchain install "$RUST_VERSION" --profile minimal --component clippy \
+            --target aarch64-apple-darwin --target x86_64-apple-darwin
+          rustup default "$RUST_VERSION"
+      - name: Stage the signed web bundle
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: bash scripts/stage-web-bundle.sh
+      - name: Test and lint the shared-client host for macOS
+        env:
+          # A release build must embed a bundle; the test checks that the pinned key verifies it.
+          MNEMA_REQUIRE_BUNDLE: ${{ inputs.tag != '' && '1' || '' }}
+          MNEMA_TEST_BUNDLE_ZIP: ${{ github.workspace }}/experimental/app/bundle/builtin.zip
+        run: |
+          node scripts/checked-glib.mjs
+          cargo test --locked --manifest-path experimental/app/Cargo.toml --features shell,web-client,custom-protocol
+          cargo clippy --locked --manifest-path experimental/app/Cargo.toml --features shell,web-client,custom-protocol --all-targets -- -D warnings
+      # A release (desktop-release.yml) bundles this tested executable; nothing
+      # is rebuilt after the tests.
+      - name: Build the universal executable
+        if: inputs.tag != ''
+        env:
+          MNEMA_REQUIRE_BUNDLE: '1'
+        run: |
+          set -euo pipefail
+          for target in aarch64-apple-darwin x86_64-apple-darwin; do
+            cargo build --locked --release --target "$target" --manifest-path experimental/app/Cargo.toml --features shell,web-client,custom-protocol
+          done
+          out="$CARGO_TARGET_DIR/universal-apple-darwin/release"
+          mkdir -p "$out"
+          lipo -create -output "$out/mnema-native-client-preview" \
+            "$CARGO_TARGET_DIR/aarch64-apple-darwin/release/mnema-native-client-preview" \
+            "$CARGO_TARGET_DIR/x86_64-apple-darwin/release/mnema-native-client-preview"
+          archs="$(lipo -archs "$out/mnema-native-client-preview")"
+          echo "Architectures: $archs"
+          case " $archs " in *" arm64 "*" x86_64 "* | *" x86_64 "*" arm64 "*) ;; *) echo '::error::the executable is not universal'; exit 1 ;; esac
+          echo 'Unsigned universal macOS host linked from experimental/app with the signed web bundle embedded. The release workflow ad-hoc signs it; it is not notarized.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload the tested executable for the app bundle
+        if: inputs.tag != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: mnema-desktop-macos-exe-${{ steps.source.outputs.sha }}
+          path: experimental/app/target/universal-apple-darwin/release/mnema-native-client-preview
           if-no-files-found: error
           retention-days: 1
