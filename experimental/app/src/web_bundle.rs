@@ -361,24 +361,43 @@ impl fmt::Display for Refusal {
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 struct State {
+    /// Earlier states: marks without a signer. Read as the unknown signer ""
+    /// (always counted), never written again.
     security_floor: Option<Version>,
-    /// Highest bundle version ever verified, per `web_client_api`. Bundles
-    /// below it are never selected, whatever the server claims.
     #[serde(default)]
     high_water: BTreeMap<u32, Version>,
+    /// Highest `security_floor` each signing key ever declared (key id).
+    #[serde(default)]
+    floors: BTreeMap<String, Version>,
+    /// Highest bundle version ever verified per `web_client_api` and signing
+    /// key. The mark in force is the highest one of a key that is still
+    /// trusted: bundles below it are never selected, whatever the server says.
+    #[serde(default)]
+    marks: BTreeMap<u32, BTreeMap<String, Version>>,
     last_check: u64,
 }
+
+/// Marks from before signers were recorded.
+const UNKNOWN_SIGNER: &str = "";
 
 /// Verified bundles in memory plus the cache on disk.
 pub struct Store {
     dir: Option<PathBuf>,
+    /// The floor and marks in force (see `recompute`).
     floor: Version,
     high_water: BTreeMap<u32, Version>,
+    floors: BTreeMap<String, Version>,
+    marks: BTreeMap<u32, BTreeMap<String, Version>>,
+    /// Ids of the keys trusted right now.
+    trusted: Vec<String>,
     last_check: u64,
     /// Bundles were dropped or refused because their key is not trusted. Only
     /// picks the message when nothing can be served.
     withdrawn: bool,
     held: Vec<Held>,
+    /// Verified bundles below the floor. Never served; they return if the key
+    /// that raised the floor is revoked.
+    shelved: Vec<Held>,
     /// Cached files that failed verification (names only, for diagnostics).
     pub rejected: Vec<String>,
 }
@@ -428,16 +447,35 @@ impl Store {
             }
         }
         let withdrawn = !rejected.is_empty();
+        let mut floors = state.floors;
+        if let Some(floor) = state.security_floor {
+            let entry = floors.entry(UNKNOWN_SIGNER.to_owned()).or_insert(floor);
+            *entry = (*entry).max(floor);
+        }
+        let mut marks = state.marks;
+        for (api, version) in state.high_water {
+            let entry = marks
+                .entry(api)
+                .or_default()
+                .entry(UNKNOWN_SIGNER.to_owned())
+                .or_insert(version);
+            *entry = (*entry).max(version);
+        }
         let mut store = Store {
             dir: dir.map(Path::to_path_buf),
-            floor: state.security_floor.unwrap_or(Version(0, 0, 0)),
-            high_water: state.high_water,
+            floor: Version(0, 0, 0),
+            high_water: BTreeMap::new(),
+            floors,
+            marks,
+            trusted: keys.iter().map(|k| k.id.clone()).collect(),
             last_check: state.last_check,
             withdrawn,
             held: verified,
+            shelved: Vec::new(),
             rejected,
         };
         store.raise_from_held();
+        store.recompute();
         store.apply_floor();
         store.persist();
         store
@@ -446,8 +484,10 @@ impl Store {
     fn persist(&self) {
         let Some(dir) = &self.dir else { return };
         let state = State {
-            security_floor: Some(self.floor),
-            high_water: self.high_water.clone(),
+            security_floor: None,
+            high_water: BTreeMap::new(),
+            floors: self.floors.clone(),
+            marks: self.marks.clone(),
             last_check: self.last_check,
         };
         if std::fs::create_dir_all(dir).is_ok()
@@ -567,7 +607,9 @@ impl Store {
                 .and_then(|()| std::fs::rename(&partial, &target))
                 .map_err(|_| "cannot write the bundle")?;
         }
+        self.trusted = keys.iter().map(|k| k.id.clone()).collect();
         self.raise_marks(&bundle);
+        self.recompute();
         self.held.push(Held {
             bundle: Arc::new(bundle),
             source: Source::Cache,
@@ -579,10 +621,11 @@ impl Store {
     }
 
     /// Applies a new set of trusted keys to what is held: bundles signed by any
-    /// other key are dropped (cached files removed). The floor and the
-    /// high-water marks are never lowered: revoking a key does not make older
-    /// versions safe. Returns whether anything was dropped.
+    /// other key are dropped (cached files removed), and the floor and marks
+    /// are recomputed from the keys still trusted. Returns whether anything
+    /// was dropped.
     pub fn reconcile(&mut self, keys: &[TrustedKey]) -> bool {
+        self.trusted = keys.iter().map(|k| k.id.clone()).collect();
         let trusted = |id: &str| keys.iter().any(|k| k.id == id);
         let dropped: Vec<(Version, bool)> = self
             .held
@@ -591,6 +634,7 @@ impl Store {
             .map(|h| (h.bundle.version, h.source == Source::Cache))
             .collect();
         self.held.retain(|h| trusted(&h.bundle.key_id));
+        self.shelved.retain(|h| trusted(&h.bundle.key_id));
         if let Some(dir) = &self.dir {
             for (version, cached) in &dropped {
                 if *cached {
@@ -600,13 +644,74 @@ impl Store {
         }
         if !dropped.is_empty() {
             self.withdrawn = true;
-            self.persist();
         }
+        // The marks in force now come from still-trusted keys only.
+        self.recompute();
+        self.apply_floor();
+        self.persist();
         !dropped.is_empty()
     }
 
+    /// Applies the caps of a newly taken trust statement: the recorded marks
+    /// per web client API and the floors are lowered to at most the cap, and
+    /// held bundles above a cap are dropped. This clears a mark raised by a
+    /// forged bundle even when no trusted bundle exists yet.
+    pub fn apply_caps(&mut self, caps: &BTreeMap<u32, Version>) {
+        let Some(highest) = caps.values().max().copied() else {
+            return;
+        };
+        for (api, cap) in caps {
+            for mark in self.marks.entry(*api).or_default().values_mut() {
+                *mark = (*mark).min(*cap);
+            }
+        }
+        for floor in self.floors.values_mut() {
+            *floor = (*floor).min(highest);
+        }
+        let over = |h: &Held| {
+            caps.get(&h.bundle.web_client_api)
+                .is_some_and(|c| h.bundle.version > *c)
+        };
+        self.held.retain(|h| !over(h));
+        self.shelved.retain(|h| !over(h));
+        self.recompute();
+        self.apply_floor();
+        self.persist();
+    }
+
+    /// Floor and high-water marks in force: the highest recorded by any key
+    /// that is trusted now (or whose signer is unknown). Revoking a key clears
+    /// what it raised and nothing a trusted key reached or declared.
+    fn recompute(&mut self) {
+        let counts = |key: &String| key == UNKNOWN_SIGNER || self.trusted.contains(key);
+        self.floor = self
+            .floors
+            .iter()
+            .filter(|(k, _)| counts(k))
+            .map(|(_, v)| *v)
+            .max()
+            .unwrap_or(Version(0, 0, 0));
+        self.high_water = self
+            .marks
+            .iter()
+            .filter_map(|(api, by_key)| {
+                by_key
+                    .iter()
+                    .filter(|(k, _)| counts(k))
+                    .map(|(_, v)| *v)
+                    .max()
+                    .map(|v| (*api, v))
+            })
+            .collect();
+    }
+
     fn raise_from_held(&mut self) {
-        let bundles: Vec<Arc<Bundle>> = self.held.iter().map(|h| h.bundle.clone()).collect();
+        let bundles: Vec<Arc<Bundle>> = self
+            .held
+            .iter()
+            .chain(&self.shelved)
+            .map(|h| h.bundle.clone())
+            .collect();
         for bundle in bundles {
             self.raise_marks(&bundle);
         }
@@ -615,16 +720,26 @@ impl Store {
     /// Serves bundles at or above the floor, newest first.
     fn apply_floor(&mut self) {
         let floor = self.floor;
-        self.held.retain(|h| h.bundle.version >= floor);
-        self.held
-            .sort_by_key(|h| std::cmp::Reverse(h.bundle.version));
+        let mut all = std::mem::take(&mut self.held);
+        all.append(&mut self.shelved);
+        let (mut held, shelved): (Vec<Held>, Vec<Held>) =
+            all.into_iter().partition(|h| h.bundle.version >= floor);
+        held.sort_by_key(|h| std::cmp::Reverse(h.bundle.version));
+        self.held = held;
+        self.shelved = shelved;
     }
 
     fn raise_marks(&mut self, bundle: &Bundle) {
-        self.floor = self.floor.max(bundle.security_floor);
+        let floor = self
+            .floors
+            .entry(bundle.key_id.clone())
+            .or_insert(bundle.security_floor);
+        *floor = (*floor).max(bundle.security_floor);
         let mark = self
-            .high_water
+            .marks
             .entry(bundle.web_client_api)
+            .or_default()
+            .entry(bundle.key_id.clone())
             .or_insert(bundle.version);
         *mark = (*mark).max(bundle.version);
     }
@@ -1124,54 +1239,78 @@ mod tests {
         }
     }
 
-    #[test]
-    fn a_revoked_key_loses_its_bundles_but_not_the_rollback_marks_it_raised() {
-        let d = dir("revoke");
+    fn forged_and_good(d: &Path) -> Store {
         let good = Spec::new("0.8.0");
         let mut forged = Spec::new("0.99.0");
         forged.seed = 5;
         forged.floor = "0.99.0";
-        let mut store = Store::load(Some(&d), Some(&bundle(&good)), &both_keys());
+        let mut store = Store::load(Some(d), Some(&bundle(&good)), &both_keys());
         store.install(&bundle(&forged), &both_keys()).unwrap();
+        store
+    }
 
+    #[test]
+    fn a_forged_mark_of_a_revoked_key_is_cleared() {
+        let d = dir("revoke");
+        let mut store = forged_and_good(&d);
+        assert_eq!(store.floor(), Version(0, 99, 0));
         assert!(store.reconcile(&trusted(7)));
         assert!(!d.join("mnema-web-0.99.0.zip").exists());
-        // The floor and the mark stay: the older, good bundle is not run.
-        assert_eq!(store.floor(), Version(0, 99, 0));
-        assert_eq!(store.high_water(1), Some(Version(0, 99, 0)));
-        assert!(store.held().is_empty());
+        assert_eq!(store.floor(), Version(0, 0, 0));
+        assert_eq!(store.high_water(1), Some(Version(0, 8, 0)));
+        // The good built-in bundle, held back by the forged floor, runs again.
         assert_eq!(
-            store.select(&server()).err(),
-            Some(Refusal::SignerWithdrawn)
+            store.select(&server()).unwrap().bundle.version,
+            Version(0, 8, 0)
         );
-        // Nothing changes when the keys do not.
         assert!(!store.reconcile(&trusted(7)));
         let _ = std::fs::remove_dir_all(&d);
     }
 
     #[test]
-    fn marks_of_a_revoked_key_survive_a_restart_and_older_bundles_stay_refused() {
+    fn the_cleared_marks_stay_cleared_after_a_restart() {
         let d = dir("revoke-restart");
-        let good = Spec::new("0.8.0");
-        let mut forged = Spec::new("0.99.0");
-        forged.seed = 5;
-        forged.floor = "0.99.0";
-        let mut store = Store::load(Some(&d), Some(&bundle(&good)), &both_keys());
-        store.install(&bundle(&forged), &both_keys()).unwrap();
-        drop(store);
-        let again = Store::load(Some(&d), Some(&bundle(&good)), &trusted(7));
+        drop(forged_and_good(&d));
+        let again = Store::load(Some(&d), Some(&bundle(&Spec::new("0.8.0"))), &trusted(7));
         assert_eq!(again.rejected.len(), 1);
-        assert_eq!(again.floor(), Version(0, 99, 0));
-        assert_eq!(again.high_water(1), Some(Version(0, 99, 0)));
+        assert_eq!(again.floor(), Version(0, 0, 0));
+        assert_eq!(again.high_water(1), Some(Version(0, 8, 0)));
         assert_eq!(
-            again.select(&server()).err(),
-            Some(Refusal::SignerWithdrawn)
+            again.select(&server()).unwrap().bundle.version,
+            Version(0, 8, 0)
         );
+        // With both keys trusted the forged marks are in force again.
+        let both = Store::load(Some(&d), Some(&bundle(&Spec::new("0.8.0"))), &both_keys());
+        assert_eq!(both.floor(), Version(0, 99, 0));
         let _ = std::fs::remove_dir_all(&d);
     }
 
     #[test]
-    fn a_bundle_from_an_allowed_key_at_or_above_the_mark_replaces_a_withdrawn_one() {
+    fn marks_and_floors_of_still_trusted_keys_are_kept() {
+        let d = dir("keep");
+        let mut legit = Spec::new("0.9.0");
+        legit.floor = "0.8.5";
+        let mut forged = Spec::new("0.99.0");
+        forged.seed = 5;
+        forged.floor = "0.99.0";
+        let mut store = Store::load(Some(&d), Some(&bundle(&Spec::new("0.8.0"))), &both_keys());
+        store.install(&bundle(&legit), &both_keys()).unwrap();
+        store.install(&bundle(&forged), &both_keys()).unwrap();
+        assert!(store.reconcile(&trusted(7)));
+        // Never below what the trusted key reached or declared.
+        assert_eq!(store.floor(), Version(0, 8, 5));
+        assert_eq!(store.high_water(1), Some(Version(0, 9, 0)));
+        assert_eq!(
+            store.select(&server()).unwrap().bundle.version,
+            Version(0, 9, 0)
+        );
+        // The built-in 0.8.0 stays below the trusted floor.
+        assert_eq!(store.held().len(), 1);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn when_only_revoked_bundles_are_left_the_client_says_so_until_a_new_one_arrives() {
         let mut forged = Spec::new("0.8.0");
         forged.seed = 5;
         let mut store = Store::load(None, Some(&bundle(&forged)), &trusted(5));
@@ -1193,24 +1332,65 @@ mod tests {
             store.select(&server()).unwrap().bundle.version,
             Version(0, 8, 1)
         );
-        // A bundle below the mark is held but never selected.
-        let mut forged2 = Spec::new("0.9.0");
-        forged2.seed = 5;
-        let mut store = Store::load(None, Some(&bundle(&forged2)), &trusted(5));
-        store.reconcile(&trusted(7));
-        store
-            .install(&bundle(&Spec::new("0.8.5")), &trusted(7))
-            .unwrap();
-        assert_eq!(
-            store.select(&server()).err(),
-            Some(Refusal::SignerWithdrawn)
-        );
         // An offline start with a built-in bundle nobody trusts any more.
-        let offline = Store::load(None, Some(&bundle(&forged2)), &trusted(7));
+        let offline = Store::load(None, Some(&bundle(&forged)), &trusted(7));
         assert_eq!(
             offline.select(&server()).err(),
             Some(Refusal::SignerWithdrawn)
         );
+    }
+
+    #[test]
+    fn a_cap_from_the_statement_lowers_marks_even_of_unknown_or_trusted_signers() {
+        // A state written before signers were recorded: forged marks of an
+        // unknown signer always count, and only a cap can clear them.
+        let d = dir("cap");
+        std::fs::write(
+            d.join("state.json"),
+            serde_json::json!({
+                "security_floor": [0, 99, 0],
+                "high_water": {"1": [0, 99, 0]},
+                "last_check": 0
+            })
+            .to_string(),
+        )
+        .unwrap();
+        let mut store = Store::load(Some(&d), Some(&bundle(&Spec::new("0.8.0"))), &trusted(7));
+        assert_eq!(store.floor(), Version(0, 99, 0));
+        assert!(store.select(&server()).is_err());
+        let caps = BTreeMap::from([(1, Version(0, 8, 0))]);
+        store.apply_caps(&caps);
+        assert_eq!(store.floor(), Version(0, 8, 0));
+        assert_eq!(store.high_water(1), Some(Version(0, 8, 0)));
+        assert_eq!(
+            store.select(&server()).unwrap().bundle.version,
+            Version(0, 8, 0)
+        );
+        // The cap survives a restart in the recorded marks.
+        let again = Store::load(Some(&d), Some(&bundle(&Spec::new("0.8.0"))), &trusted(7));
+        assert_eq!(again.floor(), Version(0, 8, 0));
+        // Bundles above the cap are dropped, even from a trusted key; other
+        // contracts keep their own marks; no caps change nothing.
+        let mut high = Spec::new("0.99.0");
+        high.floor = "0.5.0";
+        let mut api2 = Spec::new("1.0.0");
+        api2.api = 2;
+        let mut store = Store::load(None, Some(&bundle(&Spec::new("0.8.0"))), &trusted(7));
+        store.install(&bundle(&high), &trusted(7)).unwrap();
+        store.install(&bundle(&api2), &trusted(7)).unwrap();
+        store.apply_caps(&BTreeMap::new());
+        assert_eq!(store.high_water(1), Some(Version(0, 99, 0)));
+        store.apply_caps(&BTreeMap::from([(1, Version(0, 9, 0))]));
+        assert_eq!(store.high_water(1), Some(Version(0, 9, 0)));
+        assert_eq!(store.high_water(2), Some(Version(1, 0, 0)));
+        assert!(
+            store
+                .held()
+                .iter()
+                .filter(|h| h.bundle.web_client_api == 1)
+                .all(|h| h.bundle.version <= Version(0, 9, 0))
+        );
+        let _ = std::fs::remove_dir_all(&d);
     }
 
     #[test]
