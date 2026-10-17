@@ -8,17 +8,39 @@ use reqwest::{Client, redirect::Policy};
 use serde::{Deserialize, Serialize};
 use std::{
     path::PathBuf,
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicU64, Ordering},
+    },
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
+use tokio::sync::{Semaphore, SemaphorePermit};
 use url::Url;
 
-/// Largest request or response body the proxy buffers. The webview protocol
-/// hands over whole bodies, so every byte is in memory (twice, while it
-/// moves); the cap keeps one request from taking the machine's RAM. Audio and
-/// video arrive in `Range` pieces and are not affected; a file above the cap
-/// is refused up front from its declared length.
+/// Largest body the proxy buffers before the instance has announced its
+/// upload limit (`max_upload_mb` of `GET /api/permissions`). The webview
+/// protocol hands over whole bodies, so every byte is in memory; the caps keep
+/// one request from taking the machine's RAM. Audio and video arrive in
+/// `Range` pieces and are not affected; a file above the cap is refused up
+/// front from its declared length.
 pub const MAX_BODY: usize = 128 << 20;
+/// What the server's JSON routes accept (1 MiB), with headroom.
+const MAX_JSON_BODY: usize = 2 << 20;
+/// Multipart framing and form fields around an uploaded file; the server
+/// allows the same (`media.Handler.UploadBodyLimit`).
+const MULTIPART_OVERHEAD: usize = 1 << 20;
+/// Avatars are read in memory by the server and capped at 5 MiB.
+const MAX_AVATAR_BODY: usize = (5 << 20) + MULTIPART_OVERHEAD;
+/// The server's own ceiling (`MAX_UPLOAD_SIZE_MB` is at most 2048).
+const MAX_ANNOUNCED_MB: u64 = 2048;
+/// Bodies up to this size are handled without asking the memory budget.
+pub const SMALL_BODY: usize = 32 << 20;
+/// Memory the proxy lends to bodies above `SMALL_BODY`, all transfers
+/// together. The webview protocol cannot stream, so a large body is whole in
+/// memory; this keeps several of them from adding up.
+pub const LARGE_BODY_BUDGET: usize = 1 << 30;
+const BUDGET_UNIT: usize = 64 << 10;
+const BUDGET_WAIT: Duration = Duration::from_secs(30);
 const MAX_COOKIES: usize = 32;
 
 /// Same policy as the server's SPA (`httpx.SPAContentSecurityPolicy`), plus the
@@ -298,11 +320,88 @@ fn write_private(file: &Option<PathBuf>, raw: &[u8]) {
 
 // ----------------------------------------------------------------- proxy
 
+/// What the proxy lets through, following what the instance announces.
+pub struct Limits {
+    /// The effective upload limit of the signed-in member in MB; 0 until the
+    /// instance has announced one.
+    upload_mb: AtomicU64,
+    budget: Semaphore,
+    /// How long a large body waits for memory.
+    wait: Duration,
+}
+
+impl Default for Limits {
+    fn default() -> Self {
+        Limits {
+            upload_mb: AtomicU64::new(0),
+            budget: Semaphore::new(LARGE_BODY_BUDGET / BUDGET_UNIT),
+            wait: BUDGET_WAIT,
+        }
+    }
+}
+
+impl Limits {
+    /// Takes the instance's announcement; nonsense is ignored.
+    pub fn announce_upload_mb(&self, mb: u64) {
+        if (1..=MAX_ANNOUNCED_MB).contains(&mb) {
+            self.upload_mb.store(mb, Ordering::Relaxed);
+        }
+    }
+
+    fn upload_bytes(&self) -> Option<usize> {
+        match self.upload_mb.load(Ordering::Relaxed) {
+            0 => None,
+            mb => Some((mb as usize) << 20),
+        }
+    }
+
+    /// Largest request body for `path` (without the query): an upload follows
+    /// the announced limit plus multipart framing, avatars and JSON routes
+    /// have their own small caps. Before any announcement the old fixed cap
+    /// applies to uploads.
+    pub fn request_cap(&self, path: &str) -> usize {
+        if path == "/api/users/me/avatar" {
+            return MAX_AVATAR_BODY;
+        }
+        let is_upload = path
+            .strip_prefix("/api/channels/")
+            .and_then(|rest| rest.strip_suffix("/upload"))
+            .is_some_and(|id| !id.is_empty() && !id.contains('/'));
+        if !is_upload {
+            return MAX_JSON_BODY;
+        }
+        self.upload_bytes()
+            .map_or(MAX_BODY, |n| n + MULTIPART_OVERHEAD)
+    }
+
+    /// Largest answer the proxy hands to the page: files up to the larger of
+    /// the old cap and the upload limit (a file stays downloadable after the
+    /// Owner lowered the limit), bounded by the memory budget.
+    pub fn response_cap(&self) -> usize {
+        let announced = self.upload_bytes().map_or(0, |n| n + MULTIPART_OVERHEAD);
+        MAX_BODY.max(announced).min(LARGE_BODY_BUDGET)
+    }
+
+    /// Lends memory for a body of `len` bytes. Small bodies take nothing;
+    /// a large one waits for others to finish, up to 30 seconds.
+    async fn lend(&self, len: usize) -> Result<Option<SemaphorePermit<'_>>, ()> {
+        if len <= SMALL_BODY {
+            return Ok(None);
+        }
+        let units = len.div_ceil(BUDGET_UNIT).min(u32::MAX as usize) as u32;
+        match tokio::time::timeout(self.wait, self.budget.acquire_many(units)).await {
+            Ok(Ok(permit)) => Ok(Some(permit)),
+            _ => Err(()),
+        }
+    }
+}
+
 /// The selected instance.
 pub struct Instance {
     pub origin: Url,
     pub client: Client,
     pub jar: Jar,
+    pub limits: Limits,
 }
 
 pub fn client() -> Result<Client, reqwest::Error> {
@@ -396,9 +495,27 @@ pub async fn forward(
         "DELETE" => reqwest::Method::DELETE,
         _ => return Resp::error(405, "INVALID_INPUT", "method not allowed"),
     };
-    if body.len() > MAX_BODY {
-        return Resp::error(413, "PAYLOAD_TOO_LARGE", "request body too large");
+    let cap = instance.limits.request_cap(url.path());
+    if body.len() > cap {
+        return Resp::error(
+            413,
+            "PAYLOAD_TOO_LARGE",
+            &format!(
+                "file exceeds the {} MB limit",
+                (cap - MULTIPART_OVERHEAD.min(cap)) >> 20
+            ),
+        );
     }
+    // Held until the answer is complete: the body stays in memory until the
+    // instance has read it.
+    let Ok(_request_memory) = instance.limits.lend(body.len()).await else {
+        return Resp::error(
+            503,
+            "UNAVAILABLE",
+            "too many large transfers at once, try again",
+        );
+    };
+    let announces_limit = url.path() == "/api/permissions" && method == reqwest::Method::GET;
     let mut request = instance.client.request(method.clone(), url);
     for (name, value) in headers {
         if FORWARDED_REQUEST.contains(&name.to_ascii_lowercase().as_str()) {
@@ -431,9 +548,10 @@ pub async fn forward(
     if response.status().is_redirection() {
         return Resp::error(502, "UNAVAILABLE", "the server answered with a redirect");
     }
+    let response_cap = instance.limits.response_cap();
     if response
         .content_length()
-        .is_some_and(|n| n > MAX_BODY as u64)
+        .is_some_and(|n| n > response_cap as u64)
     {
         return Resp::error(
             502,
@@ -441,14 +559,27 @@ pub async fn forward(
             "the server's answer is too large for this client",
         );
     }
+    // A large answer borrows its memory first; one of unknown length is held
+    // to the small-body size.
+    let (reserve, read_cap) = match response.content_length() {
+        Some(n) => (n as usize, response_cap),
+        None => (0, SMALL_BODY),
+    };
+    let Ok(_answer_memory) = instance.limits.lend(reserve).await else {
+        return Resp::error(
+            503,
+            "UNAVAILABLE",
+            "too many large transfers at once, try again",
+        );
+    };
     let mut out = Vec::with_capacity(
         response
             .content_length()
-            .map_or(0, |n| (n as usize).min(MAX_BODY)),
+            .map_or(0, |n| (n as usize).min(read_cap)),
     );
     loop {
         match response.chunk().await {
-            Ok(Some(chunk)) if chunk.len() <= MAX_BODY - out.len() => out.extend_from_slice(&chunk),
+            Ok(Some(chunk)) if chunk.len() <= read_cap - out.len() => out.extend_from_slice(&chunk),
             Ok(None) => break,
             _ => {
                 return Resp::error(
@@ -458,6 +589,14 @@ pub async fn forward(
                 );
             }
         }
+    }
+    if announces_limit
+        && status == 200
+        && let Some(mb) = serde_json::from_slice::<serde_json::Value>(&out)
+            .ok()
+            .and_then(|v| v.get("max_upload_mb")?.as_u64())
+    {
+        instance.limits.announce_upload_mb(mb);
     }
     let mut headers: Vec<(String, String)> = response
         .headers()
@@ -888,6 +1027,7 @@ mod tests {
             origin,
             client: client().unwrap(),
             jar,
+            limits: Limits::default(),
         };
         let headers: Vec<(String, String)> = headers
             .iter()
@@ -1050,6 +1190,7 @@ mod tests {
             origin: Url::parse("http://127.0.0.1:9").unwrap(),
             client: client().unwrap(),
             jar: Jar::new(None, 0),
+            limits: Limits::default(),
         };
         let resp = forward(&instance, "GET", "/api/x", &[], Vec::new()).await;
         assert_eq!(resp.status, 502);
@@ -1126,6 +1267,7 @@ mod tests {
             origin: Url::parse(&instance).unwrap(),
             client: client().unwrap(),
             jar: Jar::new(None, 0),
+            limits: Limits::default(),
         };
         let json = [("content-type".to_owned(), "application/json".to_owned())];
         let anonymous = forward(&instance, "GET", "/api/auth/me", &[], Vec::new()).await;
@@ -1147,5 +1289,174 @@ mod tests {
         assert!(String::from_utf8_lossy(&me.body).contains(&user));
         let health = forward(&instance, "GET", "/api/health", &[], Vec::new()).await;
         assert_eq!(health.status, 200);
+    }
+
+    /// Reads a request without keeping it: returns the body length seen, and
+    /// answers with `reply`.
+    async fn count_body(reply: Vec<u8>) -> (Url, tokio::sync::oneshot::Receiver<usize>) {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = Url::parse(&format!("http://{}", listener.local_addr().unwrap())).unwrap();
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut head = Vec::new();
+            let mut byte = [0u8; 1];
+            while !head.ends_with(b"\r\n\r\n") {
+                socket.read_exact(&mut byte).await.unwrap();
+                head.push(byte[0]);
+            }
+            let head = String::from_utf8_lossy(&head).to_ascii_lowercase();
+            let length: usize = head
+                .lines()
+                .find_map(|l| {
+                    l.strip_prefix("content-length:")
+                        .map(|v| v.trim().parse().unwrap())
+                })
+                .unwrap_or(0);
+            let mut seen = 0;
+            let mut buf = vec![0u8; 1 << 20];
+            while seen < length {
+                let n = socket.read(&mut buf).await.unwrap();
+                if n == 0 {
+                    break;
+                }
+                seen += n;
+            }
+            let _ = tx.send(seen);
+            socket.write_all(&reply).await.unwrap();
+            let _ = socket.shutdown().await;
+        });
+        (url, rx)
+    }
+
+    fn instance_at(origin: Url) -> Instance {
+        Instance {
+            origin,
+            client: client().unwrap(),
+            jar: Jar::new(None, 0),
+            limits: Limits::default(),
+        }
+    }
+
+    #[test]
+    fn request_caps_follow_the_announced_upload_limit() {
+        let limits = Limits::default();
+        let upload = "/api/channels/00000000-0000-4000-8000-000000000000/upload";
+        // Before the announcement uploads keep the old cap.
+        assert_eq!(limits.request_cap(upload), MAX_BODY);
+        assert_eq!(limits.response_cap(), MAX_BODY);
+        limits.announce_upload_mb(10);
+        assert_eq!(limits.request_cap(upload), (10 << 20) + MULTIPART_OVERHEAD);
+        // JSON routes and avatars never get the file cap.
+        assert_eq!(
+            limits.request_cap("/api/channels/x/messages"),
+            MAX_JSON_BODY
+        );
+        assert_eq!(limits.request_cap("/api/users/me/avatar"), MAX_AVATAR_BODY);
+        assert_eq!(limits.request_cap("/api/channels//upload"), MAX_JSON_BODY);
+        assert_eq!(
+            limits.request_cap("/api/channels/a/b/upload"),
+            MAX_JSON_BODY
+        );
+        // A lowered limit does not make existing files undownloadable.
+        assert_eq!(limits.response_cap(), MAX_BODY);
+        limits.announce_upload_mb(512);
+        assert_eq!(limits.request_cap(upload), (512 << 20) + MULTIPART_OVERHEAD);
+        assert_eq!(limits.response_cap(), (512 << 20) + MULTIPART_OVERHEAD);
+        // Nonsense is ignored; the memory budget bounds even a 2 GiB limit.
+        limits.announce_upload_mb(0);
+        limits.announce_upload_mb(999_999);
+        assert_eq!(limits.request_cap(upload), (512 << 20) + MULTIPART_OVERHEAD);
+        limits.announce_upload_mb(2048);
+        assert_eq!(limits.response_cap(), LARGE_BODY_BUDGET);
+    }
+
+    #[tokio::test]
+    async fn large_bodies_borrow_memory_and_wait_for_each_other() {
+        let limits = Limits {
+            wait: Duration::from_millis(50),
+            ..Limits::default()
+        };
+        assert!(limits.lend(SMALL_BODY).await.unwrap().is_none());
+        let first = limits.lend(LARGE_BODY_BUDGET).await.unwrap();
+        assert!(first.is_some());
+        // The budget is spent: the next large body gives up after the wait.
+        assert!(limits.lend(SMALL_BODY + 1).await.is_err());
+        drop(first);
+        assert!(limits.lend(SMALL_BODY + 1).await.unwrap().is_some());
+    }
+
+    #[tokio::test]
+    async fn an_upload_above_the_in_memory_size_goes_through_up_to_the_announced_limit() {
+        let permissions = reply(
+            "200 OK",
+            &["content-type: application/json"],
+            r#"{"owner":false,"max_upload_mb":40}"#,
+        );
+        let (origin, _) = serve_once(permissions).await;
+        let instance = instance_at(origin);
+        let resp = forward(&instance, "GET", "/api/permissions", &[], Vec::new()).await;
+        assert_eq!(resp.status, 200);
+        assert_eq!(instance.limits.upload_bytes(), Some(40 << 20));
+
+        // 33 MiB is above the in-memory size and below the 40 MB limit.
+        let body = vec![7u8; SMALL_BODY + (1 << 20)];
+        let size = body.len();
+        let ok = reply("201 Created", &["content-type: application/json"], "{}");
+        let (origin, seen) = count_body(ok).await;
+        let instance = Instance { origin, ..instance };
+        let resp = forward(
+            &instance,
+            "POST",
+            "/api/channels/00000000-0000-4000-8000-000000000000/upload",
+            &[(
+                "content-type".into(),
+                "multipart/form-data; boundary=x".into(),
+            )],
+            body,
+        )
+        .await;
+        assert_eq!(resp.status, 201);
+        assert_eq!(seen.await.unwrap(), size);
+
+        // Above the limit it is refused before anything is sent, with the
+        // server's own wording.
+        let resp = forward(
+            &instance,
+            "POST",
+            "/api/channels/00000000-0000-4000-8000-000000000000/upload",
+            &[],
+            vec![0u8; (41 << 20) + MULTIPART_OVERHEAD],
+        )
+        .await;
+        assert_eq!(resp.status, 413);
+        assert!(String::from_utf8_lossy(&resp.body).contains("file exceeds the 40 MB limit"));
+    }
+
+    #[tokio::test]
+    async fn a_download_above_the_in_memory_size_arrives_whole_and_unknown_lengths_are_held_small()
+    {
+        let size = SMALL_BODY + (1 << 20);
+        let mut raw = format!(
+            "HTTP/1.1 200 OK\r\ncontent-length: {size}\r\ncontent-type: application/octet-stream\r\nconnection: close\r\n\r\n"
+        )
+        .into_bytes();
+        raw.extend(vec![1u8; size]);
+        let (origin, _) = count_body(raw).await;
+        let instance = instance_at(origin);
+        let resp = forward(&instance, "GET", "/api/media/x", &[], Vec::new()).await;
+        assert_eq!(resp.status, 200);
+        assert_eq!(resp.body.len(), size);
+        assert_eq!(header(&resp, "content-security-policy"), Some(DATA_CSP));
+
+        // Without a declared length the answer is cut at the small size.
+        let mut raw =
+            b"HTTP/1.1 200 OK\r\ncontent-type: application/octet-stream\r\nconnection: close\r\n\r\n"
+                .to_vec();
+        raw.extend(vec![1u8; SMALL_BODY + 1]);
+        let (origin, _) = count_body(raw).await;
+        let resp = forward(&instance_at(origin), "GET", "/api/media/x", &[], Vec::new()).await;
+        assert_eq!(resp.status, 502);
+        assert!(String::from_utf8_lossy(&resp.body).contains("cut off or too large"));
     }
 }

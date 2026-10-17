@@ -193,7 +193,7 @@ async fn run(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::web_proxy::{Jar, client};
+    use crate::web_proxy::{Jar, Limits, client};
     use tokio::net::TcpListener;
     use tokio_tungstenite::tungstenite::handshake::server::{Request, Response};
 
@@ -209,6 +209,7 @@ mod tests {
             origin,
             client: client().unwrap(),
             jar,
+            limits: Limits::default(),
         })
     }
 
@@ -393,6 +394,7 @@ mod tests {
             origin: url::Url::parse(&origin).unwrap(),
             client: client().unwrap(),
             jar: Jar::new(None, 0),
+            limits: Limits::default(),
         });
         let json = [("content-type".to_owned(), "application/json".to_owned())];
         let body = serde_json::json!({"username": user, "password": password})
