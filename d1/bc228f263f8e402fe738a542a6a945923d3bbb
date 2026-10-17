@@ -1,0 +1,29 @@
+README.md
+  s_06fcde5dbef956::t_3eed19872c5ebd 101-103,105-106
+experimental/app/fixtures/trust.json
+  s_06fcde5dbef956::t_23123485a76e6e 3-5,13-14
+experimental/app/fixtures/trust.json.sig
+  s_06fcde5dbef956::t_3f7b2269f81c3e 1
+experimental/app/src/web_bundle.rs
+  s_06fcde5dbef956::t_9f9fb2cef72718 364-365,369-376,380-382,386,389-392,398-400,450-463,466-470,474,478,487-490,610,612,624-626,628,637,648-651,655-707,709-714,723-729,733-737,739,741-742,1242,1247,1249-1250,1252-1256,1259-1261,1263-1264,1271,1273-1292,1296-1297,1299-1302,1304-1305,1307-1308,1313,1336,1343-1395
+experimental/app/src/web_client.rs
+  s_06fcde5dbef956::t_4fb8681e7f11ca 62-63,93,119,124-125,129,973
+experimental/app/src/web_trust.rs
+  s_06fcde5dbef956::t_10b8d48df4aec5 9,14,50-52,132-138,162-169,408,569,667-696
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d1bc228f263f8e402fe738a542a6a945923d3bbb",
+  "prompts": {},
+  "sessions": {
+    "s_06fcde5dbef956": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "94b73314-95fe-4e96-8c43-d20b0f28358d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}
