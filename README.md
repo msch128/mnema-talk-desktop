@@ -97,9 +97,13 @@ version; clients never go back to a lower one.
 At start and every six hours it fetches a statement signed by that key from
 `desktop-trust/` in the mnema-talk repository. The statement lists the web
 bundle keys and updater keys that are allowed and the ones that are revoked;
-the client keeps the last good one, refuses a lower serial, drops bundles
-signed by a revoked key, and refuses updates signed by a revoked updater key.
-If a CI key leaks, the owner issues a new statement instead of racing the
+the client keeps the last good one, refuses a lower serial or an expired
+statement, drops bundles signed by a revoked key (rollback marks are never
+lowered), and refuses updates signed by a revoked updater key. A statement is
+valid for 180 days; while the one in force has expired, or its fetch failed in
+a round, the client installs nothing new and keeps running what it has.
+**The owner must re-sign about every 3 months** (`trust sign -renew`, see the
+mnema-talk doc). If a CI key leaks, the owner issues a new statement instead of racing the
 attacker with a release. The runbook is in mnema-talk
 `doc/desktop-trusted-client.md` ("Key revocation"). A replacement updater key
 listed in the statement is used to verify updates, so the key in

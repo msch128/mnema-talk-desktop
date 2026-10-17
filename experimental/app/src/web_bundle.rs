@@ -366,12 +366,6 @@ struct State {
     /// below it are never selected, whatever the server claims.
     #[serde(default)]
     high_water: BTreeMap<u32, Version>,
-    /// Key id of the bundle that set each high-water mark and the floor, so
-    /// that a revoked key's bundles do not keep blocking the real ones.
-    #[serde(default)]
-    high_water_key: BTreeMap<u32, String>,
-    #[serde(default)]
-    floor_key: Option<String>,
     last_check: u64,
 }
 
@@ -379,16 +373,12 @@ struct State {
 pub struct Store {
     dir: Option<PathBuf>,
     floor: Version,
-    floor_key: Option<String>,
     high_water: BTreeMap<u32, Version>,
-    high_water_key: BTreeMap<u32, String>,
     last_check: u64,
-    /// Bundles were dropped (or refused) because their key is not trusted.
+    /// Bundles were dropped or refused because their key is not trusted. Only
+    /// picks the message when nothing can be served.
     withdrawn: bool,
     held: Vec<Held>,
-    /// Verified bundles below the floor. Never served; kept so that they
-    /// return if the key that raised the floor is revoked.
-    shelved: Vec<Held>,
     /// Cached files that failed verification (names only, for diagnostics).
     pub rejected: Vec<String>,
 }
@@ -437,20 +427,16 @@ impl Store {
                 Err(_) => rejected.push(name),
             }
         }
-        let withdrawn = verified.is_empty() && !rejected.is_empty();
+        let withdrawn = !rejected.is_empty();
         let mut store = Store {
             dir: dir.map(Path::to_path_buf),
             floor: state.security_floor.unwrap_or(Version(0, 0, 0)),
-            floor_key: state.floor_key,
             high_water: state.high_water,
-            high_water_key: state.high_water_key,
             last_check: state.last_check,
             withdrawn,
             held: verified,
-            shelved: Vec::new(),
             rejected,
         };
-        store.forget_untrusted_marks(keys);
         store.raise_from_held();
         store.apply_floor();
         store.persist();
@@ -462,8 +448,6 @@ impl Store {
         let state = State {
             security_floor: Some(self.floor),
             high_water: self.high_water.clone(),
-            high_water_key: self.high_water_key.clone(),
-            floor_key: self.floor_key.clone(),
             last_check: self.last_check,
         };
         if std::fs::create_dir_all(dir).is_ok()
@@ -545,12 +529,19 @@ impl Store {
             .min()
         {
             Some(needs) => Err(Refusal::ServerTooOld { needs }),
+            // Bundles for this contract are held but all below the newest this
+            // client has accepted. If the newest one was dropped because its
+            // key was revoked, say that instead.
             None if self
                 .held
                 .iter()
                 .any(|h| h.bundle.web_client_api == server.web_client_api) =>
             {
-                Err(Refusal::RolledBack)
+                Err(if self.withdrawn {
+                    Refusal::SignerWithdrawn
+                } else {
+                    Refusal::RolledBack
+                })
             }
             None => Err(Refusal::ServerContractRetired),
         }
@@ -588,9 +579,9 @@ impl Store {
     }
 
     /// Applies a new set of trusted keys to what is held: bundles signed by any
-    /// other key are dropped (cached files removed), and the high-water marks
-    /// and floor that such bundles raised are recomputed from what remains.
-    /// Returns whether anything was dropped.
+    /// other key are dropped (cached files removed). The floor and the
+    /// high-water marks are never lowered: revoking a key does not make older
+    /// versions safe. Returns whether anything was dropped.
     pub fn reconcile(&mut self, keys: &[TrustedKey]) -> bool {
         let trusted = |id: &str| keys.iter().any(|k| k.id == id);
         let dropped: Vec<(Version, bool)> = self
@@ -600,7 +591,6 @@ impl Store {
             .map(|h| (h.bundle.version, h.source == Source::Cache))
             .collect();
         self.held.retain(|h| trusted(&h.bundle.key_id));
-        self.shelved.retain(|h| trusted(&h.bundle.key_id));
         if let Some(dir) = &self.dir {
             for (version, cached) in &dropped {
                 if *cached {
@@ -608,72 +598,35 @@ impl Store {
                 }
             }
         }
-        self.forget_untrusted_marks(keys);
-        self.raise_from_held();
-        self.apply_floor();
-        if !dropped.is_empty() && self.held.is_empty() {
+        if !dropped.is_empty() {
             self.withdrawn = true;
+            self.persist();
         }
-        self.persist();
         !dropped.is_empty()
     }
 
-    /// Forgets the marks that a key which is no longer trusted had set. Marks
-    /// from before this was recorded have no key and stay.
-    fn forget_untrusted_marks(&mut self, keys: &[TrustedKey]) {
-        let trusted = |id: &str| keys.iter().any(|k| k.id == id);
-        if self.floor_key.as_deref().is_some_and(|k| !trusted(k)) {
-            self.floor = Version(0, 0, 0);
-            self.floor_key = None;
-        }
-        let gone: Vec<u32> = self
-            .high_water_key
-            .iter()
-            .filter(|(_, k)| !trusted(k))
-            .map(|(api, _)| *api)
-            .collect();
-        for api in gone {
-            self.high_water.remove(&api);
-            self.high_water_key.remove(&api);
-        }
-    }
-
     fn raise_from_held(&mut self) {
-        let bundles: Vec<Arc<Bundle>> = self
-            .held
-            .iter()
-            .chain(&self.shelved)
-            .map(|h| h.bundle.clone())
-            .collect();
+        let bundles: Vec<Arc<Bundle>> = self.held.iter().map(|h| h.bundle.clone()).collect();
         for bundle in bundles {
             self.raise_marks(&bundle);
         }
     }
 
-    /// Serves bundles at or above the floor, newest first; the rest are shelved.
+    /// Serves bundles at or above the floor, newest first.
     fn apply_floor(&mut self) {
         let floor = self.floor;
-        let mut all = std::mem::take(&mut self.held);
-        all.append(&mut self.shelved);
-        let (mut held, shelved): (Vec<Held>, Vec<Held>) =
-            all.into_iter().partition(|h| h.bundle.version >= floor);
-        held.sort_by_key(|h| std::cmp::Reverse(h.bundle.version));
-        self.held = held;
-        self.shelved = shelved;
+        self.held.retain(|h| h.bundle.version >= floor);
+        self.held
+            .sort_by_key(|h| std::cmp::Reverse(h.bundle.version));
     }
 
     fn raise_marks(&mut self, bundle: &Bundle) {
-        if bundle.security_floor > self.floor {
-            self.floor = bundle.security_floor;
-            self.floor_key = Some(bundle.key_id.clone());
-        }
-        let mark = self.high_water.get(&bundle.web_client_api);
-        if mark.is_none_or(|m| bundle.version > *m) {
-            self.high_water
-                .insert(bundle.web_client_api, bundle.version);
-            self.high_water_key
-                .insert(bundle.web_client_api, bundle.key_id.clone());
-        }
+        self.floor = self.floor.max(bundle.security_floor);
+        let mark = self
+            .high_water
+            .entry(bundle.web_client_api)
+            .or_insert(bundle.version);
+        *mark = (*mark).max(bundle.version);
     }
 
     /// Keeps the built-in bundle and the newest few cached ones; removes the
@@ -699,6 +652,20 @@ impl Store {
             }
         }
     }
+}
+
+/// Installs a bundle against the keys in force *now*. The store lock is taken
+/// first and the key set is read while holding it; trust updates take the same
+/// locks in the same order, so a bundle cannot be installed with keys that a
+/// concurrent statement has just withdrawn.
+pub fn install_current(
+    store: &std::sync::Mutex<Store>,
+    keys: &std::sync::Mutex<Vec<TrustedKey>>,
+    bytes: &[u8],
+) -> Result<Version, String> {
+    let mut store = store.lock().map_err(|_| "busy")?;
+    let keys = keys.lock().map_err(|_| "busy")?;
+    store.install(bytes, &keys)
 }
 
 fn cached_files(dir: Option<&Path>) -> Vec<PathBuf> {
@@ -1158,7 +1125,7 @@ mod tests {
     }
 
     #[test]
-    fn a_revoked_key_loses_its_bundles_and_the_marks_it_raised() {
+    fn a_revoked_key_loses_its_bundles_but_not_the_rollback_marks_it_raised() {
         let d = dir("revoke");
         let good = Spec::new("0.8.0");
         let mut forged = Spec::new("0.99.0");
@@ -1166,26 +1133,24 @@ mod tests {
         forged.floor = "0.99.0";
         let mut store = Store::load(Some(&d), Some(&bundle(&good)), &both_keys());
         store.install(&bundle(&forged), &both_keys()).unwrap();
-        assert_eq!(store.floor(), Version(0, 99, 0));
-        assert_eq!(store.newest().unwrap().bundle.version, Version(0, 99, 0));
 
         assert!(store.reconcile(&trusted(7)));
-        assert_eq!(store.held().len(), 1);
-        assert_eq!(
-            store.select(&server()).unwrap().bundle.version,
-            Version(0, 8, 0)
-        );
-        // Neither the floor nor the rollback mark of the forged bundle stays.
-        assert_eq!(store.floor(), Version(0, 0, 0));
-        assert_eq!(store.high_water(1), Some(Version(0, 8, 0)));
         assert!(!d.join("mnema-web-0.99.0.zip").exists());
+        // The floor and the mark stay: the older, good bundle is not run.
+        assert_eq!(store.floor(), Version(0, 99, 0));
+        assert_eq!(store.high_water(1), Some(Version(0, 99, 0)));
+        assert!(store.held().is_empty());
+        assert_eq!(
+            store.select(&server()).err(),
+            Some(Refusal::SignerWithdrawn)
+        );
         // Nothing changes when the keys do not.
         assert!(!store.reconcile(&trusted(7)));
         let _ = std::fs::remove_dir_all(&d);
     }
 
     #[test]
-    fn marks_of_a_revoked_key_are_forgotten_on_the_next_start_too() {
+    fn marks_of_a_revoked_key_survive_a_restart_and_older_bundles_stay_refused() {
         let d = dir("revoke-restart");
         let good = Spec::new("0.8.0");
         let mut forged = Spec::new("0.99.0");
@@ -1194,21 +1159,19 @@ mod tests {
         let mut store = Store::load(Some(&d), Some(&bundle(&good)), &both_keys());
         store.install(&bundle(&forged), &both_keys()).unwrap();
         drop(store);
-        // Restart with only the good key: the cached forged file is refused and
-        // the state file's marks (set by the forged bundle) do not block 0.8.0.
         let again = Store::load(Some(&d), Some(&bundle(&good)), &trusted(7));
         assert_eq!(again.rejected.len(), 1);
-        assert_eq!(again.floor(), Version(0, 0, 0));
-        assert_eq!(again.high_water(1), Some(Version(0, 8, 0)));
+        assert_eq!(again.floor(), Version(0, 99, 0));
+        assert_eq!(again.high_water(1), Some(Version(0, 99, 0)));
         assert_eq!(
-            again.select(&server()).unwrap().bundle.version,
-            Version(0, 8, 0)
+            again.select(&server()).err(),
+            Some(Refusal::SignerWithdrawn)
         );
         let _ = std::fs::remove_dir_all(&d);
     }
 
     #[test]
-    fn when_only_revoked_bundles_are_left_the_client_says_so_until_a_new_one_arrives() {
+    fn a_bundle_from_an_allowed_key_at_or_above_the_mark_replaces_a_withdrawn_one() {
         let mut forged = Spec::new("0.8.0");
         forged.seed = 5;
         let mut store = Store::load(None, Some(&bundle(&forged)), &trusted(5));
@@ -1223,7 +1186,6 @@ mod tests {
                 .to_string()
                 .contains("no longer trusted")
         );
-        // A bundle from the new key, even with the same version, is accepted.
         store
             .install(&bundle(&Spec::new("0.8.1")), &trusted(7))
             .unwrap();
@@ -1231,12 +1193,38 @@ mod tests {
             store.select(&server()).unwrap().bundle.version,
             Version(0, 8, 1)
         );
+        // A bundle below the mark is held but never selected.
+        let mut forged2 = Spec::new("0.9.0");
+        forged2.seed = 5;
+        let mut store = Store::load(None, Some(&bundle(&forged2)), &trusted(5));
+        store.reconcile(&trusted(7));
+        store
+            .install(&bundle(&Spec::new("0.8.5")), &trusted(7))
+            .unwrap();
+        assert_eq!(
+            store.select(&server()).err(),
+            Some(Refusal::SignerWithdrawn)
+        );
         // An offline start with a built-in bundle nobody trusts any more.
-        let offline = Store::load(None, Some(&bundle(&forged)), &trusted(7));
+        let offline = Store::load(None, Some(&bundle(&forged2)), &trusted(7));
         assert_eq!(
             offline.select(&server()).err(),
             Some(Refusal::SignerWithdrawn)
         );
+    }
+
+    #[test]
+    fn installs_use_the_keys_in_force_when_the_store_lock_is_held() {
+        use std::sync::Mutex;
+        let store = Mutex::new(Store::load(None, None, &both_keys()));
+        let keys = Mutex::new(both_keys());
+        let mut forged = Spec::new("0.8.0");
+        forged.seed = 5;
+        // A statement withdrawing key 5 lands after the keys were first read.
+        *keys.lock().unwrap() = trusted(7);
+        assert!(install_current(&store, &keys, &bundle(&forged)).is_err());
+        assert!(store.lock().unwrap().held().is_empty());
+        assert!(install_current(&store, &keys, &bundle(&Spec::new("0.8.0"))).is_ok());
     }
 
     #[test]

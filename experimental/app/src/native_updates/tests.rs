@@ -572,3 +572,17 @@ fn a_damaged_state_file_starts_fresh() {
     std::fs::write(dir.join(STATE_FILE), b"{not json").unwrap();
     assert_eq!(Persisted::load(Some(&dir)), Persisted::default());
 }
+
+#[test]
+fn nothing_new_is_installed_without_a_fresh_trust_statement() {
+    let app = mock_builder().build(mock_context(noop_assets())).unwrap();
+    assert!(
+        installs_allowed(app.handle()),
+        "no web client state: unrestricted"
+    );
+    // A client that has no fresh statement (none yet, expired, or the fetch
+    // failed this round) installs nothing new.
+    app.manage(crate::web_client::Trusted::new(None, None));
+    assert!(!installs_allowed(app.handle()));
+    assert!(prepare_pending(app.handle()).is_none());
+}

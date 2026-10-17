@@ -41,11 +41,54 @@ pub struct Statement {
     pub schema: u32,
     pub serial: u64,
     pub issued_at: String,
+    pub expires_at: String,
     pub bundle_keys: Vec<String>,
     pub revoked_bundle_keys: Vec<String>,
     pub updater_keys: Vec<String>,
     pub revoked_updater_keys: Vec<String>,
 }
+
+/// Seconds since the epoch for `YYYY-MM-DDTHH:MM:SSZ`, nothing else.
+pub fn parse_utc(text: &str) -> Option<u64> {
+    let b = text.as_bytes();
+    if b.len() != 20
+        || [
+            (4, b'-'),
+            (7, b'-'),
+            (10, b'T'),
+            (13, b':'),
+            (16, b':'),
+            (19, b'Z'),
+        ]
+        .iter()
+        .any(|&(i, c)| b[i] != c)
+    {
+        return None;
+    }
+    let num = |from: usize, to: usize| -> Option<i64> {
+        let digits = text.get(from..to)?;
+        digits
+            .bytes()
+            .all(|c| c.is_ascii_digit())
+            .then(|| digits.parse().ok())?
+    };
+    let (y, m, d) = (num(0, 4)?, num(5, 7)?, num(8, 10)?);
+    let (hh, mm, ss) = (num(11, 13)?, num(14, 16)?, num(17, 19)?);
+    if !(1..=12).contains(&m) || !(1..=31).contains(&d) || hh > 23 || mm > 59 || ss > 59 {
+        return None;
+    }
+    // Days since 1970-01-01 (Howard Hinnant's civil-to-days).
+    let y = if m <= 2 { y - 1 } else { y };
+    let era = y.div_euclid(400);
+    let yoe = y - era * 400;
+    let doy = (153 * (if m > 2 { m - 3 } else { m + 9 }) + 2) / 5 + d - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    let days = era * 146097 + doe - 719468;
+    u64::try_from(days * 86400 + hh * 3600 + mm * 60 + ss).ok()
+}
+
+/// Longest validity a statement may claim (the signing tool's bound).
+const MAX_VALIDITY_SECS: u64 = 400 * 86400;
 
 fn valid_id(id: &str) -> bool {
     id.len() == 16
@@ -77,6 +120,11 @@ impl Statement {
         if self.schema != 1 || self.serial < 1 {
             return Err("unsupported trust statement".into());
         }
+        let issued = parse_utc(&self.issued_at).ok_or("invalid issued_at")?;
+        let expires = parse_utc(&self.expires_at).ok_or("invalid expires_at")?;
+        if expires <= issued || expires - issued > MAX_VALIDITY_SECS {
+            return Err("invalid validity period".into());
+        }
         if self.bundle_keys.is_empty() {
             return Err("trust statement lists no bundle key".into());
         }
@@ -98,6 +146,11 @@ impl Statement {
             }
         }
         Ok(())
+    }
+
+    /// Whether the statement is past `expires_at` at `now` (unix seconds).
+    pub fn expired(&self, now: u64) -> bool {
+        parse_utc(&self.expires_at).is_none_or(|e| now >= e)
     }
 
     /// Allowed web bundle keys that are not revoked.
@@ -215,6 +268,13 @@ impl TrustState {
         self.current.as_ref().map(|(s, _)| s)
     }
 
+    /// A statement is in force and has not expired. An expired one still
+    /// decides which keys count (its revocations stay), but nothing new is
+    /// installed while it is not fresh.
+    pub fn fresh(&self, now: u64) -> bool {
+        self.statement().is_some_and(|s| !s.expired(now))
+    }
+
     /// Bundle keys in force: the statement's, else the compiled-in ones.
     pub fn effective_keys(&self, pinned: Vec<TrustedKey>) -> Vec<TrustedKey> {
         match self.statement() {
@@ -223,10 +283,13 @@ impl TrustState {
         }
     }
 
-    /// Takes a fetched statement. Lower serials are refused; the same serial
-    /// is only accepted with identical bytes.
-    pub fn accept(&mut self, doc: &[u8], sig: &[u8]) -> Result<Accepted, String> {
+    /// Takes a fetched statement. An expired one is never accepted, lower
+    /// serials are refused, and the same serial only with identical bytes.
+    pub fn accept(&mut self, doc: &[u8], sig: &[u8], now: u64) -> Result<Accepted, String> {
         let statement = verify_statement(doc, sig, &self.root)?;
+        if statement.expired(now) {
+            return Err("trust statement has expired".into());
+        }
         if let Some((held, held_doc)) = &self.current {
             if statement.serial < held.serial {
                 return Err(format!(
@@ -267,6 +330,9 @@ mod tests {
 
     const UPDATER: &str = "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDg3MUUyOTlDQUVCRjZCMkYKUldRdmE3K3VuQ2tlaDdOajlZaG9vbENvRFBXQmtQd1pKUjZmK1hwRW8rSCt4b04rZzhwWVY3SkEK";
 
+    /// 2026-11-01T00:00:00Z
+    const NOW: u64 = 1_793_491_200;
+
     fn root(seed: u8) -> ed25519_dalek::SigningKey {
         signing_key(seed)
     }
@@ -286,6 +352,7 @@ mod tests {
             "schema": 1,
             "serial": serial,
             "issued_at": "2026-10-17T10:00:00Z",
+            "expires_at": "2027-01-15T10:00:00Z",
             "bundle_keys": allowed.iter().map(|s| key_hex(*s)).collect::<Vec<_>>(),
             "revoked_bundle_keys": revoked.iter().map(|s| key_id_of(*s)).collect::<Vec<_>>(),
             "updater_keys": [],
@@ -319,7 +386,7 @@ mod tests {
         let doc = include_bytes!("../fixtures/trust.json");
         let sig = include_bytes!("../fixtures/trust.json.sig");
         let statement = verify_statement(doc, sig, &root_key()).expect("pinned root verifies");
-        assert_eq!(statement.serial, 1);
+        assert_eq!(statement.serial, 2);
         let keys = statement.bundle_keys();
         assert!(
             crate::web_bundle::trusted_keys()
@@ -340,7 +407,7 @@ mod tests {
     fn a_statement_signed_by_the_root_key_is_accepted() {
         let (d, s) = signed(&root(9), &doc(1, &[1], &[]));
         let mut trust = state(9);
-        assert_eq!(trust.accept(&d, &s), Ok(Accepted::Updated));
+        assert_eq!(trust.accept(&d, &s, NOW), Ok(Accepted::Updated));
         assert_eq!(trust.statement().unwrap().serial, 1);
     }
 
@@ -348,7 +415,7 @@ mod tests {
     fn a_statement_signed_by_another_key_is_refused() {
         let (d, s) = signed(&root(8), &doc(1, &[1], &[]));
         let mut trust = state(9);
-        assert!(trust.accept(&d, &s).is_err());
+        assert!(trust.accept(&d, &s, NOW).is_err());
         assert!(trust.statement().is_none());
     }
 
@@ -358,12 +425,12 @@ mod tests {
         let mut trust = state(9);
         let mut bad = d.clone();
         bad[10] ^= 1;
-        assert!(trust.accept(&bad, &s).is_err());
-        assert!(trust.accept(&d, b"AAAA").is_err());
-        assert!(trust.accept(&d, b"").is_err());
+        assert!(trust.accept(&bad, &s, NOW).is_err());
+        assert!(trust.accept(&d, b"AAAA", NOW).is_err());
+        assert!(trust.accept(&d, b"", NOW).is_err());
         let mut bad_sig = s.clone();
         bad_sig[0] = if bad_sig[0] == b'A' { b'B' } else { b'A' };
-        assert!(trust.accept(&d, &bad_sig).is_err());
+        assert!(trust.accept(&d, &bad_sig, NOW).is_err());
         assert!(trust.statement().is_none());
     }
 
@@ -377,9 +444,12 @@ mod tests {
             "{}".to_owned(),
             doc(1, &[1], &[]).replace("\"schema\":1", "\"schema\":2"),
             doc(1, &[1], &[]).replace("\"serial\"", "\"extra\":1,\"serial\""),
+            doc(1, &[1], &[]).replace("2027-01-15", "2026-10-17"),
+            doc(1, &[1], &[]).replace("2027-01-15", "2029-01-15"),
+            doc(1, &[1], &[]).replace("2027-01-15T10:00:00Z", "soon"),
         ] {
             let (d, s) = signed(&root(9), &text);
-            assert!(trust.accept(&d, &s).is_err(), "{text}");
+            assert!(trust.accept(&d, &s, NOW).is_err(), "{text}");
         }
     }
 
@@ -388,11 +458,11 @@ mod tests {
         let mut trust = state(9);
         let (d2, s2) = signed(&root(9), &doc(2, &[2], &[1]));
         let (d1, s1) = signed(&root(9), &doc(1, &[1], &[]));
-        assert_eq!(trust.accept(&d2, &s2), Ok(Accepted::Updated));
-        assert!(trust.accept(&d1, &s1).unwrap_err().contains("older"));
-        assert_eq!(trust.accept(&d2, &s2), Ok(Accepted::Unchanged));
+        assert_eq!(trust.accept(&d2, &s2, NOW), Ok(Accepted::Updated));
+        assert!(trust.accept(&d1, &s1, NOW).unwrap_err().contains("older"));
+        assert_eq!(trust.accept(&d2, &s2, NOW), Ok(Accepted::Unchanged));
         let (dx, sx) = signed(&root(9), &doc(2, &[3], &[]));
-        assert!(trust.accept(&dx, &sx).is_err());
+        assert!(trust.accept(&dx, &sx, NOW).is_err());
         assert_eq!(trust.statement().unwrap().serial, 2);
     }
 
@@ -406,7 +476,7 @@ mod tests {
             "default until a statement arrives"
         );
         let (d, s) = signed(&root(9), &doc(2, &[2], &[1]));
-        trust.accept(&d, &s).unwrap();
+        trust.accept(&d, &s, NOW).unwrap();
         let keys = trust.effective_keys(trusted(1));
         assert_eq!(keys.len(), 1);
         assert_eq!(keys[0].id, trusted(2)[0].id);
@@ -419,7 +489,7 @@ mod tests {
         let (doc_bytes, sig) = signed(&root(9), &doc(3, &[2], &[1]));
         let mut trust = TrustState::load(Some(&d), root(9).verifying_key());
         assert!(trust.statement().is_none(), "offline, no statement yet");
-        trust.accept(&doc_bytes, &sig).unwrap();
+        trust.accept(&doc_bytes, &sig, NOW).unwrap();
         let again = TrustState::load(Some(&d), root(9).verifying_key());
         assert_eq!(again.statement().unwrap().serial, 3);
         // The same files under another root key are not a statement.
@@ -472,6 +542,7 @@ mod tests {
             schema: 1,
             serial: 2,
             issued_at: "2026-10-17T10:00:00Z".into(),
+            expires_at: "2027-01-15T10:00:00Z".into(),
             bundle_keys: vec![key_hex(1)],
             revoked_bundle_keys: vec![],
             updater_keys: allowed.iter().map(|k| (*k).to_owned()).collect(),
@@ -533,5 +604,44 @@ mod tests {
             choose_updater_key(&old, Some(&revoked_only), &old_sig),
             Err(UpdaterRefusal::Revoked)
         );
+    }
+
+    #[test]
+    fn times_are_parsed_strictly_to_unix_seconds() {
+        assert_eq!(parse_utc("1970-01-01T00:00:00Z"), Some(0));
+        assert_eq!(parse_utc("2026-11-01T00:00:00Z"), Some(NOW));
+        assert_eq!(parse_utc("2024-02-29T12:30:45Z"), Some(1_709_209_845));
+        for bad in [
+            "2026-11-01 00:00:00Z",
+            "2026-11-01T00:00:00+00:00",
+            "2026-13-01T00:00:00Z",
+            "2026-11-32T00:00:00Z",
+            "2026-11-01T24:00:00Z",
+            "2026-11-01T00:60:00Z",
+            "2026-11-01T00:00:60Z",
+            "2026-1x-01T00:00:00Z",
+            "1969-12-31T23:59:59Z",
+            "",
+        ] {
+            assert_eq!(parse_utc(bad), None, "{bad}");
+        }
+    }
+
+    #[test]
+    fn an_expired_statement_is_never_accepted_and_a_stored_one_stays_in_force_but_stale() {
+        let (d, s) = signed(&root(9), &doc(1, &[1], &[]));
+        let after = parse_utc("2027-01-15T10:00:00Z").unwrap();
+        let mut trust = state(9);
+        assert!(!trust.fresh(NOW), "no statement is not fresh");
+        assert!(trust.accept(&d, &s, after).unwrap_err().contains("expired"));
+        assert!(trust.accept(&d, &s, after - 1).is_ok());
+        assert!(trust.fresh(after - 1));
+        // Past expiry: still the statement in force (its revocations count),
+        // but not fresh, and a replay of it is refused.
+        assert!(!trust.fresh(after));
+        assert_eq!(trust.statement().unwrap().serial, 1);
+        assert!(trust.accept(&d, &s, after).is_err());
+        let again = TrustState::load(None, root(9).verifying_key());
+        assert!(!again.fresh(NOW));
     }
 }

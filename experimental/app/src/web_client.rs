@@ -58,6 +58,10 @@ pub struct Trusted {
     /// Bundle keys in force: the trust statement's, else the compiled-in ones.
     keys: Mutex<Vec<TrustedKey>>,
     trust: Mutex<TrustState>,
+    /// A fresh trust statement is in force and this round's fetch succeeded.
+    /// Without it nothing new is installed (freeze protection); the already
+    /// verified bundles keep running.
+    fresh: std::sync::atomic::AtomicBool,
     session: Mutex<Option<Arc<Session>>>,
     sockets: Arc<Sockets>,
     data_dir: Option<std::path::PathBuf>,
@@ -69,13 +73,14 @@ pub struct Session {
 }
 
 impl Trusted {
-    fn new(data_dir: Option<std::path::PathBuf>, builtin: Option<&[u8]>) -> Trusted {
+    pub(crate) fn new(data_dir: Option<std::path::PathBuf>, builtin: Option<&[u8]>) -> Trusted {
         let trust = TrustState::load(
             data_dir.as_ref().map(|d| d.join("web-trust")).as_deref(),
             root_key(),
         );
         crate::web_trust::publish(trust.statement());
         let keys = trust.effective_keys(trusted_keys());
+        let fresh = trust.fresh(now() as u64);
         let store = Store::load(
             data_dir.as_ref().map(|d| d.join("web-bundles")).as_deref(),
             builtin,
@@ -84,6 +89,7 @@ impl Trusted {
         Trusted {
             store: Mutex::new(store),
             keys: Mutex::new(keys),
+            fresh: std::sync::atomic::AtomicBool::new(fresh),
             trust: Mutex::new(trust),
             session: Mutex::new(None),
             sockets: Arc::new(Sockets::default()),
@@ -91,24 +97,34 @@ impl Trusted {
         }
     }
 
+    #[cfg(test)]
     fn keys(&self) -> Vec<TrustedKey> {
         self.keys.lock().map(|k| k.clone()).unwrap_or_default()
     }
 
+    pub(super) fn fresh(&self) -> bool {
+        self.fresh.load(std::sync::atomic::Ordering::SeqCst)
+    }
+
     /// Takes a fetched trust statement. When it changes the keys in force,
     /// held bundles are checked again and a running session on a withdrawn
-    /// bundle is ended. Returns whether the held bundles changed.
-    fn apply_trust(&self, doc: &[u8], sig: &[u8]) -> Result<bool, String> {
-        let mut trust = self.trust.lock().map_err(|_| "busy")?;
-        if trust.accept(doc, sig)? == Accepted::Unchanged {
-            return Ok(false);
-        }
-        let keys = trust.effective_keys(trusted_keys());
-        drop(trust);
-        if let Ok(mut current) = self.keys.lock() {
-            *current = keys.clone();
-        }
-        let dropped = self.store.lock().map_err(|_| "busy")?.reconcile(&keys);
+    /// bundle is ended. Returns whether bundles were dropped.
+    ///
+    /// Lock order is store, then keys (as in `install_current`), and the keys
+    /// are replaced while the store lock is held: an install either finishes
+    /// before and is reconciled here, or starts after and sees the new keys.
+    fn apply_trust(&self, doc: &[u8], sig: &[u8], now: u64) -> Result<bool, String> {
+        let mut store = self.store.lock().map_err(|_| "busy")?;
+        let keys = {
+            let mut trust = self.trust.lock().map_err(|_| "busy")?;
+            if trust.accept(doc, sig, now)? == Accepted::Unchanged {
+                return Ok(false);
+            }
+            trust.effective_keys(trusted_keys())
+        };
+        *self.keys.lock().map_err(|_| "busy")? = keys.clone();
+        let dropped = store.reconcile(&keys);
+        drop(store);
         if dropped
             && let Some(session) = self.session()
             && !keys.iter().any(|k| k.id == session.held.bundle.key_id)
@@ -116,6 +132,33 @@ impl Trusted {
             self.set_session(None);
         }
         Ok(dropped)
+    }
+
+    /// One trust round with the result of a fetch: applies the statement,
+    /// publishes it to the native updater and decides whether installs are
+    /// allowed. Returns whether bundles were dropped.
+    fn apply_round(&self, fetched: Result<(Vec<u8>, Vec<u8>), String>, now: u64) -> bool {
+        let mut dropped = false;
+        let mut ok = false;
+        // Offline or unreachable: the last good statement stays in force.
+        if let Ok((doc, sig)) = fetched {
+            match self.apply_trust(&doc, &sig, now) {
+                Ok(changed) => {
+                    dropped = changed;
+                    ok = true;
+                }
+                Err(why) => eprintln!("Mnema Desktop: trust statement refused: {why}"),
+            }
+        }
+        self.publish_trust();
+        let fresh = ok && self.trust.lock().is_ok_and(|t| t.fresh(now));
+        self.fresh.store(fresh, std::sync::atomic::Ordering::SeqCst);
+        dropped
+    }
+
+    async fn trust_round(&self) -> bool {
+        let fetched = crate::web_updates::fetch_trust().await;
+        self.apply_round(fetched, now() as u64)
     }
 
     /// Shows the statement in force to the native updater.
@@ -276,7 +319,12 @@ async fn choose(trusted: &Trusted, server: &ServerInfo) -> Result<Held, String> 
     match first {
         Ok(held) => Ok(held),
         Err(Refusal::ServerNewer) => {
-            let _ = crate::web_updates::check_and_install(&trusted.store, &trusted.keys()).await;
+            if !trusted.fresh() {
+                trusted.trust_round().await;
+            }
+            if trusted.fresh() {
+                let _ = crate::web_updates::check_and_install(&trusted.store, &trusted.keys).await;
+            }
             trusted
                 .store
                 .lock()
@@ -571,17 +619,7 @@ async fn refresh_once(app: &tauri::AppHandle, first: bool) {
     if crate::web_updates::disabled() {
         return;
     }
-    let mut dropped = false;
-    // Offline or unreachable: the last good statement stays in force.
-    if let Ok((doc, sig)) = crate::web_updates::fetch_trust().await {
-        match trusted.apply_trust(&doc, &sig) {
-            Ok(changed) => {
-                trusted.publish_trust();
-                dropped = changed;
-            }
-            Err(why) => eprintln!("Mnema Desktop: trust statement refused: {why}"),
-        }
-    }
+    let dropped = trusted.trust_round().await;
     let had_bundle = trusted
         .store
         .lock()
@@ -595,7 +633,12 @@ async fn refresh_once(app: &tauri::AppHandle, first: bool) {
     if had_bundle && !dropped && !(due || !first) {
         return;
     }
-    let installed = crate::web_updates::check_and_install(&trusted.store, &trusted.keys()).await;
+    // Freeze protection: no new bundles without a fresh trust statement.
+    let installed = if trusted.fresh() {
+        crate::web_updates::check_and_install(&trusted.store, &trusted.keys).await
+    } else {
+        Ok(None)
+    };
     if let Ok(mut store) = trusted.store.lock() {
         store.mark_checked(now() as u64);
     }
@@ -897,6 +940,9 @@ mod tests {
         assert_eq!(local_origin(&url("https://community.example/")), None);
     }
 
+    /// 2026-11-01T00:00:00Z
+    const NOW: u64 = 1_793_491_200;
+
     #[test]
     fn only_a_statement_from_the_pinned_root_key_changes_the_keys_in_force() {
         let trusted = Trusted::new(None, None);
@@ -904,16 +950,44 @@ mod tests {
         let doc = include_bytes!("../fixtures/trust.json");
         let sig = include_bytes!("../fixtures/trust.json.sig");
         let zero = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, [0u8; 64]);
-        assert!(trusted.apply_trust(doc, zero.as_bytes()).is_err());
+        assert!(trusted.apply_trust(doc, zero.as_bytes(), NOW).is_err());
         let mut tampered = doc.to_vec();
         tampered[12] ^= 1;
-        assert!(trusted.apply_trust(&tampered, sig).is_err());
+        assert!(trusted.apply_trust(&tampered, sig, NOW).is_err());
         // The real statement lists the pinned key: nothing is dropped.
-        assert_eq!(trusted.apply_trust(doc, sig), Ok(false));
+        assert_eq!(trusted.apply_trust(doc, sig, NOW), Ok(false));
         let after: Vec<String> = trusted.keys().iter().map(|k| k.id.clone()).collect();
         assert_eq!(before, after);
         // Applying it again is a no-op.
-        assert_eq!(trusted.apply_trust(doc, sig), Ok(false));
+        assert_eq!(trusted.apply_trust(doc, sig, NOW), Ok(false));
+    }
+
+    #[test]
+    fn installs_need_a_fresh_statement_and_a_successful_fetch_in_this_round() {
+        let doc = include_bytes!("../fixtures/trust.json").to_vec();
+        let sig = include_bytes!("../fixtures/trust.json.sig").to_vec();
+        let expiry = crate::web_trust::parse_utc("2027-04-15T21:28:34Z").unwrap();
+        let trusted = Trusted::new(None, None);
+        assert!(!trusted.fresh(), "no statement yet: no installs");
+        // Offline: still nothing fresh, nothing dropped.
+        assert!(!trusted.apply_round(Err("offline".into()), NOW));
+        assert!(!trusted.fresh());
+        // The statement arrives.
+        trusted.apply_round(Ok((doc.clone(), sig.clone())), NOW);
+        assert!(trusted.fresh());
+        let keys = trusted.keys();
+        // A later failed fetch keeps the last good statement, but installs stop.
+        trusted.apply_round(Err("blocked".into()), NOW);
+        assert!(!trusted.fresh());
+        assert_eq!(trusted.keys().len(), keys.len());
+        // The same statement is fresh again once fetched.
+        trusted.apply_round(Ok((doc.clone(), sig.clone())), NOW);
+        assert!(trusted.fresh());
+        // Past its expiry the replay is refused, installs stay off and the
+        // keys of the expired statement stay in force.
+        trusted.apply_round(Ok((doc, sig)), expiry + 1);
+        assert!(!trusted.fresh());
+        assert_eq!(trusted.keys().len(), keys.len());
     }
 
     #[test]

@@ -382,6 +382,13 @@ fn classify(error: &tauri_plugin_updater::Error) -> Failure {
     }
 }
 
+/// Whether a fresh trust statement allows installing anything new. A host
+/// without the web client state (tests, the plain preview) is not restricted.
+fn installs_allowed<R: Runtime>(app: &AppHandle<R>) -> bool {
+    app.try_state::<crate::web_client::Trusted>()
+        .is_none_or(|t| t.fresh())
+}
+
 fn updater<R: Runtime>(
     app: &AppHandle<R>,
     source: &Source,
@@ -550,8 +557,11 @@ pub async fn install<R: Runtime>(app: &AppHandle<R>, mode: Mode) {
         i.update.clone()
     });
     let Some(Some(update)) = taken else { return };
-    // The statement may have changed since the check.
-    if crate::web_trust::updater_key(&state.source.pubkey, &update.signature).is_err() {
+    // The statement may have changed since the check. Without a fresh one
+    // (expired, or its fetch failed this round) nothing new is installed.
+    if !installs_allowed(app)
+        || crate::web_trust::updater_key(&state.source.pubkey, &update.signature).is_err()
+    {
         return fail(&state, Failure::Verify);
     }
     let progress = app.clone();
@@ -650,6 +660,10 @@ pub fn skip<R: Runtime>(app: &AppHandle<R>) {
 /// manifest: it must be the newest release and still verify. Bounded in time
 /// so that start is never held up by the network.
 pub fn prepare_pending<R: Runtime>(app: &AppHandle<R>) -> Option<(Update, Vec<u8>)> {
+    // Kept for later when no fresh trust statement is in force.
+    if !installs_allowed(app) {
+        return None;
+    }
     let state = app.state::<NativeUpdates>();
     let (pending, current) = match state.inner.lock() {
         Ok(i) => (i.persisted.pending.clone()?, i.snapshot.current.clone()),
