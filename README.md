@@ -7,8 +7,8 @@ removes server-served JavaScript from the trust equation, and it helps you stay
 in a Talk while you play.
 
 **Status: experimental, Windows first.** The browser app is the primary,
-fully supported client. This client is an unsigned DEV build, has no automatic
-updater, and its Windows/WebView2 acceptance (media permission prompts, gaming
+fully supported client. This client is an unsigned DEV build (it updates
+itself from signed releases, see below), and its Windows/WebView2 acceptance (media permission prompts, gaming
 surfaces, sealed media on real hardware) is still outstanding. See the
 [product status](https://github.com/msch128/mnema-talk/blob/main/doc/product-status.md).
 
@@ -34,13 +34,69 @@ surfaces, sealed media on real hardware) is still outstanding. See the
 
 ## Get it
 
-No installer for the signed-bundle client is published yet. Build it from
-source (see [experimental/README.md](experimental/README.md#mnema-desktop-dev):
-Rust and Node, with mnema-talk checked out next to this repository), or take
-the CI artifacts of the `Shared desktop client DEV builds` workflow. The older
+Download `Mnema-Desktop-DEV_<version>_x64-setup.exe` from the
+[latest release](https://github.com/msch128/mnema-talk-desktop/releases/latest)
+and run it once. It installs for the current user only (no administrator
+prompt) and updates itself from then on. SmartScreen warns because the installer
+has no Authenticode certificate; the self-update does not depend on one (see
+below). The portable ZIP of each release does not update itself. To build from
+source, see [experimental/README.md](experimental/README.md#mnema-desktop-dev):
+Rust and Node, with mnema-talk checked out next to this repository. The older
 Windows DEV ZIP attached to
 [mnema-talk releases through v0.7.3](https://github.com/msch128/mnema-talk/releases)
 still loads the server's JavaScript and predates the signed bundle.
+
+## Updates
+
+Two things update, both from GitHub, both verified before use:
+
+* **The web app** (the signed bundle) as described in
+  [doc/desktop-trusted-client.md](https://github.com/msch128/mnema-talk/blob/main/doc/desktop-trusted-client.md).
+* **The program itself** through the official Tauri updater. The client checks
+  `releases/latest/download/latest.json` of this repository at every start and
+  then every six hours (the same interval as the bundles). When a newer
+  version exists, a small window offers **Update now** (download, install,
+  restart), **On next start** (download now, install when the client is next
+  started) and **Skip this version**; the menu entry **Update** reopens it. A
+  failed attempt shows what went wrong and can be retried. `MNEMA_DESKTOP_NO_UPDATE_CHECK=1`
+  turns both checks off.
+
+An update is installed only if its minisign signature verifies against the
+public key pinned in `experimental/app/tauri.conf.json`, the version the
+signature was made for equals the announced version, and that version is newer
+than the installed one. Where the file came from (GitHub, a mirror, a proxy)
+decides nothing. The matching private key exists only as a secret of the
+protected `desktop-updater-signing` environment (tags `v*`) and in the owner's
+offline backup.
+
+### Releasing
+
+1. Raise the version in `experimental/app/tauri.conf.json`,
+   `experimental/app/Cargo.toml` and `experimental/app/Cargo.lock` together
+   (`scripts/check-release-version.mjs vX.Y.Z` checks this) and merge it to
+   `main`.
+2. Push the tag `vX.Y.Z` on that commit. `desktop-release.yml` re-tests, builds
+   the tested executable into an NSIS installer, signs it in the protected
+   environment, smoke-installs it per user on a Windows runner and publishes
+   the installer, its `.sig`, `latest.json`, a portable ZIP and `SHA256SUMS`.
+   The release is public only after everything is attached.
+
+### Rotating or revoking the updater key
+
+Installed clients trust exactly the key in their own `tauri.conf.json`.
+To rotate: generate a new pair (`tauri signer generate`), publish a release that
+**contains the new public key but is signed with the old key**, then switch the
+secrets to the new key. Clients that took that release trust the new key from
+then on. A release signed with a key a client does not have cannot be installed
+by it. If the old key is lost or compromised and no release carrying the new
+key reached a client, that client must install the new version manually from
+the release page. Revoking a single release is done by publishing a higher
+version; clients never go back to a lower one.
+
+macOS and Linux builds do not exist yet. The updater code is platform neutral
+(macOS would use `.app.tar.gz` updater artifacts and the same feed with a
+`darwin-aarch64` or `darwin-x86_64` entry), but only Windows is built and
+tested.
 
 At startup, enter the HTTPS address of your community's instance. Microsoft
 Edge WebView2 Runtime is required on Windows. Packages are unsigned, so

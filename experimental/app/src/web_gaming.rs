@@ -418,7 +418,8 @@ pub fn clear(app: &tauri::AppHandle) {
 pub fn menu(app: &tauri::AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> {
     let item =
         tauri::menu::MenuItem::with_id(app, "gaming-settings", "Gaming", true, None::<&str>)?;
-    tauri::menu::Menu::with_items(app, &[&item])
+    let update = super::native_updates::menu_item(app)?;
+    tauri::menu::Menu::with_items(app, &[&item, &update])
 }
 pub fn open_settings(app: &tauri::AppHandle) -> tauri::Result<()> {
     let window = surface(app, "gaming-settings", true)?;
