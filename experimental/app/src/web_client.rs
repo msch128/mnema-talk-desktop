@@ -103,6 +103,11 @@ impl Trusted {
         self.keys.lock().map(|k| k.clone()).unwrap_or_default()
     }
 
+    #[cfg(test)]
+    pub(crate) fn set_fresh(&self, fresh: bool) {
+        self.fresh.store(fresh, std::sync::atomic::Ordering::SeqCst);
+    }
+
     pub(super) fn fresh(&self) -> bool {
         self.fresh.load(std::sync::atomic::Ordering::SeqCst)
     }
@@ -153,15 +158,18 @@ impl Trusted {
                 Err(why) => eprintln!("Mnema Desktop: trust statement refused: {why}"),
             }
         }
-        self.publish_trust();
         let fresh = ok && self.trust.lock().is_ok_and(|t| t.fresh(now));
         self.fresh.store(fresh, std::sync::atomic::Ordering::SeqCst);
         dropped
     }
 
-    async fn trust_round(&self) -> bool {
+    pub(super) async fn trust_round(&self) -> bool {
         let fetched = crate::web_updates::fetch_trust().await;
-        self.apply_round(fetched, now() as u64)
+        let dropped = self.apply_round(fetched, now() as u64);
+        // Not inside `apply_round`: the statement in force is process-wide
+        // state that tests of the updater must not see change.
+        self.publish_trust();
+        dropped
     }
 
     /// Shows the statement in force to the native updater.

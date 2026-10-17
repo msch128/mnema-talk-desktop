@@ -703,6 +703,21 @@ fn apply_pending<R: Runtime>(app: &AppHandle<R>) {
         return;
     }
     let state = app.state::<NativeUpdates>();
+    // The installer is only run on the strength of a trust statement fetched
+    // in this process: fetch it first (the main window is not up yet). If that
+    // fails the installer stays kept and the next start tries again.
+    if state
+        .inner
+        .lock()
+        .is_ok_and(|i| i.persisted.pending.is_some())
+        && !installs_allowed(app)
+        && let Some(trusted) = app.try_state::<crate::web_client::Trusted>()
+    {
+        let _ = tauri::async_runtime::block_on(tokio::time::timeout(
+            START_TIMEOUT,
+            trusted.trust_round(),
+        ));
+    }
     let Some((update, bytes)) = prepare_pending(app) else {
         return;
     };
