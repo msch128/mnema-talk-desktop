@@ -6,11 +6,12 @@
 //! are revoked. Where the bytes come from decides nothing: the signature is
 //! checked before anything is parsed, and a statement with a lower serial than
 //! the highest one accepted is refused.
-use crate::web_bundle::{TrustedKey, parse_key};
+use crate::web_bundle::{TrustedKey, Version, parse_key};
 use base64::{Engine, engine::general_purpose::STANDARD};
 use ed25519_dalek::{Signature, VerifyingKey};
 use serde::Deserialize;
 use std::{
+    collections::BTreeMap,
     path::{Path, PathBuf},
     sync::Mutex,
 };
@@ -46,6 +47,9 @@ pub struct Statement {
     pub revoked_bundle_keys: Vec<String>,
     pub updater_keys: Vec<String>,
     pub revoked_updater_keys: Vec<String>,
+    /// Optional caps on the rollback marks, per web client API number.
+    #[serde(default)]
+    pub max_version: BTreeMap<String, String>,
 }
 
 /// Seconds since the epoch for `YYYY-MM-DDTHH:MM:SSZ`, nothing else.
@@ -125,6 +129,13 @@ impl Statement {
         if expires <= issued || expires - issued > MAX_VALIDITY_SECS {
             return Err("invalid validity period".into());
         }
+        for (api, version) in &self.max_version {
+            if api.parse::<u32>().ok().filter(|n| *n >= 1).is_none()
+                || Version::parse(version).is_none()
+            {
+                return Err("invalid max_version".into());
+            }
+        }
         if self.bundle_keys.is_empty() {
             return Err("trust statement lists no bundle key".into());
         }
@@ -146,6 +157,14 @@ impl Statement {
             }
         }
         Ok(())
+    }
+
+    /// The caps as numbers (validated when the statement was verified).
+    pub fn caps(&self) -> BTreeMap<u32, Version> {
+        self.max_version
+            .iter()
+            .filter_map(|(api, v)| Some((api.parse().ok()?, Version::parse(v)?)))
+            .collect()
     }
 
     /// Whether the statement is past `expires_at` at `now` (unix seconds).
@@ -386,7 +405,7 @@ mod tests {
         let doc = include_bytes!("../fixtures/trust.json");
         let sig = include_bytes!("../fixtures/trust.json.sig");
         let statement = verify_statement(doc, sig, &root_key()).expect("pinned root verifies");
-        assert_eq!(statement.serial, 2);
+        assert_eq!(statement.serial, 3);
         let keys = statement.bundle_keys();
         assert!(
             crate::web_bundle::trusted_keys()
@@ -547,6 +566,7 @@ mod tests {
             revoked_bundle_keys: vec![],
             updater_keys: allowed.iter().map(|k| (*k).to_owned()).collect(),
             revoked_updater_keys: revoked.iter().map(|k| (*k).to_owned()).collect(),
+            max_version: BTreeMap::new(),
         }
     }
 
@@ -643,5 +663,35 @@ mod tests {
         assert!(trust.accept(&d, &s, after).is_err());
         let again = TrustState::load(None, root(9).verifying_key());
         assert!(!again.fresh(NOW));
+    }
+
+    #[test]
+    fn caps_are_part_of_the_signed_statement_and_must_be_well_formed() {
+        let with = |caps: serde_json::Value| {
+            let mut v: serde_json::Value = serde_json::from_str(&doc(1, &[1], &[])).unwrap();
+            v["max_version"] = caps;
+            v.to_string()
+        };
+        let mut trust = state(9);
+        for bad in [
+            serde_json::json!({"x": "0.9.0"}),
+            serde_json::json!({"0": "0.9.0"}),
+            serde_json::json!({"1": "latest"}),
+        ] {
+            let (d, s) = signed(&root(9), &with(bad));
+            assert!(trust.accept(&d, &s, NOW).is_err());
+        }
+        let (d, s) = signed(
+            &root(9),
+            &with(serde_json::json!({"1": "0.9.0", "2": "1.0.0"})),
+        );
+        trust.accept(&d, &s, NOW).unwrap();
+        let caps = trust.statement().unwrap().caps();
+        assert_eq!(caps[&1], Version(0, 9, 0));
+        assert_eq!(caps[&2], Version(1, 0, 0));
+        // Statements without the field have no caps.
+        let (d, s) = signed(&root(9), &doc(2, &[1], &[]));
+        trust.accept(&d, &s, NOW).unwrap();
+        assert!(trust.statement().unwrap().caps().is_empty());
     }
 }

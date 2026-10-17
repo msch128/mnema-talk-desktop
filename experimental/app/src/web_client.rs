@@ -59,6 +59,8 @@ pub struct Trusted {
     keys: Mutex<Vec<TrustedKey>>,
     trust: Mutex<TrustState>,
     /// A fresh trust statement is in force and this round's fetch succeeded.
+    /// False at start: only a fetch in this process sets it, so a blocked
+    /// network cannot keep installing on the strength of a stored statement.
     /// Without it nothing new is installed (freeze protection); the already
     /// verified bundles keep running.
     fresh: std::sync::atomic::AtomicBool,
@@ -80,7 +82,6 @@ impl Trusted {
         );
         crate::web_trust::publish(trust.statement());
         let keys = trust.effective_keys(trusted_keys());
-        let fresh = trust.fresh(now() as u64);
         let store = Store::load(
             data_dir.as_ref().map(|d| d.join("web-bundles")).as_deref(),
             builtin,
@@ -89,7 +90,7 @@ impl Trusted {
         Trusted {
             store: Mutex::new(store),
             keys: Mutex::new(keys),
-            fresh: std::sync::atomic::AtomicBool::new(fresh),
+            fresh: std::sync::atomic::AtomicBool::new(false),
             trust: Mutex::new(trust),
             session: Mutex::new(None),
             sockets: Arc::new(Sockets::default()),
@@ -115,15 +116,17 @@ impl Trusted {
     /// before and is reconciled here, or starts after and sees the new keys.
     fn apply_trust(&self, doc: &[u8], sig: &[u8], now: u64) -> Result<bool, String> {
         let mut store = self.store.lock().map_err(|_| "busy")?;
-        let keys = {
+        let (keys, caps) = {
             let mut trust = self.trust.lock().map_err(|_| "busy")?;
             if trust.accept(doc, sig, now)? == Accepted::Unchanged {
                 return Ok(false);
             }
-            trust.effective_keys(trusted_keys())
+            let caps = trust.statement().map(|s| s.caps()).unwrap_or_default();
+            (trust.effective_keys(trusted_keys()), caps)
         };
         *self.keys.lock().map_err(|_| "busy")? = keys.clone();
         let dropped = store.reconcile(&keys);
+        store.apply_caps(&caps);
         drop(store);
         if dropped
             && let Some(session) = self.session()
@@ -967,7 +970,7 @@ mod tests {
     fn installs_need_a_fresh_statement_and_a_successful_fetch_in_this_round() {
         let doc = include_bytes!("../fixtures/trust.json").to_vec();
         let sig = include_bytes!("../fixtures/trust.json.sig").to_vec();
-        let expiry = crate::web_trust::parse_utc("2027-04-15T21:28:34Z").unwrap();
+        let expiry = crate::web_trust::parse_utc("2027-04-15T22:00:57Z").unwrap();
         let trusted = Trusted::new(None, None);
         assert!(!trusted.fresh(), "no statement yet: no installs");
         // Offline: still nothing fresh, nothing dropped.
