@@ -5,6 +5,8 @@ verifies itself, instead of loading JavaScript from the selected instance.
 Enter the HTTPS address of the instance at startup. The app is served from the
 host's own origin (`mnema://localhost`, `https://mnema.localhost` on Windows);
 the host forwards `/api/` to the instance, keeps the session cookie to itself
+(in the macOS Keychain or Windows Credential Manager; a 0600 file only where the
+system has none, and files from older versions move into the keychain)
 and relays the WebSocket, so the instance supplies data and never code.
 Normal production instances advertise `web_client_api` and `version` in
 `/api/health`; no server change is needed. Design and threat model:

@@ -1,7 +1,7 @@
 {
   "schema": "mnema-desktop-license-bundle-v1",
   "scope": "Conservative locked Rust graph and production npm closure; not a claim that all packages are linked.",
-  "cargo_lock_sha256": "5315f9f407f79d54e811e1e3d253fd5f9fa259589c841377ec1c907fa602a198",
+  "cargo_lock_sha256": "894b288ae3470ba1b0f7f0f724d75a96c4d5577141dd29432854a589cf473205",
   "npm_lock_sha256": "dac10a85d34c2db5103ba4fce5701f251a893b6f1dd94d31c20d9217a13dc742",
   "supplemental": {
     "rust_standard_library": {
@@ -1422,6 +1422,27 @@
           "name": "LICENSE-MIT",
           "sha256": "62065228e42caebca7e7d7db1204cbb867033de5982ca4009928915e4095f3a3",
           "source": "https://crates.io/crates/core-foundation/0.10.1",
+          "provenance": "crate-archive"
+        }
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "core-foundation",
+      "version": "0.9.4",
+      "license": "MIT OR Apache-2.0",
+      "source": "https://crates.io/crates/core-foundation/0.9.4",
+      "texts": [
+        {
+          "name": "LICENSE-APACHE",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+          "source": "https://crates.io/crates/core-foundation/0.9.4",
+          "provenance": "crate-archive"
+        },
+        {
+          "name": "LICENSE-MIT",
+          "sha256": "62065228e42caebca7e7d7db1204cbb867033de5982ca4009928915e4095f3a3",
+          "source": "https://crates.io/crates/core-foundation/0.9.4",
           "provenance": "crate-archive"
         }
       ]
@@ -5136,6 +5157,27 @@
     },
     {
       "ecosystem": "cargo",
+      "name": "keyring",
+      "version": "3.6.3",
+      "license": "MIT OR Apache-2.0",
+      "source": "https://crates.io/crates/keyring/3.6.3",
+      "texts": [
+        {
+          "name": "LICENSE-APACHE",
+          "sha256": "78ebc2ea2a1cec9cbec2e1a6fc15e73474fe22bdad7575518e7f4628651d49c4",
+          "source": "https://crates.io/crates/keyring/3.6.3",
+          "provenance": "crate-archive"
+        },
+        {
+          "name": "LICENSE-MIT",
+          "sha256": "157cc607717b1b372a69f6b4526f6ad18c1279af9f3267835cca2943f37bc07d",
+          "source": "https://crates.io/crates/keyring/3.6.3",
+          "provenance": "crate-archive"
+        }
+      ]
+    },
+    {
+      "ecosystem": "cargo",
       "name": "libappindicator-sys",
       "version": "0.9.0",
       "license": "Apache-2.0 OR MIT",
@@ -8666,6 +8708,27 @@
     {
       "ecosystem": "cargo",
       "name": "security-framework",
+      "version": "2.11.1",
+      "license": "MIT OR Apache-2.0",
+      "source": "https://crates.io/crates/security-framework/2.11.1",
+      "texts": [
+        {
+          "name": "LICENSE-APACHE",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+          "source": "https://crates.io/crates/security-framework/2.11.1",
+          "provenance": "crate-archive"
+        },
+        {
+          "name": "LICENSE-MIT",
+          "sha256": "91e934255ba3b2f21103d68c5581c23ef34aa95c4628e4405b8c901935e11c69",
+          "source": "https://crates.io/crates/security-framework/2.11.1",
+          "provenance": "crate-archive"
+        }
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "security-framework",
       "version": "3.7.0",
       "license": "MIT OR Apache-2.0",
       "source": "https://crates.io/crates/security-framework/3.7.0",
@@ -11643,6 +11706,27 @@
     {
       "ecosystem": "cargo",
       "name": "windows-sys",
+      "version": "0.60.2",
+      "license": "MIT OR Apache-2.0",
+      "source": "https://crates.io/crates/windows-sys/0.60.2",
+      "texts": [
+        {
+          "name": "license-apache-2.0",
+          "sha256": "c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b",
+          "source": "https://crates.io/crates/windows-sys/0.60.2",
+          "provenance": "crate-archive"
+        },
+        {
+          "name": "license-mit",
+          "sha256": "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383",
+          "source": "https://crates.io/crates/windows-sys/0.60.2",
+          "provenance": "crate-archive"
+        }
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "windows-sys",
       "version": "0.61.2",
       "license": "MIT OR Apache-2.0",
       "source": "https://crates.io/crates/windows-sys/0.61.2",
@@ -11678,6 +11762,27 @@
           "name": "license-mit",
           "sha256": "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383",
           "source": "https://crates.io/crates/windows-targets/0.42.2",
+          "provenance": "crate-archive"
+        }
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "windows-targets",
+      "version": "0.53.5",
+      "license": "MIT OR Apache-2.0",
+      "source": "https://crates.io/crates/windows-targets/0.53.5",
+      "texts": [
+        {
+          "name": "license-apache-2.0",
+          "sha256": "c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b",
+          "source": "https://crates.io/crates/windows-targets/0.53.5",
+          "provenance": "crate-archive"
+        },
+        {
+          "name": "license-mit",
+          "sha256": "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383",
+          "source": "https://crates.io/crates/windows-targets/0.53.5",
           "provenance": "crate-archive"
         }
       ]
@@ -11768,6 +11873,27 @@
     },
     {
       "ecosystem": "cargo",
+      "name": "windows_aarch64_gnullvm",
+      "version": "0.53.1",
+      "license": "MIT OR Apache-2.0",
+      "source": "https://crates.io/crates/windows_aarch64_gnullvm/0.53.1",
+      "texts": [
+        {
+          "name": "license-apache-2.0",
+          "sha256": "c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b",
+          "source": "https://crates.io/crates/windows_aarch64_gnullvm/0.53.1",
+          "provenance": "crate-archive"
+        },
+        {
+          "name": "license-mit",
+          "sha256": "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383",
+          "source": "https://crates.io/crates/windows_aarch64_gnullvm/0.53.1",
+          "provenance": "crate-archive"
+        }
+      ]
+    },
+    {
+      "ecosystem": "cargo",
       "name": "windows_aarch64_msvc",
       "version": "0.42.2",
       "license": "MIT OR Apache-2.0",
@@ -11783,6 +11909,27 @@
           "name": "license-mit",
           "sha256": "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383",
           "source": "https://crates.io/crates/windows_aarch64_msvc/0.42.2",
+          "provenance": "crate-archive"
+        }
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "windows_aarch64_msvc",
+      "version": "0.53.1",
+      "license": "MIT OR Apache-2.0",
+      "source": "https://crates.io/crates/windows_aarch64_msvc/0.53.1",
+      "texts": [
+        {
+          "name": "license-apache-2.0",
+          "sha256": "c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b",
+          "source": "https://crates.io/crates/windows_aarch64_msvc/0.53.1",
+          "provenance": "crate-archive"
+        },
+        {
+          "name": "license-mit",
+          "sha256": "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383",
+          "source": "https://crates.io/crates/windows_aarch64_msvc/0.53.1",
           "provenance": "crate-archive"
         }
       ]
@@ -11810,6 +11957,48 @@
     },
     {
       "ecosystem": "cargo",
+      "name": "windows_i686_gnu",
+      "version": "0.53.1",
+      "license": "MIT OR Apache-2.0",
+      "source": "https://crates.io/crates/windows_i686_gnu/0.53.1",
+      "texts": [
+        {
+          "name": "license-apache-2.0",
+          "sha256": "c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b",
+          "source": "https://crates.io/crates/windows_i686_gnu/0.53.1",
+          "provenance": "crate-archive"
+        },
+        {
+          "name": "license-mit",
+          "sha256": "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383",
+          "source": "https://crates.io/crates/windows_i686_gnu/0.53.1",
+          "provenance": "crate-archive"
+        }
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "windows_i686_gnullvm",
+      "version": "0.53.1",
+      "license": "MIT OR Apache-2.0",
+      "source": "https://crates.io/crates/windows_i686_gnullvm/0.53.1",
+      "texts": [
+        {
+          "name": "license-apache-2.0",
+          "sha256": "c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b",
+          "source": "https://crates.io/crates/windows_i686_gnullvm/0.53.1",
+          "provenance": "crate-archive"
+        },
+        {
+          "name": "license-mit",
+          "sha256": "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383",
+          "source": "https://crates.io/crates/windows_i686_gnullvm/0.53.1",
+          "provenance": "crate-archive"
+        }
+      ]
+    },
+    {
+      "ecosystem": "cargo",
       "name": "windows_i686_msvc",
       "version": "0.42.2",
       "license": "MIT OR Apache-2.0",
@@ -11825,6 +12014,27 @@
           "name": "license-mit",
           "sha256": "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383",
           "source": "https://crates.io/crates/windows_i686_msvc/0.42.2",
+          "provenance": "crate-archive"
+        }
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "windows_i686_msvc",
+      "version": "0.53.1",
+      "license": "MIT OR Apache-2.0",
+      "source": "https://crates.io/crates/windows_i686_msvc/0.53.1",
+      "texts": [
+        {
+          "name": "license-apache-2.0",
+          "sha256": "c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b",
+          "source": "https://crates.io/crates/windows_i686_msvc/0.53.1",
+          "provenance": "crate-archive"
+        },
+        {
+          "name": "license-mit",
+          "sha256": "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383",
+          "source": "https://crates.io/crates/windows_i686_msvc/0.53.1",
           "provenance": "crate-archive"
         }
       ]
@@ -11852,6 +12062,27 @@
     },
     {
       "ecosystem": "cargo",
+      "name": "windows_x86_64_gnu",
+      "version": "0.53.1",
+      "license": "MIT OR Apache-2.0",
+      "source": "https://crates.io/crates/windows_x86_64_gnu/0.53.1",
+      "texts": [
+        {
+          "name": "license-apache-2.0",
+          "sha256": "c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b",
+          "source": "https://crates.io/crates/windows_x86_64_gnu/0.53.1",
+          "provenance": "crate-archive"
+        },
+        {
+          "name": "license-mit",
+          "sha256": "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383",
+          "source": "https://crates.io/crates/windows_x86_64_gnu/0.53.1",
+          "provenance": "crate-archive"
+        }
+      ]
+    },
+    {
+      "ecosystem": "cargo",
       "name": "windows_x86_64_gnullvm",
       "version": "0.42.2",
       "license": "MIT OR Apache-2.0",
@@ -11873,6 +12104,27 @@
     },
     {
       "ecosystem": "cargo",
+      "name": "windows_x86_64_gnullvm",
+      "version": "0.53.1",
+      "license": "MIT OR Apache-2.0",
+      "source": "https://crates.io/crates/windows_x86_64_gnullvm/0.53.1",
+      "texts": [
+        {
+          "name": "license-apache-2.0",
+          "sha256": "c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b",
+          "source": "https://crates.io/crates/windows_x86_64_gnullvm/0.53.1",
+          "provenance": "crate-archive"
+        },
+        {
+          "name": "license-mit",
+          "sha256": "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383",
+          "source": "https://crates.io/crates/windows_x86_64_gnullvm/0.53.1",
+          "provenance": "crate-archive"
+        }
+      ]
+    },
+    {
+      "ecosystem": "cargo",
       "name": "windows_x86_64_msvc",
       "version": "0.42.2",
       "license": "MIT OR Apache-2.0",
@@ -11888,6 +12140,27 @@
           "name": "license-mit",
           "sha256": "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383",
           "source": "https://crates.io/crates/windows_x86_64_msvc/0.42.2",
+          "provenance": "crate-archive"
+        }
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "windows_x86_64_msvc",
+      "version": "0.53.1",
+      "license": "MIT OR Apache-2.0",
+      "source": "https://crates.io/crates/windows_x86_64_msvc/0.53.1",
+      "texts": [
+        {
+          "name": "license-apache-2.0",
+          "sha256": "c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b",
+          "source": "https://crates.io/crates/windows_x86_64_msvc/0.53.1",
+          "provenance": "crate-archive"
+        },
+        {
+          "name": "license-mit",
+          "sha256": "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383",
+          "source": "https://crates.io/crates/windows_x86_64_msvc/0.53.1",
           "provenance": "crate-archive"
         }
       ]

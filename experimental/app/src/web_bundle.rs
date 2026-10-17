@@ -11,7 +11,7 @@ use ed25519_dalek::{Signature, VerifyingKey};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet},
     fmt,
     io::{Cursor, Read},
     path::{Path, PathBuf},
@@ -325,6 +325,10 @@ pub enum Refusal {
     ServerTooOld { needs: Version },
     /// No bundle speaks the server's (older) contract any more.
     ServerContractRetired,
+    /// Bundles for the server's contract are held, but only ones older than
+    /// the newest this client ever verified for it (and that one is gone).
+    /// Running an older signed bundle would be a rollback.
+    RolledBack,
 }
 
 impl fmt::Display for Refusal {
@@ -341,6 +345,9 @@ impl fmt::Display for Refusal {
             Refusal::ServerContractRetired => f.write_str(
                 "This server speaks an older contract than any app in this client. Ask the administrator to update it.",
             ),
+            Refusal::RolledBack => f.write_str(
+                "The newest verified app this client has used is no longer available, and older apps are refused. Update or reinstall the desktop client.",
+            ),
         }
     }
 }
@@ -348,6 +355,10 @@ impl fmt::Display for Refusal {
 #[derive(Debug, Default, Serialize, Deserialize)]
 struct State {
     security_floor: Option<Version>,
+    /// Highest bundle version ever verified, per `web_client_api`. Bundles
+    /// below it are never selected, whatever the server claims.
+    #[serde(default)]
+    high_water: BTreeMap<u32, Version>,
     last_check: u64,
 }
 
@@ -355,6 +366,7 @@ struct State {
 pub struct Store {
     dir: Option<PathBuf>,
     floor: Version,
+    high_water: BTreeMap<u32, Version>,
     last_check: u64,
     held: Vec<Held>,
     /// Cached files that failed verification (names only, for diagnostics).
@@ -409,11 +421,16 @@ impl Store {
         for held in &verified {
             floor = floor.max(held.bundle.security_floor);
         }
+        let mut high_water = state.high_water;
+        for held in &verified {
+            raise(&mut high_water, &held.bundle);
+        }
         verified.retain(|h| h.bundle.version >= floor);
         verified.sort_by_key(|h| std::cmp::Reverse(h.bundle.version));
         let store = Store {
             dir: dir.map(Path::to_path_buf),
             floor,
+            high_water,
             last_check: state.last_check,
             held: verified,
             rejected,
@@ -426,6 +443,7 @@ impl Store {
         let Some(dir) = &self.dir else { return };
         let state = State {
             security_floor: Some(self.floor),
+            high_water: self.high_water.clone(),
             last_check: self.last_check,
         };
         if std::fs::create_dir_all(dir).is_ok()
@@ -438,6 +456,11 @@ impl Store {
     #[cfg(test)]
     pub fn floor(&self) -> Version {
         self.floor
+    }
+
+    #[cfg(test)]
+    pub fn high_water(&self, api: u32) -> Option<Version> {
+        self.high_water.get(&api).copied()
     }
 
     pub fn newest(&self) -> Option<&Held> {
@@ -458,16 +481,27 @@ impl Store {
     }
 
     /// The newest held bundle that speaks the server's contract and supports
-    /// its release.
+    /// its release. Bundles older than the high-water mark of their contract
+    /// are never offered: a server cannot talk the client into an older,
+    /// vulnerable app by claiming an old version.
     pub fn select(&self, server: &ServerInfo) -> Result<Held, Refusal> {
-        let speaks = |h: &&Held| h.bundle.web_client_api == server.web_client_api;
-        let supports = |h: &&Held| {
+        let current: Vec<&Held> = self
+            .held
+            .iter()
+            .filter(|h| {
+                self.high_water
+                    .get(&h.bundle.web_client_api)
+                    .is_none_or(|hwm| h.bundle.version >= *hwm)
+            })
+            .collect();
+        let speaks = |h: &&&Held| h.bundle.web_client_api == server.web_client_api;
+        let supports = |h: &&&Held| {
             server
                 .version
                 .is_none_or(|v| v >= h.bundle.min_server_version)
         };
-        if let Some(best) = self.held.iter().filter(speaks).find(supports) {
-            return Ok(best.clone());
+        if let Some(best) = current.iter().filter(speaks).find(supports) {
+            return Ok((**best).clone());
         }
         let Some(newest_api) = self.held.iter().map(|h| h.bundle.web_client_api).max() else {
             return Err(Refusal::NoBundle);
@@ -475,14 +509,20 @@ impl Store {
         if server.web_client_api > newest_api {
             return Err(Refusal::ServerNewer);
         }
-        match self
-            .held
+        match current
             .iter()
             .filter(speaks)
             .map(|h| h.bundle.min_server_version)
             .min()
         {
             Some(needs) => Err(Refusal::ServerTooOld { needs }),
+            None if self
+                .held
+                .iter()
+                .any(|h| h.bundle.web_client_api == server.web_client_api) =>
+            {
+                Err(Refusal::RolledBack)
+            }
             None => Err(Refusal::ServerContractRetired),
         }
     }
@@ -508,6 +548,7 @@ impl Store {
                 .map_err(|_| "cannot write the bundle")?;
         }
         self.floor = self.floor.max(bundle.security_floor);
+        raise(&mut self.high_water, &bundle);
         self.held.push(Held {
             bundle: Arc::new(bundle),
             source: Source::Cache,
@@ -544,6 +585,13 @@ impl Store {
             }
         }
     }
+}
+
+fn raise(high_water: &mut BTreeMap<u32, Version>, bundle: &Bundle) {
+    let entry = high_water
+        .entry(bundle.web_client_api)
+        .or_insert(bundle.version);
+    *entry = (*entry).max(bundle.version);
 }
 
 fn cached_files(dir: Option<&Path>) -> Vec<PathBuf> {
@@ -887,20 +935,13 @@ mod tests {
                 .version,
             Version(0, 9, 0)
         );
+        // A server that claims an older release does not get the older bundle:
+        // 0.9.0 was verified, so nothing below it is run for this contract.
         assert_eq!(
-            store
-                .select(&server(Some(Version(0, 8, 5)), 1))
-                .unwrap()
-                .bundle
-                .version,
-            Version(0, 8, 0)
-        );
-        assert_eq!(
-            store
-                .select(&server(Some(Version(0, 8, 5)), 1))
-                .unwrap()
-                .source,
-            Source::Builtin
+            store.select(&server(Some(Version(0, 8, 5)), 1)).err(),
+            Some(Refusal::ServerTooOld {
+                needs: Version(0, 8, 9)
+            })
         );
         // A development server only has to speak the contract.
         assert_eq!(
@@ -911,7 +952,7 @@ mod tests {
         assert_eq!(
             store.select(&server(Some(Version(0, 6, 0)), 1)).err(),
             Some(Refusal::ServerTooOld {
-                needs: Version(0, 7, 0)
+                needs: Version(0, 8, 9)
             })
         );
         // A newer contract than any bundle: an update may help.
@@ -940,9 +981,60 @@ mod tests {
                 needs: Version(0, 7, 0),
             },
             Refusal::ServerContractRetired,
+            Refusal::RolledBack,
         ] {
             assert!(!refusal.to_string().is_empty());
         }
+    }
+
+    #[test]
+    fn the_high_water_mark_blocks_older_bundles_even_without_a_floor() {
+        let d = dir("hwm");
+        let old = Spec::new("0.8.0");
+        let mut store = Store::load(Some(&d), Some(&bundle(&old)), &trusted(7));
+        store
+            .install(&bundle(&Spec::new("0.8.4")), &trusted(7))
+            .unwrap();
+        assert_eq!(store.floor(), Version(0, 0, 0));
+        assert_eq!(store.high_water(1), Some(Version(0, 8, 4)));
+        let server = ServerInfo {
+            version: Some(Version(0, 1, 0)),
+            web_client_api: 1,
+        };
+        // Whatever the server claims, the built-in 0.8.0 is not offered.
+        assert_eq!(
+            store.select(&server).unwrap().bundle.version,
+            Version(0, 8, 4)
+        );
+        // The mark survives a restart and the loss of the newer bundle: the
+        // client refuses instead of running the older one.
+        std::fs::remove_file(d.join("mnema-web-0.8.4.zip")).unwrap();
+        let again = Store::load(Some(&d), Some(&bundle(&old)), &trusted(7));
+        assert_eq!(again.high_water(1), Some(Version(0, 8, 4)));
+        assert_eq!(again.select(&server).err(), Some(Refusal::RolledBack));
+        // A lost state file is rebuilt from what verifies, never lowered.
+        std::fs::remove_file(d.join("state.json")).unwrap();
+        let rebuilt = Store::load(Some(&d), Some(&bundle(&old)), &trusted(7));
+        assert_eq!(rebuilt.high_water(1), Some(Version(0, 8, 0)));
+        // Another contract is tracked on its own.
+        let mut api2 = Spec::new("0.9.0");
+        api2.api = 2;
+        let mut other = Store::load(Some(&d), Some(&bundle(&old)), &trusted(7));
+        other.install(&bundle(&api2), &trusted(7)).unwrap();
+        assert_eq!(other.high_water(1), Some(Version(0, 8, 0)));
+        assert_eq!(other.high_water(2), Some(Version(0, 9, 0)));
+        assert_eq!(
+            other
+                .select(&ServerInfo {
+                    version: None,
+                    web_client_api: 1
+                })
+                .unwrap()
+                .bundle
+                .version,
+            Version(0, 8, 0)
+        );
+        let _ = std::fs::remove_dir_all(&d);
     }
 
     #[test]

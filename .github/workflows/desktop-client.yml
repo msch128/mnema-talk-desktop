@@ -176,6 +176,7 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
         run: |
           set -euo pipefail
           mkdir -p experimental/app/bundle
@@ -187,7 +188,7 @@ jobs:
             fi
           done
           if [ -z "$found" ]; then
-            if [ -n "${{ inputs.tag }}" ]; then echo "::error::no signed web bundle in the recent mnema-talk releases"; exit 1; fi
+            if [ -n "$RELEASE_TAG" ]; then echo "::error::no signed web bundle in the recent mnema-talk releases"; exit 1; fi
             echo "::warning::no mnema-talk release carries a signed web bundle yet; this build has none built in"
             exit 0
           fi

@@ -16,6 +16,8 @@ mod web_proxy;
 #[cfg(feature = "web-client")]
 mod web_updates;
 #[cfg(feature = "web-client")]
+mod web_vault;
+#[cfg(feature = "web-client")]
 mod web_ws;
 
 #[cfg(feature = "web-client")]
