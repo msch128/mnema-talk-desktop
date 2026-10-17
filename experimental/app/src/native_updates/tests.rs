@@ -359,6 +359,16 @@ fn a_signed_newer_release_is_found_downloaded_verified_and_kept_for_the_next_sta
         handle.state::<NativeUpdates>().snapshot().phase,
         Phase::Ready
     );
+    // Without a trust statement fetched in this run the installer is kept,
+    // not discarded; once one is fresh it is re-verified and applied.
+    let trusted = crate::web_client::Trusted::new(None, None);
+    handle.manage(trusted);
+    assert!(prepare_pending(&handle).is_none());
+    assert!(
+        dir.join(PENDING_FILE).exists(),
+        "kept for the fetch to succeed"
+    );
+    handle.state::<crate::web_client::Trusted>().set_fresh(true);
     let (update, bytes) = prepare_pending(&handle).expect("verified installer for the next start");
     assert_eq!((update.version.as_str(), bytes), ("0.2.0", rel.bytes));
 }
