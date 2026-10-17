@@ -376,4 +376,43 @@ mod tests {
             }
         }
     }
+
+    /// Against a real server (MNEMA_TEST_INSTANCE, MNEMA_TEST_USER,
+    /// MNEMA_TEST_PASSWORD): after a login through the proxy the instance
+    /// accepts the host's socket and sends its events.
+    #[tokio::test]
+    async fn the_real_server_accepts_the_hosts_socket_after_login() {
+        let (Ok(origin), Ok(user), Ok(password)) = (
+            std::env::var("MNEMA_TEST_INSTANCE"),
+            std::env::var("MNEMA_TEST_USER"),
+            std::env::var("MNEMA_TEST_PASSWORD"),
+        ) else {
+            return;
+        };
+        let instance = Arc::new(Instance {
+            origin: url::Url::parse(&origin).unwrap(),
+            client: client().unwrap(),
+            jar: Jar::new(None, 0),
+        });
+        let json = [("content-type".to_owned(), "application/json".to_owned())];
+        let body = serde_json::json!({"username": user, "password": password})
+            .to_string()
+            .into_bytes();
+        assert_eq!(
+            crate::web_proxy::forward(&instance, "POST", "/api/auth/login", &json, body)
+                .await
+                .status,
+            200
+        );
+        let sockets = Arc::new(Sockets::default());
+        let (emit, mut events) = collector();
+        let id = open(&sockets, instance, emit).unwrap();
+        assert_eq!(next(&mut events).await, WsEvent::Open { id });
+        let WsEvent::Message { data, .. } = next(&mut events).await else {
+            panic!("expected a message")
+        };
+        assert!(data.contains("\"type\""), "{data}");
+        sockets.close(id);
+        while next(&mut events).await != (WsEvent::Close { id }) {}
+    }
 }

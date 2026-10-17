@@ -976,4 +976,43 @@ mod tests {
         assert_eq!(resp.status, 200);
         assert!(resp.body.is_empty());
     }
+
+    /// Against a real server (set MNEMA_TEST_INSTANCE, MNEMA_TEST_USER and
+    /// MNEMA_TEST_PASSWORD): the Origin check passes, the session lands in the
+    /// jar and not in the answer, and the next request is authenticated.
+    #[tokio::test]
+    async fn login_through_the_proxy_against_a_real_server() {
+        let (Ok(instance), Ok(user), Ok(password)) = (
+            std::env::var("MNEMA_TEST_INSTANCE"),
+            std::env::var("MNEMA_TEST_USER"),
+            std::env::var("MNEMA_TEST_PASSWORD"),
+        ) else {
+            return;
+        };
+        let instance = Instance {
+            origin: Url::parse(&instance).unwrap(),
+            client: client().unwrap(),
+            jar: Jar::new(None, 0),
+        };
+        let json = [("content-type".to_owned(), "application/json".to_owned())];
+        let anonymous = forward(&instance, "GET", "/api/auth/me", &[], Vec::new()).await;
+        assert_eq!(anonymous.status, 401);
+        let body = serde_json::json!({"username": user, "password": password})
+            .to_string()
+            .into_bytes();
+        let login = forward(&instance, "POST", "/api/auth/login", &json, body).await;
+        assert_eq!(
+            login.status,
+            200,
+            "{}",
+            String::from_utf8_lossy(&login.body)
+        );
+        assert!(header(&login, "set-cookie").is_none());
+        assert!(instance.jar.header(now()).is_some());
+        let me = forward(&instance, "GET", "/api/auth/me", &[], Vec::new()).await;
+        assert_eq!(me.status, 200);
+        assert!(String::from_utf8_lossy(&me.body).contains(&user));
+        let health = forward(&instance, "GET", "/api/health", &[], Vec::new()).await;
+        assert_eq!(health.status, 200);
+    }
 }
