@@ -1,0 +1,37 @@
+.github/workflows/desktop-client.yml
+  s_06fcde5dbef956::t_d1d2d5c628f35e 9-11,187,302-373
+.github/workflows/desktop-release.yml
+  s_06fcde5dbef956::t_b42491b5293ef1 4-5,125-226,228,243-246,256,258-260,262,265-266
+README.md
+  s_06fcde5dbef956::t_6cd9e536b72edc 9,12-13,50-77,109-114,129-131
+experimental/app/Info.plist
+  s_06fcde5dbef956::t_70080d9339876b 1-10
+experimental/app/tauri.macos.conf.json
+  s_06fcde5dbef956::t_1432fb14d8ed44 1-18
+scripts/stage-web-bundle.sh
+  s_06fcde5dbef956::t_fb04b257af3124 1-22
+scripts/update-manifest.mjs
+  s_06fcde5dbef956::t_767d1db95ed266 15-24,28,30-42,47,55,57,59,65
+scripts/update-manifest.test.mjs
+  s_06fcde5dbef956::t_00d7bbe298d9ba 29-41
+scripts/verify-updater-signatures.mjs
+  s_06fcde5dbef956::t_8e962088d64978 1-84
+scripts/verify-updater-signatures.test.mjs
+  s_06fcde5dbef956::t_fa623a490b3cec 1-62
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "385eda659e392f0f506acd43ad43d63858c79fdd",
+  "prompts": {},
+  "sessions": {
+    "s_06fcde5dbef956": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "94b73314-95fe-4e96-8c43-d20b0f28358d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}
