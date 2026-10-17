@@ -393,7 +393,11 @@ async fn desktop_open_instance(
     }
     let instance = Arc::new(Instance {
         client: client().map_err(|_| "Unable to initialize HTTPS.")?,
-        jar: Jar::new(state.jar_file(&origin), now()),
+        jar: Jar::in_vault(
+            state.jar_file(&origin),
+            Arc::new(crate::web_vault::Os),
+            now(),
+        ),
         origin,
     });
     state.set_session(Some(Arc::new(Session { instance, held })));

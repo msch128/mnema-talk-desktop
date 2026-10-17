@@ -2,19 +2,23 @@
 //! selected instance for `/api/`. The page sees one origin, as in a browser;
 //! the session cookie stays here and the instance's answers are data, never
 //! code (mnema-talk `doc/desktop-trusted-client.md`).
-use crate::web_bundle::Bundle;
+use crate::{web_bundle::Bundle, web_vault::Vault};
 use cookie::Cookie;
 use reqwest::{Client, redirect::Policy};
 use serde::{Deserialize, Serialize};
 use std::{
     path::PathBuf,
-    sync::Mutex,
+    sync::{Arc, Mutex},
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use url::Url;
 
-/// Largest request or response body the proxy buffers.
-pub const MAX_BODY: usize = 512 << 20;
+/// Largest request or response body the proxy buffers. The webview protocol
+/// hands over whole bodies, so every byte is in memory (twice, while it
+/// moves); the cap keeps one request from taking the machine's RAM. Audio and
+/// video arrive in `Range` pieces and are not affected; a file above the cap
+/// is refused up front from its declared length.
+pub const MAX_BODY: usize = 128 << 20;
 const MAX_COOKIES: usize = 32;
 
 /// Same policy as the server's SPA (`httpx.SPAContentSecurityPolicy`), plus the
@@ -140,6 +144,8 @@ struct Stored {
 /// The instance's cookies. The page never sees them.
 pub struct Jar {
     file: Option<PathBuf>,
+    /// The keychain and the account name in it; the file is the fallback.
+    vault: Option<(Arc<dyn Vault>, String)>,
     cookies: Mutex<Vec<Stored>>,
 }
 
@@ -150,21 +156,71 @@ pub fn now() -> i64 {
 }
 
 impl Jar {
+    /// A jar that rests in `file` only (tests; the app uses `in_vault`).
+    #[cfg(test)]
     pub fn new(file: Option<PathBuf>, now: i64) -> Jar {
-        let cookies: Vec<Stored> = file
+        Jar::open(file, None, now)
+    }
+
+    /// A jar that rests in the vault under the file's name. A jar left in the
+    /// file by an earlier version moves into the vault and the file is
+    /// removed. If the vault refuses, the file keeps working.
+    pub fn in_vault(file: Option<PathBuf>, vault: Arc<dyn Vault>, now: i64) -> Jar {
+        let account = file
             .as_ref()
-            .and_then(|f| std::fs::read(f).ok())
-            .and_then(|raw| serde_json::from_slice(&raw).ok())
-            .unwrap_or_default();
-        let live = cookies
+            .and_then(|f| f.file_stem())
+            .map(|n| n.to_string_lossy().into_owned());
+        Jar::open(file, account.map(|a| (vault, a)), now)
+    }
+
+    fn open(file: Option<PathBuf>, vault: Option<(Arc<dyn Vault>, String)>, now: i64) -> Jar {
+        let from_vault = vault
+            .as_ref()
+            .and_then(|(v, account)| v.load(account))
+            .and_then(|raw| serde_json::from_slice::<Vec<Stored>>(&raw).ok());
+        let legacy = from_vault.is_none();
+        let cookies: Vec<Stored> = from_vault.unwrap_or_else(|| {
+            file.as_ref()
+                .and_then(|f| std::fs::read(f).ok())
+                .and_then(|raw| serde_json::from_slice(&raw).ok())
+                .unwrap_or_default()
+        });
+        let live: Vec<Stored> = cookies
             .into_iter()
             .filter(|c| c.expires.is_some_and(|e| e > now))
             .take(MAX_COOKIES)
             .collect();
-        Jar {
+        let jar = Jar {
             file,
-            cookies: Mutex::new(live),
+            vault,
+            cookies: Mutex::new(live.clone()),
+        };
+        if jar.vault.is_some() && (legacy || jar.file.as_ref().is_some_and(|f| f.exists())) {
+            jar.persist(&live);
         }
+        jar
+    }
+
+    fn persist(&self, cookies: &[Stored]) {
+        let durable: Vec<&Stored> = cookies.iter().filter(|c| c.expires.is_some()).collect();
+        let Ok(raw) = serde_json::to_vec(&durable) else {
+            return;
+        };
+        if let Some((vault, account)) = &self.vault {
+            if durable.is_empty() {
+                vault.remove(account);
+                if let Some(file) = &self.file {
+                    let _ = std::fs::remove_file(file);
+                }
+                return;
+            } else if vault.save(account, &raw) {
+                if let Some(file) = &self.file {
+                    let _ = std::fs::remove_file(file);
+                }
+                return;
+            }
+        }
+        write_private(&self.file, &raw);
     }
 
     /// The `Cookie` header for a request, if any cookie applies.
@@ -218,20 +274,16 @@ impl Jar {
             }
         }
         if changed {
-            persist(&self.file, &cookies);
+            self.persist(&cookies);
         }
     }
 }
 
-fn persist(file: &Option<PathBuf>, cookies: &[Stored]) {
+fn write_private(file: &Option<PathBuf>, raw: &[u8]) {
     let Some(file) = file else { return };
-    let durable: Vec<&Stored> = cookies.iter().filter(|c| c.expires.is_some()).collect();
     if let Some(parent) = file.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
-    let Ok(raw) = serde_json::to_vec(&durable) else {
-        return;
-    };
     let mut options = std::fs::OpenOptions::new();
     options.write(true).create(true).truncate(true);
     #[cfg(unix)]
@@ -240,7 +292,7 @@ fn persist(file: &Option<PathBuf>, cookies: &[Stored]) {
         options.mode(0o600);
     }
     if let Ok(mut out) = options.open(file) {
-        let _ = std::io::Write::write_all(&mut out, &raw);
+        let _ = std::io::Write::write_all(&mut out, raw);
     }
 }
 
@@ -379,7 +431,21 @@ pub async fn forward(
     if response.status().is_redirection() {
         return Resp::error(502, "UNAVAILABLE", "the server answered with a redirect");
     }
-    let mut out = Vec::new();
+    if response
+        .content_length()
+        .is_some_and(|n| n > MAX_BODY as u64)
+    {
+        return Resp::error(
+            502,
+            "UNAVAILABLE",
+            "the server's answer is too large for this client",
+        );
+    }
+    let mut out = Vec::with_capacity(
+        response
+            .content_length()
+            .map_or(0, |n| (n as usize).min(MAX_BODY)),
+    );
     loop {
         match response.chunk().await {
             Ok(Some(chunk)) if chunk.len() <= MAX_BODY - out.len() => out.extend_from_slice(&chunk),
@@ -709,6 +775,54 @@ mod tests {
         let _ = std::fs::remove_file(&path);
     }
 
+    #[test]
+    fn the_session_rests_in_the_keychain_and_an_old_file_moves_into_it() {
+        use crate::web_vault::{Vault, fake::Memory};
+        let path = std::env::temp_dir().join(format!("mnema-vault-{}.json", std::process::id()));
+        // An earlier version left the cookie in the file.
+        std::fs::write(&path, br#"[{"name":"s","value":"v","expires":1000}]"#).unwrap();
+        let vault = Arc::new(Memory::default());
+        let jar = Jar::in_vault(Some(path.clone()), vault.clone(), 100);
+        assert_eq!(jar.header(101).unwrap(), "s=v");
+        assert!(!path.exists(), "the plaintext file is gone after the move");
+        let account = path.file_stem().unwrap().to_string_lossy().into_owned();
+        assert!(vault.load(&account).is_some());
+        // New cookies go to the keychain only.
+        jar.store(&["t=w; Max-Age=500".into()], true, 100);
+        assert!(!path.exists());
+        let again = Jar::in_vault(Some(path.clone()), vault.clone(), 200);
+        assert_eq!(again.header(201).unwrap(), "s=v; t=w");
+        // Logging out empties it.
+        again.store(&["s=; Max-Age=0".into(), "t=; Max-Age=0".into()], true, 200);
+        assert!(vault.load(&account).is_none());
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn a_keychain_that_refuses_leaves_the_private_file_as_the_fallback() {
+        use crate::web_vault::fake::Memory;
+        let path = std::env::temp_dir().join(format!("mnema-novault-{}.json", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let vault = Arc::new(Memory {
+            broken: true,
+            ..Memory::default()
+        });
+        let jar = Jar::in_vault(Some(path.clone()), vault.clone(), 100);
+        jar.store(&["s=v; Max-Age=500".into()], true, 100);
+        assert!(path.exists());
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(
+                std::fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+                0o600
+            );
+        }
+        let again = Jar::in_vault(Some(path.clone()), vault, 200);
+        assert_eq!(again.header(201).unwrap(), "s=v");
+        let _ = std::fs::remove_file(&path);
+    }
+
     /// One-shot HTTP server: returns the raw request text through the channel
     /// and answers with `reply`.
     async fn serve_once(reply: Vec<u8>) -> (Url, tokio::sync::oneshot::Receiver<String>) {
@@ -960,6 +1074,25 @@ mod tests {
                 .status,
             413
         );
+    }
+
+    #[tokio::test]
+    async fn an_answer_that_declares_more_than_the_cap_is_refused_before_it_is_read() {
+        let raw = format!(
+            "HTTP/1.1 200 OK\r\ncontent-length: {}\r\ncontent-type: application/octet-stream\r\nconnection: close\r\n\r\nxx",
+            MAX_BODY as u64 + 1
+        );
+        let (resp, _, _) = call(
+            raw.into_bytes(),
+            "GET",
+            "/api/media/x",
+            &[],
+            b"",
+            Jar::new(None, 0),
+        )
+        .await;
+        assert!(String::from_utf8_lossy(&resp.body).contains("too large for this client"));
+        assert_eq!(resp.status, 502);
     }
 
     #[tokio::test]

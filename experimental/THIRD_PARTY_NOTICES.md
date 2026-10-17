@@ -6,6 +6,8 @@ OpenMLS source is based on commit 3a3e35de3feeca8f6605143c464d5452ae584d43 under
 
 GLib 0.18.5 retains its upstream MIT license and version. [vendor/glib/](vendor/glib/) includes the two-line [upstream iterator fix](https://github.com/gtk-rs/gtk-rs-core/commit/b5a4071e439bef2b5eea76c3aa25e5ae84839e34) for RUSTSEC-2024-0429. [vendor/glib-source.json](vendor/glib-source.json) records the original archive checksum and all source file hashes. The mandatory source check and license collector verify the exact backport and include its original license text.
 
+`keyring` 3.6.3 (MIT OR Apache-2.0) stores the session cookie in the macOS Keychain or Windows Credential Manager, with its macOS and Windows platform dependencies; they are in the locked inventory and licenses/manifest.json.
+
 SQLCipher/OpenSSL source packages and their original notices are included in the locked registry inventory. No signing credentials or automatic updater are configured.
 
 The copied existing web DeepFilterNet WASM/model has an additional provenance and transitive-license qualification gap. Its existing notices are preserved; this checkpoint makes no claim that a final binary distribution license closure is complete.
