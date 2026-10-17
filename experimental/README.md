@@ -1,10 +1,32 @@
 # Mnema Desktop DEV
 
-The Windows client uses Tauri to open the full Vue web app supplied by the selected
-HTTPS Mnema instance. Enter the instance address at startup. Authentication,
-chat, uploads and WebSockets use the existing same-origin browser APIs and
-cookies. Normal production instances advertise `web_client_api: 1` in
-`/api/health`; experimental native-preview routes are not required.
+The client uses Tauri to run the Vue web app from a **signed bundle** that it
+verifies itself, instead of loading JavaScript from the selected instance.
+Enter the HTTPS address of the instance at startup. The app is served from the
+host's own origin (`mnema://localhost`, `https://mnema.localhost` on Windows);
+the host forwards `/api/` to the instance, keeps the session cookie to itself
+and relays the WebSocket, so the instance supplies data and never code.
+Normal production instances advertise `web_client_api` and `version` in
+`/api/health`; no server change is needed. Design and threat model:
+[doc/desktop-trusted-client.md](https://github.com/msch128/mnema-talk/blob/main/doc/desktop-trusted-client.md).
+
+- **Bundle source.** One signed bundle (a release asset of mnema-talk,
+  `mnema-web-<version>.zip`) is built into the executable; newer ones are
+  downloaded from the mnema-talk GitHub releases (at most every six hours;
+  `MNEMA_DESKTOP_NO_UPDATE_CHECK=1` turns it off) and kept in
+  `<app data>/web-bundles/` (newest three). Every bundle is verified against
+  the Ed25519 key pinned in `app/src/web_bundle.rs` on every start, so a
+  modified cached file makes that bundle unusable.
+- **Compatibility.** The bundle must speak the server's `web_client_api` and
+  support its release (`min_server_version`). If the server is ahead the client
+  looks for an update; otherwise it refuses with an explanation. There is no
+  fallback to the instance's JavaScript.
+- **Rollback.** Bundles below the highest `security_floor` of any verified
+  manifest are refused; an update is installed only if it is newer.
+- **Development.** `app/bundle/builtin.zip` (or `MNEMA_BUNDLE_ZIP`) is embedded
+  at build time and must be signed with the pinned key; `MNEMA_REQUIRE_BUNDLE=1`
+  fails the build without one. An instance on this machine may be entered as
+  `http://127.0.0.1:<port>`; every other address must be HTTPS.
 
 Download the clearly named Windows **Desktop DEV** ZIP from the
 [mnema-talk releases](https://github.com/msch128/mnema-talk/releases) (v0.7.3
@@ -21,8 +43,11 @@ has since verified generated-account login, persisted chat, live peer receipt
 without history fallback, and logout against an isolated normal server.
 It used PostgreSQL 17.11 and in-memory test media storage. This does not qualify
 S3 uploads, media capture, E2EE or games. [Product status](https://github.com/msch128/mnema-talk/blob/main/doc/product-status.md)
-is the current evidence reference. The instance currently supplies executable
-web code; the protected locally bundled client boundary remains outstanding.
+is the current evidence reference. The earlier acceptance runs predate the
+signed bundle: the instance then supplied the web code. The verified-bundle
+path has macOS development runs and unit tests; Windows/WebView2 acceptance
+(custom-protocol mapping, media permission prompts, gaming surfaces, sealed
+media) is still outstanding.
 
 Microphone/camera permission requests follow WebView2's browser permission flow.
 HTTPS chat links to other sites open in the default Windows browser after an

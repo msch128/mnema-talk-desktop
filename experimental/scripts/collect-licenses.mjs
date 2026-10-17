@@ -16,7 +16,7 @@ if (args.length > 1) throw new Error('Usage: collect-licenses.mjs [metadata.json
 const metadata = args.length === 1
   ? JSON.parse(readFileSync(resolve(args[0]), 'utf8'))
   : (() => {
-      const cargo = spawnSync('cargo', ['metadata', '--locked', '--features', 'shell,native-crypto', '--format-version', '1'], {
+      const cargo = spawnSync('cargo', ['metadata', '--locked', '--features', 'shell,native-crypto,web-client', '--format-version', '1'], {
         cwd: join(desktop, 'app'), encoding: 'utf8', maxBuffer: 32 * 1024 * 1024,
       });
       if (cargo.error || cargo.status !== 0) throw new Error('Locked cargo metadata failed; fetch the locked crates first.');

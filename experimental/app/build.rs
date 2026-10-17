@@ -1,10 +1,47 @@
+/// The signed web app bundle compiled into the executable: `MNEMA_BUNDLE_ZIP`,
+/// else `bundle/builtin.zip`. A build without one still compiles (the client
+/// then has to download a bundle), unless `MNEMA_REQUIRE_BUNDLE` is set, which
+/// release builds do.
+fn embed_builtin_bundle() {
+    use std::{env, fs, path::PathBuf};
+    println!("cargo:rerun-if-env-changed=MNEMA_BUNDLE_ZIP");
+    println!("cargo:rerun-if-env-changed=MNEMA_REQUIRE_BUNDLE");
+    let out = PathBuf::from(env::var_os("OUT_DIR").expect("OUT_DIR")).join("builtin-bundle.zip");
+    let explicit = env::var_os("MNEMA_BUNDLE_ZIP").map(PathBuf::from);
+    let source = explicit
+        .clone()
+        .unwrap_or_else(|| PathBuf::from("bundle/builtin.zip"));
+    println!("cargo:rerun-if-changed={}", source.display());
+    match fs::copy(&source, &out) {
+        Ok(_) => {}
+        Err(_) => {
+            let required =
+                env::var_os("MNEMA_REQUIRE_BUNDLE").is_some_and(|v| !v.is_empty() && v != "0");
+            assert!(
+                explicit.is_none() && !required,
+                "the signed web bundle {} is required but missing",
+                source.display()
+            );
+            fs::write(&out, b"").expect("write the empty bundle placeholder");
+            println!(
+                "cargo:warning=no built-in web bundle ({}); the client must download one",
+                source.display()
+            );
+        }
+    }
+}
+
 fn main() {
+    embed_builtin_bundle();
     #[cfg(feature = "shell")]
     {
         #[cfg(not(any(feature = "synthetic-media-fixture", feature = "native-crypto")))]
         const COMMANDS: &[&str] = &[
             "native_context",
             "desktop_open_instance",
+            "desktop_ws_open",
+            "desktop_ws_send",
+            "desktop_ws_close",
             "desktop_gaming_sync",
             "desktop_gaming_snapshot",
             "desktop_gaming_control",

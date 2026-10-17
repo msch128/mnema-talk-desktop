@@ -2,3 +2,8 @@
 experimental/app/target/
 **/node_modules/
 /mnema-talk/
+
+# Built-in signed web bundle staged for the build, and generated Tauri schemas
+/experimental/app/bundle/
+/experimental/app/gen/
+/mnema-talk
