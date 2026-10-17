@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Mnema Desktop uses the microphone when you speak in a Talk.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Mnema Desktop uses the camera when you turn it on in a Talk.</string>
+</dict>
+</plist>

@@ -6,10 +6,11 @@ Tauri and wraps the same Vue web app as the browser, with two additions: it
 removes server-served JavaScript from the trust equation, and it helps you stay
 in a Talk while you play.
 
-**Status: experimental, Windows first.** The browser app is the primary,
+**Status: experimental, Windows first, macOS second.** The browser app is the primary,
 fully supported client. This client is an unsigned DEV build (it updates
 itself from signed releases, see below), and its Windows/WebView2 acceptance (media permission prompts, gaming
-surfaces, sealed media on real hardware) is still outstanding. See the
+surfaces, sealed media on real hardware) is still outstanding. The macOS build has
+had less testing still (see [macOS](#macos)). See the
 [product status](https://github.com/msch128/mnema-talk/blob/main/doc/product-status.md).
 
 ## What it adds to the browser
@@ -46,6 +47,34 @@ Windows DEV ZIP attached to
 [mnema-talk releases through v0.7.3](https://github.com/msch128/mnema-talk/releases)
 still loads the server's JavaScript and predates the signed bundle.
 
+### macOS
+
+Download `Mnema-Desktop-DEV_<version>_universal.dmg` from the
+[latest release](https://github.com/msch128/mnema-talk-desktop/releases/latest)
+(one app for Apple silicon and Intel, macOS 12 or newer), open it and drag the
+app to Applications. It updates itself from then on.
+
+The app is **ad-hoc signed, not notarized**: there is no Apple Developer
+account behind it, so Gatekeeper refuses it on the first start ("cannot be
+opened because Apple cannot check it for malicious software"). Pick one:
+
+* **macOS 15 and newer:** try to open the app once, then open *System Settings
+  → Privacy & Security*, scroll to the message about Mnema Desktop DEV and
+  choose **Open Anyway**.
+* **macOS 14 and older:** right-click the app and choose **Open**, then **Open**
+  again.
+* **Terminal:** `xattr -dr com.apple.quarantine "/Applications/Mnema Desktop DEV.app"`
+
+This is needed once: the self-update downloads inside the app and does not
+mark the new version as quarantined, so later versions start without it. The
+update is still verified by the pinned minisign key (see below); Gatekeeper
+plays no part in that. The first time you speak, share the camera or share the
+screen macOS asks for the microphone, camera or screen recording permission
+(*System Settings → Privacy & Security* lists them for Mnema Desktop DEV).
+Because every version is a new ad-hoc signature, macOS may also ask once after
+an update whether the app may use its keychain entry; if you decline, you sign
+in again. There is no gaming overlay on macOS.
+
 ## Updates
 
 Two things update, both from GitHub, both verified before use:
@@ -77,8 +106,12 @@ offline backup.
    `main`.
 2. Push the tag `vX.Y.Z` on that commit. `desktop-release.yml` re-tests, builds
    the tested executable into an NSIS installer, signs it in the protected
-   environment, smoke-installs it per user on a Windows runner and publishes
-   the installer, its `.sig`, `latest.json`, a portable ZIP and `SHA256SUMS`.
+   environment, smoke-installs it per user on a Windows runner, wraps the
+   tested universal macOS executable into an ad-hoc signed `.app` (with the
+   signed `.app.tar.gz` for the updater and a `.dmg`), starts it on a macOS
+   runner, checks that every platform of `latest.json` verifies against the
+   pinned key and publishes the installer, the macOS files, their `.sig`
+   files, `latest.json`, a portable ZIP and `SHA256SUMS`.
    The release is public only after everything is attached.
 
 ### Rotating or revoking the updater key
@@ -109,10 +142,9 @@ attacker with a release. The runbook is in mnema-talk
 listed in the statement is used to verify updates, so the key in
 `tauri.conf.json` can be replaced without a client that has missed a release.
 
-macOS and Linux builds do not exist yet. The updater code is platform neutral
-(macOS would use `.app.tar.gz` updater artifacts and the same feed with a
-`darwin-aarch64` or `darwin-x86_64` entry), but only Windows is built and
-tested.
+Linux builds do not exist yet. On macOS the updater replaces the app in place
+from the signed `.app.tar.gz`; `latest.json` carries a `darwin-aarch64` and a
+`darwin-x86_64` entry that point at the same universal archive.
 
 At startup, enter the HTTPS address of your community's instance. Microsoft
 Edge WebView2 Runtime is required on Windows. Packages are unsigned, so
