@@ -1,0 +1,43 @@
+.github/workflows/desktop-client.yml
+  s_06fcde5dbef956::t_3ced1ffe2b5154 179,191
+experimental/README.md
+  s_06fcde5dbef956::t_47133eb69c2664 8-9
+experimental/THIRD_PARTY_NOTICES.md
+  s_06fcde5dbef956::t_2c15fcb011e668 9-10
+experimental/app/Cargo.lock
+  s_06fcde5dbef956::t_61dc39d1e8c5ee 640-649,673,686,2681-2694,3163,3174,3186,3198,3212,3250,3256,3268,3466,4865-4877,4885,5460,6620-6629,6647-6670,6697-6702,6709-6714,6721-6732,6739-6744,6751-6756,6763-6768,6775-6780
+experimental/app/Cargo.toml
+  s_06fcde5dbef956::t_3a2f90f8e0724b 10,50-51
+experimental/app/src/main.rs
+  s_06fcde5dbef956::t_525d1dcc76b875 19-20
+experimental/app/src/web_bundle.rs
+  s_06fcde5dbef956::t_fea4d1b9cb4030 14,328-331,348-350,358-361,369,424-427,433,446,461-465,484-486,488-498,503-504,512,519-525,551,590-596,938-939,941-944,955,984,990-1039
+experimental/app/src/web_client.rs
+  s_06fcde5dbef956::t_d68236dd43ac8a 396-400
+experimental/app/src/web_proxy.rs
+  s_06fcde5dbef956::t_983748cf3c73f4 5,11,16-21,147-148,159-160,162-177,179-188,193,195-221,223,277,282,295,434-448,778-825,1079-1097
+experimental/app/src/web_vault.rs
+  s_06fcde5dbef956::t_698628c3e677bb 1-85
+experimental/licenses/manifest.json
+  s_06fcde5dbef956::t_635001d718bc43 4,1429-1449,5158-5178,8708-8728,11706-11726,11769-11789,11874-11894,11916-11936,11958-11999,12021-12041,12063-12083,12105-12125,12147-12167
+experimental/licenses/texts/157cc607717b1b372a69f6b4526f6ad18c1279af9f3267835cca2943f37bc07d.txt
+  s_06fcde5dbef956::t_e7cef156e507f0 1-25
+experimental/licenses/texts/78ebc2ea2a1cec9cbec2e1a6fc15e73474fe22bdad7575518e7f4628651d49c4.txt
+  s_06fcde5dbef956::t_360f854a6fdb53 1-201
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c45a3fd5b7cce794486c10da44413d1c1d9661ab",
+  "prompts": {},
+  "sessions": {
+    "s_06fcde5dbef956": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "94b73314-95fe-4e96-8c43-d20b0f28358d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}
