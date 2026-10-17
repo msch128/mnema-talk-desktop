@@ -1,12 +1,143 @@
-//! The production Vue app runs at its own HTTPS origin, with browser transport.
-//! Only the bundled instance selector receives native commands.
+//! The trusted desktop client. The web app runs from a signed bundle that this
+//! host verified, at the host's own origin; the selected instance is reached
+//! through the host (`web_proxy`, `web_ws`), so it supplies data and never
+//! code. See mnema-talk `doc/desktop-trusted-client.md`.
+use crate::web_bundle::{Held, Refusal, ServerInfo, Store, TrustedKey, Version, trusted_keys};
+use crate::web_proxy::{Instance, Jar, Resp, client, forward, now, serve_bundle};
+use crate::web_ws::{Sockets, WsEvent};
 use reqwest::{Client, redirect::Policy};
 use serde::Deserialize;
-use std::time::Duration;
+use sha2::{Digest, Sha256};
+use std::{
+    borrow::Cow,
+    sync::{Arc, Mutex},
+    time::Duration,
+};
 use tauri::{Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 use url::Url;
 
 const MAX_DISCOVERY_BYTES: usize = 16 * 1024;
+
+/// The signed bundle compiled into this executable (empty when the build
+/// had none; the client then has to download one before it can start).
+static BUILTIN_BUNDLE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/builtin-bundle.zip"));
+
+/// Where the app lives. WebView2 shows a custom protocol as
+/// `https://<scheme>.localhost`, the other engines as `<scheme>://localhost`.
+#[cfg(windows)]
+const APP_URL: &str = "https://mnema.localhost/";
+#[cfg(not(windows))]
+const APP_URL: &str = "mnema://localhost/";
+
+pub fn app_url() -> Url {
+    Url::parse(APP_URL).expect("constant URL")
+}
+
+/// `scheme://host` of a URL on the app origin. (`url::Origin` is opaque for a
+/// custom scheme and never compares equal, so origins are compared as text.)
+pub fn local_origin(url: &Url) -> Option<String> {
+    let app = app_url();
+    (url.scheme() == app.scheme()
+        && url.host_str() == app.host_str()
+        && url.port().is_none()
+        && url.username().is_empty()
+        && url.password().is_none())
+    .then(|| format!("{}://{}", url.scheme(), url.host_str().unwrap_or_default()))
+}
+
+/// An app page: the app origin and one of the app's own routes.
+pub(super) fn bundled(url: &Url) -> bool {
+    local_origin(url).is_some() && super::local_route::app_path(url.path())
+}
+
+/// The state of the trusted client: verified bundles, the selected instance
+/// and its sockets.
+pub struct Trusted {
+    store: Mutex<Store>,
+    keys: Vec<TrustedKey>,
+    session: Mutex<Option<Arc<Session>>>,
+    sockets: Arc<Sockets>,
+    data_dir: Option<std::path::PathBuf>,
+}
+
+pub struct Session {
+    instance: Arc<Instance>,
+    held: Held,
+}
+
+impl Trusted {
+    fn new(data_dir: Option<std::path::PathBuf>, builtin: Option<&[u8]>) -> Trusted {
+        let keys = trusted_keys();
+        let store = Store::load(
+            data_dir.as_ref().map(|d| d.join("web-bundles")).as_deref(),
+            builtin,
+            &keys,
+        );
+        Trusted {
+            store: Mutex::new(store),
+            keys,
+            session: Mutex::new(None),
+            sockets: Arc::new(Sockets::default()),
+            data_dir,
+        }
+    }
+
+    fn session(&self) -> Option<Arc<Session>> {
+        self.session.lock().ok()?.clone()
+    }
+
+    fn set_session(&self, session: Option<Arc<Session>>) {
+        if let Ok(mut current) = self.session.lock() {
+            *current = session;
+        }
+    }
+
+    /// The bundle new windows run: the selected instance's, else the newest.
+    fn view(&self) -> Option<Held> {
+        match self.session() {
+            Some(session) => Some(session.held.clone()),
+            None => self.store.lock().ok()?.newest().cloned(),
+        }
+    }
+
+    fn jar_file(&self, origin: &Url) -> Option<std::path::PathBuf> {
+        let name = hex::encode(&Sha256::digest(origin.as_str().as_bytes())[..8]);
+        Some(
+            self.data_dir
+                .as_ref()?
+                .join("sessions")
+                .join(format!("{name}.json")),
+        )
+    }
+}
+
+/// Announces the verified bundle to the page before any of its scripts run.
+/// The app honours it only on the host's own origin.
+pub fn identity_script(app: &tauri::AppHandle, role: &str) -> String {
+    let Some(held) = app.state::<Trusted>().view() else {
+        return String::new();
+    };
+    let identity = serde_json::json!({
+        "version": held.bundle.version.to_string(),
+        "source": held.source.as_str(),
+        "webClientApi": held.bundle.web_client_api,
+        "keyId": held.bundle.key_id,
+        "commit": held.bundle.commit,
+        "role": role,
+    });
+    format!(
+        "if(window===window.top)Object.defineProperty(window,'__MNEMA_TRUSTED_APP__',{{value:Object.freeze({identity})}});"
+    )
+}
+
+fn loopback(url: &Url) -> bool {
+    match url.host() {
+        Some(url::Host::Domain(name)) => name.eq_ignore_ascii_case("localhost"),
+        Some(url::Host::Ipv4(ip)) => ip.is_loopback(),
+        Some(url::Host::Ipv6(ip)) => ip.is_loopback(),
+        None => false,
+    }
+}
 
 fn address(input: &str) -> Result<Url, String> {
     if input.len() > 2048 || input.chars().any(char::is_control) {
@@ -22,7 +153,9 @@ fn address(input: &str) -> Result<Url, String> {
         return Err("Invalid instance address.".into());
     }
     let url = Url::parse(&raw).map_err(|_| "Invalid instance address.")?;
-    if url.scheme() != "https"
+    // HTTPS, except for an instance on this very machine (a development stack).
+    let secure = url.scheme() == "https" || (url.scheme() == "http" && loopback(&url));
+    if !secure
         || url.host_str().is_none()
         || !url.username().is_empty()
         || url.password().is_some()
@@ -38,31 +171,28 @@ fn address(input: &str) -> Result<Url, String> {
     Ok(url)
 }
 
-pub(super) fn bundled(url: &Url) -> bool {
-    url.port().is_none()
-        && url.username().is_empty()
-        && url.password().is_none()
-        && ((url.scheme() == "tauri" && url.host_str() == Some("localhost"))
-            || (url.scheme() == "http" && url.host_str() == Some("tauri.localhost")))
-        && matches!(url.path(), "" | "/" | "/index.html")
-}
-
 #[derive(Deserialize)]
 struct Health {
     status: String,
-    web_client_api: u32,
+    #[serde(default)]
+    version: String,
+    web_client_api: Option<u32>,
 }
 
-fn validate_health(bytes: &[u8]) -> Result<(), String> {
+fn parse_health(bytes: &[u8]) -> Result<ServerInfo, String> {
     let health: Health = serde_json::from_slice(bytes)
         .map_err(|_| "This instance needs an update for the desktop client.")?;
-    if health.status != "ok" || health.web_client_api != 1 {
-        return Err("This instance is not compatible with this desktop client.".into());
+    match (health.status.as_str(), health.web_client_api) {
+        ("ok", Some(web_client_api)) if web_client_api >= 1 => Ok(ServerInfo {
+            version: Version::parse(&health.version),
+            web_client_api,
+        }),
+        ("ok", _) => Err("This instance needs an update for the desktop client.".into()),
+        _ => Err("This instance is not compatible with this desktop client.".into()),
     }
-    Ok(())
 }
 
-async fn compatible(origin: &Url) -> Result<(), String> {
+async fn discover(origin: &Url) -> Result<ServerInfo, String> {
     let client = Client::builder()
         .redirect(Policy::none())
         .no_proxy()
@@ -92,68 +222,224 @@ async fn compatible(origin: &Url) -> Result<(), String> {
         }
         bytes.extend_from_slice(&chunk);
     }
-    validate_health(&bytes)
+    parse_health(&bytes)
+}
+
+/// The verified bundle for this server. When the server is ahead of every
+/// bundle held, look for an update first; never fall back to the server's own
+/// JavaScript.
+async fn choose(trusted: &Trusted, server: &ServerInfo) -> Result<Held, String> {
+    let first = trusted.store.lock().map_err(|_| "busy")?.select(server);
+    match first {
+        Ok(held) => Ok(held),
+        Err(Refusal::ServerNewer) => {
+            let _ = crate::web_updates::check_and_install(&trusted.store, &trusted.keys).await;
+            trusted
+                .store
+                .lock()
+                .map_err(|_| "busy")?
+                .select(server)
+                .map_err(|refusal| refusal.to_string())
+        }
+        Err(refusal) => Err(refusal.to_string()),
+    }
+}
+
+fn into_response(resp: Resp) -> tauri::http::Response<Cow<'static, [u8]>> {
+    let mut response = tauri::http::Response::new(Cow::Owned(resp.body));
+    *response.status_mut() = tauri::http::StatusCode::from_u16(resp.status)
+        .unwrap_or(tauri::http::StatusCode::INTERNAL_SERVER_ERROR);
+    for (name, value) in &resp.headers {
+        if let (Ok(name), Ok(value)) = (
+            tauri::http::HeaderName::from_bytes(name.as_bytes()),
+            tauri::http::HeaderValue::from_str(value),
+        ) {
+            response.headers_mut().append(name, value);
+        }
+    }
+    response
+}
+
+/// Answers one request of one window.
+async fn handle(
+    app: &tauri::AppHandle,
+    label: &str,
+    request: tauri::http::Request<Vec<u8>>,
+) -> Resp {
+    let trusted = app.state::<Trusted>();
+    let method = request.method().as_str().to_owned();
+    let path = request.uri().path().to_owned();
+    let path_and_query = request
+        .uri()
+        .path_and_query()
+        .map_or(path.clone(), |p| p.as_str().to_owned());
+    let api = path == "/api" || path.starts_with("/api/");
+    match label {
+        "instance" | "attachment" => {
+            let Some(session) = trusted.session() else {
+                return plain(503, "No instance is selected.");
+            };
+            if api {
+                let headers: Vec<(String, String)> = request
+                    .headers()
+                    .iter()
+                    .filter_map(|(n, v)| Some((n.as_str().to_owned(), v.to_str().ok()?.to_owned())))
+                    .collect();
+                forward(
+                    &session.instance,
+                    &method,
+                    &path_and_query,
+                    &headers,
+                    request.into_body(),
+                )
+                .await
+            } else {
+                serve_bundle(&session.held.bundle, &method, &path)
+            }
+        }
+        "main" | "sidepeek" | "gaming-overlay" | "gaming-settings" if !api => {
+            match trusted.view() {
+                Some(held) => serve_bundle(&held.bundle, &method, &path),
+                None => plain(503, &Refusal::NoBundle.to_string()),
+            }
+        }
+        "main" | "sidepeek" | "gaming-overlay" | "gaming-settings" => plain(404, "Not found."),
+        _ => plain(403, "Forbidden."),
+    }
+}
+
+fn plain(status: u16, text: &str) -> Resp {
+    Resp {
+        status,
+        headers: vec![
+            ("content-type".into(), "text/plain; charset=utf-8".into()),
+            ("x-content-type-options".into(), "nosniff".into()),
+        ],
+        body: text.as_bytes().to_vec(),
+    }
+}
+
+fn instance_window(window: &WebviewWindow) -> Result<Arc<Session>, String> {
+    if window.label() != "instance" || !window.url().is_ok_and(|u| local_origin(&u).is_some()) {
+        return Err("Only the instance window may use this.".into());
+    }
+    window
+        .app_handle()
+        .state::<Trusted>()
+        .session()
+        .ok_or_else(|| "No instance is selected.".into())
 }
 
 #[tauri::command]
-async fn desktop_open_instance(window: WebviewWindow, address: String) -> Result<(), String> {
-    if window.label() != "main" || !bundled(&window.url().map_err(|_| "Invalid selector.")?) {
+fn desktop_ws_open(
+    window: WebviewWindow,
+    path: String,
+    on_event: tauri::ipc::Channel<WsEvent>,
+) -> Result<u64, String> {
+    let session = instance_window(&window)?;
+    if path != "/api/ws" {
+        return Err("Only /api/ws can be opened.".into());
+    }
+    let trusted = window.app_handle().state::<Trusted>();
+    crate::web_ws::open(
+        &trusted.sockets,
+        Arc::clone(&session.instance),
+        move |event| on_event.send(event).is_ok(),
+    )
+}
+
+#[tauri::command]
+fn desktop_ws_send(window: WebviewWindow, id: u64, data: String) -> Result<(), String> {
+    instance_window(&window)?;
+    window
+        .app_handle()
+        .state::<Trusted>()
+        .sockets
+        .send(id, data)
+}
+
+#[tauri::command]
+fn desktop_ws_close(window: WebviewWindow, id: u64) -> Result<(), String> {
+    instance_window(&window)?;
+    window.app_handle().state::<Trusted>().sockets.close(id);
+    Ok(())
+}
+
+/// Window options every app window shares.
+fn app_window<'a>(
+    app: &'a tauri::AppHandle,
+    label: &str,
+    role: &str,
+) -> WebviewWindowBuilder<'a, tauri::Wry, tauri::AppHandle> {
+    WebviewWindowBuilder::new(app, label, WebviewUrl::CustomProtocol(app_url()))
+        .use_https_scheme(true)
+        .initialization_script(identity_script(app, role))
+}
+
+#[tauri::command]
+async fn desktop_open_instance(
+    window: WebviewWindow,
+    state: tauri::State<'_, Trusted>,
+    address: String,
+) -> Result<(), String> {
+    if window.label() != "main" || !window.url().is_ok_and(|u| bundled(&u)) {
         return Err("Only the instance selector may open an instance.".into());
     }
     let origin = self::address(&address)?;
-    compatible(&origin).await?;
+    let server = discover(&origin).await?;
+    let held = choose(&state, &server).await?;
     if window.app_handle().get_webview_window("instance").is_some() {
         return Err("Close the current instance before selecting another.".into());
     }
-    let gaming_token = super::web_gaming::bind(window.app_handle(), origin.origin());
-    let allowed_origin = origin.origin();
-    let popup_origin = allowed_origin.clone();
+    let instance = Arc::new(Instance {
+        client: client().map_err(|_| "Unable to initialize HTTPS.")?,
+        jar: Jar::new(state.jar_file(&origin), now()),
+        origin,
+    });
+    state.set_session(Some(Arc::new(Session { instance, held })));
+    match open_instance_window(&window) {
+        Ok(()) => Ok(()),
+        Err(message) => {
+            state.set_session(None);
+            Err(message)
+        }
+    }
+}
+
+fn open_instance_window(window: &WebviewWindow) -> Result<(), String> {
     let app = window.app_handle().clone();
+    let gaming_token = super::web_gaming::bind(&app);
     let popup_app = app.clone();
-    let instance = WebviewWindowBuilder::new(&app, "instance", WebviewUrl::External(origin))
+    let instance = app_window(&app, "instance", "instance")
         .title("Mnema Desktop DEV")
         .menu(super::web_gaming::menu(&app).map_err(|_| "Gaming settings unavailable.")?)
+        // The bridge token exists only in a top-level page of the app origin
+        // (a custom origin is "null" to `location.origin`, so compare the URL).
         .initialization_script(format!(
-            "if(window===window.top&&window.location.origin==={})Object.defineProperty(window,'__MNEMA_GAMING_BRIDGE__',{{value:{}}});",
-            serde_json::to_string(&allowed_origin.ascii_serialization()).map_err(|_| "Gaming setup failed.")?,
+            "if(window===window.top&&window.location.href.startsWith({}))Object.defineProperty(window,'__MNEMA_GAMING_BRIDGE__',{{value:{}}});",
+            serde_json::to_string(app_url().as_str()).map_err(|_| "Gaming setup failed.")?,
             serde_json::to_string(&gaming_token).map_err(|_| "Gaming setup failed.")?
         ))
         .inner_size(1200.0, 820.0)
-        .on_navigation(move |url| {
-            url.scheme() == "https"
-                && url.username().is_empty()
-                && url.password().is_none()
-                && url.origin() == allowed_origin
-        })
+        // Routes of the app, and the API paths that downloads and attachment
+        // links navigate to. The proxy answers the latter.
+        .on_navigation(move |url| bundled(url) || app_api(url))
         .on_new_window(move |url, features| {
-            if url.scheme() == "https"
-                && url.username().is_empty()
-                && url.password().is_none()
-                && url.origin() == popup_origin
-            {
+            if app_api(&url) {
                 if let Some(attachment) = popup_app.get_webview_window("attachment") {
                     let _ = attachment.navigate(url);
                     let _ = attachment.set_focus();
                 } else {
-                    let allowed = popup_origin.clone();
-                    // Reuse the opener's browser environment/profile, including
-                    // same-origin cookies, without granting native capabilities.
-                    let child = WebviewWindowBuilder::new(
-                        &popup_app,
-                        "attachment",
-                        WebviewUrl::External(url),
-                    )
-                    .window_features(features)
-                    .title("Mnema Desktop DEV — Attachment")
-                    .on_navigation(move |url| {
-                        url.scheme() == "https"
-                            && url.username().is_empty()
-                            && url.password().is_none()
-                            && url.origin() == allowed
-                    })
-                    .on_new_window(|_, _| tauri::webview::NewWindowResponse::Deny)
-                    .on_permission_request(|_, _| tauri::webview::PermissionResponse::Deny)
-                    .build();
+                    // Reuse the opener's browser environment without granting
+                    // native capabilities: the child gets no identity script.
+                    let child = WebviewWindowBuilder::new(&popup_app, "attachment", WebviewUrl::CustomProtocol(url))
+                        .use_https_scheme(true)
+                        .window_features(features)
+                        .title("Mnema Desktop DEV — Attachment")
+                        .on_navigation(app_api)
+                        .on_new_window(|_, _| tauri::webview::NewWindowResponse::Deny)
+                        .on_permission_request(|_, _| tauri::webview::PermissionResponse::Deny)
+                        .build();
                     if let Ok(window) = child {
                         return tauri::webview::NewWindowResponse::Create { window };
                     }
@@ -169,6 +455,9 @@ async fn desktop_open_instance(window: WebviewWindow, address: String) -> Result
     let selector = window.clone();
     instance.on_window_event(move |event| {
         if matches!(event, tauri::WindowEvent::Destroyed) {
+            let trusted = selector.app_handle().state::<Trusted>();
+            trusted.sockets.close_all();
+            trusted.set_session(None);
             super::web_gaming::clear(selector.app_handle());
             if let Some(attachment) = selector.app_handle().get_webview_window("attachment") {
                 let _ = attachment.close();
@@ -182,11 +471,63 @@ async fn desktop_open_instance(window: WebviewWindow, address: String) -> Result
     Ok(())
 }
 
+/// A path the proxy serves for the selected instance, on the app origin.
+fn app_api(url: &Url) -> bool {
+    local_origin(url).is_some() && url.path().starts_with("/api/")
+}
+
+/// Verifies updates in the background; a bundle that arrives while no bundle
+/// is usable (first start without a built-in one) is picked up at once.
+fn refresh_in_background(app: &tauri::AppHandle) {
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let trusted = app.state::<Trusted>();
+        let had_bundle = trusted
+            .store
+            .lock()
+            .map(|s| s.newest().is_some())
+            .unwrap_or(false);
+        let due = trusted
+            .store
+            .lock()
+            .map(|s| s.check_due(now() as u64))
+            .unwrap_or(false);
+        if crate::web_updates::disabled() || (had_bundle && !due) {
+            return;
+        }
+        let installed = crate::web_updates::check_and_install(&trusted.store, &trusted.keys).await;
+        if let Ok(mut store) = trusted.store.lock() {
+            store.mark_checked(now() as u64);
+        }
+        if matches!(installed, Ok(Some(_)))
+            && !had_bundle
+            && let Some(main) = app.get_webview_window("main")
+        {
+            let _ = main.navigate(app_url());
+        }
+    });
+}
+
 pub(super) fn run() {
     let result = tauri::Builder::default()
         .manage(std::sync::Mutex::new(super::web_gaming::Gaming::default()))
+        .register_asynchronous_uri_scheme_protocol("mnema", |ctx, request, responder| {
+            let label = ctx.webview_label().to_owned();
+            let app = ctx.app_handle().clone();
+            tauri::async_runtime::spawn(async move {
+                let uri = request.uri().to_string();
+                let resp = handle(&app, &label, request).await;
+                if std::env::var_os("MNEMA_DEBUG_PROTOCOL").is_some() {
+                    eprintln!("[proto] {label} {uri} -> {}", resp.status);
+                }
+                responder.respond(into_response(resp));
+            });
+        })
         .invoke_handler(tauri::generate_handler![
             desktop_open_instance,
+            desktop_ws_open,
+            desktop_ws_send,
+            desktop_ws_close,
             super::web_gaming::desktop_gaming_sync,
             super::web_gaming::desktop_gaming_snapshot,
             super::web_gaming::desktop_gaming_control,
@@ -198,18 +539,24 @@ pub(super) fn run() {
             }
         })
         .setup(|app| {
+            let data_dir = app.path().app_local_data_dir().ok();
+            let trusted = Trusted::new(data_dir, (!BUILTIN_BUNDLE.is_empty()).then_some(BUILTIN_BUNDLE));
+            if let Ok(store) = trusted.store.lock() {
+                for name in &store.rejected {
+                    eprintln!("Mnema Desktop: refused web bundle {name}: it does not verify against the pinned keys.");
+                }
+            }
+            app.manage(trusted);
             super::web_gaming::setup(app.handle());
-            WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
+            app_window(app.handle(), "main", "selector")
                 .title("Mnema Desktop DEV — Instance")
                 .menu(super::web_gaming::menu(app.handle())?)
                 .inner_size(520.0, 520.0)
-                .initialization_script(
-                    "Object.defineProperty(window, '__MNEMA_WEB_DESKTOP__', { value: true });",
-                )
                 .on_navigation(bundled)
                 .on_new_window(|_, _| tauri::webview::NewWindowResponse::Deny)
                 .on_permission_request(|_, _| tauri::webview::PermissionResponse::Deny)
                 .build()?;
+            refresh_in_background(app.handle());
             Ok(())
         })
         .run(tauri::generate_context!());
@@ -310,24 +657,49 @@ fn open_external(url: &Url) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn url(raw: &str) -> Url {
+        Url::parse(raw).unwrap()
+    }
+
     #[test]
-    fn normal_server_contract_rejects_old_unavailable_and_future_apis() {
-        assert!(validate_health(br#"{"status":"ok","version":"dev","web_client_api":1}"#).is_ok());
+    fn health_decides_what_the_server_is() {
+        let info =
+            parse_health(br#"{"status":"ok","version":"0.7.17","web_client_api":1}"#).unwrap();
+        assert_eq!(
+            info,
+            ServerInfo {
+                version: Some(Version(0, 7, 17)),
+                web_client_api: 1
+            }
+        );
+        let dev = parse_health(br#"{"status":"ok","version":"dev","web_client_api":3}"#).unwrap();
+        assert_eq!(
+            dev,
+            ServerInfo {
+                version: None,
+                web_client_api: 3
+            }
+        );
         for raw in [
             br#"{"status":"ok","version":"0.7.0"}"#.as_slice(),
-            br#"{"status":"ok","web_client_api":0}"#,
-            br#"{"status":"ok","web_client_api":2}"#,
-            br#"{"status":"unavailable","web_client_api":1}"#,
+            br#"{"status":"ok","version":"0.7.0","web_client_api":0}"#,
             b"not JSON",
         ] {
-            assert!(validate_health(raw).is_err());
+            assert!(parse_health(raw).unwrap_err().contains("needs an update"));
         }
+        assert!(
+            parse_health(br#"{"status":"unavailable","web_client_api":1}"#)
+                .unwrap_err()
+                .contains("not compatible")
+        );
     }
+
     #[test]
     fn external_links_cannot_launch_files_scripts_or_credentialed_targets() {
-        assert!(external_allowed(
-            &Url::parse("https://example.invalid/page?q=value").unwrap()
-        ));
+        assert!(external_allowed(&url(
+            "https://example.invalid/page?q=value"
+        )));
         for raw in [
             "file:///tmp/example",
             "javascript:alert(1)",
@@ -335,9 +707,10 @@ mod tests {
             "https://user:password@example.invalid/",
             "http://example.invalid/",
         ] {
-            assert!(!external_allowed(&Url::parse(raw).unwrap()));
+            assert!(!external_allowed(&url(raw)));
         }
     }
+
     #[test]
     fn only_explicit_https_origins_are_selectable() {
         for valid in [
@@ -350,6 +723,8 @@ mod tests {
         for invalid in [
             "",
             "http://community.example",
+            "http://127.0.0.1.example",
+            "http://192.168.1.10:8080",
             "https://user@community.example",
             "https://community.example/path",
             "https://community.example?token=x",
@@ -360,22 +735,102 @@ mod tests {
             assert!(address(invalid).is_err(), "{invalid}");
         }
     }
+
+    fn app(path: &str) -> Url {
+        app_url().join(path).unwrap()
+    }
+
     #[test]
-    fn remote_and_nonroot_documents_never_gain_selector_authority() {
-        for local in [
-            "tauri://localhost",
-            "tauri://localhost/index.html",
-            "http://tauri.localhost/",
-        ] {
-            assert!(bundled(&Url::parse(local).unwrap()));
+    fn only_the_hosts_own_origin_and_its_routes_are_app_pages() {
+        let id = "11111111-1111-1111-1111-111111111111";
+        for path in ["", "/", "/index.html", "/login", "/admin/users"] {
+            assert!(bundled(&app(path)), "{path}");
         }
-        for remote in [
+        assert!(bundled(&app(&format!("/c/{id}"))));
+        assert!(bundled(&app(&format!("/v/{id}/chat"))));
+        for path in [
+            "/other.html",
+            "/api/health",
+            "/admin/unknown",
+            "/c/not-an-id",
+        ] {
+            assert!(!bundled(&app(path)), "{path}");
+        }
+        for raw in [
             "https://community.example/",
-            "tauri://localhost/other",
-            "http://tauri.localhost:9000/",
-            "tauri://user@localhost/",
+            "tauri://localhost/",
+            "http://tauri.localhost/",
+            "mnema://localhost:9000/",
+            "mnema://user@localhost/",
+            "mnema://evil/",
+            "https://mnema.localhost.evil.example/",
         ] {
-            assert!(!bundled(&Url::parse(remote).unwrap()));
+            assert!(!bundled(&url(raw)), "{raw}");
         }
+        // The other engines' form of the origin is not this platform's.
+        let other = if cfg!(windows) {
+            "mnema://localhost/"
+        } else {
+            "https://mnema.localhost/"
+        };
+        assert!(!bundled(&url(other)));
+    }
+
+    #[test]
+    fn api_paths_on_the_app_origin_are_the_proxys() {
+        assert!(app_api(&app("/api/media/1")));
+        assert!(!app_api(&app("/c/1")));
+        assert!(!app_api(&app("/apix")));
+        assert!(!app_api(&url("https://community.example/api/media/1")));
+    }
+
+    #[test]
+    fn local_origins_compare_as_text_because_custom_origins_are_opaque() {
+        let a = local_origin(&app("/")).unwrap();
+        assert_eq!(Some(a), local_origin(&app("/c/1")));
+        assert_eq!(local_origin(&url("https://community.example/")), None);
+    }
+
+    #[test]
+    fn a_client_without_any_bundle_says_so_instead_of_loading_server_code() {
+        let trusted = Trusted::new(None, None);
+        assert!(trusted.view().is_none());
+        assert!(trusted.session().is_none());
+        assert_eq!(trusted.jar_file(&url("https://a.example")), None);
+        let dir = std::env::temp_dir().join("mnema-trusted-test");
+        let with_dir = Trusted::new(Some(dir.clone()), None);
+        let file = with_dir.jar_file(&url("https://a.example/")).unwrap();
+        assert!(file.starts_with(dir.join("sessions")));
+        assert_ne!(file, with_dir.jar_file(&url("https://b.example/")).unwrap());
+    }
+
+    #[test]
+    fn responses_keep_their_status_and_headers() {
+        let resp = into_response(Resp {
+            status: 206,
+            headers: vec![
+                ("content-type".into(), "video/mp4".into()),
+                ("bad header".into(), "x".into()),
+            ],
+            body: b"abc".to_vec(),
+        });
+        assert_eq!(resp.status(), 206);
+        assert_eq!(resp.body().as_ref(), b"abc");
+        assert_eq!(resp.headers()["content-type"], "video/mp4");
+        assert_eq!(
+            resp.headers().len(),
+            1,
+            "an invalid header name is dropped, not the response"
+        );
+        assert_eq!(into_response(plain(404, "x")).status(), 404);
+        assert_eq!(
+            into_response(Resp {
+                status: 99,
+                headers: vec![],
+                body: vec![]
+            })
+            .status(),
+            500
+        );
     }
 }

@@ -29,6 +29,16 @@ on:
         required: false
         default: false
         type: boolean
+  pull_request:
+    paths:
+      - experimental/**
+      - icons/**
+      - scripts/**
+      - ui/**
+      - src/**
+      - Cargo.toml
+      - Cargo.lock
+      - .github/workflows/desktop-client.yml
   push:
     branches: [main, 'codex/**']
     paths:
@@ -157,6 +167,33 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Web tests failed' }
           npm run build
           if ($LASTEXITCODE -ne 0) { throw 'Web build failed' }
+      # The web app runs from a signed bundle (mnema-talk
+      # doc/desktop-trusted-client.md). The build embeds the one attached to
+      # the newest mnema-talk release that has one; the host verifies it with
+      # the key pinned in its source, so a bundle from anywhere else is useless.
+      - name: Stage the signed web bundle
+        if: inputs.acceptance_release == ''
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p experimental/app/bundle
+          found=""
+          for tag in $(gh release list --repo msch128/mnema-talk --limit 15 --json tagName --jq '.[].tagName'); do
+            if gh release download "$tag" --repo msch128/mnema-talk --pattern 'mnema-web-*.zip' --dir experimental/app/bundle --clobber 2>/dev/null; then
+              found="$tag"
+              break
+            fi
+          done
+          if [ -z "$found" ]; then
+            if [ -n "${{ inputs.tag }}" ]; then echo "::error::no signed web bundle in the recent mnema-talk releases"; exit 1; fi
+            echo "::warning::no mnema-talk release carries a signed web bundle yet; this build has none built in"
+            exit 0
+          fi
+          mv experimental/app/bundle/mnema-web-*.zip experimental/app/bundle/builtin.zip
+          echo "Built-in web bundle from mnema-talk $found" >> "$GITHUB_STEP_SUMMARY"
+
       - name: Check and link the canonical protected native host on Windows
         if: inputs.acceptance_release == ''
         shell: pwsh
@@ -172,6 +209,10 @@ jobs:
       - name: Check and link the actual shared-client Tauri host
         if: inputs.acceptance_release == ''
         shell: pwsh
+        env:
+          # A release build must embed a bundle; the test checks that the pinned key verifies it.
+          MNEMA_REQUIRE_BUNDLE: ${{ inputs.tag != '' && '1' || '' }}
+          MNEMA_TEST_BUNDLE_ZIP: ${{ github.workspace }}/experimental/app/bundle/builtin.zip
         run: |
           node scripts/checked-glib.mjs
           if ($LASTEXITCODE -ne 0) { throw 'Reviewed dependency source verification failed' }
@@ -217,7 +258,7 @@ jobs:
             executable = 'Mnema Desktop DEV.exe'
             executable_sha256 = (Get-FileHash -Algorithm SHA256 $devExe).Hash.ToLowerInvariant()
             shared_frontend = 'web/src'
-            instance_transport = 'same-origin-browser'
+            instance_transport = 'verified-bundle-native-proxy'
             windows_startup_checked = $true
             synthetic_fixture_features = $false
             windows_gui_qualified = $false
@@ -226,6 +267,7 @@ jobs:
             native_voice_qualified = $false
             real_games_qualified = $false
             distribution_license_closure_complete = $false
+            web_app = 'signed-bundle-verified-by-pinned-key'
             signed = $false
             automatic_updater_package = $false
           }
@@ -233,9 +275,10 @@ jobs:
           @'
           Mnema Desktop DEV — unsigned development build
 
-          This is the canonical Mnema Vue client embedded in the experimental Tauri host.
-          Enter the HTTPS address of a compatible normal Mnema instance. The full
-          web app runs at that origin using its existing browser APIs and cookies.
+          This is the canonical Mnema Vue client in the experimental Tauri host.
+          The web app runs from a signed bundle that the client verifies against a
+          key pinned in the executable; the instance supplies data, never code.
+          Enter the HTTPS address of a compatible normal Mnema instance.
 
           Windows GUI, multi-device E2EE, restored history, native voice and game
           overlays have not been fully qualified. Voice, camera and screen sharing
@@ -275,7 +318,7 @@ jobs:
           set -euo pipefail
           [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
           test "$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" --jq .object.sha)" = "$REVISION"
-          jq -e --arg revision "$REVISION" '.revision==$revision and .kind=="unsigned-development-web-desktop-client" and .signed==false and .windows_startup_checked==true and .instance_transport=="same-origin-browser"' windows/DEV-BUILD.json
+          jq -e --arg revision "$REVISION" '.revision==$revision and .kind=="unsigned-development-web-desktop-client" and .signed==false and .windows_startup_checked==true and .instance_transport=="verified-bundle-native-proxy"' windows/DEV-BUILD.json
           test "$(sha256sum 'windows/Mnema Desktop DEV.exe' | cut -d' ' -f1)" = "$(jq -r .executable_sha256 windows/DEV-BUILD.json)"
           name="Mnema-Desktop-DEV-${TAG}-windows-x64.zip"
           (cd windows && zip -qr "../$name" .)

@@ -158,7 +158,8 @@ pub struct Snapshot {
     active: bool,
 }
 pub struct Gaming {
-    origin: Option<url::Origin>,
+    /// The app origin the session is bound to (`local_origin` of its windows).
+    origin: Option<String>,
     token: String,
     voice: Voice,
     updated: Instant,
@@ -194,15 +195,6 @@ impl Default for Gaming {
 fn local(window: &WebviewWindow) -> bool {
     window.url().is_ok_and(|u| super::web_client::bundled(&u))
 }
-#[allow(dead_code)]
-fn selected(window: &WebviewWindow, g: &Gaming, token: &str) -> bool {
-    window.label() == "instance"
-        && token == g.token
-        && !token.is_empty()
-        && window
-            .url()
-            .is_ok_and(|u| u.scheme() == "https" && Some(u.origin()) == g.origin)
-}
 #[tauri::command]
 pub fn desktop_gaming_sync(
     window: WebviewWindow,
@@ -210,12 +202,13 @@ pub fn desktop_gaming_sync(
     token: String,
     voice: Voice,
 ) -> Result<(), String> {
-    let origin = window.url().map_err(|_| "Gaming unavailable.")?.origin();
+    let origin = super::web_client::local_origin(&window.url().map_err(|_| "Gaming unavailable.")?);
     let mut g = state.lock().map_err(|_| "Gaming unavailable.")?;
     if window.label() != "instance"
         || token.is_empty()
         || token != g.token
-        || Some(origin) != g.origin
+        || origin.is_none()
+        || origin != g.origin
     {
         return Err("Wrong gaming session.".into());
     }
@@ -268,7 +261,7 @@ struct Command {
     created: Instant,
     issued: f64,
     token: String,
-    origin: Option<url::Origin>,
+    origin: Option<String>,
     scope: Option<String>,
     action: String,
     focus: bool,
@@ -315,7 +308,11 @@ impl Command {
             }
             drop(current);
             if let Some(window) = next.get_webview_window("instance") {
-                if !window.url().is_ok_and(|u| Some(u.origin()) == origin) {
+                if origin.is_none()
+                    || !window
+                        .url()
+                        .is_ok_and(|u| super::web_client::local_origin(&u) == origin)
+                {
                     return;
                 }
                 let _ = window.eval(format!(
@@ -392,10 +389,10 @@ pub fn desktop_gaming_settings(
     command.dispatch(window.app_handle());
     Ok(())
 }
-pub fn bind(app: &tauri::AppHandle, origin: url::Origin) -> String {
+pub fn bind(app: &tauri::AppHandle) -> String {
     let token = uuid::Uuid::new_v4().to_string();
     if let Ok(mut g) = app.state::<Mutex<Gaming>>().lock() {
-        g.origin = Some(origin);
+        g.origin = super::web_client::local_origin(&super::web_client::app_url());
         g.token = token.clone();
         g.voice = Voice::default();
         g.overlay = false;
@@ -436,31 +433,37 @@ fn surface(
     if let Some(w) = app.get_webview_window(label) {
         return Ok(w);
     }
-    let w = WebviewWindowBuilder::new(app, label, WebviewUrl::App("index.html".into()))
-        .title(if interactive {
-            "Mnema Gaming DEV"
-        } else {
-            "Mnema Sidepeek DEV"
-        })
-        .initialization_script(format!(
-            "Object.defineProperty(window,'__MNEMA_GAMING_SURFACE__',{{value:'{label}'}});"
-        ))
-        .inner_size(
-            if interactive { 420.0 } else { 240.0 },
-            if interactive { 650.0 } else { 430.0 },
-        )
-        .decorations(false)
-        .shadow(false)
-        .transparent(true)
-        .always_on_top(true)
-        .skip_taskbar(true)
-        .visible(false)
-        .focused(false)
-        .focusable(interactive)
-        .on_navigation(super::web_client::bundled)
-        .on_new_window(|_, _| tauri::webview::NewWindowResponse::Deny)
-        .on_permission_request(|_, _| tauri::webview::PermissionResponse::Deny)
-        .build()?;
+    let w = WebviewWindowBuilder::new(
+        app,
+        label,
+        WebviewUrl::CustomProtocol(super::web_client::app_url()),
+    )
+    .use_https_scheme(true)
+    .title(if interactive {
+        "Mnema Gaming DEV"
+    } else {
+        "Mnema Sidepeek DEV"
+    })
+    .initialization_script(super::web_client::identity_script(app, "surface"))
+    .initialization_script(format!(
+        "Object.defineProperty(window,'__MNEMA_GAMING_SURFACE__',{{value:'{label}'}});"
+    ))
+    .inner_size(
+        if interactive { 420.0 } else { 240.0 },
+        if interactive { 650.0 } else { 430.0 },
+    )
+    .decorations(false)
+    .shadow(false)
+    .transparent(true)
+    .always_on_top(true)
+    .skip_taskbar(true)
+    .visible(false)
+    .focused(false)
+    .focusable(interactive)
+    .on_navigation(super::web_client::bundled)
+    .on_new_window(|_, _| tauri::webview::NewWindowResponse::Deny)
+    .on_permission_request(|_, _| tauri::webview::PermissionResponse::Deny)
+    .build()?;
     #[cfg(windows)]
     if let Ok(hwnd) = w.hwnd() {
         let color: u32 = 0xfffffffe; // DWMWA_COLOR_NONE, Windows 11 border only.
@@ -759,7 +762,7 @@ mod tests {
     #[test]
     fn global_disable_hides_surfaces_and_releases_ptt_without_reopening_held_key() {
         let mut g = Gaming {
-            origin: Some(url::Url::parse("https://example.invalid").unwrap().origin()),
+            origin: Some("https://example.invalid".into()),
             ..Gaming::default()
         };
         g.voice.connected = true;
@@ -798,7 +801,7 @@ mod tests {
     #[test]
     fn gaming_controls_require_fresh_own_voice_game_and_new_key_edges() {
         let mut g = Gaming {
-            origin: Some(url::Url::parse("https://example.invalid").unwrap().origin()),
+            origin: Some("https://example.invalid".into()),
             ..Gaming::default()
         };
         g.voice.connected = true;

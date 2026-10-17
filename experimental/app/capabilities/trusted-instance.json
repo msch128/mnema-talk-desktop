@@ -1,0 +1,12 @@
+{
+  "identifier": "trusted-instance",
+  "description": "The instance window reaches the instance's WebSocket through the host.",
+  "windows": [
+    "instance"
+  ],
+  "permissions": [
+    "allow-desktop-ws-open",
+    "allow-desktop-ws-send",
+    "allow-desktop-ws-close"
+  ]
+}

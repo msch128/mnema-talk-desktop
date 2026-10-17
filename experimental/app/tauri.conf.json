@@ -4,13 +4,14 @@
   "identifier": "com.mnema.desktop.shareddev",
   "version": "0.0.0",
   "build": {
-    "frontendDist": "../../mnema-talk/web/dist"
+    "frontendDist": "placeholder"
   },
   "app": {
     "windows": [],
     "security": {
       "capabilities": [
         "main",
+        "trusted-instance",
         "gaming-remote",
         "gaming-surfaces",
         "gaming-controls"
