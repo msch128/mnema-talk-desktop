@@ -1,0 +1,35 @@
+README.md
+  s_06fcde5dbef956::t_b50450fb1b68d2 100-106
+experimental/app/fixtures/trust.json
+  s_06fcde5dbef956::t_e32fcbd17636b8 3-5
+experimental/app/fixtures/trust.json.sig
+  s_06fcde5dbef956::t_fb70ab581da835 1
+experimental/app/src/native_updates.rs
+  s_06fcde5dbef956::t_027ca7757bac27 385-391,560-564,663-666
+experimental/app/src/native_updates/tests.rs
+  s_06fcde5dbef956::t_7fdbceb16b5388 575-588
+experimental/app/src/web_bundle.rs
+  s_06fcde5dbef956::t_8bda0f02132a4e 378-379,430,532-534,540-544,582-584,601,603,609,615,618-620,624-629,657-670,1128,1138-1142,1144-1145,1153,1164-1165,1167-1168,1174,1196-1207,1209,1216-1229
+experimental/app/src/web_client.rs
+  s_06fcde5dbef956::t_337c82745ff681 61-64,76,83,92,100,105-108,111-127,137-163,322-327,622,636-641,943-945,953,956,958,962-990
+experimental/app/src/web_trust.rs
+  s_06fcde5dbef956::t_5276a3aa1c6d3f 44,51-92,123-127,151-155,271-277,286-288,290-292,333-335,355,389,410,418,428-430,433,447-449,452,461-463,465,479,492,545,608-646
+experimental/app/src/web_updates.rs
+  s_06fcde5dbef956::t_f6c53f6942feda 110,133
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2f4f2fdae7b2004df04839439a784318c66e1cc4",
+  "prompts": {},
+  "sessions": {
+    "s_06fcde5dbef956": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "94b73314-95fe-4e96-8c43-d20b0f28358d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}
