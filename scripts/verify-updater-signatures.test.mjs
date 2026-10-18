@@ -52,10 +52,9 @@ test('checks every platform of the feed and the signed version', () => {
   const read = (name) => files[name];
   const good = feed('1.2.3', {
     'windows-x86_64': ['a-setup.exe', s.sign(files['a-setup.exe'], '1.2.3')],
-    'darwin-aarch64': ['a.app.tar.gz', s.sign(files['a.app.tar.gz'], '1.2.3')],
-    'darwin-x86_64': ['a.app.tar.gz', s.sign(files['a.app.tar.gz'], '1.2.3')]
+    'darwin-aarch64': ['a.app.tar.gz', s.sign(files['a.app.tar.gz'], '1.2.3')]
   });
-  assert.deepEqual(verifyManifest(good, s.pubkey, read, ['windows-x86_64', 'darwin-aarch64', 'darwin-x86_64']), ['windows-x86_64', 'darwin-aarch64', 'darwin-x86_64']);
+  assert.deepEqual(verifyManifest(good, s.pubkey, read, ['windows-x86_64', 'darwin-aarch64']), ['windows-x86_64', 'darwin-aarch64']);
   assert.throws(() => verifyManifest(feed('1.2.3', { 'windows-x86_64': good.platforms['windows-x86_64'] && ['a-setup.exe', s.sign(files['a-setup.exe'], '1.2.3')] }), s.pubkey, read, ['darwin-aarch64']), /no darwin-aarch64/);
   assert.throws(() => verifyManifest({ ...good, version: '1.2.4' }, s.pubkey, read), /covers version 1\.2\.3/);
   assert.throws(() => verifyManifest(good, s.pubkey, (name) => (name === 'a.app.tar.gz' ? Buffer.from('tampered') : files[name])), /darwin-aarch64 .*does not match/);

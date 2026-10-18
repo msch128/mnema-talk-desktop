@@ -301,7 +301,7 @@ jobs:
           retention-days: 1
 
   # The same host on macOS: unit tests and Clippy on every change, and for a
-  # release the universal (arm64 + x86_64) executable that desktop-release.yml
+  # release the Apple silicon (arm64) executable that desktop-release.yml
   # turns into the app bundle. The macOS build has no gaming overlay (the
   # Windows-only parts are compiled out) and is ad-hoc signed, not notarized.
   macos-client:
@@ -327,7 +327,7 @@ jobs:
       - name: Select pinned Rust toolchain
         run: |
           rustup toolchain install "$RUST_VERSION" --profile minimal --component clippy \
-            --target aarch64-apple-darwin --target x86_64-apple-darwin
+            --target aarch64-apple-darwin
           rustup default "$RUST_VERSION"
       - name: Stage the signed web bundle
         env:
@@ -345,29 +345,22 @@ jobs:
           cargo clippy --locked --manifest-path experimental/app/Cargo.toml --features shell,web-client,custom-protocol --all-targets -- -D warnings
       # A release (desktop-release.yml) bundles this tested executable; nothing
       # is rebuilt after the tests.
-      - name: Build the universal executable
+      - name: Build the Apple silicon executable
         if: inputs.tag != ''
         env:
           MNEMA_REQUIRE_BUNDLE: '1'
         run: |
           set -euo pipefail
-          for target in aarch64-apple-darwin x86_64-apple-darwin; do
-            cargo build --locked --release --target "$target" --manifest-path experimental/app/Cargo.toml --features shell,web-client,custom-protocol
-          done
-          out="$CARGO_TARGET_DIR/universal-apple-darwin/release"
-          mkdir -p "$out"
-          lipo -create -output "$out/mnema-native-client-preview" \
-            "$CARGO_TARGET_DIR/aarch64-apple-darwin/release/mnema-native-client-preview" \
-            "$CARGO_TARGET_DIR/x86_64-apple-darwin/release/mnema-native-client-preview"
-          archs="$(lipo -archs "$out/mnema-native-client-preview")"
+          cargo build --locked --release --target aarch64-apple-darwin --manifest-path experimental/app/Cargo.toml --features shell,web-client,custom-protocol
+          archs="$(lipo -archs "$CARGO_TARGET_DIR/aarch64-apple-darwin/release/mnema-native-client-preview")"
           echo "Architectures: $archs"
-          [[ " $archs " == *" arm64 "* && " $archs " == *" x86_64 "* ]] || { echo '::error::the executable is not universal'; exit 1; }
-          echo 'Unsigned universal macOS host linked from experimental/app with the signed web bundle embedded. The release workflow ad-hoc signs it; it is not notarized.' >> "$GITHUB_STEP_SUMMARY"
+          [[ "$archs" == "arm64" ]] || { echo '::error::the executable is not arm64 only'; exit 1; }
+          echo 'Unsigned Apple silicon macOS host linked from experimental/app with the signed web bundle embedded. The release workflow ad-hoc signs it; it is not notarized.' >> "$GITHUB_STEP_SUMMARY"
       - name: Upload the tested executable for the app bundle
         if: inputs.tag != ''
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: mnema-desktop-macos-exe-${{ steps.source.outputs.sha }}
-          path: experimental/app/target/universal-apple-darwin/release/mnema-native-client-preview
+          path: experimental/app/target/aarch64-apple-darwin/release/mnema-native-client-preview
           if-no-files-found: error
           retention-days: 1

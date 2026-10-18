@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 
 const [artifact, destination, target, ...extra] = process.argv.slice(2);
 const allowedTargets = new Set(['x86_64-pc-windows-msvc', 'aarch64-pc-windows-msvc',
-  'aarch64-apple-darwin', 'x86_64-apple-darwin', 'x86_64-unknown-linux-gnu', 'aarch64-unknown-linux-gnu']);
+  'aarch64-apple-darwin', 'x86_64-unknown-linux-gnu', 'aarch64-unknown-linux-gnu']);
 if (!artifact || !destination || extra.length || !allowedTargets.has(target)) {
   throw new Error('Usage: artifact-manifest.mjs <artifact> <manifest.json> <Rust target>');
 }
