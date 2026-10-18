@@ -1,0 +1,27 @@
+experimental/app/Cargo.lock
+  s_06fcde5dbef956::t_29e4dc0c161e48 3279
+experimental/app/Cargo.toml
+  s_06fcde5dbef956::t_549101455f6371 3
+experimental/app/tauri.conf.json
+  s_06fcde5dbef956::t_a2a00bea1fc202 5
+linux/package-lock.json
+  s_06fcde5dbef956::t_8168486fb2f245 3,9
+linux/package.json
+  s_06fcde5dbef956::t_9a3b0afb0bda01 5
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d343a9dd566433d39d35eaf6c87eb2b90c05c47c",
+  "prompts": {},
+  "sessions": {
+    "s_06fcde5dbef956": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "94b73314-95fe-4e96-8c43-d20b0f28358d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}
