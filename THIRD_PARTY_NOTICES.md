@@ -1,5 +1,9 @@
 # Desktop probe — third-party dependency inventory
 
+The Linux client (Electron) is a separate program with its own inventory:
+[linux/THIRD_PARTY_NOTICES.md](linux/THIRD_PARTY_NOTICES.md). What follows is the
+Tauri host (Windows, macOS) and the historical probe.
+
 Generated from `Cargo.lock` and `cargo metadata --locked --features shell`.
 This conservative inventory includes optional platform and build-time dependencies;
 it does not claim every entry is linked into every platform binary.

@@ -1,0 +1,79 @@
+# AppImage (updates itself) and .deb (updated by the package manager), for
+# Linux only; Windows and macOS stay on the Tauri host. The fuses below are
+# flipped by electron-builder after packaging.
+appId: com.mnema.desktop.shareddev
+productName: Mnema Desktop DEV
+executableName: mnema-desktop-dev
+copyright: Mnema Talk contributors
+directories:
+  output: release
+  buildResources: build
+files:
+  - package.json
+  - dist/**
+  - assets/**
+  - bundle/builtin.zip
+  - "!**/*.map"
+  - "!**/*.cts"
+  - "!**/*.ts"
+asar: true
+# The static AppImage runtime: it needs neither libfuse2 (absent on current Ubuntu) nor an unversioned libz.
+toolsets:
+  appimage: 1.0.3
+npmRebuild: false
+nodeGypRebuild: false
+buildDependenciesFromSource: false
+# The licences of Electron and Chromium stay in the package (LICENSE.electron.txt, LICENSES.chromium.html);
+# ours and the notices of what we ship go next to them.
+extraResources:
+  - from: ../LICENSE
+    to: LICENSE
+  - from: THIRD_PARTY_NOTICES.md
+    to: THIRD_PARTY_NOTICES.md
+electronFuses:
+  # ELECTRON_RUN_AS_NODE, NODE_OPTIONS, NODE_EXTRA_CA_CERTS and --inspect would each let a process run other code with this app's identity.
+  runAsNode: false
+  enableNodeOptionsEnvironmentVariable: false
+  enableNodeCliInspectArguments: false
+  enableCookieEncryption: true
+  # Enforced by Electron on macOS and Windows only; flipped so that it takes effect wherever Electron supports it.
+  enableEmbeddedAsarIntegrityValidation: true
+  onlyLoadAppFromAsar: true
+  grantFileProtocolExtraPrivileges: false
+linux:
+  syncDesktopName: true
+  target:
+    - AppImage
+    - deb
+  category: Network
+  icon: build/icon.png
+  maintainer: Mnema Talk <noreply@users.noreply.github.com>
+  synopsis: Desktop client for Mnema Talk
+  description: Runs the signed web app of Mnema Talk, a lightweight self-hosted community server, and reaches the instance through the client.
+  desktop:
+    entry:
+      Name: Mnema Desktop DEV
+      Comment: Mnema Talk
+      Categories: Network;Chat;InstantMessaging;
+      StartupWMClass: mnema-desktop-dev
+appImage:
+  artifactName: Mnema-Desktop-DEV_${version}_${arch}.${ext}
+  # Updates come from the signed feed of this client, not from AppImageUpdate.
+  category: Network
+deb:
+  artifactName: Mnema-Desktop-DEV_${version}_${arch}.${ext}
+  packageName: mnema-desktop-dev
+  depends:
+    - libgtk-3-0 | libgtk-3-0t64
+    - libnotify4
+    - libnss3
+    - libxss1
+    - libxtst6
+    - xdg-utils
+    - libatspi2.0-0 | libatspi2.0-0t64
+    - libuuid1
+    - libsecret-1-0
+    - libasound2 | libasound2t64
+    - libgbm1
+  recommends:
+    - gnome-keyring

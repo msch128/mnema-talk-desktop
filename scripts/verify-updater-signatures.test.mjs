@@ -59,3 +59,23 @@ test('checks every platform of the feed and the signed version', () => {
   assert.throws(() => verifyManifest({ ...good, version: '1.2.4' }, s.pubkey, read), /covers version 1\.2\.3/);
   assert.throws(() => verifyManifest(good, s.pubkey, (name) => (name === 'a.app.tar.gz' ? Buffer.from('tampered') : files[name])), /darwin-aarch64 .*does not match/);
 });
+
+test('checks the Linux AppImages of the feed like every other platform', () => {
+  const s = signer();
+  const files = { 'a-setup.exe': Buffer.from('exe'), 'a_x86_64.AppImage': Buffer.from('image-x64'), 'a_arm64.AppImage': Buffer.from('image-arm') };
+  const read = (name) => files[name];
+  const good = feed('1.2.3', {
+    'windows-x86_64': ['a-setup.exe', s.sign(files['a-setup.exe'], '1.2.3')],
+    'linux-x86_64': ['a_x86_64.AppImage', s.sign(files['a_x86_64.AppImage'], '1.2.3')],
+    'linux-aarch64': ['a_arm64.AppImage', s.sign(files['a_arm64.AppImage'], '1.2.3')]
+  });
+  assert.deepEqual(verifyManifest(good, s.pubkey, read, ['windows-x86_64', 'linux-x86_64', 'linux-aarch64']), ['windows-x86_64', 'linux-x86_64', 'linux-aarch64']);
+  // A required platform that the feed lacks.
+  const withoutArm = { ...good, platforms: { ...good.platforms } };
+  delete withoutArm.platforms['linux-aarch64'];
+  assert.throws(() => verifyManifest(withoutArm, s.pubkey, read, ['linux-aarch64']), /no linux-aarch64/);
+  // An AppImage that changed after signing, and one signed for another version.
+  assert.throws(() => verifyManifest(good, s.pubkey, (name) => (name === 'a_x86_64.AppImage' ? Buffer.from('tampered') : files[name])), /linux-x86_64 .*does not match/);
+  const stale = feed('1.2.3', { 'linux-x86_64': ['a_x86_64.AppImage', s.sign(files['a_x86_64.AppImage'], '1.2.2')] });
+  assert.throws(() => verifyManifest(stale, s.pubkey, read, ['linux-x86_64']), /covers version 1\.2\.2/);
+});

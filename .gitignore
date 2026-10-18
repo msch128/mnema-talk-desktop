@@ -7,3 +7,8 @@ experimental/app/target/
 /experimental/app/bundle/
 /experimental/app/gen/
 /mnema-talk
+
+# Linux client (Electron): build output and the staged signed web bundle
+/linux/dist/
+/linux/release/
+/linux/bundle/

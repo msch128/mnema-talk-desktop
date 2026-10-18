@@ -1,12 +1,13 @@
 # Mnema Talk desktop
 
 The desktop client for [Mnema Talk](https://github.com/msch128/mnema-talk), a
-lightweight, self-hosted, single-server Discord alternative. It is built with
-Tauri and wraps the same Vue web app as the browser, with two additions: it
-removes server-served JavaScript from the trust equation, and it helps you stay
-in a Talk while you play.
+lightweight, self-hosted, single-server Discord alternative. It wraps the same
+Vue web app as the browser, with two additions: it removes server-served
+JavaScript from the trust equation, and it helps you stay in a Talk while you
+play. Windows and macOS run it in a Tauri host; Linux runs it in Electron
+(Chromium), because the WebKitGTK that Tauri uses on Linux has no WebRTC.
 
-**Status: experimental, Windows first, macOS second.** The browser app is the primary,
+**Status: experimental, Windows first, macOS second, Linux third.** The browser app is the primary,
 fully supported client. This client is an unsigned DEV build (it updates
 itself from signed releases, see below), and its Windows/WebView2 acceptance (media permission prompts, gaming
 surfaces, sealed media on real hardware) is still outstanding. The macOS build has
@@ -24,7 +25,7 @@ had less testing still (see [macOS](#macos)). See the
   releases. Design and threat model:
   [desktop-trusted-client.md](https://github.com/msch128/mnema-talk/blob/main/doc/desktop-trusted-client.md).
 - **The session stays in the OS keychain** (Windows Credential Manager, macOS
-  Keychain), not in a web profile.
+  Keychain, the secret service on Linux), not in a web profile.
 - **Gaming integration (Windows).** A left-hand sidepeek shows who is in your
   Talk, who is speaking and who is sharing, and `Alt+M` opens an interactive
   overlay with Talk controls, while you have a connected Talk and a detected
@@ -75,13 +76,77 @@ Because every version is a new ad-hoc signature, macOS may also ask once after
 an update whether the app may use its keychain entry; if you decline, you sign
 in again. There is no gaming overlay on macOS.
 
+### Linux
+
+Download from the [latest release](https://github.com/msch128/mnema-talk-desktop/releases/latest)
+the file for your machine, x86_64 (also called amd64) or arm64:
+
+* **AppImage**, `Mnema-Desktop-DEV_<version>_x86_64.AppImage` or `..._arm64.AppImage`:
+  make it executable (`chmod +x`) and run it. It needs no installation and no
+  FUSE, and it updates itself (see [Updates](#updates)).
+* **.deb**, `Mnema-Desktop-DEV_<version>_amd64.deb` or `..._arm64.deb`, for
+  Debian and Ubuntu: `sudo apt install ./Mnema-Desktop-DEV_<version>_amd64.deb`.
+  It installs to `/opt/Mnema Desktop DEV` with a menu entry and an AppArmor
+  profile, and is updated by downloading a newer package; the client tells
+  you when one exists and links to the release page.
+
+At the first start enter the HTTPS address of your community's instance, as on
+the other platforms. Your data (the verified web apps, the trust statement, the
+browser storage of the app) lives in `~/.config/mnema-desktop`; `MNEMA_DESKTOP_DATA_DIR`
+points the client somewhere else.
+
+**Why Electron.** The Tauri host would need WebKitGTK on Linux, which has no
+WebRTC, so voice and screen sharing could not work. Electron ships Chromium. The
+verification of bundles, the trust statement, the rollback marks, the proxy and
+the session cookie are a port of the Tauri host to TypeScript, run against the
+same test vectors as the Rust code (`test-vectors/`); see [linux/README.md](linux/README.md)
+for the design. Windows and macOS are unchanged.
+
+**The sandbox.** Chromium isolates the page in a sandbox that needs
+unprivileged user namespaces. Ubuntu 24.04 and newer restrict them by default
+(AppArmor), and the AppImage launcher then silently drops the sandbox. The
+client **refuses to start without the sandbox** and says so. Use the `.deb`
+(its AppArmor profile permits the app), or allow namespaces
+(`sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0`), or accept the
+risk with `MNEMA_DESKTOP_ALLOW_NO_SANDBOX=1`.
+
+**The session.** The session cookie is kept encrypted with a key in the secret
+service (GNOME Keyring, KWallet, anything that speaks libsecret). Without a
+secret service Chromium would only use a fixed password, which is no protection,
+so the client falls back to a private file (mode 600) in its data directory, as
+the other platforms do where no keychain exists: copies of the profile and
+backups that cannot read that file do not carry the session, but another
+program of your user can. `MNEMA_DESKTOP_NO_VAULT=1` chooses the file on
+purpose.
+
+**Wayland and screen sharing.** The client asks Chromium to pick Wayland on a
+Wayland session (`--ozone-platform-hint=auto`) and X11 otherwise. On Wayland, screen sharing goes
+through PipeWire and the desktop portal: you need `xdg-desktop-portal` and the
+backend for your desktop (`xdg-desktop-portal-gnome`, `-kde` or `-wlr`) and
+PipeWire; the portal's own dialog asks which screen or window to share. On X11
+the client shows its own list with previews. Sharing the **sound** of a screen
+is not available on Linux (Electron captures system audio only on Windows and
+macOS); the microphone and camera work as in any Chromium. Hardware video
+encoding is Chromium's, and is off on many Linux setups; where the driver
+supports it, `--enable-features=VaapiVideoEncoder` turns on VA-API.
+
+**Private certificate authorities.** Certificates are checked against the
+system store, like the other platforms, so a community on a private CA works
+once the CA is installed system-wide (`update-ca-certificates` on Debian and
+Ubuntu). `NODE_EXTRA_CA_CERTS` is deliberately switched off in the program.
+
+**Not available.** The gaming overlay is Windows only. `MNEMA_DEBUG_PROTOCOL=1`
+logs what the client serves. A packaged client does not open a remote debugging
+port and does not accept `ELECTRON_RUN_AS_NODE`, `NODE_OPTIONS` or `--inspect`.
+
 ## Updates
 
 Two things update, both from GitHub, both verified before use:
 
 * **The web app** (the signed bundle) as described in
   [doc/desktop-trusted-client.md](https://github.com/msch128/mnema-talk/blob/main/doc/desktop-trusted-client.md).
-* **The program itself** through the official Tauri updater. The client checks
+* **The program itself** through the official Tauri updater (Windows, macOS)
+  or, on Linux, the same signed feed read by the Electron client (below). The client checks
   `releases/latest/download/latest.json` of this repository at every start and
   then every six hours (the same interval as the bundles). When a newer
   version exists, a small window offers **Update now** (download, install,
@@ -101,7 +166,8 @@ offline backup.
 ### Releasing
 
 1. Raise the version in `experimental/app/tauri.conf.json`,
-   `experimental/app/Cargo.toml` and `experimental/app/Cargo.lock` together
+   `experimental/app/Cargo.toml` and `experimental/app/Cargo.lock`, and in
+   `linux/package.json` and `linux/package-lock.json`, together
    (`scripts/check-release-version.mjs vX.Y.Z` checks this) and merge it to
    `main`.
 2. Push the tag `vX.Y.Z` on that commit. `desktop-release.yml` re-tests, builds
@@ -109,9 +175,12 @@ offline backup.
    environment, smoke-installs it per user on a Windows runner, wraps the
    tested Apple silicon macOS executable into an ad-hoc signed `.app` (with the
    signed `.app.tar.gz` for the updater and a `.dmg`), starts it on a macOS
-   runner, checks that every platform of `latest.json` verifies against the
-   pinned key and publishes the installer, the macOS files, their `.sig`
-   files, `latest.json`, a portable ZIP and `SHA256SUMS`.
+   runner, builds and tests the Linux client on x86_64 and arm64 runners,
+   signs the two AppImages in the protected environment with the same updater
+   key, checks that every platform of `latest.json` verifies against the
+   pinned key and publishes the installer, the macOS files, the AppImages and
+   `.deb` packages, their `.sig` files, `latest.json`, a portable ZIP and
+   `SHA256SUMS`.
    The release is public only after everything is attached.
 
 ### Rotating or revoking the updater key
@@ -144,11 +213,29 @@ attacker with a release. The runbook is in mnema-talk
 listed in the statement is used to verify updates, so the key in
 `tauri.conf.json` can be replaced without a client that has missed a release.
 
-Linux builds do not exist yet. On macOS the updater replaces the app in place
-from the signed `.app.tar.gz`; `latest.json` carries a `darwin-aarch64` entry.
+On macOS the updater replaces the app in place from the signed
+`.app.tar.gz`; `latest.json` carries a `darwin-aarch64` entry.
+
+On Linux the feed carries `linux-x86_64` and `linux-aarch64` entries that name
+the signed AppImages. Tauri clients look up their own platform and ignore these
+(the entries use the same fields, so nothing in the file changed for them). The
+Electron client applies the same rules as the Tauri updater, in TypeScript: the
+minisign signature must verify against the pinned key (or a replacement key
+the trust statement lists, and never a revoked one), the version recorded inside
+the signature must equal the announced one, the version must be newer than the
+running one, the download must be an HTTPS URL on `github.com`, and nothing new
+is installed without a trust statement fetched in the current run. The window
+offers the same choices (**Update now**, **On next start**, **Skip this version**).
+**Update now** replaces the AppImage file it was started from (a failed write
+leaves the installed one untouched) and restarts it; **On next start** keeps the
+verified AppImage and installs it, after verifying it again, at the next start.
+A `.deb` installation is owned by the package manager: the client announces
+the version and links to the release page instead. The AppImage has to be in a
+directory you can write to.
 
 At startup, enter the HTTPS address of your community's instance. Microsoft
-Edge WebView2 Runtime is required on Windows; macOS uses the system WebKit. Packages are unsigned, so
+Edge WebView2 Runtime is required on Windows; macOS uses the system WebKit;
+Linux brings its own Chromium. Packages are unsigned, so
 SmartScreen warns, and a checksum only detects a damaged download; it does not
 prove who built it.
 
@@ -157,6 +244,8 @@ prove who built it.
 | Path | What |
 |---|---|
 | `experimental/app` | The Tauri host: instance selector, bundle verification, proxy, keychain, gaming surfaces |
+| `linux` | The Linux client (Electron): the same verification, proxy and updater in TypeScript; AppImage and .deb |
+| `test-vectors` | Cases shared by the Rust host and the Linux client: bundles, rollback marks, trust statements, proxy rules, minisign |
 | `experimental/crates`, `experimental/vendor` | Native broker and crypto research, preserved but not selected by the shipped build |
 | `src`, `ui`, `scripts` | The historical feasibility probe and its tooling (below) |
 | `licenses`, `THIRD_PARTY_NOTICES.md` | Dependency licenses shipped with a build |

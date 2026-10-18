@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mnema Desktop update</title>
+<link rel="stylesheet" href="update.css">
+</head>
+<body>
+<main id="app" aria-live="polite">
+  <header>
+    <span class="mark" aria-hidden="true"></span>
+    <h1 id="title"></h1>
+  </header>
+  <p id="detail" class="detail"></p>
+  <div id="bar" class="bar" hidden role="progressbar" aria-valuemin="0" aria-valuemax="100"><span id="fill"></span></div>
+  <p id="notes" class="notes" hidden></p>
+  <div id="actions" class="actions"></div>
+  <footer>
+    <span id="version" class="mono"></span>
+    <button id="skip" class="link" type="button" hidden></button>
+  </footer>
+</main>
+<script src="update.js"></script>
+</body>
+</html>

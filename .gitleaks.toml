@@ -31,3 +31,9 @@ paths = [
 regexes = [
   '''^\s*"?libcrux-secrets(?: 0\.0\.7)?",\s*"libcrux-sha3"[,]?\s*$'''
 ]
+
+[[rules.allowlists]]
+description = "Shared test vectors of the Linux client and the Tauri host: public keys, signatures and statements made from throwaway one-byte seeds"
+paths = [
+  '''^test-vectors/[a-z]+\.json$'''
+]
