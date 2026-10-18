@@ -13,6 +13,7 @@ import { discover } from './discover.ts'
 import { Limits, type Instance } from './proxy.ts'
 import { PINNED_BUNDLE_KEYS, ROOT_PUB } from './pinned.ts'
 import { Sockets } from './sockets.ts'
+import { compareVersions } from './version.ts'
 import { type Held, type ServerInfo, Store, refusalText } from './store.ts'
 import { TrustError, TrustState, type Statement, rootKey, statementCaps } from './trust.ts'
 import { checkAndInstall as installNewer, fetchTrust as fetchStatement, updatesDisabled } from './updates.ts'
@@ -98,10 +99,16 @@ export class Trusted {
     const statement = this.trust.statement()
     const caps = statement ? statementCaps(statement) : new Map()
     this.keys = this.trust.effectiveKeys(this.deps.pinned())
-    const dropped = this.store.reconcile(this.keys)
+    const before = this.store.held().length
+    this.store.reconcile(this.keys)
     this.store.applyCaps(caps)
+    const dropped = this.store.held().length < before
+    // A bundle withdrawn by a revoked key or a cap stops running, whatever withdrew it.
     const session = this.current
-    if (dropped && session && !this.keys.some((k) => k.id === session.held.bundle.keyId)) this.closeSession()
+    if (session && !this.store.held().some((h) => h.bundle.keyId === session.held.bundle.keyId && compareVersions(h.bundle.version, session.held.bundle.version) === 0)) {
+      this.sockets.closeAll()
+      this.closeSession()
+    }
     return dropped
   }
 
