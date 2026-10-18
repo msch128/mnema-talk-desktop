@@ -361,7 +361,7 @@ jobs:
             "$CARGO_TARGET_DIR/x86_64-apple-darwin/release/mnema-native-client-preview"
           archs="$(lipo -archs "$out/mnema-native-client-preview")"
           echo "Architectures: $archs"
-          case " $archs " in *" arm64 "*" x86_64 "* | *" x86_64 "*" arm64 "*) ;; *) echo '::error::the executable is not universal'; exit 1 ;; esac
+          [[ " $archs " == *" arm64 "* && " $archs " == *" x86_64 "* ]] || { echo '::error::the executable is not universal'; exit 1; }
           echo 'Unsigned universal macOS host linked from experimental/app with the signed web bundle embedded. The release workflow ad-hoc signs it; it is not notarized.' >> "$GITHUB_STEP_SUMMARY"
       - name: Upload the tested executable for the app bundle
         if: inputs.tag != ''
