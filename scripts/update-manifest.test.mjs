@@ -52,7 +52,7 @@ test('adds the Linux AppImages next to the Tauri platforms without touching thei
       { platform: 'linux-aarch64', name: 'Mnema-Desktop-DEV_0.2.0_arm64.AppImage', signature: linuxSignature }
     ]
   });
-  assert.deepEqual(LINUX_PLATFORMS, ['linux-x86_64', 'linux-aarch64']);
+  assert.deepEqual(LINUX_PLATFORMS, ['linux-x86_64', 'linux-aarch64', 'linux-x86_64-deb', 'linux-aarch64-deb']);
   assert.deepEqual(Object.keys(m.platforms), ['windows-x86_64', 'darwin-aarch64', 'linux-x86_64', 'linux-aarch64']);
   assert.equal(m.platforms['linux-x86_64'].url, 'https://github.com/msch128/mnema-talk-desktop/releases/download/v0.2.0/Mnema-Desktop-DEV_0.2.0_x86_64.AppImage');
   assert.equal(m.platforms['linux-x86_64'].signature, linuxSignature);
@@ -65,8 +65,25 @@ test('refuses Linux entries that are not plain', () => {
   const linuxSignature = Buffer.from('untrusted comment: linux signature from tauri secret key\n'.repeat(3)).toString('base64');
   const entry = { platform: 'linux-x86_64', name: 'a.AppImage', signature: linuxSignature };
   assert.doesNotThrow(() => buildManifest({ ...ok, linux: [entry] }));
-  for (const bad of [{ platform: 'linux-riscv64' }, { platform: 'windows-x86_64' }, { name: 'a.deb' }, { name: '../a.AppImage' }, { name: 'a b.AppImage' }, { signature: 'short' }]) {
+  for (const bad of [{ platform: 'linux-riscv64' }, { platform: 'windows-x86_64' }, { name: 'a.deb' }, { platform: 'linux-x86_64-deb' }, { name: '../a.AppImage' }, { name: 'a b.AppImage' }, { signature: 'short' }]) {
     assert.throws(() => buildManifest({ ...ok, linux: [{ ...entry, ...bad }] }), Error, JSON.stringify(bad));
   }
   assert.throws(() => buildManifest({ ...ok, linux: [entry, entry] }), /twice/);
+});
+
+test('adds the .deb entries under their own keys and leaves every other entry byte-identical', () => {
+  const sig = Buffer.from('untrusted comment: linux signature from tauri secret key\n'.repeat(3)).toString('base64');
+  const base = buildManifest({ ...ok, linux: [{ platform: 'linux-x86_64', name: 'a.AppImage', signature: sig }] });
+  const m = buildManifest({
+    ...ok,
+    linux: [
+      { platform: 'linux-x86_64', name: 'a.AppImage', signature: sig },
+      { platform: 'linux-x86_64-deb', name: 'a_amd64.deb', signature: sig },
+      { platform: 'linux-aarch64-deb', name: 'a_arm64.deb', signature: sig }
+    ]
+  });
+  for (const key of Object.keys(base.platforms)) assert.deepEqual(m.platforms[key], base.platforms[key]);
+  assert.match(m.platforms['linux-x86_64-deb'].url, /\/a_amd64\.deb$/);
+  assert.throws(() => buildManifest({ ...ok, linux: [{ platform: 'linux-x86_64-deb', name: 'a.AppImage', signature: sig }] }), /\.deb/);
+  assert.throws(() => buildManifest({ ...ok, linux: [{ platform: 'linux-x86_64', name: 'a.deb', signature: sig }] }), /AppImage/);
 });

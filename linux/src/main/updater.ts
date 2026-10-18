@@ -3,7 +3,9 @@
  * key and feed, the trust statement, the AppImage that gets replaced, and the
  * restart.
  */
-import { app } from 'electron'
+import { app, dialog, shell } from 'electron'
+import { existsSync } from 'node:fs'
+import { findPkexec, installDeb, isDebInstall, runCommand } from '../core/debinstall.ts'
 import { UPDATER_ENDPOINTS, UPDATER_PUBKEY } from '../core/pinned.ts'
 import { SelfUpdater, POLL_MS, menuText, platformKey, replaceAppImage } from '../core/selfupdate.ts'
 import { updatesDisabled } from '../core/updates.ts'
@@ -17,23 +19,47 @@ function appImagePath(): string | null {
   return path && path.length > 0 ? path : null
 }
 
+/** Installed from the `.deb`: the package manager installs the verified update. */
+function debInstalled(): boolean {
+  return isDebInstall(process.execPath, process.env)
+}
+
 export function createUpdater(ctx: Context, onRestart: () => void): SelfUpdater {
   const image = appImagePath()
+  const deb = image === null && debInstalled()
   let shown = ''
   return new SelfUpdater({
     current: app.getVersion(),
     dir: app.getPath('userData'),
     endpoints: UPDATER_ENDPOINTS.map((e) => new URL(e)),
     pubkey: UPDATER_PUBKEY,
-    platform: platformKey(),
+    platform: platformKey(process.platform, process.arch, deb),
     statement: () => ctx.trusted.statement(),
     installsAllowed: () => ctx.trusted.fresh(),
     trustRound: () => ctx.trusted.trustRound(),
     install: (bytes) => {
+      if (deb) {
+        return installDeb(bytes, {
+          run: runCommand,
+          hasPkexec: () => findPkexec(existsSync),
+          open: async (path) => { const error = await shell.openPath(path); if (error) throw new Error('could not open the package') },
+        }).then((result) => (result === 'handoff' ? 'handoff' as const : undefined))
+      }
       if (!image) return Promise.reject(new Error('not an AppImage'))
       replaceAppImage(image, bytes)
       return Promise.resolve()
     },
+    confirmStart: deb
+      ? async (version) => (await dialog.showMessageBox({
+        type: 'question',
+        title: 'Mnema Desktop update',
+        message: `Install Mnema Desktop ${version} now?`,
+        detail: 'The update was verified. Installing it needs your password, then Mnema Desktop starts again. Choose "Later" to start the current version and be asked again next time.',
+        buttons: ['Install now', 'Later'],
+        defaultId: 0,
+        cancelId: 1,
+      })).response === 0
+      : undefined,
     restart: () => {
       onRestart()
       if (image) app.relaunch({ execPath: image, args: process.argv.slice(1) })
@@ -42,7 +68,7 @@ export function createUpdater(ctx: Context, onRestart: () => void): SelfUpdater 
     },
     now: () => Math.floor(Date.now() / 1000),
     githubOnly: true,
-    external: image === null,
+    external: image === null && !deb,
     onChange: (snapshot) => {
       // The menu says only whether something waits; progress does not rebuild it.
       const label = menuText(snapshot.phase)

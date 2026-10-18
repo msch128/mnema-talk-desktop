@@ -14,9 +14,9 @@
  * "On next start" keeps the verified package on disk. It is verified again
  * against a freshly fetched feed before it runs.
  *
- * The program is the AppImage: installing replaces that one file. A `.deb` is
- * owned by the package manager, so for it the client only announces the
- * version and points to the release page.
+ * The program is the AppImage: installing replaces that one file. A `.deb`
+ * install is updated through the package manager (`debinstall.ts`) from its own
+ * feed entry (`linux-<arch>-deb`); other installations only get the release page.
  */
 import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
@@ -83,10 +83,11 @@ export function downloadUrlOk(url: URL): boolean {
 }
 
 /** The `{os}-{arch}` key of the feed for this machine. */
-export function platformKey(platform: string = process.platform, arch: string = process.arch): string | null {
+export function platformKey(platform: string = process.platform, arch: string = process.arch, deb = false): string | null {
   if (platform !== 'linux') return null
-  if (arch === 'x64') return 'linux-x86_64'
-  if (arch === 'arm64') return 'linux-aarch64'
+  const suffix = deb ? '-deb' : ''
+  if (arch === 'x64') return `linux-x86_64${suffix}`
+  if (arch === 'arm64') return `linux-aarch64${suffix}`
   return null
 }
 
@@ -187,7 +188,9 @@ export interface UpdaterEnv {
   /** Fetches (a fresh) trust statement; resolves when the attempt is over. */
   trustRound?(): Promise<unknown>
   /** Replaces the installed program with the verified package. */
-  install?(bytes: Buffer, version: string): Promise<void>
+  install?(bytes: Buffer, version: string): Promise<void | 'handoff'>
+  /** Asks before a kept package is installed at start (the installer needs the user's password). */
+  confirmStart?(version: string): Promise<boolean>
   /** Starts the new version and quits this one. */
   restart?(): void
   now(): number
@@ -387,7 +390,11 @@ export class SelfUpdater {
     this.change(() => { this.snap.phase = 'installing' })
     try {
       if (!this.env.install) throw new FailureError('install')
-      await this.env.install(bytes, update.version)
+      if ((await this.env.install(bytes, update.version)) === 'handoff') {
+        // The system's installer finishes the job; nothing to restart here.
+        this.change(() => { this.busy = false; this.snap.phase = 'available'; this.snap.mode = null })
+        return
+      }
       this.env.restart?.()
     } catch {
       this.fail('install')
@@ -489,10 +496,14 @@ export class SelfUpdater {
     }
     const prepared = await this.preparePending()
     if (!prepared) return false
+    if (this.env.confirmStart && !(await this.env.confirmStart(prepared.update.version))) return false
     this.change(() => { this.snap.phase = 'installing'; this.snap.version = prepared.update.version })
     try {
       if (!this.env.install) throw new FailureError('install')
-      await this.env.install(prepared.bytes, prepared.update.version)
+      if ((await this.env.install(prepared.bytes, prepared.update.version)) === 'handoff') {
+        this.discardPending()
+        return true
+      }
       this.env.restart?.()
     } catch {
       this.discardPending()

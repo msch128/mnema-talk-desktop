@@ -32,7 +32,18 @@ The same as the Tauri host (the design and threat model are in mnema-talk
   answers that could run as a document become sandboxed downloads, bodies are
   bounded by the upload limit the instance announces. WebSockets are opened by
   the host.
-* **Signed self-update** of the AppImage with the same minisign key and rules.
+* **Signed self-update** of the AppImage and of the `.deb` install with the same
+  minisign key and rules. The `.deb` has its own feed keys (`linux-x86_64-deb`,
+  `linux-aarch64-deb`) that Tauri clients and the AppImage never read. The
+  package is verified (signature, version bound into it, strictly newer) before
+  anything else, kept in a private `0700` temporary directory and installed with
+  `pkexec apt-get install -y <file>` (arguments, no shell; `pkexec dpkg -i` if
+  apt-get fails, the software center via `xdg-open` if pkexec is missing).
+  "Install on next start" asks before the installer's password prompt appears,
+  and runs before any window opens. A `.deb` install is recognised by running
+  from `/opt` without `APPIMAGE`; the privileged step trusts the user's own
+  account not to swap the file in its private directory between verification and
+  install.
 
 Added by Electron: context isolation, the renderer sandbox (a start without it is
 refused), no Node in any page, a CSP of the Mnema SPA, a privileged secure
