@@ -1,0 +1,33 @@
+/* Mnema Forest palette, as the update window. */
+:root {
+  color-scheme: dark;
+  --canvas: #0F1110;
+  --surface: #1A1E1C;
+  --hairline: #242826;
+  --border: #2B2F2D;
+  --text: #E6EAE8;
+  --muted: #A3B3AA;
+  --accent: #2DA771;
+  --accent-hover: #36BD81;
+  --accent-ink: #0A0A0B;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body { background: var(--canvas); color: var(--text); font: 14px/1.45 Inter, system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+main { display: flex; flex-direction: column; gap: 14px; height: 100%; padding: 20px 22px 16px; }
+header { display: flex; align-items: center; gap: 10px; }
+.mark { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); flex: none; }
+h1 { margin: 0; font-size: 17px; font-weight: 600; letter-spacing: -0.01em; }
+.detail { margin: 0; color: var(--muted); }
+.sources { flex: 1; min-height: 0; overflow: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; align-content: start; }
+.source { display: flex; flex-direction: column; gap: 6px; padding: 8px; text-align: left; background: var(--surface); border: 1px solid var(--hairline); border-radius: 8px; color: var(--text); font: inherit; cursor: pointer; }
+.source:hover { border-color: var(--border); }
+.source[aria-selected="true"] { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.source img { width: 100%; aspect-ratio: 16 / 9; object-fit: contain; background: #000; border-radius: 4px; }
+.source span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.actions { display: flex; gap: 8px; justify-content: flex-end; }
+button { font: inherit; cursor: pointer; border-radius: 8px; padding: 8px 14px; border: 1px solid var(--border); background: var(--surface); color: var(--text); }
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
+button.primary:hover:not(:disabled) { background: var(--accent-hover); }
+button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button:disabled { opacity: .5; cursor: default; }

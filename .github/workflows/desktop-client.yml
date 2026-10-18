@@ -41,6 +41,7 @@ on:
       - experimental/**
       - icons/**
       - scripts/**
+      - test-vectors/**
       - ui/**
       - src/**
       - Cargo.toml
@@ -52,6 +53,7 @@ on:
       - experimental/**
       - icons/**
       - scripts/**
+      - test-vectors/**
       - ui/**
       - src/**
       - Cargo.toml

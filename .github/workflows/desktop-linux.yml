@@ -1,0 +1,155 @@
+name: Linux client
+
+# The Electron client for Linux (linux/): the same signed web app and the same
+# verification as the Tauri host, ported to TypeScript and checked against the
+# vectors in test-vectors/. Tauri's WebKitGTK has no WebRTC on Linux, so this
+# platform runs Chromium; Windows and macOS stay on Tauri.
+#
+# On every change: lint, types, the shared vectors, unit tests, an end-to-end
+# run of the development app, and an end-to-end run of the packaged app, on
+# x86_64 and arm64. For a release (desktop-release.yml) it also builds the
+# AppImage and the .deb; signing the AppImage for the updater happens there,
+# in the protected environment.
+on:
+  workflow_call:
+    inputs:
+      ref:
+        required: true
+        type: string
+      tag:
+        required: true
+        type: string
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - linux/**
+      - test-vectors/**
+      - icons/**
+      - scripts/**
+      - experimental/app/fixtures/**
+      - experimental/app/tauri.conf.json
+      - .github/workflows/desktop-linux.yml
+  push:
+    branches: [main, 'codex/**']
+    paths:
+      - linux/**
+      - test-vectors/**
+      - icons/**
+      - scripts/**
+      - experimental/app/fixtures/**
+      - experimental/app/tauri.conf.json
+      - .github/workflows/desktop-linux.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: linux-client-${{ inputs.tag || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  linux-client:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: x64
+            unpacked: linux-unpacked
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+            unpacked: linux-arm64-unpacked
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: linux
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.ref || github.sha }}
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 26
+          cache: npm
+          cache-dependency-path: linux/package-lock.json
+      # Dependencies are installed without install scripts; the only one that
+      # is needed, Electron's download of its binary, runs explicitly.
+      - name: Install dependencies
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          node node_modules/electron/install.js
+      - name: Shipped dependencies have no known high advisory
+        run: npm audit --omit=dev --audit-level=high
+      - name: Lint and types
+        run: |
+          npm run lint
+          npm run typecheck
+      - name: Shared vectors are current, unit tests
+        run: |
+          npm run vectors:check
+          npm test
+      # The web app runs from a signed bundle. The build embeds the one attached
+      # to the newest mnema-talk release that has one; the client verifies it
+      # with the key pinned in its source, so a bundle from anywhere else is useless.
+      - name: Stage the signed web bundle
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          BUNDLE_DIR: linux/bundle
+        run: bash scripts/stage-web-bundle.sh
+      - name: Build
+        run: npm run build
+      - name: System packages for a headless display
+        working-directory: .
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends xvfb x11-utils libasound2t64
+          # Ubuntu 24.04 restricts unprivileged user namespaces, which Chromium's sandbox uses.
+          # The .deb brings an AppArmor profile for that; the development binary does not.
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - name: End to end, development app
+        if: hashFiles('linux/bundle/builtin.zip') != ''
+        run: xvfb-run -a npm run e2e
+      - name: Package (unpacked, AppImage, .deb)
+        run: npx electron-builder --linux dir AppImage deb --${{ matrix.arch }} --publish never
+      - name: End to end, packaged app
+        if: hashFiles('linux/bundle/builtin.zip') != ''
+        env:
+          MNEMA_E2E_APP: ${{ github.workspace }}/linux/release/${{ matrix.unpacked }}/mnema-desktop-dev
+        run: xvfb-run -a node --test --test-timeout=120000 "test/e2e/*.e2e.ts"
+      - name: The packaged app refuses to start unsandboxed and with a debugging port
+        env:
+          APP: ${{ github.workspace }}/linux/release/${{ matrix.unpacked }}/mnema-desktop-dev
+          MNEMA_DESKTOP_DATA_DIR: ${{ runner.temp }}/refuse
+        run: |
+          set -eu
+          xvfb-run -a bash scripts/refuse.sh 'browser sandbox is turned off' "$APP" --no-sandbox
+          xvfb-run -a bash scripts/refuse.sh 'does not open a remote debugging port' "$APP" --remote-debugging-port=0
+      - name: The AppImage and the installed .deb start and show the instance selector
+        if: hashFiles('linux/bundle/builtin.zip') != ''
+        env:
+          MNEMA_DEBUG_PROTOCOL: '1'
+          MNEMA_DESKTOP_NO_UPDATE_CHECK: '1'
+          MNEMA_DESKTOP_NO_VAULT: '1'
+          MNEMA_DESKTOP_DATA_DIR: ${{ runner.temp }}/smoke
+        run: |
+          set -eu
+          xvfb-run -a bash scripts/smoke.sh env APPIMAGE_EXTRACT_AND_RUN=1 "$(ls release/*.AppImage)"
+          sudo apt-get install -y ./release/*.deb
+          # The package installs its AppArmor profile where AppArmor is active.
+          if apparmor_status --enabled >/dev/null 2>&1; then
+            test -f /etc/apparmor.d/mnema-desktop-dev || { echo '::error::the AppArmor profile is not installed'; exit 1; }
+          fi
+          xvfb-run -a bash scripts/smoke.sh "/opt/Mnema Desktop DEV/mnema-desktop-dev"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: inputs.tag != ''
+        with:
+          name: mnema-desktop-linux-${{ matrix.arch }}
+          path: |
+            linux/release/*.AppImage
+            linux/release/*.deb
+          if-no-files-found: error
+          retention-days: 1
