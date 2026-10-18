@@ -117,6 +117,8 @@ test('duplicate names, bad names, encryption and lying headers are refused', () 
   assert.throws(() => verifyBundle(zipOf(items.map((i) => (i.name === 'app/index.html' ? { ...i, declaredSize: 3 } : i))), trusted(7)), /size does not match the manifest/)
   // Deflated entries are read like stored ones.
   assert.doesNotThrow(() => verifyBundle(zipOf(items.map((i) => ({ ...i, method: 8 as const }))), trusted(7)))
+  const compressible = entries(spec('0.8.0', { files: [['index.html', 'x'.repeat(100_000)]] })).map((e) => ({ name: e.name, body: e.body, method: 8 as const, level: 9 }))
+  assert.doesNotThrow(() => verifyBundle(zipOf(compressible), trusted(7)))
 })
 
 test('a deflated entry that inflates past its declared size is refused', () => {

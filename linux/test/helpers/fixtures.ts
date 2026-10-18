@@ -40,6 +40,8 @@ export interface ZipItem {
   body: Uint8Array
   /** 0 = stored (default), 8 = deflated. */
   method?: 0 | 8
+  /** zlib level of a deflated entry; 0 keeps the bytes the same on every zlib. */
+  level?: number
   /** Overrides, to build damaged archives. */
   crc?: number
   declaredSize?: number
@@ -54,7 +56,7 @@ export function zipOf(items: ZipItem[]): Buffer {
     const name = Buffer.from(item.name)
     const body = Buffer.from(item.body)
     const method = item.method ?? 0
-    const packed = method === 8 ? deflateRawSync(body) : body
+    const packed = method === 8 ? deflateRawSync(body, { level: item.level ?? 0 }) : body
     const crc = item.crc ?? crc32(body)
     const flags = (item.flags ?? 0) | 0x800
     const local = Buffer.alloc(30)

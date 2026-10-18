@@ -285,6 +285,21 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+  # Publishing is all or nothing. If the Linux client fails, say so plainly:
+  # `publish` is then skipped and the release stays unpublished.
+  linux-failed:
+    needs: [linux, linux-sign]
+    if: ${{ always() && (needs.linux.result != 'success' || needs.linux-sign.result != 'success') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Say what failed
+        env:
+          BUILD: ${{ needs.linux.result }}
+          SIGN: ${{ needs.linux-sign.result }}
+        run: |
+          echo "::error::The Linux client did not build, test or sign (build: $BUILD, signing: $SIGN). Nothing was published for any platform; fix the Linux job and run the release again."
+          exit 1
+
   publish:
     needs: [build, installer, macos-app, linux-sign]
     runs-on: ubuntu-latest
