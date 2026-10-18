@@ -12,8 +12,8 @@ const NAME = /^[A-Za-z0-9._-]+$/;
 // The text of a minisign .sig file, base64 encoded by the Tauri CLI.
 const SIGNATURE = /^[A-Za-z0-9+/]+={0,2}$/;
 
-// The universal macOS app serves both Mac architectures from one archive.
-export const MAC_PLATFORMS = ['darwin-aarch64', 'darwin-x86_64'];
+// The macOS app is Apple silicon only.
+export const MAC_PLATFORMS = ['darwin-aarch64'];
 
 function checkedSignature(signature, what) {
   const sig = signature.trim();

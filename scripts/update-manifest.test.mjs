@@ -27,12 +27,12 @@ test('caps the release notes', () => {
   assert.equal(buildManifest({ ...ok, notes: 'x'.repeat(5000) }).notes.length, 2000);
 });
 
-test('serves both Mac architectures from one signed archive next to Windows', () => {
+test('serves Apple silicon from one signed archive next to Windows', () => {
   const macSignature = Buffer.from('untrusted comment: mac signature from tauri secret key\n'.repeat(3)).toString('base64');
-  const m = buildManifest({ ...ok, mac: { name: 'Mnema-Desktop-DEV_0.2.0_universal.app.tar.gz', signature: `${macSignature}\n` } });
-  assert.deepEqual(Object.keys(m.platforms), ['windows-x86_64', 'darwin-aarch64', 'darwin-x86_64']);
-  for (const platform of ['darwin-aarch64', 'darwin-x86_64']) {
-    assert.equal(m.platforms[platform].url, 'https://github.com/msch128/mnema-talk-desktop/releases/download/v0.2.0/Mnema-Desktop-DEV_0.2.0_universal.app.tar.gz');
+  const m = buildManifest({ ...ok, mac: { name: 'Mnema-Desktop-DEV_0.2.0_aarch64.app.tar.gz', signature: `${macSignature}\n` } });
+  assert.deepEqual(Object.keys(m.platforms), ['windows-x86_64', 'darwin-aarch64']);
+  for (const platform of ['darwin-aarch64']) {
+    assert.equal(m.platforms[platform].url, 'https://github.com/msch128/mnema-talk-desktop/releases/download/v0.2.0/Mnema-Desktop-DEV_0.2.0_aarch64.app.tar.gz');
     assert.equal(m.platforms[platform].signature, macSignature);
   }
   assert.equal(m.platforms['windows-x86_64'].signature, signature);

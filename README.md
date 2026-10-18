@@ -49,9 +49,9 @@ still loads the server's JavaScript and predates the signed bundle.
 
 ### macOS
 
-Download `Mnema-Desktop-DEV_<version>_universal.dmg` from the
+Download `Mnema-Desktop-DEV_<version>_aarch64.dmg` from the
 [latest release](https://github.com/msch128/mnema-talk-desktop/releases/latest)
-(one app for Apple silicon and Intel, macOS 12 or newer), open it and drag the
+(Apple silicon, M1 or newer, macOS 12 or newer), open it and drag the
 app to Applications. It updates itself from then on.
 
 The app is **ad-hoc signed, not notarized**: there is no Apple Developer
@@ -107,7 +107,7 @@ offline backup.
 2. Push the tag `vX.Y.Z` on that commit. `desktop-release.yml` re-tests, builds
    the tested executable into an NSIS installer, signs it in the protected
    environment, smoke-installs it per user on a Windows runner, wraps the
-   tested universal macOS executable into an ad-hoc signed `.app` (with the
+   tested Apple silicon macOS executable into an ad-hoc signed `.app` (with the
    signed `.app.tar.gz` for the updater and a `.dmg`), starts it on a macOS
    runner, checks that every platform of `latest.json` verifies against the
    pinned key and publishes the installer, the macOS files, their `.sig`
@@ -145,8 +145,7 @@ listed in the statement is used to verify updates, so the key in
 `tauri.conf.json` can be replaced without a client that has missed a release.
 
 Linux builds do not exist yet. On macOS the updater replaces the app in place
-from the signed `.app.tar.gz`; `latest.json` carries a `darwin-aarch64` and a
-`darwin-x86_64` entry that point at the same universal archive.
+from the signed `.app.tar.gz`; `latest.json` carries a `darwin-aarch64` entry.
 
 At startup, enter the HTTPS address of your community's instance. Microsoft
 Edge WebView2 Runtime is required on Windows; macOS uses the system WebKit. Packages are unsigned, so
