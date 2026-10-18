@@ -70,11 +70,8 @@ TypeScript with shared vectors. The port won:
   also verify with the TypeScript code (the latter is a unit test, the former the
   end-to-end run).
 
-Known differences from the Rust code, all deliberate:
+Known differences from the Rust code, all deliberate (the proxy answers 502 for every 3xx, 304 included, like the Rust host):
 
-* A **304** from the instance is passed to the page. The Rust proxy treats every
-  3xx as a redirect and answers 502; a page revalidating a cached answer would
-  hit that. 3xx other than 304 are refused as before.
 * The app CSP has no `ipc:` entries (this client does not use network IPC).
 * ZIP64 and multi-disk archives are not bundles; a bundle larger than 4 GiB cannot
   exist anyway (limits are 64 MiB per file and 256 MiB in total).
@@ -149,6 +146,8 @@ Without `bundle/builtin.zip` the client still starts and has to download a bundl
 | `MNEMA_DESKTOP_ALLOW_REMOTE_DEBUGGING=1` | let a packaged client open a debugging port (the end-to-end run needs it) |
 | `MNEMA_DESKTOP_DEVTOOLS=1` | developer tools in an unpackaged run |
 | `MNEMA_E2E_APP` | run the end-to-end suite against this packaged executable |
+
+**Screen-share audio is not available on Linux** (Electron captures system audio only on Windows and macOS); screen video, microphone and camera work.
 
 ## What has been checked, and what has not
 

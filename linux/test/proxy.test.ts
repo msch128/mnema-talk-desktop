@@ -194,13 +194,11 @@ test('an answer that could run as a document becomes a download', async () => {
   assert.equal(header(resp, 'content-disposition'), undefined)
 })
 
-test('redirects and unreachable servers become gateway errors, a 304 is passed on', async () => {
+test('redirects (every 3xx, as in the Rust host) and unreachable servers become gateway errors', async () => {
   const { resp } = await call(reply(302, { location: 'https://evil.example/' }, ''), 'GET', '/api/x')
   assert.equal(resp.status, 502)
   assert.equal(header(resp, 'location'), undefined)
-  const notModified = await call(reply(304, { etag: '"a"' }, ''), 'GET', '/api/x', [['If-None-Match', '"a"']])
-  assert.equal(notModified.resp.status, 304)
-  assert.equal(notModified.request?.headers['if-none-match'], '"a"')
+  assert.equal((await call(reply(304, { etag: '"a"' }, ''), 'GET', '/api/x', [['If-None-Match', '"a"']])).resp.status, 502)
   const closed = await serve(reply(200, {}, ''))
   const origin = closed.origin
   await closed.close()

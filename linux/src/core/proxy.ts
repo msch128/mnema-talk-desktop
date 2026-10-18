@@ -331,8 +331,7 @@ async function exchange(instance: Instance, method: string, url: URL, headers: r
   }
   const status = response.status
   instance.jar.store(response.setCookie, instance.origin.protocol === 'https:', instance.now())
-  // A 304 answers a conditional request the page made; it is not a redirect.
-  if (status >= 300 && status < 400 && status !== 304) {
+  if (status >= 300 && status < 400) {
     response.destroy()
     return errorResp(502, 'UNAVAILABLE', 'the server answered with a redirect')
   }
