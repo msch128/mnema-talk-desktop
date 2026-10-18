@@ -106,6 +106,9 @@ test('pure rules: versions, skips, intervals, urls, platforms and notes', () => 
   assert.equal(platformKey('linux', 'arm64'), 'linux-aarch64')
   assert.equal(platformKey('darwin', 'arm64'), null)
   assert.equal(platformKey('linux', 'ia32'), null)
+  assert.equal(platformKey('linux', 'x64', true), 'linux-x86_64-deb')
+  assert.equal(platformKey('linux', 'arm64', true), 'linux-aarch64-deb')
+  assert.equal(platformKey('darwin', 'arm64', true), null)
   assert.equal(trimNotes('a\u0000b\nc\u0007'), 'ab\nc')
   assert.equal(trimNotes('   '), null)
   assert.equal(trimNotes('x'.repeat(5000))?.length, 2000)
@@ -332,4 +335,54 @@ test('the AppImage is replaced atomically and only by an executable', () => {
   assert.deepEqual(readFileSync(target), PKG)
   assert.equal(statSync(target).mode & 0o777, 0o755)
   assert.equal(existsSync(`${target}.new`), false)
+})
+
+const DEB = Buffer.concat([Buffer.from('!<arch>\n'), Buffer.from('deb payload')])
+
+test('the .deb install reads only its own feed entry, verifies it and refuses a downgrade', async () => {
+  const key = 'linux-x86_64-deb'
+  const server = await feed(() => ({ version: '0.2.0', package: DEB, platform: key }))
+  const appImage = harness(server, null)
+  await appImage.updater.check(false)
+  assert.equal(appImage.updater.snapshot().phase, 'idle', 'the AppImage client ignores the -deb entry')
+  const h = harness(server, null, { platform: key })
+  await h.updater.check(false)
+  await h.updater.install('now')
+  assert.deepEqual(h.installed[0]?.bytes, DEB)
+  // Tampered package and an old signed version under a new number: never installed.
+  for (const signature of [minisignSignature(signer, Buffer.from('other'), '0.2.0'), minisignSignature(signer, DEB, '0.1.5')]) {
+    const bad = harness(await feed(() => ({ version: '0.2.0', package: DEB, platform: key, signature })), null, { platform: key })
+    await bad.updater.check(false)
+    await bad.updater.install('now')
+    assert.equal(bad.updater.snapshot().error, 'verify')
+    assert.equal(bad.installed.length, 0)
+  }
+  // Same or older version than the running one is not offered.
+  const same = harness(await feed(() => ({ version: '0.1.0', package: DEB, platform: key })), null, { platform: key })
+  await same.updater.check(false)
+  assert.equal(same.updater.snapshot().phase, 'idle')
+})
+
+test('a handoff to the software center neither restarts nor reports a failure', async () => {
+  const server = await feed(() => ({ version: '0.2.0', package: DEB }))
+  const h = harness(server, null, { install: () => Promise.resolve('handoff' as const) })
+  await h.updater.check(false)
+  await h.updater.install('now')
+  assert.equal(h.restarts, 0)
+  assert.equal(h.updater.snapshot().phase, 'available')
+})
+
+test('a kept package asks before it is installed at start', async () => {
+  const server = await feed(() => ({ version: '0.2.0', package: DEB }))
+  const d = dir()
+  const first = harness(server, d)
+  await first.updater.check(false)
+  await first.updater.install('later')
+  const declined = harness(server, d, { confirmStart: () => Promise.resolve(false) })
+  assert.equal(await declined.updater.applyPending(), false)
+  assert.equal(declined.installed.length, 0)
+  assert.ok(declined.updater.hasPending())
+  const accepted = harness(server, d, { confirmStart: () => Promise.resolve(true) })
+  assert.equal(await accepted.updater.applyPending(), true)
+  assert.equal(accepted.installed.length, 1)
 })

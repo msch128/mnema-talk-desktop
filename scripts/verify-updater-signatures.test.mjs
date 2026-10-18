@@ -98,3 +98,20 @@ test('a generated feed with Linux entries still verifies for the Tauri platforms
   assert.deepEqual(verifyManifest(json, s.pubkey, read, ['windows-x86_64', 'darwin-aarch64', 'linux-x86_64', 'linux-aarch64']), ['windows-x86_64', 'darwin-aarch64', 'linux-x86_64', 'linux-aarch64']);
   for (const entry of Object.values(json.platforms)) assert.deepEqual(Object.keys(entry).sort(), ['signature', 'url']);
 });
+
+test('checks the .deb entries and keeps a .deb under a -deb key only', () => {
+  const s = signer();
+  const files = { 'a_x86_64.AppImage': Buffer.from('image'), 'a_amd64.deb': Buffer.from('deb-x64'), 'a_arm64.deb': Buffer.from('deb-arm') };
+  const read = (name) => files[name];
+  const good = feed('1.2.3', {
+    'linux-x86_64': ['a_x86_64.AppImage', s.sign(files['a_x86_64.AppImage'], '1.2.3')],
+    'linux-x86_64-deb': ['a_amd64.deb', s.sign(files['a_amd64.deb'], '1.2.3')],
+    'linux-aarch64-deb': ['a_arm64.deb', s.sign(files['a_arm64.deb'], '1.2.3')]
+  });
+  assert.deepEqual(verifyManifest(good, s.pubkey, read, ['linux-x86_64-deb', 'linux-aarch64-deb']), ['linux-x86_64', 'linux-x86_64-deb', 'linux-aarch64-deb']);
+  assert.throws(() => verifyManifest(good, s.pubkey, (name) => (name === 'a_amd64.deb' ? Buffer.from('tampered') : files[name])), /linux-x86_64-deb .*does not match/);
+  const stale = feed('1.2.3', { 'linux-x86_64-deb': ['a_amd64.deb', s.sign(files['a_amd64.deb'], '1.2.2')] });
+  assert.throws(() => verifyManifest(stale, s.pubkey, read), /covers version 1\.2\.2/);
+  const misplaced = feed('1.2.3', { 'linux-x86_64': ['a_amd64.deb', s.sign(files['a_amd64.deb'], '1.2.3')] });
+  assert.throws(() => verifyManifest(misplaced, s.pubkey, read), /-deb platform key/);
+});

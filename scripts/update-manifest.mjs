@@ -17,7 +17,9 @@ export const MAC_PLATFORMS = ['darwin-aarch64'];
 
 // The Linux client (Electron) updates its AppImage from the same feed. Tauri
 // clients look up their own platform key and ignore the rest of the map.
-export const LINUX_PLATFORMS = ['linux-x86_64', 'linux-aarch64'];
+// The .deb has its own keys (`-deb`): the installed package is updated through
+// the package manager, so Tauri clients and the AppImage never pick it up.
+export const LINUX_PLATFORMS = ['linux-x86_64', 'linux-aarch64', 'linux-x86_64-deb', 'linux-aarch64-deb'];
 
 function checkedSignature(signature, what) {
   const sig = signature.trim();
@@ -49,7 +51,8 @@ export function buildManifest({ version, repo, installerName, signature, mac, li
     if (!LINUX_PLATFORMS.includes(entry.platform)) throw new Error(`Linux platform must be one of ${LINUX_PLATFORMS.join(', ')}.`);
     if (seen.has(entry.platform)) throw new Error(`Linux platform ${entry.platform} is listed twice.`);
     seen.add(entry.platform);
-    if (!NAME.test(entry.name) || !entry.name.endsWith('.AppImage')) throw new Error('Linux package name must be a portable AppImage filename.');
+    const ext = entry.platform.endsWith('-deb') ? '.deb' : '.AppImage';
+    if (!NAME.test(entry.name) || !entry.name.endsWith(ext)) throw new Error(`Linux package name for ${entry.platform} must be a portable ${ext} filename.`);
     platforms[entry.platform] = {
       signature: checkedSignature(entry.signature, entry.platform),
       url: `https://github.com/${repo}/releases/download/v${version}/${entry.name}`
@@ -69,7 +72,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   );
   const { version, repo, installer, sig, notes, out, mac, 'mac-sig': macSig } = args;
   if (!version || !repo || !installer || !sig || !out) {
-    throw new Error('Usage: update-manifest.mjs --version X.Y.Z --repo owner/name --installer <file> --sig <file> [--mac <app.tar.gz> --mac-sig <file>] [--linux-x86_64 <AppImage> --linux-x86_64-sig <file>] [--linux-aarch64 <AppImage> --linux-aarch64-sig <file>] [--notes <file>] --out latest.json');
+    throw new Error('Usage: update-manifest.mjs --version X.Y.Z --repo owner/name --installer <file> --sig <file> [--mac <app.tar.gz> --mac-sig <file>] [--linux-x86_64 <AppImage> --linux-x86_64-sig <file>] [--linux-aarch64 <AppImage> --linux-aarch64-sig <file>] [--linux-x86_64-deb <deb> --linux-x86_64-deb-sig <file>] [--linux-aarch64-deb <deb> --linux-aarch64-deb-sig <file>] [--notes <file>] --out latest.json');
   }
   if (Boolean(mac) !== Boolean(macSig)) throw new Error('--mac and --mac-sig go together.');
   const linux = [];

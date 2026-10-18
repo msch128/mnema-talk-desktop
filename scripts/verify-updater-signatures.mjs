@@ -57,6 +57,8 @@ export function verifyManifest(manifest, pubkeyBase64, read, required = []) {
   }
   for (const [platform, entry] of Object.entries(manifest.platforms ?? {})) {
     const name = basename(new URL(entry.url).pathname);
+    // The -deb keys are for the .deb only; no other entry may point at one.
+    if (platform.endsWith('-deb') !== name.endsWith('.deb')) throw new Error(`${platform} (${name}): a .deb belongs under a -deb platform key and only there.`);
     try {
       const signed = verifyPackage(read(name), entry.signature, pubkeyBase64);
       if (signed !== manifest.version) throw new Error(`The signature covers version ${signed ?? 'none'}, the feed says ${manifest.version}.`);
