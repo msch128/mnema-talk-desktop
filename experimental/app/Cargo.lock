@@ -3276,7 +3276,7 @@ dependencies = [
 
 [[package]]
 name = "mnema-native-client-preview"
-version = "0.1.3"
+version = "0.2.0"
 dependencies = [
  "base64 0.22.1",
  "chrono",
