@@ -1,0 +1,27 @@
+.github/workflows/desktop-release.yml
+  s_06fcde5dbef956::t_bd76df2a3f05be 288-302
+linux/test/bundle.test.ts
+  s_06fcde5dbef956::t_e3665679e3a43b 120-121
+linux/test/helpers/fixtures.ts
+  s_06fcde5dbef956::t_a6c30cdbd27c6b 43-44,59
+scripts/verify-updater-signatures.test.mjs
+  s_06fcde5dbef956::t_1d661c6b01b054 5,83-100
+test-vectors/bundle.json
+  s_06fcde5dbef956::t_2f7087a80e4d02 195
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "dfac1200def02daa128734c2668cf1746c0740ba",
+  "prompts": {},
+  "sessions": {
+    "s_06fcde5dbef956": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "94b73314-95fe-4e96-8c43-d20b0f28358d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}
