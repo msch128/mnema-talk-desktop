@@ -130,16 +130,35 @@ impl Trusted {
             (trust.effective_keys(trusted_keys()), caps)
         };
         *self.keys.lock().map_err(|_| "busy")? = keys.clone();
-        let dropped = store.reconcile(&keys);
-        store.apply_caps(&caps);
+        let dropped = self.enforce(&mut store, &keys, &caps);
         drop(store);
-        if dropped
-            && let Some(session) = self.session()
-            && !keys.iter().any(|k| k.id == session.held.bundle.key_id)
+        Ok(dropped)
+    }
+
+    /// Re-checks the held bundles against the keys and caps in force and ends
+    /// a running session whose bundle (key and version) is no longer held,
+    /// whether a revoked key or a cap withdrew it. Returns whether any bundle
+    /// was withdrawn, so the caller reloads the window.
+    fn enforce(
+        &self,
+        store: &mut Store,
+        keys: &[TrustedKey],
+        caps: &std::collections::BTreeMap<u32, Version>,
+    ) -> bool {
+        let before = store.held().len();
+        store.reconcile(keys);
+        store.apply_caps(caps);
+        let dropped = store.held().len() < before;
+        if let Some(session) = self.session()
+            && !store.held().iter().any(|h| {
+                h.bundle.key_id == session.held.bundle.key_id
+                    && h.bundle.version == session.held.bundle.version
+            })
         {
+            self.sockets.close_all();
             self.set_session(None);
         }
-        Ok(dropped)
+        dropped
     }
 
     /// One trust round with the result of a fetch: applies the statement,
@@ -972,6 +991,37 @@ mod tests {
         assert_eq!(before, after);
         // Applying it again is a no-op.
         assert_eq!(trusted.apply_trust(doc, sig, NOW), Ok(false));
+    }
+
+    #[test]
+    fn a_cap_that_withdraws_the_running_bundle_ends_the_session() {
+        use crate::web_bundle::fixture::{Spec, bundle, trusted as keys};
+        let trusted = Trusted::new(None, None);
+        let caps = |v: Version| std::collections::BTreeMap::from([(1, v)]);
+        {
+            let mut store = trusted.store.lock().unwrap();
+            *store = Store::load(None, Some(&bundle(&Spec::new("0.9.0"))), &keys(7));
+            let held = store
+                .select(&ServerInfo {
+                    version: Some(Version(0, 9, 0)),
+                    web_client_api: 1,
+                })
+                .unwrap();
+            let instance = Arc::new(Instance {
+                client: client().unwrap(),
+                jar: Jar::new(None, 0),
+                origin: Url::parse("https://community.example/").unwrap(),
+                limits: Limits::default(),
+            });
+            trusted.set_session(Some(Arc::new(Session { instance, held })));
+        }
+        // A cap at the running version changes nothing.
+        let mut store = trusted.store.lock().unwrap();
+        assert!(!trusted.enforce(&mut store, &keys(7), &caps(Version(0, 9, 0))));
+        assert!(trusted.session().is_some());
+        // A cap below it withdraws the bundle, and the session ends with it.
+        assert!(trusted.enforce(&mut store, &keys(7), &caps(Version(0, 8, 0))));
+        assert!(trusted.session().is_none());
     }
 
     #[test]
