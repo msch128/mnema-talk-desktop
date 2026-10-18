@@ -1,0 +1,31 @@
+.github/workflows/desktop-client.yml
+  s_06fcde5dbef956::t_57370d9ec11adc 304,330,348,354-355,357-358,364
+.github/workflows/desktop-release.yml
+  s_06fcde5dbef956::t_c6d5f6f63c45ab 4,141,163-164,170,177,188,198,263,268
+README.md
+  s_06fcde5dbef956::t_f0a887e0d87422 52,54,110,148
+scripts/artifact-manifest.mjs
+  s_06fcde5dbef956::t_90267858931062 11
+scripts/update-manifest.mjs
+  s_06fcde5dbef956::t_ee9f42694540c6 15-16
+scripts/update-manifest.test.mjs
+  s_06fcde5dbef956::t_a0b54a4210c9a2 30,32-35
+scripts/verify-updater-signatures.test.mjs
+  s_06fcde5dbef956::t_2a32a96f4f9e45 55,57
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d713ac8021ba0e665e2b9d85c93d3aca46ff757b",
+  "prompts": {},
+  "sessions": {
+    "s_06fcde5dbef956": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "94b73314-95fe-4e96-8c43-d20b0f28358d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}
