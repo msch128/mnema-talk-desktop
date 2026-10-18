@@ -127,6 +127,24 @@ test('a statement that withdraws the key of the running bundle ends the session'
   assert.equal(t.view(), undefined)
 })
 
+test('a cap that withdraws the running bundle ends the session', async () => {
+  const server = await health({ status: 'ok', version: '0.9.0', web_client_api: 1 })
+  const t = new Trusted(null, bundle(spec('0.9.0')), deps({ pinned: () => keysFor(7), root: testKey(9).hex, discover: async () => ({ version: [0, 9, 0], webClientApi: 1 }) }))
+  const session = await t.openInstance(server.origin.href)
+  const { signText } = await import('./helpers/fixtures.ts')
+  const statement = (serial: number, cap: string) => {
+    const text = JSON.stringify({ schema: 1, serial, issued_at: '2026-10-17T10:00:00Z', expires_at: '2027-01-15T10:00:00Z', bundle_keys: [testKey(7).hex], revoked_bundle_keys: [], updater_keys: [], revoked_updater_keys: [], max_version: { 1: cap } })
+    return [Buffer.from(text), Buffer.from(signText(testKey(9), text))] as const
+  }
+  // A cap at the running version leaves it running.
+  assert.equal(t.applyTrust(...statement(1, '0.9.0'), NOW), false)
+  assert.equal(t.session(), session)
+  // A cap below it withdraws the bundle, and the session ends with it.
+  assert.equal(t.applyTrust(...statement(2, '0.8.0'), NOW), true)
+  assert.equal(t.session(), null)
+  assert.equal(t.view(), undefined)
+})
+
 async function health(body: object): Promise<TestServer> {
   const server = await serve(reply(200, { 'content-type': 'application/json' }, JSON.stringify(body)))
   servers.push(server)
