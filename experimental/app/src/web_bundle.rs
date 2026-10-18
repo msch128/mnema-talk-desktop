@@ -1556,3 +1556,265 @@ mod tests {
         assert!(bundle.file("index.html").is_some());
     }
 }
+
+/// The vectors in `test-vectors/` are shared with the Linux client, which
+/// ports this module to TypeScript; both read the same files and must give the
+/// same answers (`linux/test/vectors.test.ts`).
+#[cfg(test)]
+mod shared_vectors {
+    use super::*;
+    use serde_json::Value;
+
+    fn load(text: &str) -> Value {
+        serde_json::from_str(text).expect("the vector file is JSON")
+    }
+
+    fn strings(value: &Value) -> Vec<&str> {
+        value
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_str().unwrap())
+            .collect()
+    }
+
+    fn keys(hexes: &[&str]) -> Vec<TrustedKey> {
+        hexes.iter().map(|h| parse_key(h).unwrap()).collect()
+    }
+
+    fn version(value: &Value) -> Option<Version> {
+        value.as_array().map(|a| {
+            Version(
+                a[0].as_u64().unwrap() as u32,
+                a[1].as_u64().unwrap() as u32,
+                a[2].as_u64().unwrap() as u32,
+            )
+        })
+    }
+
+    #[test]
+    fn versions_and_paths() {
+        let v = load(include_str!("../../../test-vectors/bundle.json"));
+        for c in v["versions"].as_array().unwrap() {
+            let input = c["input"].as_str().unwrap();
+            assert_eq!(Version::parse(input), version(&c["parsed"]), "{input:?}");
+        }
+        for c in v["paths"].as_array().unwrap() {
+            let path = c["path"].as_str().unwrap();
+            assert_eq!(valid_path(path), c["valid"].as_bool().unwrap(), "{path:?}");
+        }
+    }
+
+    #[test]
+    fn bundles() {
+        let v = load(include_str!("../../../test-vectors/bundle.json"));
+        for c in v["bundles"].as_array().unwrap() {
+            let name = c["name"].as_str().unwrap();
+            let zip = STANDARD.decode(c["zip"].as_str().unwrap()).unwrap();
+            let result = verify(&zip, &keys(&strings(&c["trusted"])));
+            match (&result, &c["result"]["ok"], &c["result"]["error"]) {
+                (Ok(bundle), ok, Value::Null) => {
+                    assert_eq!(
+                        bundle.version.to_string(),
+                        ok["version"].as_str().unwrap(),
+                        "{name}"
+                    );
+                    assert_eq!(
+                        bundle.web_client_api as u64,
+                        ok["web_client_api"].as_u64().unwrap(),
+                        "{name}"
+                    );
+                    assert_eq!(
+                        bundle.min_server_version.to_string(),
+                        ok["min_server_version"].as_str().unwrap(),
+                        "{name}"
+                    );
+                    assert_eq!(
+                        bundle.security_floor.to_string(),
+                        ok["security_floor"].as_str().unwrap(),
+                        "{name}"
+                    );
+                    assert_eq!(bundle.key_id, ok["key_id"].as_str().unwrap(), "{name}");
+                    assert_eq!(bundle.commit, ok["commit"].as_str().unwrap(), "{name}");
+                    for (path, hash) in ok["files"].as_object().unwrap() {
+                        let body = bundle
+                            .file(path)
+                            .unwrap_or_else(|| panic!("{name}: {path}"));
+                        assert_eq!(
+                            &hex::encode(Sha256::digest(body)),
+                            hash.as_str().unwrap(),
+                            "{name}: {path}"
+                        );
+                    }
+                }
+                (Err(message), Value::Null, error) => {
+                    assert_eq!(message, error.as_str().unwrap(), "{name}");
+                }
+                _ => panic!(
+                    "{name}: the answers differ: {:?} against {}",
+                    result.as_ref().map(|b| b.version),
+                    c["result"]
+                ),
+            }
+        }
+    }
+
+    fn named_keys(v: &Value, names: &Value) -> Vec<TrustedKey> {
+        strings(names)
+            .into_iter()
+            .map(|n| parse_key(v["keys"][n].as_str().unwrap()).unwrap())
+            .collect()
+    }
+
+    fn refusal_kind(refusal: &Refusal) -> &'static str {
+        match refusal {
+            Refusal::NoBundle => "no_bundle",
+            Refusal::ServerNewer => "server_newer",
+            Refusal::ServerTooOld { .. } => "server_too_old",
+            Refusal::ServerContractRetired => "server_contract_retired",
+            Refusal::RolledBack => "rolled_back",
+            Refusal::SignerWithdrawn => "signer_withdrawn",
+        }
+    }
+
+    #[test]
+    fn stores() {
+        let v = load(include_str!("../../../test-vectors/store.json"));
+        let bytes = |name: &Value| {
+            STANDARD
+                .decode(v["bundles"][name.as_str().unwrap()].as_str().unwrap())
+                .unwrap()
+        };
+        for (index, s) in v["scenarios"].as_array().unwrap().iter().enumerate() {
+            let name = s["name"].as_str().unwrap();
+            let dir = s["persist"].as_bool().unwrap().then(|| {
+                let d =
+                    std::env::temp_dir().join(format!("mnema-vec-{}-{index}", std::process::id()));
+                let _ = std::fs::remove_dir_all(&d);
+                std::fs::create_dir_all(&d).unwrap();
+                d
+            });
+            let builtin = s["builtin"]
+                .as_str()
+                .map(|b| bytes(&Value::String(b.to_owned())));
+            let mut store = Store::load(
+                dir.as_deref(),
+                builtin.as_deref(),
+                &named_keys(&v, &s["trusted"]),
+            );
+            for (n, step) in s["steps"].as_array().unwrap().iter().enumerate() {
+                let op = step["op"].as_str().unwrap();
+                let at = format!("{name} #{n} {op}");
+                match op {
+                    "install" => {
+                        let got = store
+                            .install(&bytes(&step["bundle"]), &named_keys(&v, &step["trusted"]));
+                        match (&got, &step["expect"]["ok"], &step["expect"]["error"]) {
+                            (Ok(version), ok, Value::Null) => {
+                                assert_eq!(version.to_string(), ok.as_str().unwrap(), "{at}")
+                            }
+                            (Err(message), Value::Null, error) => {
+                                assert_eq!(message, error.as_str().unwrap(), "{at}")
+                            }
+                            _ => panic!("{at}: {got:?} against {}", step["expect"]),
+                        }
+                    }
+                    "select" => {
+                        let server = ServerInfo {
+                            version: step["server"]["version"]
+                                .as_str()
+                                .map(|s| Version::parse(s).unwrap()),
+                            web_client_api: step["server"]["api"].as_u64().unwrap() as u32,
+                        };
+                        match store.select(&server) {
+                            Ok(held) => assert_eq!(
+                                held.bundle.version.to_string(),
+                                step["expect"]["ok"].as_str().unwrap(),
+                                "{at}"
+                            ),
+                            Err(refusal) => {
+                                assert_eq!(
+                                    refusal_kind(&refusal),
+                                    step["expect"]["refusal"].as_str().unwrap(),
+                                    "{at}"
+                                );
+                                if let Refusal::ServerTooOld { needs } = refusal {
+                                    assert_eq!(
+                                        needs.to_string(),
+                                        step["expect"]["needs"].as_str().unwrap(),
+                                        "{at}"
+                                    );
+                                }
+                            }
+                        }
+                    }
+                    "reconcile" => {
+                        assert_eq!(
+                            store.reconcile(&named_keys(&v, &step["trusted"])),
+                            step["expect"].as_bool().unwrap(),
+                            "{at}"
+                        );
+                    }
+                    "caps" => {
+                        let caps: BTreeMap<u32, Version> = step["caps"]
+                            .as_object()
+                            .unwrap()
+                            .iter()
+                            .map(|(k, c)| {
+                                (
+                                    k.parse().unwrap(),
+                                    Version::parse(c.as_str().unwrap()).unwrap(),
+                                )
+                            })
+                            .collect();
+                        store.apply_caps(&caps);
+                    }
+                    "state" => {
+                        let expect = &step["expect"];
+                        assert_eq!(
+                            store.floor().to_string(),
+                            expect["floor"].as_str().unwrap(),
+                            "{at}"
+                        );
+                        let mut high_water = serde_json::Map::new();
+                        for api in 1..=3u32 {
+                            if let Some(mark) = store.high_water(api) {
+                                high_water.insert(api.to_string(), Value::String(mark.to_string()));
+                            }
+                        }
+                        assert_eq!(Value::Object(high_water), expect["high_water"], "{at}");
+                        let held: Vec<String> = store
+                            .held()
+                            .iter()
+                            .map(|h| format!("{}:{}", h.bundle.version, h.source.as_str()))
+                            .collect();
+                        assert_eq!(held, strings(&expect["held"]), "{at}");
+                        assert_eq!(
+                            store.rejected.len() as u64,
+                            expect["rejected"].as_u64().unwrap(),
+                            "{at}"
+                        );
+                    }
+                    "restart" => {
+                        store = Store::load(
+                            dir.as_deref(),
+                            builtin.as_deref(),
+                            &named_keys(&v, &step["trusted"]),
+                        );
+                    }
+                    "remove_cached" => {
+                        let file = format!("mnema-web-{}.zip", step["version"].as_str().unwrap());
+                        std::fs::remove_file(dir.as_ref().unwrap().join(file)).unwrap();
+                    }
+                    "forget_state" => {
+                        let _ = std::fs::remove_file(dir.as_ref().unwrap().join("state.json"));
+                    }
+                    other => panic!("{at}: unknown step {other}"),
+                }
+            }
+            if let Some(d) = dir {
+                let _ = std::fs::remove_dir_all(d);
+            }
+        }
+    }
+}

@@ -1045,3 +1045,65 @@ mod tests {
         );
     }
 }
+
+/// The vectors in `test-vectors/` are shared with the Linux client, which
+/// ports these rules to TypeScript (`linux/test/vectors.test.ts`).
+#[cfg(test)]
+mod shared_vectors {
+    use super::*;
+    use serde_json::Value;
+
+    fn load() -> Value {
+        serde_json::from_str(include_str!("../../../test-vectors/client.json"))
+            .expect("the vector file is JSON")
+    }
+
+    #[test]
+    fn addresses_health_links_and_routes() {
+        let v = load();
+        for c in v["addresses"].as_array().unwrap() {
+            let input = c["input"].as_str().unwrap();
+            match address(input) {
+                Ok(url) => assert_eq!(Some(url.as_str()), c["href"].as_str(), "{input:?}"),
+                Err(message) => {
+                    assert_eq!(Some(message.as_str()), c["error"].as_str(), "{input:?}")
+                }
+            }
+        }
+        for c in v["healths"].as_array().unwrap() {
+            let input = c["input"].as_str().unwrap();
+            match parse_health(input.as_bytes()) {
+                Ok(info) => {
+                    let ok = &c["ok"];
+                    assert_eq!(
+                        info.version.map(|v| v.to_string()).as_deref(),
+                        ok["version"].as_str(),
+                        "{input}"
+                    );
+                    assert_eq!(
+                        info.web_client_api as u64,
+                        ok["api"].as_u64().unwrap(),
+                        "{input}"
+                    );
+                }
+                Err(message) => assert_eq!(Some(message.as_str()), c["error"].as_str(), "{input}"),
+            }
+        }
+        for c in v["externals"].as_array().unwrap() {
+            let url = Url::parse(c["url"].as_str().unwrap()).unwrap();
+            assert_eq!(
+                external_allowed(&url),
+                c["allowed"].as_bool().unwrap(),
+                "{url}"
+            );
+        }
+        for c in v["app_paths"].as_array().unwrap() {
+            let path = c["path"].as_str().unwrap();
+            assert_eq!(
+                crate::local_route::app_path(path),
+                c["ok"].as_bool().unwrap(),
+                "{path:?}"
+            );
+        }
+    }
+}

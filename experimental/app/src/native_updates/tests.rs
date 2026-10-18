@@ -596,3 +596,31 @@ fn nothing_new_is_installed_without_a_fresh_trust_statement() {
     assert!(!installs_allowed(app.handle()));
     assert!(prepare_pending(app.handle()).is_none());
 }
+
+// -------------------------------------------------------- shared vectors
+
+/// The vectors in `test-vectors/` are shared with the Linux client, which
+/// ports the verification to TypeScript (`linux/test/vectors.test.ts`).
+#[test]
+fn shared_minisign_vectors() {
+    let v: serde_json::Value =
+        serde_json::from_str(include_str!("../../../../test-vectors/minisign.json")).unwrap();
+    for c in v["cases"].as_array().unwrap() {
+        let name = c["name"].as_str().unwrap();
+        let got = verify_package(
+            c["package"].as_str().unwrap().as_bytes(),
+            c["signature"].as_str().unwrap(),
+            c["pubkey"].as_str().unwrap(),
+            c["version"].as_str().unwrap(),
+        );
+        let want = match c["expect"].as_str() {
+            None => Ok(()),
+            Some("key") => Err(VerifyError::Key),
+            Some("signature") => Err(VerifyError::Signature),
+            Some("mismatch") => Err(VerifyError::Mismatch),
+            Some("version") => Err(VerifyError::Version),
+            Some(other) => panic!("{name}: unknown expectation {other}"),
+        };
+        assert_eq!(got, want, "{name}");
+    }
+}
