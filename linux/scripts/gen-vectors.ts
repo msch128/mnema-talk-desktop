@@ -202,6 +202,10 @@ function storeVectors(): Json {
       steps: [install('forged099', ['a', 'b']), state, { op: 'caps', caps: { 1: '0.8.0' } }, state, select(srv(null))],
     },
     {
+      name: 'a cap removes the cached file of a bundle above it, so a restart does not bring it back', persist: true, builtin: 'b080', trusted: ['a'],
+      steps: [install('b099', ['a']), { op: 'caps', caps: { 1: '0.9.0' } }, state, { op: 'restart', trusted: ['a'] }, state, select(srv(null))],
+    },
+    {
       name: 'the security floor only moves up and withdraws older bundles', persist: true, builtin: 'b080', trusted: ['a'],
       steps: [
         state, install('b082fix', ['a']), state, { op: 'remove_cached', version: '0.8.2' }, { op: 'restart', trusted: ['a'] }, state,

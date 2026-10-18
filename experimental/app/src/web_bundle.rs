@@ -672,6 +672,17 @@ impl Store {
             caps.get(&h.bundle.web_client_api)
                 .is_some_and(|c| h.bundle.version > *c)
         };
+        // Their cached files go too: left on disk, the next start would verify
+        // them again and raise the marks anew.
+        if let Some(dir) = &self.dir {
+            for h in self.held.iter().chain(&self.shelved) {
+                if over(h) && h.source == Source::Cache {
+                    let _ = std::fs::remove_file(
+                        dir.join(format!("mnema-web-{}.zip", h.bundle.version)),
+                    );
+                }
+            }
+        }
         self.held.retain(|h| !over(h));
         self.shelved.retain(|h| !over(h));
         self.recompute();

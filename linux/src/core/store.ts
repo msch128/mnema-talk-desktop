@@ -321,6 +321,8 @@ export class Store {
       const cap = caps.get(h.bundle.webClientApi)
       return cap !== undefined && compareVersions(h.bundle.version, cap) > 0
     }
+    // Their cached files go too: left on disk, the next start would verify them again and raise the marks anew.
+    for (const h of [...this.heldBundles, ...this.shelved]) if (over(h) && h.source === 'cache') this.removeCached(h.bundle.version)
     this.heldBundles = this.heldBundles.filter((h) => !over(h))
     this.shelved = this.shelved.filter((h) => !over(h))
     this.recompute()

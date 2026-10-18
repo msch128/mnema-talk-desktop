@@ -717,6 +717,74 @@
    ]
   },
   {
+   "name": "a cap removes the cached file of a bundle above it, so a restart does not bring it back",
+   "persist": true,
+   "builtin": "b080",
+   "trusted": [
+    "a"
+   ],
+   "steps": [
+    {
+     "op": "install",
+     "bundle": "b099",
+     "trusted": [
+      "a"
+     ],
+     "expect": {
+      "ok": "0.99.0"
+     }
+    },
+    {
+     "op": "caps",
+     "caps": {
+      "1": "0.9.0"
+     }
+    },
+    {
+     "op": "state",
+     "expect": {
+      "floor": "0.5.0",
+      "high_water": {
+       "1": "0.9.0"
+      },
+      "held": [
+       "0.8.0:builtin"
+      ],
+      "rejected": 0
+     }
+    },
+    {
+     "op": "restart",
+     "trusted": [
+      "a"
+     ]
+    },
+    {
+     "op": "state",
+     "expect": {
+      "floor": "0.5.0",
+      "high_water": {
+       "1": "0.9.0"
+      },
+      "held": [
+       "0.8.0:builtin"
+      ],
+      "rejected": 0
+     }
+    },
+    {
+     "op": "select",
+     "server": {
+      "version": null,
+      "api": 1
+     },
+     "expect": {
+      "refusal": "rolled_back"
+     }
+    }
+   ]
+  },
+  {
    "name": "the security floor only moves up and withdraws older bundles",
    "persist": true,
    "builtin": "b080",

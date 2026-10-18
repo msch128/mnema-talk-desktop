@@ -139,8 +139,8 @@ test('a cap from the statement lowers marks of trusted signers and drops bundles
   assert.deepEqual(store.floor(), [0, 8, 0])
   assert.deepEqual(store.highWater(1), [0, 8, 0])
   assert.equal(selected(store, dev), '0.8.0')
-  // The cap survives a restart in the recorded marks (the dropped bundle's file is gone).
-  unlinkSync(join(d, 'mnema-web-0.99.0.zip'))
+  // The cap survives a restart in the recorded marks .
+  assert.equal(existsSync(join(d, 'mnema-web-0.99.0.zip')), false, 'the capped bundle is gone from the cache')
   assert.deepEqual(Store.load(d, bundle(spec('0.8.0')), both()).floor(), [0, 8, 0])
   // Other contracts keep their own marks; no caps change nothing.
   const high = spec('0.99.0', { floor: '0.5.0' })
