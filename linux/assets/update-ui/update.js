@@ -16,7 +16,7 @@ const T = de
       errors: { offline: 'Der Update-Server ist nicht erreichbar. Prüfe deine Verbindung.', verify: 'Die Signatur des Updates stimmt nicht. Es wurde nicht installiert.', install: 'Die Installation ist fehlgeschlagen. Die installierte Version bleibt unverändert.', unknown: 'Beim Update ist ein Fehler aufgetreten.' },
       now: 'Jetzt aktualisieren', later: 'Beim nächsten Start', skip: 'Diese Version überspringen', retry: 'Erneut versuchen', check: 'Erneut prüfen', close: 'Schließen', installNow: 'Jetzt installieren',
       version: (v) => `Installiert: v${v}`,
-      external: (v) => `Version ${v} ist verfügbar. Diese Installation wird von der Paketverwaltung verwaltet (.deb): lade das neue Paket von der Release-Seite.`,
+      external: (v) => `Version ${v} ist verfügbar. Diese Installation wird von der Paketverwaltung verwaltet: lade das neue Paket von der Release-Seite.`,
       downloadPage: 'Release-Seite öffnen',
     }
   : {
@@ -32,7 +32,7 @@ const T = de
       errors: { offline: 'The update server cannot be reached. Check your connection.', verify: 'The update signature does not match. It was not installed.', install: 'Installation failed. The installed version is unchanged.', unknown: 'Something went wrong while updating.' },
       now: 'Update now', later: 'On next start', skip: 'Skip this version', retry: 'Retry', check: 'Check again', close: 'Close', installNow: 'Install now',
       version: (v) => `Installed: v${v}`,
-      external: (v) => `Version ${v} is available. This installation is managed by your package manager (.deb): download the new package from the release page.`,
+      external: (v) => `Version ${v} is available. This installation is managed by your package manager: download the new package from the release page.`,
       downloadPage: 'Open release page',
     };
 
