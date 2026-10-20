@@ -217,7 +217,7 @@ jobs:
           cargo build --locked --release --manifest-path experimental/app/Cargo.toml --features shell,web-client,custom-protocol
           if ($LASTEXITCODE -ne 0) { throw 'Shared Windows executable build failed' }
           if (!(Test-Path 'experimental/app/target/release/mnema-native-client-preview.exe')) { throw 'Shared executable missing' }
-          'Unsigned DEV web-client host linked from experimental/app with embedded web/dist. The next step checks the WebView2 origin and the media-permission decision with fake devices. It does not qualify a physical device, sealed media, multi-device E2EE, real games, fullscreen overlays or distribution licenses. The installer of a release updates itself; this portable executable does not.' | Out-File -Append $env:GITHUB_STEP_SUMMARY
+          'Unsigned DEV web-client host linked from experimental/app with embedded web/dist. The next step checks the WebView2 origin and the media-permission decision with a synthetic capture device. It does not click a prompt and does not qualify a physical device, sealed media, multi-device E2EE, real games, fullscreen overlays or distribution licenses. The installer of a release updates itself; this portable executable does not.' | Out-File -Append $env:GITHUB_STEP_SUMMARY
       - name: Prepare unsigned Windows DEV artifact
         if: inputs.acceptance_release == ''
         shell: pwsh
@@ -231,10 +231,11 @@ jobs:
           if (Test-Path $probeLog) { Remove-Item $probeLog }
           $env:MNEMA_WEBVIEW_PROBE = '1'
           $env:MNEMA_WEBVIEW_PROBE_LOG = $probeLog
-          # No physical microphone or camera is installed on this runner.
-          # Wry sets AdditionalBrowserArguments and that replaces
-          # WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS, so the host passes the
-          # synthetic-device flags itself while the probe variable is set.
+          # No physical microphone is installed on this runner. Wry sets
+          # AdditionalBrowserArguments and that replaces
+          # WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS, so the host passes a
+          # synthetic device itself while the probe variable is set. The fake
+          # permission UI stays off, because it grants before the host is asked.
           Add-Type -AssemblyName UIAutomationClient
           try {
             $process = Start-Process -FilePath $devExe -PassThru
@@ -315,12 +316,12 @@ jobs:
           Enter the HTTPS address of a compatible normal Mnema instance.
 
           The Windows startup check confirmed the WebView2 origin
-          (https://mnema.localhost), that only the instance window keeps the
-          engine's media prompt, and that the gaming surfaces load on that
-          origin and are refused a microphone. The microphone grant used the
-          runner's fake devices. A human prompt, a physical device, sealed
-          media, multi-device E2EE, restored history and real games are not
-          qualified. This portable ZIP does not update itself; the installer of a release does.
+          (https://mnema.localhost), that the instance window leaves the
+          microphone on WebView2's own prompt, and that the selector and the
+          gaming surfaces are refused. The check uses a synthetic capture
+          device and does not click the prompt. A human prompt, a physical
+          device, sealed media, multi-device E2EE, restored history and real
+          games are not qualified. This portable ZIP does not update itself; the installer of a release does.
 
           Check DEV-BUILD.json for the source revision and executable SHA-256.
           Source and dependency notices accompany this build. The existing prebuilt

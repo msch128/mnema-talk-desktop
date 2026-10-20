@@ -1,10 +1,12 @@
 //! Which window may ask WebView2 for a device, and the opt-in probe that
 //! records the answer. `MNEMA_WEBVIEW_PROBE=1` is a test switch: the page
-//! reports its own origin and asks for a microphone and camera. The Windows
-//! startup check reads that record. Wry replaces
-//! `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS`, so the probe passes synthetic
-//! devices through the window builder. A grant there is not a physical
-//! device, a human prompt or sealed media.
+//! reports its own origin and asks for a microphone. The Windows startup
+//! check reads that record. Wry replaces
+//! `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS`, so the probe passes a synthetic
+//! device through the window builder. The fake permission UI is left off:
+//! it grants before WebView2 asks the host. The check does not click the
+//! prompt, so a grant there is not a physical device, a human prompt or
+//! sealed media.
 use crate::web_client::local_origin;
 use std::io::Write;
 use std::sync::Mutex;
@@ -12,17 +14,21 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::webview::{PermissionKind, PermissionResponse};
 use url::Url;
 
-/// Wry's own WebView2 arguments plus Chromium's synthetic capture devices.
+/// Wry's own WebView2 arguments plus a synthetic capture device.
 /// `additional_browser_args` replaces wry's default, so the default is repeated
-/// here. Production windows leave the arguments unset.
+/// here. `--use-fake-ui-for-media-stream` is omitted on purpose: it grants the
+/// device before `PermissionRequested`, so the host decision never runs.
+/// Production windows leave the arguments unset.
 const PROBE_BROWSER_ARGUMENTS: &str = concat!(
     "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection ",
-    "--use-fake-device-for-media-stream --use-fake-ui-for-media-stream"
+    "--use-fake-device-for-media-stream"
 );
 
 /// Runs before any page script. Reports this document's URL, then asks for a
-/// microphone and camera and reports the outcome. Fetch stays on the app origin.
-pub const PROBE_SCRIPT: &str = "if(window===window.top){var report=function(kind,value){fetch('/__mnema_probe/'+kind+'?'+encodeURIComponent(String(value).slice(0,180))).catch(function(){})};report('origin',location.href);var devices=navigator.mediaDevices;if(!devices||!devices.getUserMedia){report('media','missing');}else{devices.getUserMedia({audio:true,video:true}).then(function(stream){stream.getTracks().forEach(function(track){track.stop()});report('media','granted')}).catch(function(error){report('media',(error&&error.name)||'error')})}}";
+/// microphone and reports the outcome. The instance probe waits so the windows
+/// that must refuse can record that refusal before WebView2 shows its prompt.
+/// Fetch stays on the app origin.
+pub const PROBE_SCRIPT: &str = "if(window===window.top){var report=function(kind,value){fetch('/__mnema_probe/'+kind+'?'+encodeURIComponent(String(value).slice(0,180))).catch(function(){})};report('origin',location.href);var devices=navigator.mediaDevices;var ask=function(){if(!devices||!devices.getUserMedia){report('media','missing');return;}devices.getUserMedia({audio:true}).then(function(stream){stream.getTracks().forEach(function(track){track.stop()});report('media','granted')}).catch(function(error){report('media',(error&&error.name)||'error')})};var trusted=window.__MNEMA_TRUSTED_APP__;if(trusted&&trusted.role==='probe')setTimeout(ask,2500);else ask();}";
 
 pub fn probe_enabled() -> bool {
     std::env::var_os("MNEMA_WEBVIEW_PROBE").is_some_and(|value| value == "1")
@@ -268,7 +274,7 @@ mod tests {
     fn synthetic_devices_are_passed_only_while_the_probe_is_on() {
         assert!(probe_browser_arguments().is_none());
         assert!(PROBE_BROWSER_ARGUMENTS.contains("--use-fake-device-for-media-stream"));
-        assert!(PROBE_BROWSER_ARGUMENTS.contains("--use-fake-ui-for-media-stream"));
+        assert!(!PROBE_BROWSER_ARGUMENTS.contains("use-fake-ui-for-media-stream"));
         assert!(
             PROBE_BROWSER_ARGUMENTS
                 .contains("--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection")

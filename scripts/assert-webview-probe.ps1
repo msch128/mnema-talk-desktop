@@ -1,7 +1,9 @@
 # Reads the WebView2 probe record written by the desktop host.
 # Prints OK when every required line is present and every reported origin is
 # the mapped custom-protocol origin. Prints WAIT while lines are still
-# missing. Throws when a line contradicts the mapping.
+# missing. Throws when a line contradicts the mapping, when a microphone is
+# granted without a human prompt, or when a window that must refuse is not
+# refused.
 param(
   [Parameter(Mandatory)][string]$LogPath
 )
@@ -15,6 +17,27 @@ $badOrigin = [regex]::Matches($text, '(?m)^\[probe\] \S+ origin .+$') | Where-Ob
 }
 if ($badOrigin) { throw "WebView2 reported an unexpected origin: $($badOrigin[0].Value)" }
 
+foreach ($perm in [regex]::Matches($text, '(?m)^\[perm\] (\S+) (Microphone|Camera) (\S+)$')) {
+  $label = $perm.Groups[1].Value
+  $kind = $perm.Groups[2].Value
+  $decision = $perm.Groups[3].Value
+  $expected = if ($label -eq 'instance') { 'Default' } else { 'Deny' }
+  if ($decision -ne $expected) {
+    throw "WebView2 permission decision was $label $kind $decision"
+  }
+}
+foreach ($media in [regex]::Matches($text, '(?m)^\[probe\] (\S+) media (\S+)$')) {
+  $label = $media.Groups[1].Value
+  $value = $media.Groups[2].Value
+  if ($value -eq 'granted') {
+    throw "WebView2 granted a microphone without a human prompt: $label"
+  }
+  if ($value -eq 'NotFoundError') { throw "WebView2 saw no capture device: $label" }
+  if ($label -ne 'instance' -and $value -ne 'NotAllowedError') {
+    throw "WebView2 did not refuse ${label}: $value"
+  }
+}
+
 $required = @(
   '(?m)^\[probe\] browser-args synthetic$',
   '(?m)^\[probe\] main origin https://mnema\.localhost/',
@@ -22,8 +45,6 @@ $required = @(
   '(?m)^\[probe\] main media NotAllowedError$',
   '(?m)^\[probe\] instance origin https://mnema\.localhost/',
   '(?m)^\[perm\] instance Microphone Default$',
-  '(?m)^\[perm\] instance Camera Default$',
-  '(?m)^\[probe\] instance media granted$',
   '(?m)^\[probe\] sidepeek origin https://mnema\.localhost/',
   '(?m)^\[perm\] sidepeek Microphone Deny$',
   '(?m)^\[probe\] sidepeek media NotAllowedError$',

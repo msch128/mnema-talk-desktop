@@ -41,11 +41,13 @@ The release workflow starts the actual Windows executable and checks that its
 instance-selector window appears before publishing. That startup check also
 reads the page's own origin, so WebView2 must present the custom protocol as
 `https://mnema.localhost/`. It checks that the instance window leaves the
-microphone and camera on WebView2's own prompt (display capture uses that
-same decision) and that the selector and the gaming surfaces refuse a
-microphone. The host passes Chromium's fake media devices as WebView2
-browser arguments for that run, because the runtime replaces
-`WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS`. A granted microphone there is synthetic.
+microphone on WebView2's own prompt and that the selector and the gaming
+surfaces refuse one. Display capture uses that same host decision; this
+check does not ask for it. The host passes a synthetic capture device as a WebView2
+browser argument for that run, because the runtime replaces
+`WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS`. The fake permission UI stays off,
+so the host decision is what runs. The check does not click the prompt, and
+a microphone grant is not part of the result.
 The check does not qualify a human permission prompt, a physical device,
 sealed media, a real game, login, screensharing or E2EE.
 A separate [published v0.7.1 Windows acceptance](https://github.com/msch128/mnema-talk/actions/runs/37888635202)

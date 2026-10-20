@@ -11,10 +11,12 @@ play. Windows and macOS run it in a Tauri host; Linux runs it in Electron
 fully supported client. This client is an unsigned DEV build (it updates
 itself from signed releases, see below). Windows CI checks the WebView2
 custom-protocol origin, which window may ask for a microphone, and the gaming
-surfaces. The host passes Chromium's fake devices as WebView2 browser
-arguments for that run, because the runtime replaces
-`WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS`. A human permission prompt, physical
-devices and sealed media on real hardware are still outstanding. The macOS build has
+surfaces. The host passes a synthetic capture device as a WebView2 browser
+argument for that run, because the runtime replaces
+`WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS`. The instance window leaves the
+request on WebView2's own prompt, which the check does not click, and the
+other windows are refused. A human permission prompt, physical devices and
+sealed media on real hardware are still outstanding. The macOS build has
 had less testing still (see [macOS](#macos)). See the
 [product status](https://github.com/msch128/mnema-talk/blob/main/doc/product-status.md).
 
