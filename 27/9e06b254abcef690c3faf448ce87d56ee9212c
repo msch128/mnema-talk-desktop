@@ -1,0 +1,24 @@
+experimental/README.md
+  h_0ff4f4713441f4 49-51
+experimental/app/src/native_updates.rs
+  h_0ff4f4713441f4 800-801
+experimental/app/src/web_client.rs
+  h_0ff4f4713441f4 539,612-613
+experimental/app/src/web_gaming.rs
+  h_0ff4f4713441f4 457
+experimental/app/src/web_permissions.rs
+  h_0ff4f4713441f4 12,38,43-45,47-48,59-92,315-318
+scripts/assert-webview-probe.ps1
+  h_0ff4f4713441f4 43-47
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "279e06b254abcef690c3faf448ce87d56ee9212c",
+  "prompts": {},
+  "humans": {
+    "h_0ff4f4713441f4": {
+      "author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}
