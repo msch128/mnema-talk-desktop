@@ -536,7 +536,7 @@ fn app_window<'a>(
     } else {
         builder
     };
-    super::web_permissions::with_probe_args(builder)
+    super::web_permissions::with_probe_args(app, label, builder)
 }
 
 pub(super) fn allow_permission(
@@ -609,6 +609,8 @@ fn open_instance_window(window: &WebviewWindow) -> Result<(), String> {
                     // Reuse the opener's browser environment without granting
                     // native capabilities: the child gets no identity script.
                     let child = super::web_permissions::with_probe_args(
+                        &popup_app,
+                        "attachment",
                         WebviewWindowBuilder::new(
                             &popup_app,
                             "attachment",

@@ -9,6 +9,7 @@
 //! sealed media.
 use crate::web_client::local_origin;
 use std::io::Write;
+use std::path::PathBuf;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::webview::{PermissionKind, PermissionResponse};
@@ -34,14 +35,17 @@ pub fn probe_enabled() -> bool {
     std::env::var_os("MNEMA_WEBVIEW_PROBE").is_some_and(|value| value == "1")
 }
 
-/// Synthetic-device arguments while the probe is on, so every window in that
-/// process shares one WebView2 profile. `None` in normal use.
+/// Synthetic-device arguments while the probe is on. `None` in normal use.
 pub fn probe_browser_arguments() -> Option<&'static str> {
     probe_enabled().then_some(PROBE_BROWSER_ARGUMENTS)
 }
 
-/// Passes [`probe_browser_arguments`] through when the probe is on.
+/// Passes the synthetic device through, and gives this window its own WebView2
+/// profile. A refusal is stored for the origin; WebView2 then does not ask
+/// again in that profile, so the probe must not share one.
 pub fn with_probe_args<'a, R, M>(
+    app: &M,
+    label: &str,
     builder: tauri::WebviewWindowBuilder<'a, R, M>,
 ) -> tauri::WebviewWindowBuilder<'a, R, M>
 where
@@ -52,7 +56,40 @@ where
         return builder;
     };
     note_synthetic_devices();
-    builder.additional_browser_args(args)
+    let builder = builder.additional_browser_args(args);
+    match probe_profile(app, label) {
+        Some(dir) => {
+            emit(&format!("[probe] profile {label}"));
+            builder.data_directory(dir)
+        }
+        None => {
+            emit(&format!("[probe] profile {label} shared"));
+            builder
+        }
+    }
+}
+
+fn probe_profile<R, M>(app: &M, label: &str) -> Option<PathBuf>
+where
+    R: tauri::Runtime,
+    M: tauri::Manager<R>,
+{
+    if !safe_profile_label(label) {
+        return None;
+    }
+    let dir = app
+        .path()
+        .app_local_data_dir()
+        .ok()?
+        .join(format!("webview-probe-{label}"));
+    std::fs::create_dir_all(&dir).ok()?;
+    Some(dir)
+}
+
+fn safe_profile_label(label: &str) -> bool {
+    !label.is_empty()
+        && label.len() <= 64
+        && label.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
 }
 
 fn note_synthetic_devices() {
@@ -275,6 +312,10 @@ mod tests {
         assert!(probe_browser_arguments().is_none());
         assert!(PROBE_BROWSER_ARGUMENTS.contains("--use-fake-device-for-media-stream"));
         assert!(!PROBE_BROWSER_ARGUMENTS.contains("use-fake-ui-for-media-stream"));
+        assert!(safe_profile_label("gaming-overlay"));
+        assert!(!safe_profile_label(".."));
+        assert!(!safe_profile_label("a/b"));
+        assert!(!safe_profile_label(""));
         assert!(
             PROBE_BROWSER_ARGUMENTS
                 .contains("--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection")

@@ -797,6 +797,8 @@ pub fn open_window<R: Runtime>(app: &AppHandle<R>, focus: bool) -> tauri::Result
     }
     let url = ui_base().join("index.html").expect("constant path");
     crate::web_permissions::with_probe_args(
+        app,
+        WINDOW,
         WebviewWindowBuilder::new(app, WINDOW, WebviewUrl::CustomProtocol(url))
             .use_https_scheme(true)
             .title("Mnema Desktop DEV \u{2014} Update")

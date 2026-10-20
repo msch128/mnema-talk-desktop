@@ -454,7 +454,7 @@ fn surface(
     } else {
         builder
     };
-    let w = crate::web_permissions::with_probe_args(builder)
+    let w = crate::web_permissions::with_probe_args(app, label, builder)
         .inner_size(
             if interactive { 420.0 } else { 240.0 },
             if interactive { 650.0 } else { 430.0 },

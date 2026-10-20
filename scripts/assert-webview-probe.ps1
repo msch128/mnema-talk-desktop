@@ -40,6 +40,11 @@ foreach ($media in [regex]::Matches($text, '(?m)^\[probe\] (\S+) media (\S+)$'))
 
 $required = @(
   '(?m)^\[probe\] browser-args synthetic$',
+  '(?m)^\[probe\] profile main$',
+  '(?m)^\[probe\] profile instance$',
+  '(?m)^\[probe\] profile sidepeek$',
+  '(?m)^\[probe\] profile gaming-overlay$',
+  '(?m)^\[probe\] profile gaming-settings$',
   '(?m)^\[probe\] main origin https://mnema\.localhost/',
   '(?m)^\[perm\] main Microphone Deny$',
   '(?m)^\[probe\] main media NotAllowedError$',

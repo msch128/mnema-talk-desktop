@@ -46,7 +46,9 @@ surfaces refuse one. Display capture uses that same host decision; this
 check does not ask for it. The host passes a synthetic capture device as a WebView2
 browser argument for that run, because the runtime replaces
 `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS`. The fake permission UI stays off,
-so the host decision is what runs. The check does not click the prompt, and
+so the host decision is what runs. Each probe window has its own WebView2
+profile, because a refusal is remembered for the origin and then WebView2
+does not ask again. The check does not click the prompt, and
 a microphone grant is not part of the result.
 The check does not qualify a human permission prompt, a physical device,
 sealed media, a real game, login, screensharing or E2EE.
