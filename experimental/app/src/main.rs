@@ -14,6 +14,8 @@ mod web_client;
 #[cfg(feature = "web-client")]
 mod web_gaming;
 #[cfg(feature = "web-client")]
+mod web_permissions;
+#[cfg(feature = "web-client")]
 mod web_proxy;
 #[cfg(feature = "web-client")]
 mod web_trust;

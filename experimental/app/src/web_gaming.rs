@@ -434,7 +434,7 @@ fn surface(
     if let Some(w) = app.get_webview_window(label) {
         return Ok(w);
     }
-    let w = WebviewWindowBuilder::new(
+    let builder = WebviewWindowBuilder::new(
         app,
         label,
         WebviewUrl::CustomProtocol(super::web_client::app_url()),
@@ -448,23 +448,29 @@ fn surface(
     .initialization_script(super::web_client::identity_script(app, "surface"))
     .initialization_script(format!(
         "Object.defineProperty(window,'__MNEMA_GAMING_SURFACE__',{{value:'{label}'}});"
-    ))
-    .inner_size(
-        if interactive { 420.0 } else { 240.0 },
-        if interactive { 650.0 } else { 430.0 },
-    )
-    .decorations(false)
-    .shadow(false)
-    .transparent(true)
-    .always_on_top(true)
-    .skip_taskbar(true)
-    .visible(false)
-    .focused(false)
-    .focusable(interactive)
-    .on_navigation(super::web_client::bundled)
-    .on_new_window(|_, _| tauri::webview::NewWindowResponse::Deny)
-    .on_permission_request(|_, _| tauri::webview::PermissionResponse::Deny)
-    .build()?;
+    ));
+    let builder = if crate::web_permissions::probe_enabled() {
+        builder.initialization_script(crate::web_permissions::PROBE_SCRIPT)
+    } else {
+        builder
+    };
+    let w = builder
+        .inner_size(
+            if interactive { 420.0 } else { 240.0 },
+            if interactive { 650.0 } else { 430.0 },
+        )
+        .decorations(false)
+        .shadow(false)
+        .transparent(true)
+        .always_on_top(true)
+        .skip_taskbar(true)
+        .visible(false)
+        .focused(false)
+        .focusable(interactive)
+        .on_navigation(super::web_client::bundled)
+        .on_new_window(|_, _| tauri::webview::NewWindowResponse::Deny)
+        .on_permission_request(super::web_client::allow_permission)
+        .build()?;
     #[cfg(windows)]
     if let Ok(hwnd) = w.hwnd() {
         let color: u32 = 0xfffffffe; // DWMWA_COLOR_NONE, Windows 11 border only.
@@ -710,6 +716,18 @@ fn tick(app: &tauri::AppHandle) {
         }
     }
 }
+/// Opens the three gaming windows so the WebView2 probe can see their origin
+/// and that they are refused a microphone. Production never calls this.
+pub fn open_probe_surfaces(app: &tauri::AppHandle) {
+    for (label, interactive) in [
+        ("sidepeek", false),
+        ("gaming-overlay", true),
+        ("gaming-settings", true),
+    ] {
+        let _ = surface(app, label, interactive);
+    }
+}
+
 pub fn setup(app: &tauri::AppHandle) {
     if let Ok(dir) = app.path().app_config_dir()
         && let Ok(bytes) = std::fs::read(dir.join("gaming.json"))

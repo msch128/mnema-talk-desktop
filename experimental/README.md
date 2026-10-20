@@ -38,8 +38,15 @@ as a Linux Docker image for amd64 and arm64. There are no server EXE downloads i
 new releases. The desktop client requires Microsoft Edge WebView2 Runtime.
 
 The release workflow starts the actual Windows executable and checks that its
-instance-selector window appears before publishing. That startup check does not
-qualify login, physical media devices, screensharing, game overlays or E2EE.
+instance-selector window appears before publishing. That startup check also
+reads the page's own origin, so WebView2 must present the custom protocol as
+`https://mnema.localhost/`. It checks that the instance window leaves the
+microphone and camera on WebView2's own prompt (display capture uses that
+same decision) and that the selector and the gaming surfaces refuse a
+microphone. The runner uses
+Chromium's fake media devices, so a granted microphone there is synthetic.
+The check does not qualify a human permission prompt, a physical device,
+sealed media, a real game, login, screensharing or E2EE.
 A separate [published v0.7.1 Windows acceptance](https://github.com/msch128/mnema-talk/actions/runs/37888635202)
 has since verified generated-account login, persisted chat, live peer receipt
 without history fallback, and logout against an isolated normal server.
@@ -47,9 +54,10 @@ It used PostgreSQL 17.11 and in-memory test media storage. This does not qualify
 S3 uploads, media capture, E2EE or games. [Product status](https://github.com/msch128/mnema-talk/blob/main/doc/product-status.md)
 is the current evidence reference. The earlier acceptance runs predate the
 signed bundle: the instance then supplied the web code. The verified-bundle
-path has macOS development runs and unit tests; Windows/WebView2 acceptance
-(custom-protocol mapping, media permission prompts, gaming surfaces, sealed
-media) is still outstanding.
+path has macOS development runs and unit tests. Windows CI checks the
+custom-protocol origin, the media-permission decision and the gaming-surface
+origin with synthetic devices. A human prompt, physical devices and sealed
+media on real hardware are still outstanding.
 
 Microphone/camera permission requests follow WebView2's browser permission flow.
 HTTPS chat links to other sites open in the default Windows browser after an

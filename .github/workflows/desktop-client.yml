@@ -217,7 +217,7 @@ jobs:
           cargo build --locked --release --manifest-path experimental/app/Cargo.toml --features shell,web-client,custom-protocol
           if ($LASTEXITCODE -ne 0) { throw 'Shared Windows executable build failed' }
           if (!(Test-Path 'experimental/app/target/release/mnema-native-client-preview.exe')) { throw 'Shared executable missing' }
-          'Unsigned DEV web-client host linked from experimental/app with embedded web/dist. This job does not qualify GUI, multi-device E2EE, voice, games, fullscreen overlays or distribution licenses. The installer of a release updates itself; this portable executable does not.' | Out-File -Append $env:GITHUB_STEP_SUMMARY
+          'Unsigned DEV web-client host linked from experimental/app with embedded web/dist. The next step checks the WebView2 origin and the media-permission decision with fake devices. It does not qualify a physical device, sealed media, multi-device E2EE, real games, fullscreen overlays or distribution licenses. The installer of a release updates itself; this portable executable does not.' | Out-File -Append $env:GITHUB_STEP_SUMMARY
       - name: Prepare unsigned Windows DEV artifact
         if: inputs.acceptance_release == ''
         shell: pwsh
@@ -227,18 +227,52 @@ jobs:
           New-Item -ItemType Directory -Path $devOutput -Force | Out-Null
           $devExe = Join-Path $devOutput 'Mnema Desktop DEV.exe'
           Copy-Item 'experimental/app/target/release/mnema-native-client-preview.exe' $devExe
-          $process = Start-Process -FilePath $devExe -PassThru
+          $probeLog = Join-Path $env:RUNNER_TEMP 'webview-probe.log'
+          if (Test-Path $probeLog) { Remove-Item $probeLog }
+          $previousArguments = $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS
+          $env:MNEMA_WEBVIEW_PROBE = '1'
+          $env:MNEMA_WEBVIEW_PROBE_LOG = $probeLog
+          # No physical microphone or camera is installed on this runner.
+          # These flags affect only this process and the receipt records that.
+          $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = '--use-fake-device-for-media-stream --use-fake-ui-for-media-stream'
+          Add-Type -AssemblyName UIAutomationClient
           try {
-            $windowReady = $false
-            for ($attempt = 0; $attempt -lt 60; $attempt++) {
-              Start-Sleep -Milliseconds 500
-              $process.Refresh()
-              if ($process.HasExited) { throw "Desktop exited before opening its window: $($process.ExitCode)" }
-              if ($process.MainWindowHandle -ne 0 -and $process.MainWindowTitle -eq 'Mnema Desktop DEV — Instance') { $windowReady = $true; break }
+            $process = Start-Process -FilePath $devExe -PassThru
+            try {
+              $windowReady = $false
+              for ($attempt = 0; $attempt -lt 60; $attempt++) {
+                Start-Sleep -Milliseconds 500
+                $process.Refresh()
+                if ($process.HasExited) { throw "Desktop exited before opening its window: $($process.ExitCode)" }
+                $byProcess = [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::ProcessIdProperty, $process.Id)
+                $byName = [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::NameProperty, 'Mnema Desktop DEV — Instance')
+                $selector = [System.Windows.Automation.AutomationElement]::RootElement.FindFirst(
+                  [System.Windows.Automation.TreeScope]::Children,
+                  [System.Windows.Automation.AndCondition]::new($byProcess, $byName))
+                if ($null -ne $selector -or $process.MainWindowTitle -eq 'Mnema Desktop DEV — Instance') { $windowReady = $true; break }
+              }
+              if (!$windowReady) { throw 'Desktop selector window did not appear' }
+              $probeReady = $false
+              $probeDetail = ''
+              for ($attempt = 0; $attempt -lt 90; $attempt++) {
+                $process.Refresh()
+                if ($process.HasExited) { throw "Desktop exited during the WebView2 probe: $($process.ExitCode)" }
+                $probeDetail = (& ./scripts/assert-webview-probe.ps1 -LogPath $probeLog | Out-String).Trim()
+                if ($probeDetail -eq 'OK') { $probeReady = $true; break }
+                Start-Sleep -Milliseconds 500
+              }
+              if (!$probeReady) {
+                $seen = if (Test-Path $probeLog) { Get-Content $probeLog -Raw } else { '(no probe record)' }
+                throw "WebView2 probe did not complete: $probeDetail`n$seen"
+              }
+            } finally {
+              if (!$process.HasExited) { Stop-Process -Id $process.Id -Force }
             }
-            if (!$windowReady) { throw 'Desktop selector window did not appear' }
           } finally {
-            if (!$process.HasExited) { Stop-Process -Id $process.Id -Force }
+            Remove-Item Env:MNEMA_WEBVIEW_PROBE -ErrorAction SilentlyContinue
+            Remove-Item Env:MNEMA_WEBVIEW_PROBE_LOG -ErrorAction SilentlyContinue
+            if ($null -eq $previousArguments) { Remove-Item Env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS -ErrorAction SilentlyContinue }
+            else { $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = $previousArguments }
           }
           Copy-Item 'experimental/licenses'  (Join-Path $devOutput 'licenses') -Recurse
           Copy-Item 'LICENSE' $devOutput
@@ -254,6 +288,14 @@ jobs:
             shared_frontend = 'web/src'
             instance_transport = 'verified-bundle-native-proxy'
             windows_startup_checked = $true
+            webview_origin_checked = $true
+            webview_origin = 'https://mnema.localhost/'
+            media_permission_instance = 'engine-default'
+            media_permission_other_windows = 'deny'
+            media_devices = 'synthetic-fake-device'
+            gaming_surface_origin_checked = $true
+            physical_device_qualified = $false
+            sealed_media_qualified = $false
             synthetic_fixture_features = $false
             windows_gui_qualified = $false
             multi_device_e2ee_qualified = $false
@@ -274,9 +316,13 @@ jobs:
           key pinned in the executable; the instance supplies data, never code.
           Enter the HTTPS address of a compatible normal Mnema instance.
 
-          Windows GUI, multi-device E2EE, restored history, native voice and game
-          overlays have not been fully qualified. Voice, camera and screen sharing
-          use the WebView browser APIs and still need device testing. This portable ZIP does not update itself; the installer of a release does.
+          The Windows startup check confirmed the WebView2 origin
+          (https://mnema.localhost), that only the instance window keeps the
+          engine's media prompt, and that the gaming surfaces load on that
+          origin and are refused a microphone. The microphone grant used the
+          runner's fake devices. A human prompt, a physical device, sealed
+          media, multi-device E2EE, restored history and real games are not
+          qualified. This portable ZIP does not update itself; the installer of a release does.
 
           Check DEV-BUILD.json for the source revision and executable SHA-256.
           Source and dependency notices accompany this build. The existing prebuilt

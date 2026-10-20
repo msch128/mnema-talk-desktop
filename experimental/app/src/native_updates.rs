@@ -805,7 +805,10 @@ pub fn open_window<R: Runtime>(app: &AppHandle<R>, focus: bool) -> tauri::Result
         .focused(focus)
         .on_navigation(ui_url)
         .on_new_window(|_, _| tauri::webview::NewWindowResponse::Deny)
-        .on_permission_request(|_, _| tauri::webview::PermissionResponse::Deny)
+        .on_permission_request(|webview, kind| {
+            let url = webview.url().ok();
+            crate::web_permissions::decide(webview.label(), url.as_ref(), kind)
+        })
         .build()?;
     Ok(())
 }
