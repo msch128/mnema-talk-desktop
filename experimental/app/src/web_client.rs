@@ -390,6 +390,9 @@ async fn handle(
     let trusted = app.state::<Trusted>();
     let method = request.method().as_str().to_owned();
     let path = request.uri().path().to_owned();
+    if super::web_permissions::take_probe(label, &path, request.uri().query()) {
+        return plain(204, "");
+    }
     let path_and_query = request
         .uri()
         .path_and_query()
@@ -398,6 +401,15 @@ async fn handle(
     match label {
         "instance" | "attachment" => {
             let Some(session) = trusted.session() else {
+                // The probe opens an instance-labelled window before any server
+                // is selected, so its document still comes from the verified
+                // bundle. API calls keep having no session.
+                if label == "instance" && !api && super::web_permissions::probe_enabled() {
+                    return match trusted.view() {
+                        Some(held) => serve_bundle(&held.bundle, &method, &path),
+                        None => plain(503, "No instance is selected."),
+                    };
+                }
                 return plain(503, "No instance is selected.");
             };
             if api {
@@ -516,9 +528,23 @@ fn app_window<'a>(
     label: &str,
     role: &str,
 ) -> WebviewWindowBuilder<'a, tauri::Wry, tauri::AppHandle> {
-    WebviewWindowBuilder::new(app, label, WebviewUrl::CustomProtocol(app_url()))
+    let builder = WebviewWindowBuilder::new(app, label, WebviewUrl::CustomProtocol(app_url()))
         .use_https_scheme(true)
-        .initialization_script(identity_script(app, role))
+        .initialization_script(identity_script(app, role));
+    let builder = if super::web_permissions::probe_enabled() {
+        builder.initialization_script(super::web_permissions::PROBE_SCRIPT)
+    } else {
+        builder
+    };
+    super::web_permissions::with_probe_args(app, label, builder)
+}
+
+pub(super) fn allow_permission(
+    webview: tauri::Webview<tauri::Wry>,
+    kind: tauri::webview::PermissionKind,
+) -> tauri::webview::PermissionResponse {
+    let url = webview.url().ok();
+    super::web_permissions::decide(webview.label(), url.as_ref(), kind)
 }
 
 #[tauri::command]
@@ -582,14 +608,22 @@ fn open_instance_window(window: &WebviewWindow) -> Result<(), String> {
                 } else {
                     // Reuse the opener's browser environment without granting
                     // native capabilities: the child gets no identity script.
-                    let child = WebviewWindowBuilder::new(&popup_app, "attachment", WebviewUrl::CustomProtocol(url))
+                    let child = super::web_permissions::with_probe_args(
+                        &popup_app,
+                        "attachment",
+                        WebviewWindowBuilder::new(
+                            &popup_app,
+                            "attachment",
+                            WebviewUrl::CustomProtocol(url),
+                        )
                         .use_https_scheme(true)
                         .window_features(features)
                         .title("Mnema Desktop DEV — Attachment")
                         .on_navigation(app_api)
                         .on_new_window(|_, _| tauri::webview::NewWindowResponse::Deny)
-                        .on_permission_request(|_, _| tauri::webview::PermissionResponse::Deny)
-                        .build();
+                        .on_permission_request(allow_permission),
+                    )
+                    .build();
                     if let Ok(window) = child {
                         return tauri::webview::NewWindowResponse::Create { window };
                     }
@@ -599,7 +633,7 @@ fn open_instance_window(window: &WebviewWindow) -> Result<(), String> {
             }
             tauri::webview::NewWindowResponse::Deny
         })
-        .on_permission_request(|_, _| tauri::webview::PermissionResponse::Default)
+        .on_permission_request(allow_permission)
         .build()
         .map_err(|_| "Unable to open the instance. Check the WebView2 runtime.")?;
     let selector = window.clone();
@@ -734,8 +768,18 @@ pub(super) fn run() {
                 .inner_size(520.0, 520.0)
                 .on_navigation(bundled)
                 .on_new_window(|_, _| tauri::webview::NewWindowResponse::Deny)
-                .on_permission_request(|_, _| tauri::webview::PermissionResponse::Deny)
+                .on_permission_request(allow_permission)
                 .build()?;
+            if super::web_permissions::probe_enabled() {
+                let _ = app_window(app.handle(), "instance", "probe")
+                    .title("Mnema Desktop DEV — Probe")
+                    .focused(false)
+                    .on_navigation(bundled)
+                    .on_new_window(|_, _| tauri::webview::NewWindowResponse::Deny)
+                    .on_permission_request(allow_permission)
+                    .build();
+                super::web_gaming::open_probe_surfaces(app.handle());
+            }
             refresh_in_background(app.handle());
             Ok(())
         })
