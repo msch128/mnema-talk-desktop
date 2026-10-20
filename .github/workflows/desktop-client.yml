@@ -229,12 +229,12 @@ jobs:
           Copy-Item 'experimental/app/target/release/mnema-native-client-preview.exe' $devExe
           $probeLog = Join-Path $env:RUNNER_TEMP 'webview-probe.log'
           if (Test-Path $probeLog) { Remove-Item $probeLog }
-          $previousArguments = $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS
           $env:MNEMA_WEBVIEW_PROBE = '1'
           $env:MNEMA_WEBVIEW_PROBE_LOG = $probeLog
           # No physical microphone or camera is installed on this runner.
-          # These flags affect only this process and the receipt records that.
-          $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = '--use-fake-device-for-media-stream --use-fake-ui-for-media-stream'
+          # Wry sets AdditionalBrowserArguments and that replaces
+          # WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS, so the host passes the
+          # synthetic-device flags itself while the probe variable is set.
           Add-Type -AssemblyName UIAutomationClient
           try {
             $process = Start-Process -FilePath $devExe -PassThru
@@ -271,8 +271,6 @@ jobs:
           } finally {
             Remove-Item Env:MNEMA_WEBVIEW_PROBE -ErrorAction SilentlyContinue
             Remove-Item Env:MNEMA_WEBVIEW_PROBE_LOG -ErrorAction SilentlyContinue
-            if ($null -eq $previousArguments) { Remove-Item Env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS -ErrorAction SilentlyContinue }
-            else { $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = $previousArguments }
           }
           Copy-Item 'experimental/licenses'  (Join-Path $devOutput 'licenses') -Recurse
           Copy-Item 'LICENSE' $devOutput

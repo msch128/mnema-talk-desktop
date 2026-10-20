@@ -531,11 +531,12 @@ fn app_window<'a>(
     let builder = WebviewWindowBuilder::new(app, label, WebviewUrl::CustomProtocol(app_url()))
         .use_https_scheme(true)
         .initialization_script(identity_script(app, role));
-    if super::web_permissions::probe_enabled() {
+    let builder = if super::web_permissions::probe_enabled() {
         builder.initialization_script(super::web_permissions::PROBE_SCRIPT)
     } else {
         builder
-    }
+    };
+    super::web_permissions::with_probe_args(builder)
 }
 
 pub(super) fn allow_permission(
@@ -607,14 +608,20 @@ fn open_instance_window(window: &WebviewWindow) -> Result<(), String> {
                 } else {
                     // Reuse the opener's browser environment without granting
                     // native capabilities: the child gets no identity script.
-                    let child = WebviewWindowBuilder::new(&popup_app, "attachment", WebviewUrl::CustomProtocol(url))
+                    let child = super::web_permissions::with_probe_args(
+                        WebviewWindowBuilder::new(
+                            &popup_app,
+                            "attachment",
+                            WebviewUrl::CustomProtocol(url),
+                        )
                         .use_https_scheme(true)
                         .window_features(features)
                         .title("Mnema Desktop DEV — Attachment")
                         .on_navigation(app_api)
                         .on_new_window(|_, _| tauri::webview::NewWindowResponse::Deny)
-                        .on_permission_request(allow_permission)
-                        .build();
+                        .on_permission_request(allow_permission),
+                    )
+                    .build();
                     if let Ok(window) = child {
                         return tauri::webview::NewWindowResponse::Create { window };
                     }

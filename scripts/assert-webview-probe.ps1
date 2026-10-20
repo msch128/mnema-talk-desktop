@@ -16,6 +16,7 @@ $badOrigin = [regex]::Matches($text, '(?m)^\[probe\] \S+ origin .+$') | Where-Ob
 if ($badOrigin) { throw "WebView2 reported an unexpected origin: $($badOrigin[0].Value)" }
 
 $required = @(
+  '(?m)^\[probe\] browser-args synthetic$',
   '(?m)^\[probe\] main origin https://mnema\.localhost/',
   '(?m)^\[perm\] main Microphone Deny$',
   '(?m)^\[probe\] main media NotAllowedError$',

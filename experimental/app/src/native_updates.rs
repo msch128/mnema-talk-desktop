@@ -796,20 +796,22 @@ pub fn open_window<R: Runtime>(app: &AppHandle<R>, focus: bool) -> tauri::Result
         return Ok(());
     }
     let url = ui_base().join("index.html").expect("constant path");
-    WebviewWindowBuilder::new(app, WINDOW, WebviewUrl::CustomProtocol(url))
-        .use_https_scheme(true)
-        .title("Mnema Desktop DEV \u{2014} Update")
-        .inner_size(440.0, 320.0)
-        .resizable(false)
-        .maximizable(false)
-        .focused(focus)
-        .on_navigation(ui_url)
-        .on_new_window(|_, _| tauri::webview::NewWindowResponse::Deny)
-        .on_permission_request(|webview, kind| {
-            let url = webview.url().ok();
-            crate::web_permissions::decide(webview.label(), url.as_ref(), kind)
-        })
-        .build()?;
+    crate::web_permissions::with_probe_args(
+        WebviewWindowBuilder::new(app, WINDOW, WebviewUrl::CustomProtocol(url))
+            .use_https_scheme(true)
+            .title("Mnema Desktop DEV \u{2014} Update")
+            .inner_size(440.0, 320.0)
+            .resizable(false)
+            .maximizable(false)
+            .focused(focus)
+            .on_navigation(ui_url)
+            .on_new_window(|_, _| tauri::webview::NewWindowResponse::Deny)
+            .on_permission_request(|webview, kind| {
+                let url = webview.url().ok();
+                crate::web_permissions::decide(webview.label(), url.as_ref(), kind)
+            }),
+    )
+    .build()?;
     Ok(())
 }
 

@@ -1,14 +1,24 @@
 //! Which window may ask WebView2 for a device, and the opt-in probe that
 //! records the answer. `MNEMA_WEBVIEW_PROBE=1` is a test switch: the page
 //! reports its own origin and asks for a microphone and camera. The Windows
-//! startup check reads that record. It uses the runner's fake devices, so a
-//! grant there is not a physical device, a human prompt or sealed media.
+//! startup check reads that record. Wry replaces
+//! `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS`, so the probe passes synthetic
+//! devices through the window builder. A grant there is not a physical
+//! device, a human prompt or sealed media.
+use crate::web_client::local_origin;
 use std::io::Write;
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::webview::{PermissionKind, PermissionResponse};
 use url::Url;
 
-use crate::web_client::local_origin;
+/// Wry's own WebView2 arguments plus Chromium's synthetic capture devices.
+/// `additional_browser_args` replaces wry's default, so the default is repeated
+/// here. Production windows leave the arguments unset.
+const PROBE_BROWSER_ARGUMENTS: &str = concat!(
+    "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection ",
+    "--use-fake-device-for-media-stream --use-fake-ui-for-media-stream"
+);
 
 /// Runs before any page script. Reports this document's URL, then asks for a
 /// microphone and camera and reports the outcome. Fetch stays on the app origin.
@@ -16,6 +26,35 @@ pub const PROBE_SCRIPT: &str = "if(window===window.top){var report=function(kind
 
 pub fn probe_enabled() -> bool {
     std::env::var_os("MNEMA_WEBVIEW_PROBE").is_some_and(|value| value == "1")
+}
+
+/// Synthetic-device arguments while the probe is on, so every window in that
+/// process shares one WebView2 profile. `None` in normal use.
+pub fn probe_browser_arguments() -> Option<&'static str> {
+    probe_enabled().then_some(PROBE_BROWSER_ARGUMENTS)
+}
+
+/// Passes [`probe_browser_arguments`] through when the probe is on.
+pub fn with_probe_args<'a, R, M>(
+    builder: tauri::WebviewWindowBuilder<'a, R, M>,
+) -> tauri::WebviewWindowBuilder<'a, R, M>
+where
+    R: tauri::Runtime,
+    M: tauri::Manager<R>,
+{
+    let Some(args) = probe_browser_arguments() else {
+        return builder;
+    };
+    note_synthetic_devices();
+    builder.additional_browser_args(args)
+}
+
+fn note_synthetic_devices() {
+    static NOTED: AtomicBool = AtomicBool::new(false);
+    if NOTED.swap(true, Ordering::Relaxed) {
+        return;
+    }
+    emit("[probe] browser-args synthetic");
 }
 
 /// The instance window keeps the engine's prompt for every kind, and only
@@ -223,5 +262,16 @@ mod tests {
             None
         );
         assert!(!take_probe("main", "/index.html", None));
+    }
+
+    #[test]
+    fn synthetic_devices_are_passed_only_while_the_probe_is_on() {
+        assert!(probe_browser_arguments().is_none());
+        assert!(PROBE_BROWSER_ARGUMENTS.contains("--use-fake-device-for-media-stream"));
+        assert!(PROBE_BROWSER_ARGUMENTS.contains("--use-fake-ui-for-media-stream"));
+        assert!(
+            PROBE_BROWSER_ARGUMENTS
+                .contains("--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection")
+        );
     }
 }
