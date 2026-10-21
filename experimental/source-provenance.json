@@ -144,9 +144,9 @@
     {
       "path": "desktop/experimental/vendor/openmls/Cargo.lock",
       "frozen_sha256": "efd7f22361409c3d2a4a084693aca70df1fca8b969427bb70ec49663dd56d5db",
-      "checkpoint_sha256": "ffb2df54842a36ed4432429ad6d14f4458ada917765694634902671ccd109ebf",
+      "checkpoint_sha256": "740e48df12c43a0297e42d9cfe308e069098050b45041517365020742a21a3c1",
       "relocated_or_configured": true,
-      "local_modification": "Regenerated for reviewed HPKE/DRBG changes plus h2 and rustls security updates; original frozen source identity retained."
+      "local_modification": "Regenerated for reviewed HPKE/DRBG changes plus h2 and rustls security updates (rustls-webpki 0.103.16, webpki-root-certs 1.0.10); original frozen source identity retained."
     },
     {
       "path": "desktop/experimental/vendor/openmls/Cargo.toml",
