@@ -1,0 +1,21 @@
+experimental/app/src/web_notify/mod.rs
+  s_06fcde5dbef956::t_1e3cc8aadce5b9 49
+experimental/app/src/web_notify/win.rs
+  s_06fcde5dbef956::t_59e7e3548ee53b 14,98-101
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5ee3accb6db9882418594f1b2a244f2818c5c68a",
+  "prompts": {},
+  "sessions": {
+    "s_06fcde5dbef956": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "94b73314-95fe-4e96-8c43-d20b0f28358d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}
