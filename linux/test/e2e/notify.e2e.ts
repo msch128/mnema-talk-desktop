@@ -93,3 +93,13 @@ test('the badge call is accepted', { skip: !enabled }, async () => {
   assert.equal(await instance.evaluate("window.__TAURI_INTERNALS__.invoke('desktop_set_badge', { count: 3 }).then(() => 'ok', (e) => String(e))"), 'ok')
   assert.equal(await instance.evaluate("window.__TAURI_INTERNALS__.invoke('desktop_set_badge', { count: 0 }).then(() => 'ok', (e) => String(e))"), 'ok')
 })
+
+test('closing the instance takes its toasts down, so they cannot be used for another instance', { skip: !enabled }, async () => {
+  const closes = () => (bus.match(/member=CloseNotification/g) ?? []).length
+  const before = closes()
+  await new Promise((resolve) => setTimeout(resolve, 500)) // past the host's rate limit
+  await instance.evaluate(`window.__TAURI_INTERNALS__.invoke('desktop_notify', { title: 'Stale', body: 'Left over', channelId: '${CHANNEL}', messageId: '${MESSAGE}' })`)
+  await until(() => bus.includes('Left over'), 'the second toast')
+  await instance.send('Page.close')
+  await until(() => closes() > before, 'the toast to be closed with its instance')
+})

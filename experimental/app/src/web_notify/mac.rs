@@ -66,8 +66,8 @@ define_class!(
             let default_action = unsafe { UNNotificationDefaultActionIdentifier };
             if response.actionIdentifier().isEqualToString(default_action) {
                 let id = response.notification().request().identifier().to_string();
-                if let Some(click) = parse_identifier(&id) {
-                    activated(&self.ivars().app, click);
+                if let Some((click, session)) = parse_identifier(&id) {
+                    activated(&self.ivars().app, click, &session);
                 }
             }
             done.call(());
@@ -82,22 +82,42 @@ impl Delegate {
     }
 }
 
-/// The identifier of a request carries what the click needs: `channel|message|nonce`.
-/// Ids are plain (`valid_id`), so `|` never occurs inside one.
-fn identifier(click: &Click, nonce: &str) -> String {
-    format!("{}|{}|{nonce}", click.channel_id, click.message_id)
+/// The identifier of a request carries what the click needs:
+/// `channel|message|session|nonce`. Ids and the session are plain
+/// (`valid_id`), so `|` never occurs inside one.
+fn identifier(click: &Click, session: &str, nonce: &str) -> String {
+    format!(
+        "{}|{}|{session}|{nonce}",
+        click.channel_id, click.message_id
+    )
 }
 
-fn parse_identifier(id: &str) -> Option<Click> {
+fn parse_identifier(id: &str) -> Option<(Click, String)> {
     let mut parts = id.split('|');
-    let (channel_id, message_id, _nonce) = (parts.next()?, parts.next()?, parts.next()?);
-    if parts.next().is_some() || !valid_id(channel_id) || !valid_id(message_id) {
+    let (channel_id, message_id, session, _nonce) =
+        (parts.next()?, parts.next()?, parts.next()?, parts.next()?);
+    if parts.next().is_some()
+        || !valid_id(channel_id)
+        || !valid_id(message_id)
+        || !valid_id(session)
+    {
         return None;
     }
-    Some(Click {
-        channel_id: channel_id.to_owned(),
-        message_id: message_id.to_owned(),
-    })
+    Some((
+        Click {
+            channel_id: channel_id.to_owned(),
+            message_id: message_id.to_owned(),
+        },
+        session.to_owned(),
+    ))
+}
+
+/// Removes this app's delivered and waiting toasts.
+pub fn clear(_app: &tauri::AppHandle) {
+    if let Some(center) = center() {
+        center.removeAllDeliveredNotifications();
+        center.removeAllPendingNotificationRequests();
+    }
 }
 
 /// The center, or nothing when this process is not an app bundle.
@@ -164,7 +184,12 @@ fn ask_authorization() -> Option<oneshot::Receiver<()>> {
     Some(rx)
 }
 
-fn add_request(title: &str, body: &str, click: &Click) -> Option<oneshot::Receiver<bool>> {
+fn add_request(
+    title: &str,
+    body: &str,
+    click: &Click,
+    session: &str,
+) -> Option<oneshot::Receiver<bool>> {
     let center = center()?;
     let content = UNMutableNotificationContent::new();
     content.setTitle(&NSString::from_str(title));
@@ -172,7 +197,7 @@ fn add_request(title: &str, body: &str, click: &Click) -> Option<oneshot::Receiv
     content.setSound(Some(&UNNotificationSound::defaultSound()));
     // One thread per channel, so the Notification Center groups them.
     content.setThreadIdentifier(&NSString::from_str(&click.channel_id));
-    let id = identifier(click, &uuid::Uuid::new_v4().simple().to_string());
+    let id = identifier(click, session, &uuid::Uuid::new_v4().simple().to_string());
     let request = UNNotificationRequest::requestWithIdentifier_content_trigger(
         &NSString::from_str(&id),
         &content,
@@ -208,6 +233,7 @@ pub async fn show(
     title: &str,
     body: &str,
     click: Click,
+    session: String,
 ) -> Result<bool, String> {
     let mut state = permission().await;
     if state == Permission::Default {
@@ -222,7 +248,7 @@ pub async fn show(
         }
     }
     let unavailable = || "The notification could not be shown.".to_owned();
-    let rx = add_request(title, body, &click).ok_or_else(unavailable)?;
+    let rx = add_request(title, body, &click, &session).ok_or_else(unavailable)?;
     match rx.await {
         Ok(true) => Ok(true),
         _ => Err(unavailable()),
@@ -239,9 +265,19 @@ mod tests {
             channel_id: "0b1e2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d".into(),
             message_id: "11111111-2222-4333-8444-555555555555".into(),
         };
-        let id = identifier(&click, "abc");
-        assert_eq!(parse_identifier(&id), Some(click));
-        for bad in ["", "a|b", "a|b|c|d", "a b|m|n", "|m|n", "c||n", "c|m;|n"] {
+        let id = identifier(&click, "s1", "abc");
+        assert_eq!(parse_identifier(&id), Some((click, "s1".to_owned())));
+        for bad in [
+            "",
+            "a|b",
+            "a|b|c",
+            "a|b|c|d|e",
+            "a b|m|s|n",
+            "|m|s|n",
+            "c||s|n",
+            "c|m;|s|n",
+            "c|m||n",
+        ] {
             assert_eq!(parse_identifier(bad), None, "{bad:?}");
         }
     }

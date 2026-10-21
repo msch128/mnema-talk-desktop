@@ -58,6 +58,10 @@ pub enum Permission {
 pub struct Notifier {
     clicks: Mutex<Option<tauri::ipc::Channel<Click>>>,
     last: Mutex<Option<Instant>>,
+    /// Names the instance a toast was shown for; a new one is taken whenever
+    /// the instance window goes away, so a toast of an earlier instance (or
+    /// of an earlier run of the app) can never deliver its ids to a later one.
+    session: Mutex<String>,
 }
 
 /// Plain text only: control characters become spaces, the length is bounded
@@ -95,9 +99,27 @@ impl Notifier {
         true
     }
 
+    /// The session toasts shown now belong to.
+    fn session(&self) -> String {
+        let Ok(mut session) = self.session.lock() else {
+            return String::new();
+        };
+        if session.is_empty() {
+            *session = uuid::Uuid::new_v4().simple().to_string();
+        }
+        session.clone()
+    }
+
+    fn current(&self, session: &str) -> bool {
+        !session.is_empty() && self.session.lock().is_ok_and(|now| *now == session)
+    }
+
     fn forget(&self) {
         if let Ok(mut clicks) = self.clicks.lock() {
             *clicks = None;
+        }
+        if let Ok(mut session) = self.session.lock() {
+            *session = uuid::Uuid::new_v4().simple().to_string();
         }
     }
 }
@@ -168,12 +190,26 @@ async fn deliver(
         channel_id,
         message_id,
     };
-    platform::show(app, &clean(title, MAX_TITLE), &clean(body, MAX_BODY), click).await
+    let session = app.state::<Notifier>().session();
+    platform::show(
+        app,
+        &clean(title, MAX_TITLE),
+        &clean(body, MAX_BODY),
+        click,
+        session,
+    )
+    .await
 }
 
 /// The user used a toast: bring the instance window forward and tell its page
 /// which message the toast was about.
-pub(crate) fn activated(app: &tauri::AppHandle, click: Click) {
+///
+/// A toast that belongs to an instance that is no longer the open one is
+/// dropped: its ids mean nothing to (and must not reach) another instance.
+pub(crate) fn activated(app: &tauri::AppHandle, click: Click, session: &str) {
+    if !app.state::<Notifier>().current(session) {
+        return;
+    }
     #[cfg(feature = "notify-selftest")]
     selftest::clicked(&click);
     if let Some(window) = app.get_webview_window("instance") {
@@ -240,6 +276,8 @@ fn dot() -> tauri::image::Image<'static> {
 /// The instance window is gone: nothing may be delivered to its page anymore.
 pub fn closed(app: &tauri::AppHandle) {
     app.state::<Notifier>().forget();
+    // Toasts still on the screen or in the notification centre are of that instance.
+    platform::clear(app);
 }
 
 #[cfg(test)]
@@ -272,6 +310,20 @@ mod tests {
         assert!(n.due(t));
         assert!(!n.due(t + Duration::from_millis(100)));
         assert!(n.due(t + MIN_GAP + Duration::from_millis(1)));
+    }
+
+    #[test]
+    fn a_toast_of_an_earlier_instance_is_not_current() {
+        let n = Notifier::default();
+        assert!(!n.current(""));
+        let first = n.session();
+        assert_eq!(first, n.session());
+        assert!(n.current(&first));
+        n.forget();
+        assert!(!n.current(&first));
+        let second = n.session();
+        assert_ne!(first, second);
+        assert!(n.current(&second));
     }
 
     #[test]

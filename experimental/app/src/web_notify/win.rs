@@ -70,6 +70,7 @@ pub async fn show(
     title: &str,
     body: &str,
     click: Click,
+    session: String,
 ) -> Result<bool, String> {
     let id = APP_ID.get_or_init(|| app.config().identifier.clone());
     if setting(id) == Permission::Denied {
@@ -80,12 +81,18 @@ pub async fn show(
         .title(title)
         .text1(body)
         .on_activated(move |_| {
-            activated(&handle, click.clone());
+            activated(&handle, click.clone(), &session);
             Ok(())
         })
         .show()
         .map(|()| true)
         .map_err(|_| "The notification could not be shown.".to_owned())
+}
+
+/// Removes this app's toasts from the notification centre.
+pub fn clear(app: &tauri::AppHandle) {
+    let id = HSTRING::from(app.config().identifier.as_str());
+    let _ = ToastNotificationManager::History().and_then(|history| history.ClearWithId(&id));
 }
 
 #[cfg(test)]

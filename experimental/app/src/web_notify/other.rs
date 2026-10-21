@@ -16,6 +16,9 @@ pub async fn show(
     _title: &str,
     _body: &str,
     _click: Click,
+    _session: String,
 ) -> Result<bool, String> {
     Err("Notifications are not available on this system.".into())
 }
+
+pub fn clear(_app: &tauri::AppHandle) {}
