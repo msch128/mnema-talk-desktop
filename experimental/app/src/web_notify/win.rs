@@ -11,7 +11,7 @@ use tauri_winrt_notification::Toast;
 use windows::{
     UI::Notifications::{NotificationSetting, ToastNotificationManager},
     Win32::System::Registry::{HKEY_CURRENT_USER, REG_SZ, RegSetKeyValueW},
-    core::{HSTRING, PCWSTR},
+    core::HSTRING,
 };
 
 const KEY: &str = r"Software\Classes\AppUserModelId";
@@ -95,7 +95,10 @@ mod tests {
     /// Registers a throwaway ID, reads it back and removes it again.
     #[test]
     fn the_app_id_is_registered_for_the_current_user() {
-        use windows::Win32::System::Registry::{RRF_RT_REG_SZ, RegDeleteTreeW, RegGetValueW};
+        use windows::{
+            Win32::System::Registry::{RRF_RT_REG_SZ, RegDeleteTreeW, RegGetValueW},
+            core::PCWSTR,
+        };
         let id = "com.mnema.desktop.notify-unit-test";
         register(id, "Unit Test").unwrap();
         let key = HSTRING::from(format!(r"{KEY}\{id}"));
