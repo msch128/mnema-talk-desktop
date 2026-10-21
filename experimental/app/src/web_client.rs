@@ -227,6 +227,12 @@ impl Trusted {
     }
 }
 
+/// What this host offers the page beyond the common surface. The web app
+/// detects these instead of bumping `web_client_api`; older bundles ignore it.
+fn capabilities(role: &str) -> &'static [&'static str] {
+    if role == "instance" { &["notify"] } else { &[] }
+}
+
 /// Announces the verified bundle to the page before any of its scripts run.
 /// The app honours it only on the host's own origin.
 pub fn identity_script(app: &tauri::AppHandle, role: &str) -> String {
@@ -240,6 +246,7 @@ pub fn identity_script(app: &tauri::AppHandle, role: &str) -> String {
         "keyId": held.bundle.key_id,
         "commit": held.bundle.commit,
         "role": role,
+        "capabilities": capabilities(role),
     });
     format!(
         "if(window===window.top)Object.defineProperty(window,'__MNEMA_TRUSTED_APP__',{{value:Object.freeze({identity})}});"
@@ -476,7 +483,7 @@ fn plain(status: u16, text: &str) -> Resp {
     }
 }
 
-fn instance_window(window: &WebviewWindow) -> Result<Arc<Session>, String> {
+pub(super) fn instance_window(window: &WebviewWindow) -> Result<Arc<Session>, String> {
     if window.label() != "instance" || !window.url().is_ok_and(|u| local_origin(&u).is_some()) {
         return Err("Only the instance window may use this.".into());
     }
@@ -638,7 +645,11 @@ fn open_instance_window(window: &WebviewWindow) -> Result<(), String> {
         .map_err(|_| "Unable to open the instance. Check the WebView2 runtime.")?;
     let selector = window.clone();
     instance.on_window_event(move |event| {
+        if matches!(event, tauri::WindowEvent::Focused(true)) {
+            super::web_notify::focused(selector.app_handle());
+        }
         if matches!(event, tauri::WindowEvent::Destroyed) {
+            super::web_notify::closed(selector.app_handle());
             let trusted = selector.app_handle().state::<Trusted>();
             trusted.sockets.close_all();
             trusted.set_session(None);
@@ -742,7 +753,10 @@ pub(super) fn run() {
             super::web_gaming::desktop_gaming_control,
             super::web_gaming::desktop_gaming_settings,
             super::native_updates::native_update_state,
-            super::native_updates::native_update_action
+            super::native_updates::native_update_action,
+            super::web_notify::desktop_notify_open,
+            super::web_notify::desktop_notify,
+            super::web_notify::desktop_set_badge
         ])
         .on_menu_event(|app, event| {
             if event.id().as_ref() == "gaming-settings" {
@@ -760,6 +774,7 @@ pub(super) fn run() {
                 }
             }
             app.manage(trusted);
+            app.manage(super::web_notify::Notifier::default());
             super::native_updates::setup(app.handle());
             super::web_gaming::setup(app.handle());
             app_window(app.handle(), "main", "selector")
@@ -884,6 +899,14 @@ mod tests {
 
     fn url(raw: &str) -> Url {
         Url::parse(raw).unwrap()
+    }
+
+    #[test]
+    fn only_the_instance_window_announces_notifications() {
+        assert_eq!(capabilities("instance"), ["notify"]);
+        for role in ["selector", "surface", "probe", ""] {
+            assert!(capabilities(role).is_empty(), "{role}");
+        }
     }
 
     #[test]

@@ -815,6 +815,20 @@
       "source": "https://raw.githubusercontent.com/celabshq/libcrux/42d68bd49b244b09bd02626c6ffa95e54dc64f91/LICENSE-MIT"
     }
   ],
+  "mac-notification-sys@0.6.15": [
+    {
+      "name": "LICENSE-MIT",
+      "provenance": "crate-vcs-commit-upstream-root",
+      "sha256": "1299b4d9d15e9d67e4ac0e7d47ae9404887ca3cf0764aadeec7588d5a6e8e0cc",
+      "source": "https://raw.githubusercontent.com/h4llow3En/mac-notification-sys/deb559683962d314a7693478476bf8d052efa84e/LICENSE-MIT"
+    },
+    {
+      "name": "LICENSE-Apache",
+      "provenance": "crate-vcs-commit-upstream-root",
+      "sha256": "b40930bbcf80744c86c46a12bc9da056641d722716c378f5659b9e555ef833e1",
+      "source": "https://raw.githubusercontent.com/h4llow3En/mac-notification-sys/deb559683962d314a7693478476bf8d052efa84e/LICENSE-Apache"
+    }
+  ],
   "ndk-context@0.1.1": [
     {
       "name": "LICENSE-APACHE",

@@ -1,8 +1,8 @@
 {
   "schema": "mnema-desktop-license-bundle-v1",
   "scope": "Conservative locked Rust graph and production npm closure; not a claim that all packages are linked.",
-  "cargo_lock_sha256": "f3a98b9c40221c2c1206c03e0963018ca8c1f89ff867a2a04029b8dd4c4dd5dd",
-  "npm_lock_sha256": "dac10a85d34c2db5103ba4fce5701f251a893b6f1dd94d31c20d9217a13dc742",
+  "cargo_lock_sha256": "578a952eeae59e23ebf2a515e9a41dde0835f5f1248a3038666b2913dc318a95",
+  "npm_lock_sha256": "2a40efeb8547f8c8085670fe4f51a579d4762fd70d73b11ca263322109dc601f",
   "supplemental": {
     "rust_standard_library": {
       "version": "1.99.0",
@@ -5907,6 +5907,27 @@
     },
     {
       "ecosystem": "cargo",
+      "name": "mac-notification-sys",
+      "version": "0.6.15",
+      "license": "MIT/Apache-2.0",
+      "source": "https://crates.io/crates/mac-notification-sys/0.6.15",
+      "texts": [
+        {
+          "name": "LICENSE-MIT",
+          "provenance": "crate-vcs-commit-upstream-root",
+          "sha256": "1299b4d9d15e9d67e4ac0e7d47ae9404887ca3cf0764aadeec7588d5a6e8e0cc",
+          "source": "https://raw.githubusercontent.com/h4llow3En/mac-notification-sys/deb559683962d314a7693478476bf8d052efa84e/LICENSE-MIT"
+        },
+        {
+          "name": "LICENSE-Apache",
+          "provenance": "crate-vcs-commit-upstream-root",
+          "sha256": "b40930bbcf80744c86c46a12bc9da056641d722716c378f5659b9e555ef833e1",
+          "source": "https://raw.githubusercontent.com/h4llow3En/mac-notification-sys/deb559683962d314a7693478476bf8d052efa84e/LICENSE-Apache"
+        }
+      ]
+    },
+    {
+      "ecosystem": "cargo",
       "name": "markup5ever",
       "version": "0.39.0",
       "license": "MIT OR Apache-2.0",
@@ -10248,6 +10269,33 @@
     },
     {
       "ecosystem": "cargo",
+      "name": "tauri-winrt-notification",
+      "version": "0.8.1",
+      "license": "MIT OR Apache-2.0",
+      "source": "https://crates.io/crates/tauri-winrt-notification/0.8.1",
+      "texts": [
+        {
+          "name": "LICENSE.spdx",
+          "sha256": "a212bb763e1d415210f9d345a4c0bb896571b997f3599a92de16281acafc989b",
+          "source": "https://crates.io/crates/tauri-winrt-notification/0.8.1",
+          "provenance": "crate-archive"
+        },
+        {
+          "name": "LICENSE_APACHE-2.0",
+          "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594",
+          "source": "https://crates.io/crates/tauri-winrt-notification/0.8.1",
+          "provenance": "crate-archive"
+        },
+        {
+          "name": "LICENSE_MIT",
+          "sha256": "9dd42ea92cff2ede5cd477cbfcce051b2d0115c0ac7f368ee88cb545055dff1d",
+          "source": "https://crates.io/crates/tauri-winrt-notification/0.8.1",
+          "provenance": "crate-archive"
+        }
+      ]
+    },
+    {
+      "ecosystem": "cargo",
       "name": "tauri",
       "version": "2.12.1",
       "license": "Apache-2.0 OR MIT",
@@ -13042,26 +13090,26 @@
     {
       "ecosystem": "npm",
       "name": "@lucide/vue",
-      "version": "1.56.0",
+      "version": "1.57.0",
       "license": "ISC",
-      "source": "https://www.npmjs.com/package/@lucide/vue/v/1.56.0",
+      "source": "https://www.npmjs.com/package/@lucide/vue/v/1.57.0",
       "texts": [
         {
           "name": "LICENSE",
           "sha256": "b495047bd93a9b06913511076f504daba17d5bbeb3e0650f3bb53a4220329c57",
-          "source": "https://www.npmjs.com/package/@lucide/vue/v/1.56.0",
+          "source": "https://www.npmjs.com/package/@lucide/vue/v/1.57.0",
           "provenance": "npm-archive"
         },
         {
           "name": "dist/esm/icons/copyright.mjs",
-          "sha256": "97bc2b67811958275bf1203d10b26ebace77ce0539f6f71f5ca66eeaf623519e",
-          "source": "https://www.npmjs.com/package/@lucide/vue/v/1.56.0",
+          "sha256": "a0ab25a586cee9c898cbd218fd063c7547406e67517e99ad0a15771e8e12acfe",
+          "source": "https://www.npmjs.com/package/@lucide/vue/v/1.57.0",
           "provenance": "npm-archive"
         },
         {
           "name": "dist/esm/icons/copyright.mjs.map",
           "sha256": "0e3f264fe9e86136898dbcafc89ae1478c41f2a08dfdc5cc7de70ef3bd164945",
-          "source": "https://www.npmjs.com/package/@lucide/vue/v/1.56.0",
+          "source": "https://www.npmjs.com/package/@lucide/vue/v/1.57.0",
           "provenance": "npm-archive"
         }
       ]
@@ -13546,14 +13594,14 @@
     {
       "ecosystem": "npm",
       "name": "pinia",
-      "version": "4.0.3",
+      "version": "4.1.0",
       "license": "MIT",
-      "source": "https://www.npmjs.com/package/pinia/v/4.0.3",
+      "source": "https://www.npmjs.com/package/pinia/v/4.1.0",
       "texts": [
         {
           "name": "LICENSE",
           "sha256": "91a2845c4db44e7497b514b98634a674c737986ad0db81599307cf733bf850b2",
-          "source": "https://www.npmjs.com/package/pinia/v/4.0.3",
+          "source": "https://www.npmjs.com/package/pinia/v/4.1.0",
           "provenance": "npm-archive"
         }
       ]
