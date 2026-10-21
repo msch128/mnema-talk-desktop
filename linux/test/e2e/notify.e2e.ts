@@ -27,6 +27,15 @@ let instance: Page
 let monitor: ChildProcess
 let bus = ''
 
+/** A page is found as soon as its target exists; the host's bridge and identity arrive with the document. */
+async function ready(page: Page): Promise<void> {
+  const deadline = Date.now() + 20_000
+  while (!(await page.evaluate<boolean>("typeof window.__TAURI_INTERNALS__ === 'object' && typeof window.__MNEMA_TRUSTED_APP__ === 'object'").catch(() => false))) {
+    if (Date.now() > deadline) throw new Error('the page never got the host bridge')
+    await new Promise((resolve) => setTimeout(resolve, 200))
+  }
+}
+
 before(async () => {
   if (!enabled) return
   server = createServer((req, res) => {
@@ -40,8 +49,10 @@ before(async () => {
   monitor.stdout?.on('data', (chunk: Buffer) => { bus += chunk.toString() })
   app = await launch()
   const selector = await app.page((t) => t.url.startsWith('mnema://localhost'))
+  await ready(selector)
   await selector.evaluate(`window.__TAURI_INTERNALS__.invoke('desktop_open_instance', { address: '${address}' })`)
   instance = await app.page((t) => t.id !== selector.target.id && t.url.startsWith('mnema://localhost'))
+  await ready(instance)
 })
 
 after(async () => {
