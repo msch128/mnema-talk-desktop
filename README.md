@@ -34,9 +34,12 @@ had less testing still (see [macOS](#macos)). See the
   Keychain, the secret service on Linux), not in a web profile.
 - **OS notifications and an app badge.** Messages that would raise a browser
   notification show as native toasts instead (Windows, macOS, Linux), and the
-  unread mention count appears on the taskbar, dock or launcher icon. The
-  instance window announces the `notify` capability; web bundles from before
-  this feature keep working with the browser's own notifications.
+  unread mention count appears on the taskbar, dock or launcher icon. Clicking
+  a toast opens the window at its message. On macOS the system asks once
+  whether Mnema may show notifications (UserNotifications); on Windows the
+  installer's Start-menu shortcut registers the app for toasts. The instance
+  window announces the `notify` capability; web bundles from before this
+  feature keep working with the browser's own notifications.
 - **Gaming integration (Windows).** A left-hand sidepeek shows who is in your
   Talk, who is speaking and who is sharing, and `Alt+M` opens an interactive
   overlay with Talk controls, while you have a connected Talk and a detected

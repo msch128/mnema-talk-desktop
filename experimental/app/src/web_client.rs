@@ -645,9 +645,6 @@ fn open_instance_window(window: &WebviewWindow) -> Result<(), String> {
         .map_err(|_| "Unable to open the instance. Check the WebView2 runtime.")?;
     let selector = window.clone();
     instance.on_window_event(move |event| {
-        if matches!(event, tauri::WindowEvent::Focused(true)) {
-            super::web_notify::focused(selector.app_handle());
-        }
         if matches!(event, tauri::WindowEvent::Destroyed) {
             super::web_notify::closed(selector.app_handle());
             let trusted = selector.app_handle().state::<Trusted>();
@@ -756,6 +753,8 @@ pub(super) fn run() {
             super::native_updates::native_update_action,
             super::web_notify::desktop_notify_open,
             super::web_notify::desktop_notify,
+            super::web_notify::desktop_notify_permission,
+            super::web_notify::desktop_notify_request_permission,
             super::web_notify::desktop_set_badge
         ])
         .on_menu_event(|app, event| {
@@ -775,6 +774,7 @@ pub(super) fn run() {
             }
             app.manage(trusted);
             app.manage(super::web_notify::Notifier::default());
+            super::web_notify::setup(app.handle());
             super::native_updates::setup(app.handle());
             super::web_gaming::setup(app.handle());
             app_window(app.handle(), "main", "selector")

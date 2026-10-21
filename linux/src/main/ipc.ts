@@ -11,7 +11,7 @@ import { RELEASES_PAGE } from '../core/pinned.ts'
 import type { WsEvent } from '../core/sockets.ts'
 import type { Context, Role } from './context.ts'
 import { pickerChoose, pickerSources } from './permissions.ts'
-import { notify, notifyOpen, setBadge } from './notify.ts'
+import { notify, notifyOpen, notifyPermission, setBadge } from './notify.ts'
 import { openInstance } from './windows.ts'
 
 type Args = Record<string, unknown>
@@ -119,6 +119,11 @@ async function run(ctx: Context, role: Role, contents: WebContents, command: str
     case 'desktop_notify':
       only('instance')
       return notify(ctx, contents, text(args, 'title'), text(args, 'body'), text(args, 'channelId'), text(args, 'messageId'))
+    case 'desktop_notify_permission':
+    case 'desktop_notify_request_permission':
+      only('instance')
+      // Electron asks the desktop's notification service, never the person: there is nothing to request.
+      return notifyPermission()
     case 'desktop_set_badge':
       only('instance')
       return setBadge(id(args, 'count'))

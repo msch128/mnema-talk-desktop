@@ -347,6 +347,64 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+  # Toasts on a real Windows desktop: the NSIS installer of a build with the
+  # test-only `notify-selftest` feature (never in a shipped build) is installed
+  # silently, its Start-menu shortcut must carry the AppUserModelID the toasts
+  # use, and the installed app must post one toast that Windows then holds in
+  # ToastNotificationManager.History.GetHistory(<that ID>).
+  windows-notifications:
+    if: inputs.acceptance_release == ''
+    runs-on: windows-2025
+    timeout-minutes: 60
+    env:
+      RUST_VERSION: 1.99.0
+      CARGO_TARGET_DIR: ${{ github.workspace }}/experimental/app/target
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.ref || github.sha }}
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 26
+      - name: Select pinned Rust toolchain
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          rustup toolchain install $env:RUST_VERSION --profile minimal
+          if ($LASTEXITCODE -ne 0) { throw 'Rust installation failed' }
+          rustup default $env:RUST_VERSION
+          if ($LASTEXITCODE -ne 0) { throw 'Rust selection failed' }
+      - name: Install the pinned Tauri CLI
+        working-directory: ui
+        shell: pwsh
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          if ($LASTEXITCODE -ne 0) { throw 'CLI install failed' }
+      - name: Build the host with the self-test and wrap it in the installer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          node scripts/checked-glib.mjs
+          if ($LASTEXITCODE -ne 0) { throw 'Reviewed dependency source verification failed' }
+          $features = 'shell,web-client,custom-protocol,notify-selftest'
+          cargo build --locked --release --manifest-path experimental/app/Cargo.toml --features $features
+          if ($LASTEXITCODE -ne 0) { throw 'Host build failed' }
+          Push-Location experimental/app
+          # No updater signature for a throwaway installer.
+          node ../../ui/node_modules/@tauri-apps/cli/tauri.js bundle --bundles nsis --features $features --config '{"bundle":{"createUpdaterArtifacts":false}}'
+          if ($LASTEXITCODE -ne 0) { throw 'Installer build failed' }
+          Pop-Location
+          $setup = Get-ChildItem (Join-Path $env:CARGO_TARGET_DIR 'release/bundle/nsis') -Filter '*-setup.exe' | Select-Object -First 1
+          if (!$setup) { throw 'Installer missing' }
+          Copy-Item $setup.FullName (Join-Path $env:RUNNER_TEMP 'notify-setup.exe')
+      - name: The installed app shows a toast that Windows holds for its AppUserModelID
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & ./scripts/test-windows-notify.ps1 -Installer (Join-Path $env:RUNNER_TEMP 'notify-setup.exe')
+          if ($LASTEXITCODE -ne $null -and $LASTEXITCODE -ne 0) { throw 'The notification check failed' }
+
   # The same host on macOS: unit tests and Clippy on every change, and for a
   # release the Apple silicon (arm64) executable that desktop-release.yml
   # turns into the app bundle. The macOS build has no gaming overlay (the
