@@ -1,12 +1,15 @@
 {
   "identifier": "trusted-instance",
-  "description": "The instance window reaches the instance's WebSocket through the host.",
+  "description": "The instance window reaches the instance's WebSocket through the host and shows OS notifications.",
   "windows": [
     "instance"
   ],
   "permissions": [
     "allow-desktop-ws-open",
     "allow-desktop-ws-send",
-    "allow-desktop-ws-close"
+    "allow-desktop-ws-close",
+    "allow-desktop-notify-open",
+    "allow-desktop-notify",
+    "allow-desktop-set-badge"
   ]
 }

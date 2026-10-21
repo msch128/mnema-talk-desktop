@@ -11,6 +11,7 @@ import { RELEASES_PAGE } from '../core/pinned.ts'
 import type { WsEvent } from '../core/sockets.ts'
 import type { Context, Role } from './context.ts'
 import { pickerChoose, pickerSources } from './permissions.ts'
+import { notify, notifyOpen, setBadge } from './notify.ts'
 import { openInstance } from './windows.ts'
 
 type Args = Record<string, unknown>
@@ -44,6 +45,8 @@ function identity(ctx: Context, event: IpcMainEvent): object | null {
     keyId: held.bundle.keyId,
     commit: held.bundle.commit,
     role: from.role === 'selector' ? 'selector' : 'instance',
+    // What the host offers this window beyond the common surface; the web app detects it instead of a version bump.
+    capabilities: from.role === 'instance' ? ['notify'] : [],
   }
 }
 
@@ -110,6 +113,15 @@ async function run(ctx: Context, role: Role, contents: WebContents, command: str
       only('instance')
       trusted.sockets.close(id(args, 'id'))
       return null
+    case 'desktop_notify_open':
+      only('instance')
+      return notifyOpen(contents, id(args, 'onEvent'))
+    case 'desktop_notify':
+      only('instance')
+      return notify(ctx, contents, text(args, 'title'), text(args, 'body'), text(args, 'channelId'), text(args, 'messageId'))
+    case 'desktop_set_badge':
+      only('instance')
+      return setBadge(id(args, 'count'))
     case 'native_update_state':
       only('updater')
       return ctx.updater?.snapshot() ?? null
