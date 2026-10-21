@@ -63,6 +63,26 @@ pub async fn request_permission() -> Permission {
     permission().await
 }
 
+/// What Windows calls when the toast is used (any press on it, with or without arguments).
+fn activation(
+    app: tauri::AppHandle,
+    click: Click,
+    session: String,
+) -> impl Fn(Option<String>) -> tauri_winrt_notification::Result<()> + Send + 'static {
+    move |_| {
+        activated(&app, click.clone(), &session);
+        Ok(())
+    }
+}
+
+/// Test-only: Windows offers no way to press a toast on a runner without a
+/// visible banner, so the activation handler is called the way the WinRT
+/// Activated event calls it.
+#[cfg(feature = "notify-selftest")]
+pub fn simulate_activation(app: &tauri::AppHandle, click: Click, session: &str) {
+    let _ = activation(app.clone(), click, session.to_owned())(None);
+}
+
 static APP_ID: std::sync::OnceLock<String> = std::sync::OnceLock::new();
 
 pub async fn show(
@@ -76,14 +96,10 @@ pub async fn show(
     if setting(id) == Permission::Denied {
         return Ok(false);
     }
-    let handle = app.clone();
     Toast::new(id)
         .title(title)
         .text1(body)
-        .on_activated(move |_| {
-            activated(&handle, click.clone(), &session);
-            Ok(())
-        })
+        .on_activated(activation(app.clone(), click, session))
         .show()
         .map(|()| true)
         .map_err(|_| "The notification could not be shown.".to_owned())

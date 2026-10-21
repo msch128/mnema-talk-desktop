@@ -25,8 +25,11 @@ fn record(line: &str) {
     }
 }
 
+static CLICKS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
 /// A toast was used (called from `activated`).
 pub fn clicked(click: &Click) {
+    CLICKS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     record(&format!(
         "clicked channel={} message={}",
         click.channel_id, click.message_id
@@ -41,6 +44,26 @@ pub fn start(app: &tauri::AppHandle) {
     tauri::async_runtime::spawn(async move {
         // The windows are up and the platform side is initialised.
         tokio::time::sleep(Duration::from_secs(3)).await;
+        // Windows: no banner can be pressed on a runner, so call the activation
+        // handler the way the WinRT event does: the current session must be
+        // reported, a stale one (an earlier instance) must be dropped.
+        #[cfg(windows)]
+        {
+            use std::sync::atomic::Ordering::SeqCst;
+            let click = Click {
+                channel_id: CHANNEL.into(),
+                message_id: MESSAGE.into(),
+            };
+            let session = app.state::<super::Notifier>().session();
+            let before = CLICKS.load(SeqCst);
+            platform::simulate_activation(&app, click.clone(), &session);
+            let reported = CLICKS.load(SeqCst) == before + 1;
+            platform::simulate_activation(&app, click, "stale");
+            let dropped = CLICKS.load(SeqCst) == before + 1;
+            record(&format!(
+                "synthetic-activation reported={reported} stale-dropped={dropped}"
+            ));
+        }
         // The badge too, on the selector window: the app-wide count is read back from outside.
         if let Some(window) = app.get_webview_window("main") {
             record(&format!("badge={:?}", apply_badge(&window, 3)));

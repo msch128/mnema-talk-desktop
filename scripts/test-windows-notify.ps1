@@ -122,6 +122,13 @@ try {
       $clicked = ((Lines) | Where-Object { $_ -like 'clicked *' }).Count -gt 0
     } else { Start-Sleep -Milliseconds 500 }
   }
+  # The activation handler, called the way the WinRT event calls it (no banner can be pressed here).
+  $synthetic = $false
+  for ($i = 0; $i -lt 40 -and !$synthetic; $i++) {
+    $synthetic = (Lines) -contains 'synthetic-activation reported=true stale-dropped=true'
+    if (!$synthetic) { Start-Sleep -Milliseconds 500 }
+  }
+  if (!$synthetic) { Fail "The activation handler did not report the current click and drop the stale one: $((Lines) -join ' | ')" }
   $lines = Lines
   Write-Host "Self-test record: $($lines -join ' | ')"
   if ($clicked) { Write-Host 'The toast click reached the app (activation callback).' }
