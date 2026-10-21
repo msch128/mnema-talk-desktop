@@ -35,10 +35,10 @@ test('toasts are rate limited', () => {
 
 test('the notification commands are allowed in the instance window only, and the capability is announced there only', () => {
   const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
-  for (const command of ['desktop_notify_open', 'desktop_notify', 'desktop_set_badge']) {
+  for (const command of ['desktop_notify_open', 'desktop_notify', 'desktop_notify_permission', 'desktop_notify_request_permission', 'desktop_set_badge']) {
     const at = ipc.indexOf(`case '${command}':`)
     assert.ok(at > 0, command)
-    assert.match(ipc.slice(at, at + 80), /only\('instance'\)/, command)
+    assert.match(ipc.slice(at, at + 140), /only\('instance'\)/, command)
   }
   assert.match(ipc, /capabilities: from\.role === 'instance' \? \['notify'\] : \[\]/)
 })

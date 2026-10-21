@@ -106,7 +106,7 @@ jobs:
         working-directory: .
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends xvfb x11-utils libasound2t64
+          sudo apt-get install -y --no-install-recommends xvfb x11-utils libasound2t64 dunst dbus dbus-bin
           # Ubuntu 24.04 restricts unprivileged user namespaces, which Chromium's sandbox uses.
           # The .deb brings an AppArmor profile for that; the development binary does not.
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
@@ -120,6 +120,15 @@ jobs:
         env:
           MNEMA_E2E_APP: ${{ github.workspace }}/linux/release/${{ matrix.unpacked }}/mnema-desktop-dev
         run: xvfb-run -a node --test --test-timeout=120000 "test/e2e/*.e2e.ts"
+      # A real notification daemon (dunst) on a private session bus: the toast
+      # the page asks for must arrive at org.freedesktop.Notifications.Notify
+      # (seen with dbus-monitor), and using it must come back to the page as
+      # the click of that message.
+      - name: Notifications, packaged app against a real notification daemon
+        if: hashFiles('linux/bundle/builtin.zip') != ''
+        env:
+          MNEMA_E2E_APP: ${{ github.workspace }}/linux/release/${{ matrix.unpacked }}/mnema-desktop-dev
+        run: bash scripts/notify-e2e.sh
       - name: The packaged app refuses to start unsandboxed and with a debugging port
         env:
           APP: ${{ github.workspace }}/linux/release/${{ matrix.unpacked }}/mnema-desktop-dev

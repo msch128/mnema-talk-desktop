@@ -1,11 +1,11 @@
 //! OS notifications and the taskbar/dock badge for the instance window.
 //!
 //! The web app asks for a toast with plain text and the ids of the message it
-//! is about; the host shows it and, when the user opens the window shortly
-//! afterwards, tells the page which message to jump to. The plugin that shows
-//! the toast is driven only from here: its own commands are in no capability,
-//! so no page can call them. Only the instance window may use these commands,
-//! never a gaming surface or the selector.
+//! is about; the host shows it through the platform's own API (Windows toast,
+//! macOS UserNotifications) and, when the user clicks the toast, tells the
+//! page which message to jump to. The platform code is driven only from here:
+//! no page can call it directly. Only the instance window may use these
+//! commands, never a gaming surface or the selector.
 use serde::Serialize;
 use std::{
     sync::Mutex,
@@ -13,13 +13,26 @@ use std::{
 };
 use tauri::{Manager, WebviewWindow};
 
+#[cfg(target_os = "macos")]
+mod mac;
+#[cfg(target_os = "macos")]
+use mac as platform;
+#[cfg(windows)]
+mod win;
+#[cfg(windows)]
+use win as platform;
+#[cfg(not(any(windows, target_os = "macos")))]
+mod other;
+#[cfg(not(any(windows, target_os = "macos")))]
+use other as platform;
+#[cfg(feature = "notify-selftest")]
+mod selftest;
+
 const MAX_TITLE: usize = 100;
 const MAX_BODY: usize = 240;
 const MAX_ID: usize = 64;
 /// Shortest gap between two toasts, so a flooding page cannot spam the desktop.
 const MIN_GAP: Duration = Duration::from_millis(300);
-/// How long after a toast a focus of the window counts as clicking it.
-const CLICK_WINDOW: Duration = Duration::from_secs(15);
 const MAX_BADGE: u32 = 999;
 
 /// What the page learns when a toast was used.
@@ -29,10 +42,20 @@ pub struct Click {
     message_id: String,
 }
 
+/// What the operating system lets this app do, in the words of the web's
+/// Notification API (`default` = not asked yet).
+#[derive(Serialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum Permission {
+    Granted,
+    Denied,
+    Default,
+    Unsupported,
+}
+
 #[derive(Default)]
 pub struct Notifier {
     clicks: Mutex<Option<tauri::ipc::Channel<Click>>>,
-    pending: Mutex<Option<(Click, Instant)>>,
     last: Mutex<Option<Instant>>,
 }
 
@@ -71,24 +94,9 @@ impl Notifier {
         true
     }
 
-    fn remember(&self, click: Click, now: Instant) {
-        if let Ok(mut pending) = self.pending.lock() {
-            *pending = Some((click, now));
-        }
-    }
-
-    /// The click to report when the window was focused at `now`, once.
-    fn take_click(&self, now: Instant) -> Option<Click> {
-        let (click, at) = self.pending.lock().ok()?.take()?;
-        (now.duration_since(at) <= CLICK_WINDOW).then_some(click)
-    }
-
     fn forget(&self) {
         if let Ok(mut clicks) = self.clicks.lock() {
             *clicks = None;
-        }
-        if let Ok(mut pending) = self.pending.lock() {
-            *pending = None;
         }
     }
 }
@@ -108,8 +116,25 @@ pub fn desktop_notify_open(
     Ok(())
 }
 
+/// What the OS currently allows, without asking.
 #[tauri::command]
-pub fn desktop_notify(
+pub async fn desktop_notify_permission(window: WebviewWindow) -> Result<Permission, String> {
+    instance_only(&window)?;
+    Ok(platform::permission().await)
+}
+
+/// Asks the OS for permission if it has not been asked yet (macOS shows its
+/// own prompt then) and reports the outcome.
+#[tauri::command]
+pub async fn desktop_notify_request_permission(
+    window: WebviewWindow,
+) -> Result<Permission, String> {
+    instance_only(&window)?;
+    Ok(platform::request_permission().await)
+}
+
+#[tauri::command]
+pub async fn desktop_notify(
     window: WebviewWindow,
     title: String,
     body: String,
@@ -120,53 +145,55 @@ pub fn desktop_notify(
     if !valid_id(&channel_id) || !valid_id(&message_id) {
         return Err("Invalid notification target.".into());
     }
-    let app = window.app_handle();
-    let notifier = app.state::<Notifier>();
-    if !notifier.due(Instant::now()) {
-        return Ok(());
-    }
-    show(app, &clean(&title, MAX_TITLE), &clean(&body, MAX_BODY))?;
-    notifier.remember(
-        Click {
-            channel_id,
-            message_id,
-        },
-        Instant::now(),
-    );
-    Ok(())
-}
-
-/// Shows one toast through the platform's own API. The text is already plain.
-#[cfg(windows)]
-fn show(app: &tauri::AppHandle, title: &str, body: &str) -> Result<(), String> {
-    tauri_winrt_notification::Toast::new(&app.config().identifier)
-        .title(title)
-        .text1(body)
-        .show()
-        .map_err(|_| "The notification could not be shown.".to_owned())
-}
-
-#[cfg(target_os = "macos")]
-fn show(app: &tauri::AppHandle, title: &str, body: &str) -> Result<(), String> {
-    use std::sync::Once;
-    static SOURCE: Once = Once::new();
-    // The toast is attributed to this app's bundle; an unbundled run keeps the default.
-    SOURCE.call_once(|| {
-        let _ = mac_notification_sys::set_application(&app.config().identifier);
-    });
-    mac_notification_sys::Notification::new()
-        .title(title)
-        .message(body)
-        .asynchronous(true)
-        .send()
+    deliver(window.app_handle(), &title, &body, channel_id, message_id)
+        .await
         .map(|_| ())
-        .map_err(|_| "The notification could not be shown.".to_owned())
 }
 
-/// No OS toast API is wired up for other hosts (Linux uses its own Electron client).
-#[cfg(not(any(windows, target_os = "macos")))]
-fn show(_app: &tauri::AppHandle, _title: &str, _body: &str) -> Result<(), String> {
-    Err("Notifications are not available on this system.".into())
+/// Shows one toast: bounded plain text, rate limited, and, where the OS has
+/// not been asked yet, preceded by asking. A toast the user has turned off in
+/// the OS is dropped without an error, like the browser does.
+async fn deliver(
+    app: &tauri::AppHandle,
+    title: &str,
+    body: &str,
+    channel_id: String,
+    message_id: String,
+) -> Result<bool, String> {
+    if !app.state::<Notifier>().due(Instant::now()) {
+        return Ok(false);
+    }
+    let click = Click {
+        channel_id,
+        message_id,
+    };
+    platform::show(app, &clean(title, MAX_TITLE), &clean(body, MAX_BODY), click).await
+}
+
+/// The user used a toast: bring the instance window forward and tell its page
+/// which message the toast was about.
+pub(crate) fn activated(app: &tauri::AppHandle, click: Click) {
+    #[cfg(feature = "notify-selftest")]
+    selftest::clicked(&click);
+    if let Some(window) = app.get_webview_window("instance") {
+        let _ = window.show();
+        let _ = window.unminimize();
+        let _ = window.set_focus();
+    }
+    let notifier = app.state::<Notifier>();
+    if let Ok(clicks) = notifier.clicks.lock()
+        && let Some(channel) = clicks.as_ref()
+    {
+        let _ = channel.send(click);
+    }
+}
+
+/// Prepares the platform side (macOS installs the click handler here, early
+/// enough for a toast that launched the app).
+pub fn setup(app: &tauri::AppHandle) {
+    platform::init(app);
+    #[cfg(feature = "notify-selftest")]
+    selftest::start(app);
 }
 
 #[tauri::command]
@@ -209,20 +236,6 @@ fn dot() -> tauri::image::Image<'static> {
     tauri::image::Image::new_owned(rgba, SIZE, SIZE)
 }
 
-/// The instance window gained focus: if a toast was shown moments ago the
-/// user most likely clicked it, so the page jumps to its message.
-pub fn focused(app: &tauri::AppHandle) {
-    let notifier = app.state::<Notifier>();
-    let Some(click) = notifier.take_click(Instant::now()) else {
-        return;
-    };
-    if let Ok(clicks) = notifier.clicks.lock()
-        && let Some(channel) = clicks.as_ref()
-    {
-        let _ = channel.send(click);
-    }
-}
-
 /// The instance window is gone: nothing may be delivered to its page anymore.
 pub fn closed(app: &tauri::AppHandle) {
     app.state::<Notifier>().forget();
@@ -260,34 +273,26 @@ mod tests {
         assert!(n.due(t + MIN_GAP + Duration::from_millis(1)));
     }
 
-    fn click() -> Click {
-        Click {
-            channel_id: "c".into(),
-            message_id: "m".into(),
-        }
-    }
-
     #[test]
-    fn a_focus_soon_after_a_toast_reports_it_once() {
-        let n = Notifier::default();
-        let t = Instant::now();
-        n.remember(click(), t);
-        assert_eq!(n.take_click(t + Duration::from_secs(3)), Some(click()));
-        assert_eq!(n.take_click(t + Duration::from_secs(4)), None);
-        n.remember(click(), t);
+    fn the_permission_is_named_like_the_web_api() {
+        let names: Vec<String> = [
+            Permission::Granted,
+            Permission::Denied,
+            Permission::Default,
+            Permission::Unsupported,
+        ]
+        .iter()
+        .map(|p| serde_json::to_string(p).unwrap())
+        .collect();
         assert_eq!(
-            n.take_click(t + CLICK_WINDOW + Duration::from_secs(1)),
-            None
+            names,
+            [
+                "\"granted\"",
+                "\"denied\"",
+                "\"default\"",
+                "\"unsupported\""
+            ]
         );
-    }
-
-    #[test]
-    fn closing_forgets_a_pending_click() {
-        let n = Notifier::default();
-        let t = Instant::now();
-        n.remember(click(), t);
-        n.forget();
-        assert_eq!(n.take_click(t), None);
     }
 
     /// Only the instance window may call the notification commands; no other

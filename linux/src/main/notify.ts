@@ -17,6 +17,11 @@ function send(contents: WebContents, listener: { channel: number, index: number 
   if (!contents.isDestroyed()) contents.send('mnema:callback', listener.channel, { index: listener.index++, message })
 }
 
+/** What the web app calls permission: the desktop's notification service either exists or does not. */
+export function notifyPermission(): 'granted' | 'unsupported' {
+  return Notification.isSupported() ? 'granted' : 'unsupported'
+}
+
 export function notifyOpen(contents: WebContents, channel: number): null {
   if (!listeners.has(contents.id)) contents.once('destroyed', () => listeners.delete(contents.id))
   listeners.set(contents.id, { channel, index: 0 })

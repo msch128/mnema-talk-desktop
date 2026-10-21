@@ -44,6 +44,8 @@ fn main() {
             "desktop_ws_close",
             "desktop_notify_open",
             "desktop_notify",
+            "desktop_notify_permission",
+            "desktop_notify_request_permission",
             "desktop_set_badge",
             "desktop_gaming_sync",
             "desktop_gaming_snapshot",
