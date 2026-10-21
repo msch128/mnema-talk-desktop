@@ -28,4 +28,4 @@ if [ -z "${ready:-}" ]; then
   cat "${TMPDIR:-/tmp}/dunst.log"
   exit 1
 fi
-node --test --test-timeout=120000 test/e2e/notify.e2e.ts
+node --test --test-timeout=120000 test/e2e/notify.e2e.ts test/e2e/notify-page.e2e.ts
