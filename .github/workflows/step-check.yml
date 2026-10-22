@@ -1,0 +1,86 @@
+name: Installer step check (temporary)
+on:
+  push:
+    branches: ['fix/installer-hang']
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: windows-2025
+    timeout-minutes: 25
+    env:
+      RUST_VERSION: 1.99.0
+      CARGO_TARGET_DIR: ${{ github.workspace }}/experimental/app/target
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 26
+      - shell: pwsh
+        run: |
+          rustup toolchain install $env:RUST_VERSION --profile minimal
+          rustup default $env:RUST_VERSION
+      - working-directory: ui
+        shell: pwsh
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          node scripts/checked-glib.mjs
+          $f = 'shell,web-client,custom-protocol'
+          cargo build --locked --release --manifest-path experimental/app/Cargo.toml --features $f
+          Push-Location experimental/app
+          node ../../ui/node_modules/@tauri-apps/cli/tauri.js bundle --bundles nsis --features $f --config '{"bundle":{"createUpdaterArtifacts":false}}'
+          Pop-Location
+          $setup = Get-ChildItem (Join-Path $env:CARGO_TARGET_DIR 'release/bundle/nsis') -Filter '*-setup.exe' | Select-Object -First 1
+          $out = Join-Path $env:RUNNER_TEMP 'installer'
+          New-Item -ItemType Directory -Path $out -Force | Out-Null
+          Copy-Item $setup.FullName (Join-Path $out 'x-setup.exe')
+      - shell: pwsh
+        timeout-minutes: 8
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # Start-Process -Wait also waits for every process the child started,
+          # and has no limit. Wait on the child itself, with a limit, and show
+          # what is still running when it is exceeded.
+          function Show-Processes($label) {
+            Write-Host "Processes after $label"
+            Get-CimInstance Win32_Process |
+              Where-Object { $_.ExecutablePath -like "$env:LOCALAPPDATA*" -or $_.Name -match 'mnema|msedgewebview2|uninstall|setup|Un_A' } |
+              Select-Object ProcessId, ParentProcessId, Name | Format-Table -AutoSize | Out-String | Write-Host
+          }
+          function Invoke-Limited($file, $arguments, $seconds) {
+            $child = Start-Process -FilePath $file -ArgumentList $arguments -PassThru
+            if (!$child.WaitForExit($seconds * 1000)) {
+              Show-Processes "$file exceeded ${seconds}s"
+              & taskkill.exe /T /F /PID $child.Id | Out-Null
+              throw "$file did not finish within ${seconds}s"
+            }
+            return $child.ExitCode
+          }
+          $installer = Get-ChildItem (Join-Path $env:RUNNER_TEMP 'installer') -Filter '*-setup.exe' | Select-Object -First 1
+          $code = Invoke-Limited $installer.FullName '/S' 120
+          if ($code -ne 0) { throw "Installer exit code $code" }
+          # Tauri installs the main binary under the crate name unless told otherwise.
+          $exe = Get-ChildItem $env:LOCALAPPDATA -Include 'mnema-native-client-preview.exe','Mnema Desktop DEV.exe' -Recurse -Depth 3 -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (!$exe) { throw 'Installed program not found in the user profile' }
+          $process = Start-Process -FilePath $exe.FullName -PassThru
+          try {
+            $ready = $false
+            for ($i = 0; $i -lt 60; $i++) {
+              Start-Sleep -Milliseconds 500
+              $process.Refresh()
+              if ($process.HasExited) { throw "Installed program exited: $($process.ExitCode)" }
+              if ($process.MainWindowTitle -eq 'Mnema Desktop DEV — Instance') { $ready = $true; break }
+            }
+            if (!$ready) { throw 'Installed program showed no window' }
+          } finally {
+            # The program and the WebView2 processes it started.
+            if (!$process.HasExited) { & taskkill.exe /T /F /PID $process.Id | Out-Null }
+          }
+          $uninstall = Join-Path $exe.DirectoryName 'uninstall.exe'
+          if (!(Test-Path $uninstall)) { throw 'Uninstaller missing' }
+          $code = Invoke-Limited $uninstall '/S' 120
+          if ($code -ne 0) { throw "Uninstaller exit code $code" }

@@ -41,7 +41,8 @@ jobs:
   installer:
     needs: build
     runs-on: windows-2025
-    timeout-minutes: 40
+    # The build and signing take about a minute, the install check seconds.
+    timeout-minutes: 20
     # The signing key exists only in this protected environment (tags v*).
     environment: desktop-updater-signing
     env:
@@ -93,11 +94,30 @@ jobs:
           Copy-Item "$($setup.FullName).sig" (Join-Path $out "$name.sig")
       - name: The installer installs per user, starts and uninstalls
         shell: pwsh
+        timeout-minutes: 8
         run: |
           $ErrorActionPreference = 'Stop'
+          # Start-Process -Wait also waits for every process the child started,
+          # and has no limit. Wait on the child itself, with a limit, and show
+          # what is still running when it is exceeded.
+          function Show-Processes($label) {
+            Write-Host "Processes after $label"
+            Get-CimInstance Win32_Process |
+              Where-Object { $_.ExecutablePath -like "$env:LOCALAPPDATA*" -or $_.Name -match 'mnema|msedgewebview2|uninstall|setup|Un_A' } |
+              Select-Object ProcessId, ParentProcessId, Name | Format-Table -AutoSize | Out-String | Write-Host
+          }
+          function Invoke-Limited($file, $arguments, $seconds) {
+            $child = Start-Process -FilePath $file -ArgumentList $arguments -PassThru
+            if (!$child.WaitForExit($seconds * 1000)) {
+              Show-Processes "$file exceeded ${seconds}s"
+              & taskkill.exe /T /F /PID $child.Id | Out-Null
+              throw "$file did not finish within ${seconds}s"
+            }
+            return $child.ExitCode
+          }
           $installer = Get-ChildItem (Join-Path $env:RUNNER_TEMP 'installer') -Filter '*-setup.exe' | Select-Object -First 1
-          $p = Start-Process -FilePath $installer.FullName -ArgumentList '/S' -Wait -PassThru
-          if ($p.ExitCode -ne 0) { throw "Installer exit code $($p.ExitCode)" }
+          $code = Invoke-Limited $installer.FullName '/S' 120
+          if ($code -ne 0) { throw "Installer exit code $code" }
           # Tauri installs the main binary under the crate name unless told otherwise.
           $exe = Get-ChildItem $env:LOCALAPPDATA -Include 'mnema-native-client-preview.exe','Mnema Desktop DEV.exe' -Recurse -Depth 3 -ErrorAction SilentlyContinue | Select-Object -First 1
           if (!$exe) { throw 'Installed program not found in the user profile' }
@@ -112,11 +132,13 @@ jobs:
             }
             if (!$ready) { throw 'Installed program showed no window' }
           } finally {
-            if (!$process.HasExited) { Stop-Process -Id $process.Id -Force }
+            # The program and the WebView2 processes it started.
+            if (!$process.HasExited) { & taskkill.exe /T /F /PID $process.Id | Out-Null }
           }
           $uninstall = Join-Path $exe.DirectoryName 'uninstall.exe'
           if (!(Test-Path $uninstall)) { throw 'Uninstaller missing' }
-          Start-Process -FilePath $uninstall -ArgumentList '/S' -Wait
+          $code = Invoke-Limited $uninstall '/S' 120
+          if ($code -ne 0) { throw "Uninstaller exit code $code" }
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: mnema-desktop-installer
