@@ -38,7 +38,8 @@ The same as the Tauri host (the design and threat model are in mnema-talk
   package is verified (signature, version bound into it, strictly newer) before
   anything else, and written to a private `0700` temporary directory. The
   privileged step (`pkexec /bin/sh -c <fixed script>`, arguments, no shell
-  interpolation) does not trust that file: it copies it into a root-owned
+  interpolation) does not trust that file: it reads it (regular file, no symlink,
+  at most the expected length) into a `0600` file in a root-owned `0700`
   directory, checks the SHA-256 of the verified bytes on the copy and installs
   only the copy (`apt-get install -y`, `dpkg -i` if apt-get fails), so the user
   account cannot swap the package while the polkit prompt is open; a mismatch
