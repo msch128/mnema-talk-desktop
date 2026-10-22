@@ -45,44 +45,38 @@ jobs:
           Pop-Location
           $setup = Get-ChildItem (Join-Path $env:CARGO_TARGET_DIR 'release/bundle/nsis') -Filter '*-setup.exe' | Select-Object -First 1
           Copy-Item $setup.FullName (Join-Path $env:RUNNER_TEMP 'setup.exe')
-      - name: Same steps as the release job, with a process tree and timeouts
+      - name: Release-job step verbatim (-Wait), with a watchdog dumping the tree
         shell: pwsh
+        timeout-minutes: 8
         run: |
           $ErrorActionPreference = 'Stop'
-          function Tree($label) {
-            Write-Host "=== process tree: $label"
-            Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -like "$env:LOCALAPPDATA*" -or $_.Name -match 'mnema|Mnema|msedgewebview2|uninstall|setup|Un_A|~nsu' } |
-              Select-Object ProcessId, ParentProcessId, Name, CommandLine | Format-Table -AutoSize -Wrap | Out-String -Width 300 | Write-Host
-          }
-          function Run($file, $arguments, $seconds) {
-            $p = Start-Process -FilePath $file -ArgumentList $arguments -PassThru
-            if (!$p.WaitForExit($seconds * 1000)) {
-              Write-Host "TIMEOUT after ${seconds}s: $file $arguments"
-              Tree "hung $file"
-              return $null
-            }
-            return $p.ExitCode
-          }
-          $setup = Join-Path $env:RUNNER_TEMP 'setup.exe'
-          $code = Run $setup '/S' 120
-          Write-Host "installer exit: $code"
+          $watch = @'
+          Start-Sleep -Seconds 100
+          Write-Host "=== WATCHDOG: process tree after 100s"
+          Get-CimInstance Win32_Process | Select-Object ProcessId, ParentProcessId, Name, @{n='Cmd';e={ "$($_.CommandLine)".Substring(0, [Math]::Min(160, "$($_.CommandLine)".Length)) }} | Format-Table -AutoSize -Wrap | Out-String -Width 250 | Write-Host
+          '@
+          Set-Content -Path (Join-Path $env:RUNNER_TEMP 'watch.ps1') -Value $watch
+          Start-Process pwsh -ArgumentList '-NoProfile','-File',(Join-Path $env:RUNNER_TEMP 'watch.ps1') -NoNewWindow
+          Copy-Item (Join-Path $env:RUNNER_TEMP 'setup.exe') (Join-Path $env:RUNNER_TEMP 'x-setup.exe')
+          $installer = Get-Item (Join-Path $env:RUNNER_TEMP 'x-setup.exe')
+          Write-Host 'installing'
+          $p = Start-Process -FilePath $installer.FullName -ArgumentList '/S' -Wait -PassThru
+          Write-Host "installed: $($p.ExitCode)"
           $exe = Get-ChildItem $env:LOCALAPPDATA -Include 'mnema-native-client-preview.exe','Mnema Desktop DEV.exe' -Recurse -Depth 3 -ErrorAction SilentlyContinue | Select-Object -First 1
-          Write-Host "exe: $($exe.FullName)"
-          Get-ChildItem $exe.DirectoryName | Format-Table Name, Length | Out-String | Write-Host
           $process = Start-Process -FilePath $exe.FullName -PassThru
-          for ($i = 0; $i -lt 60; $i++) {
-            Start-Sleep -Milliseconds 500
-            $process.Refresh()
-            if ($process.HasExited) { throw "exited $($process.ExitCode)" }
-            if ($process.MainWindowTitle -eq 'Mnema Desktop DEV — Instance') { break }
+          try {
+            $ready = $false
+            for ($i = 0; $i -lt 60; $i++) {
+              Start-Sleep -Milliseconds 500
+              $process.Refresh()
+              if ($process.HasExited) { throw "Installed program exited: $($process.ExitCode)" }
+              if ($process.MainWindowTitle -eq 'Mnema Desktop DEV — Instance') { $ready = $true; break }
+            }
+            if (!$ready) { throw 'Installed program showed no window' }
+          } finally {
+            if (!$process.HasExited) { Stop-Process -Id $process.Id -Force }
           }
-          Start-Sleep -Seconds 5
-          Tree 'running, before Stop-Process'
-          Stop-Process -Id $process.Id -Force
-          Start-Sleep -Seconds 2
-          Tree 'after Stop-Process of the parent'
+          Write-Host 'stopped; uninstalling'
           $uninstall = Join-Path $exe.DirectoryName 'uninstall.exe'
-          $code = Run $uninstall '/S' 90
-          Write-Host "uninstaller exit: $code"
-          Tree 'after uninstall'
-          if ($null -eq $code) { throw 'uninstaller hung' }
+          Start-Process -FilePath $uninstall -ArgumentList '/S' -Wait
+          Write-Host 'uninstalled'
