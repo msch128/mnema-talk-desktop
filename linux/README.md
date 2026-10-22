@@ -36,14 +36,17 @@ The same as the Tauri host (the design and threat model are in mnema-talk
   minisign key and rules. The `.deb` has its own feed keys (`linux-x86_64-deb`,
   `linux-aarch64-deb`) that Tauri clients and the AppImage never read. The
   package is verified (signature, version bound into it, strictly newer) before
-  anything else, kept in a private `0700` temporary directory and installed with
-  `pkexec apt-get install -y <file>` (arguments, no shell; `pkexec dpkg -i` if
-  apt-get fails, the software center via `xdg-open` if pkexec is missing).
+  anything else, and written to a private `0700` temporary directory. The
+  privileged step (`pkexec /bin/sh -c <fixed script>`, arguments, no shell
+  interpolation) does not trust that file: it copies it into a root-owned
+  directory, checks the SHA-256 of the verified bytes on the copy and installs
+  only the copy (`apt-get install -y`, `dpkg -i` if apt-get fails), so the user
+  account cannot swap the package while the polkit prompt is open; a mismatch
+  installs nothing. The software center is opened via `xdg-open` if pkexec is
+  missing.
   "Install on next start" asks before the installer's password prompt appears,
   and runs before any window opens. A `.deb` install is recognised by running
-  from `/opt` without `APPIMAGE`; the privileged step trusts the user's own
-  account not to swap the file in its private directory between verification and
-  install.
+  from `/opt` without `APPIMAGE`.
 
 Added by Electron: context isolation, the renderer sandbox (a start without it is
 refused), no Node in any page, a CSP of the Mnema SPA, a privileged secure
