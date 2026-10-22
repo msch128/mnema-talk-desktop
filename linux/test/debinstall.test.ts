@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { test } from 'node:test'
-import { type Command, type DebHost, HASH_MISMATCH, PRIVILEGED_SCRIPT, installCommand, installDeb, isDebInstall } from '../src/core/debinstall.ts'
+import { type Command, type DebHost, HASH_MISMATCH, NOT_REGULAR, PRIVILEGED_SCRIPT, WRONG_SIZE, installCommand, installDeb, isDebInstall } from '../src/core/debinstall.ts'
 
 const DEB = Buffer.concat([Buffer.from('!<arch>\n'), Buffer.from('payload')])
 const always = () => true
@@ -20,7 +20,7 @@ test('a .deb install is recognised by its path, never when started as an AppImag
 test('the privileged step is the fixed script with the path and the verified hash as parameters', () => {
   const path = '/tmp/a b; rm -rf ~/x.deb'
   const sha = createHash('sha256').update(DEB).digest('hex')
-  assert.deepEqual(installCommand(path, sha), { file: 'pkexec', args: ['/bin/sh', '-c', PRIVILEGED_SCRIPT, 'mnema-install', path, sha] })
+  assert.deepEqual(installCommand(path, sha, DEB.length), { file: 'pkexec', args: ['/bin/sh', '-c', PRIVILEGED_SCRIPT, 'mnema-install', path, sha, String(DEB.length)] })
   assert.ok(!PRIVILEGED_SCRIPT.includes(path))
 })
 
@@ -29,7 +29,7 @@ function host(codes: (number | null)[], pkexec = true) {
   const opened: string[] = []
   const h: DebHost = {
     run: (command) => {
-      const path = command.args.at(-2) ?? ''
+      const path = command.args.at(-3) ?? ''
       seen.push({ command, mode: statSync(dirname(path)).mode & 0o777, bytes: readFileSync(path) })
       return Promise.resolve(codes.shift() ?? 1)
     },
@@ -45,8 +45,8 @@ test('the package is written to a private directory, handed over with the hash o
   assert.equal(seen.length, 1)
   assert.equal(seen[0]?.mode, 0o700)
   assert.deepEqual(seen[0]?.bytes, DEB)
-  assert.equal(seen[0]?.command.args.at(-1), createHash('sha256').update(DEB).digest('hex'))
-  assert.equal(existsSync(dirname(seen[0]?.command.args.at(-2) ?? '')), false)
+  assert.equal(seen[0]?.command.args.at(-2), createHash('sha256').update(DEB).digest('hex'))
+  assert.equal(existsSync(dirname(seen[0]?.command.args.at(-3) ?? '')), false)
 })
 
 test('a dismissed dialog, a changed package and a refused package each fail once, with no second attempt', async () => {
@@ -59,13 +59,13 @@ test('a dismissed dialog, a changed package and a refused package each fail once
 })
 
 // Runs the real script as the current user, with stand-ins for the package tools.
-function runScript(path: string, sha256: string) {
+function runScript(path: string, sha256: string, length: number) {
   const bin = mkdtempSync(join(tmpdir(), 'mnema-bin-'))
   const log = join(bin, 'log')
   for (const tool of ['apt-get', 'dpkg']) {
     writeFileSync(join(bin, tool), `#!/bin/sh\necho "${tool} $* $(cat "$3" 2>/dev/null | head -c 64)" >> "${log}"\n[ "${tool}" = dpkg ] || exit 100\n`, { mode: 0o755 })
   }
-  const r = spawnSync('/bin/sh', ['-c', PRIVILEGED_SCRIPT, 'mnema-install', path, sha256], { env: { ...process.env, PATH: `${bin}:${process.env.PATH}` } })
+  const r = spawnSync('/bin/sh', ['-c', PRIVILEGED_SCRIPT, 'mnema-install', path, sha256, String(length)], { env: { ...process.env, PATH: `${bin}:${process.env.PATH}` } })
   const calls = existsSync(log) ? readFileSync(log, 'utf8') : ''
   rmSync(bin, { recursive: true, force: true })
   return { status: r.status, calls }
@@ -77,15 +77,26 @@ test('the script installs only a copy that matches the hash, and refuses a swapp
   try {
     writeFileSync(path, DEB)
     const sha = createHash('sha256').update(DEB).digest('hex')
-    const ok = runScript(path, sha)
+    const ok = runScript(path, sha, DEB.length)
     assert.equal(ok.status, 0)
     assert.match(ok.calls, /apt-get install -y \/var\/tmp\/mnema-deb\.[^/]+\/pkg\.deb/)
     assert.match(ok.calls, /dpkg -i /, 'falls back to dpkg on the same verified copy')
     assert.ok(!ok.calls.includes(path), 'the user-writable path is never handed to the package tools')
-    writeFileSync(path, Buffer.concat([Buffer.from('!<arch>\n'), Buffer.from('evil')]))
-    const swapped = runScript(path, sha)
+    writeFileSync(path, Buffer.concat([Buffer.from('!<arch>\n'), Buffer.from('EVIL!!!')]))
+    const swapped = runScript(path, sha, DEB.length)
     assert.equal(swapped.status, HASH_MISMATCH)
     assert.equal(swapped.calls, '')
+    writeFileSync(path, Buffer.concat([DEB, Buffer.from('trailing')]))
+    const oversize = runScript(path, sha, DEB.length)
+    assert.equal(oversize.status, WRONG_SIZE)
+    assert.equal(oversize.calls, '')
+    writeFileSync(path, DEB)
+    const link = join(dir, 'link.deb')
+    symlinkSync(path, link)
+    const linked = runScript(link, sha, DEB.length)
+    assert.equal(linked.status, NOT_REGULAR)
+    assert.equal(linked.calls, '')
+    assert.equal(runScript(dir, sha, DEB.length).status, NOT_REGULAR)
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }

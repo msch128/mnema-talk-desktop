@@ -22,23 +22,29 @@ const AR_MAGIC = '!<arch>\n'
 const INSTALL_TIMEOUT_MS = 10 * 60 * 1000
 /** pkexec: the user dismissed the dialog (126) or is not authorized (127 without a command). */
 const PKEXEC_DECLINED = 126
-/** Exit status of the privileged script when the copy does not match the verified hash. */
+/** Exit statuses of the privileged script: the copy does not match the verified hash, is not the expected size, or the source is not a regular file. */
 export const HASH_MISMATCH = 87
+export const NOT_REGULAR = 88
+export const WRONG_SIZE = 89
 
 /**
  * Runs as root. $1: the package the client wrote, $2: SHA-256 of the verified
- * bytes. The copy lives in a root-owned directory, so the unprivileged user
- * cannot change it between the check and the install.
+ * bytes, $3: their length. Only a regular, non-symlink file is read, through
+ * one descriptor and at most $3 + 1 bytes, into a 0600 file in a 0700
+ * root-owned directory; permissions are relaxed (for apt's sandbox user) only
+ * after the hash matched. The user account cannot touch the copy at any point.
  */
 export const PRIVILEGED_SCRIPT = [
   'set -eu',
   'umask 077',
+  `{ [ -f "$1" ] && [ ! -L "$1" ]; } || exit ${NOT_REGULAR}`,
   'dir=$(mktemp -d /var/tmp/mnema-deb.XXXXXX)',
   'trap \'rm -rf -- "$dir"\' EXIT',
-  'cp -- "$1" "$dir/pkg.deb"',
-  'chmod 0644 "$dir/pkg.deb"',
-  'chmod 0755 "$dir"',
+  'head -c "$(($3 + 1))" < "$1" > "$dir/pkg.deb"',
+  `[ "$(wc -c < "$dir/pkg.deb")" -eq "$3" ] || exit ${WRONG_SIZE}`,
   `printf '%s  %s\\n' "$2" "$dir/pkg.deb" | sha256sum -c --status - || exit ${HASH_MISMATCH}`,
+  'chmod 0755 "$dir"',
+  'chmod 0644 "$dir/pkg.deb"',
   'apt-get install -y "$dir/pkg.deb" || dpkg -i "$dir/pkg.deb"',
 ].join('\n')
 
@@ -50,9 +56,9 @@ export function isDebInstall(execPath: string, env: NodeJS.ProcessEnv, exists: (
 
 export interface Command { file: string, args: string[] }
 
-/** The privileged install, as an argument vector: the fixed script, then the path and the expected hash. */
-export function installCommand(path: string, sha256: string): Command {
-  return { file: 'pkexec', args: ['/bin/sh', '-c', PRIVILEGED_SCRIPT, 'mnema-install', path, sha256] }
+/** The privileged install, as an argument vector: the fixed script, then the path, the expected hash and the length. */
+export function installCommand(path: string, sha256: string, length: number): Command {
+  return { file: 'pkexec', args: ['/bin/sh', '-c', PRIVILEGED_SCRIPT, 'mnema-install', path, sha256, String(length)] }
 }
 
 export interface DebHost {
@@ -97,10 +103,10 @@ export async function installDeb(bytes: Uint8Array, host: DebHost): Promise<DebR
       await host.open(path)
       return 'handoff'
     }
-    const code = await host.run(installCommand(path, sha256))
+    const code = await host.run(installCommand(path, sha256, bytes.length))
     if (code === 0) return 'installed'
     if (code === PKEXEC_DECLINED) throw new Error('installation was not authorized')
-    if (code === HASH_MISMATCH) throw new Error('the package changed after it was verified; nothing was installed')
+    if (code === HASH_MISMATCH || code === WRONG_SIZE || code === NOT_REGULAR) throw new Error('the package changed after it was verified; nothing was installed')
     throw new Error('the package manager refused the package')
   } finally {
     // After a handoff the installer still reads the file; leave it for the system to clean.
