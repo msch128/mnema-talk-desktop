@@ -14,8 +14,8 @@
     "fixtures:build": "tsc -p ../fixtures/tsconfig.json"
   },
   "dependencies": {
-    "@tauri-apps/api": "2.12.1",
-    "vue": "3.5.43"
+    "@tauri-apps/api": "2.12.4",
+    "vue": "3.5.44"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
