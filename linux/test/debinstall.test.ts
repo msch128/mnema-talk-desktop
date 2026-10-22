@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
-import { spawnSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { test } from 'node:test'
@@ -97,6 +97,27 @@ test('the script installs only a copy that matches the hash, and refuses a swapp
     assert.equal(linked.status, NOT_REGULAR)
     assert.equal(linked.calls, '')
     assert.equal(runScript(dir, sha, DEB.length).status, NOT_REGULAR)
+    const fifo = join(dir, 'fifo.deb')
+    execFileSync('mkfifo', [fifo])
+    const piped = runScript(fifo, sha, DEB.length)
+    assert.equal(piped.status, NOT_REGULAR, 'a FIFO is refused without being opened')
+    assert.equal(piped.calls, '')
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('no copy of the package is left behind after a refusal or a mismatch', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'mnema-script-'))
+  const path = join(dir, 'p.deb')
+  const leftovers = () => readdirSync('/var/tmp').filter((n) => n.startsWith('mnema-deb.'))
+  try {
+    const before = leftovers().length
+    writeFileSync(path, Buffer.concat([Buffer.from('!<arch>\n'), Buffer.from('EVIL!!!')]))
+    const sha = createHash('sha256').update(DEB).digest('hex')
+    assert.equal(runScript(path, sha, DEB.length).status, HASH_MISMATCH)
+    assert.equal(runScript(path, sha, DEB.length - 1).status, WRONG_SIZE)
+    assert.equal(leftovers().length, before)
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
