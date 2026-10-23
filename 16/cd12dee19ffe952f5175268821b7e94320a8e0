@@ -1,0 +1,37 @@
+.github/dependabot.yml
+  s_06fcde5dbef956::t_968da3d6f684a4 9-14,22-24,36-38
+experimental/app/Cargo.lock
+  s_06fcde5dbef956::t_85ee16e732c91e 1980,1982,1984,3046,3048,4797,4799
+experimental/crates/checked-storage/bootstrap/Cargo.toml
+  s_06fcde5dbef956::t_5b814c0196741b 16
+experimental/crates/checked-storage/checked-sqlite-storage/Cargo.toml
+  s_06fcde5dbef956::t_9b820bd5338972 18
+experimental/crates/crypto-owner/Cargo.lock
+  s_06fcde5dbef956::t_cacb0628b14049 1051,1053,1055,1829,1831,2796,2798
+experimental/crates/crypto-owner/qualified-sdk/Cargo.lock
+  s_06fcde5dbef956::t_13ea99c82bce88 954,956,958,1604,1606,2399,2401
+experimental/crates/crypto-owner/qualified-sdk/Cargo.toml
+  s_06fcde5dbef956::t_24d24ae2e54d21 19-21
+experimental/crates/crypto-stack/crypto-core/Cargo.toml
+  s_06fcde5dbef956::t_0fd8958a9d3734 16
+experimental/crates/crypto-stack/crypto-enrollment/Cargo.toml
+  s_06fcde5dbef956::t_79f29cdc2dd14a 18
+experimental/vendor/openmls/sqlite_storage/Cargo.toml
+  s_06fcde5dbef956::t_ed7ef7978bd0ff 16
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "16cd12dee19ffe952f5175268821b7e94320a8e0",
+  "prompts": {},
+  "sessions": {
+    "s_06fcde5dbef956": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "94b73314-95fe-4e96-8c43-d20b0f28358d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}
