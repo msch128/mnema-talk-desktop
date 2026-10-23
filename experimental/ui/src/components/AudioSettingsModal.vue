@@ -146,7 +146,7 @@ function playPreviewSound(sound: SoundEvent = 'join') {
                   : 'bg-mnema-canvas border-mnema-hairline text-mnema-muted hover:border-mnema-border'
               ]"
             >
-              <div :class="['w-8 h-8 rounded-md flex items-center justify-center flex-shrink-0', voiceStore.inputMode === 'activity' ? 'bg-mnema-accent/20 text-mnema-accent' : 'bg-mnema-raised text-mnema-tertiary']">
+              <div :class="['w-8 h-8 rounded-md flex items-center justify-center shrink-0', voiceStore.inputMode === 'activity' ? 'bg-mnema-accent/20 text-mnema-accent' : 'bg-mnema-raised text-mnema-tertiary']">
                 <Mic class="w-4 h-4" />
               </div>
               <div>
@@ -165,7 +165,7 @@ function playPreviewSound(sound: SoundEvent = 'join') {
                   : 'bg-mnema-canvas border-mnema-hairline text-mnema-muted hover:border-mnema-border'
               ]"
             >
-              <div :class="['w-8 h-8 rounded-md flex items-center justify-center flex-shrink-0', voiceStore.inputMode === 'ptt' ? 'bg-mnema-accent/20 text-mnema-accent' : 'bg-mnema-raised text-mnema-tertiary']">
+              <div :class="['w-8 h-8 rounded-md flex items-center justify-center shrink-0', voiceStore.inputMode === 'ptt' ? 'bg-mnema-accent/20 text-mnema-accent' : 'bg-mnema-raised text-mnema-tertiary']">
                 <Radio class="w-4 h-4" />
               </div>
               <div>
@@ -184,7 +184,7 @@ function playPreviewSound(sound: SoundEvent = 'join') {
               @click="isRecordingPttKey = true"
               @keydown="handleKeyRecord"
               :class="[
-                'px-3 py-1 rounded border font-mono text-sm font-semibold transition',
+                'px-3 py-1 rounded-sm border font-mono text-sm font-semibold transition',
                 isRecordingPttKey 
                   ? 'bg-mnema-accent text-mnema-accent-ink border-mnema-accent animate-pulse' 
                   : 'bg-mnema-canvas border-mnema-border text-mnema-text hover:border-mnema-accent'
@@ -211,7 +211,7 @@ function playPreviewSound(sound: SoundEvent = 'join') {
                   <span>{{ $t('audio.micTest') }}</span>
                   <span
                     v-if="voiceStore.isMicTesting"
-                    class="text-xs px-2 py-0.5 rounded bg-amber-500/15 text-amber-400 font-mono font-medium animate-pulse"
+                    class="text-xs px-2 py-0.5 rounded-sm bg-amber-500/15 text-amber-400 font-mono font-medium animate-pulse"
                   >
                     {{ $t('audio.micTestActiveBadge') }}
                   </span>
@@ -226,7 +226,7 @@ function playPreviewSound(sound: SoundEvent = 'join') {
                 data-testid="mic-test-toggle"
                 :aria-pressed="voiceStore.isMicTesting ? 'true' : 'false'"
                 :class="[
-                  'px-3.5 py-1.5 rounded-lg font-semibold text-xs transition flex items-center gap-1.5 flex-shrink-0 shadow-sm mt-0.5',
+                  'px-3.5 py-1.5 rounded-lg font-semibold text-xs transition flex items-center gap-1.5 shrink-0 shadow-xs mt-0.5',
                   voiceStore.isMicTesting
                     ? 'bg-amber-600 hover:bg-amber-500 text-white'
                     : 'bg-mnema-accent hover:bg-mnema-accent-hover text-mnema-accent-ink'
@@ -251,7 +251,7 @@ function playPreviewSound(sound: SoundEvent = 'join') {
                 type="checkbox"
                 v-model="voiceStore.autoSensitivity"
                 @change="voiceStore.saveSettings"
-                class="rounded border-mnema-border bg-mnema-canvas text-mnema-accent focus:ring-0"
+                class="rounded-sm border-mnema-border bg-mnema-canvas text-mnema-accent focus:ring-0"
               />
               <span>{{ $t('audio.auto') }}</span>
             </label>
@@ -263,7 +263,7 @@ function playPreviewSound(sound: SoundEvent = 'join') {
             <div class="relative h-6 bg-mnema-canvas rounded-lg border border-mnema-border overflow-hidden p-0.5 flex items-center">
               <!-- Live level fill -->
               <div
-                class="h-full rounded transition-all duration-75"
+                class="h-full rounded-sm transition-all duration-75"
                 :class="isAboveThreshold ? 'bg-mnema-accent' : 'bg-mnema-warning'"
                 :style="{ width: `${voiceStore.currentInputLevel}%` }"
               ></div>
@@ -271,7 +271,7 @@ function playPreviewSound(sound: SoundEvent = 'join') {
               <!-- Peak Marker (loudest level of the last moments) -->
               <div
                 v-if="peakLevel > 0"
-                class="absolute top-1 bottom-1 w-0.5 rounded pointer-events-none"
+                class="absolute top-1 bottom-1 w-0.5 rounded-sm pointer-events-none"
                 :class="peakLevel >= threshold ? 'bg-mnema-accent-hover' : 'bg-mnema-amber'"
                 :style="{ left: `${peakLevel}%` }"
               ></div>
@@ -330,7 +330,7 @@ function playPreviewSound(sound: SoundEvent = 'join') {
               <div class="space-y-0.5">
                 <div class="text-sm font-semibold text-mnema-text flex items-center gap-1.5">
                   <span>{{ $t('audio.agc') }}</span>
-                  <span class="text-xs px-1.5 py-0.2 rounded bg-amber-500/15 text-amber-400 font-mono">{{ $t('audio.agcBadge') }}</span>
+                  <span class="text-xs px-1.5 py-0.2 rounded-sm bg-amber-500/15 text-amber-400 font-mono">{{ $t('audio.agcBadge') }}</span>
                 </div>
                 <p class="text-xs text-mnema-tertiary leading-relaxed">
                   {{ $t('audio.agcHint') }}
@@ -342,11 +342,11 @@ function playPreviewSound(sound: SoundEvent = 'join') {
                 :aria-checked="voiceStore.autoGainControl ? 'true' : 'false'"
                 :aria-label="$t('audio.agc')"
                 :class="[
-                  'w-10 h-5 rounded-full transition-colors relative flex items-center px-0.5 flex-shrink-0 mt-1',
+                  'w-10 h-5 rounded-full transition-colors relative flex items-center px-0.5 shrink-0 mt-1',
                   voiceStore.autoGainControl ? 'bg-mnema-accent' : 'bg-mnema-canvas border border-mnema-border'
                 ]"
               >
-                <div :class="['w-4 h-4 rounded-full bg-white transition-transform shadow-sm', voiceStore.autoGainControl ? 'translate-x-5' : 'translate-x-0']"></div>
+                <div :class="['w-4 h-4 rounded-full bg-white transition-transform shadow-xs', voiceStore.autoGainControl ? 'translate-x-5' : 'translate-x-0']"></div>
               </button>
             </div>
 
@@ -395,11 +395,11 @@ function playPreviewSound(sound: SoundEvent = 'join') {
                 :aria-checked="voiceStore.echoCancellation ? 'true' : 'false'"
                 :aria-label="$t('audio.echo')"
                 :class="[
-                  'w-10 h-5 rounded-full transition-colors relative flex items-center px-0.5 flex-shrink-0 mt-1',
+                  'w-10 h-5 rounded-full transition-colors relative flex items-center px-0.5 shrink-0 mt-1',
                   voiceStore.echoCancellation ? 'bg-mnema-accent' : 'bg-mnema-canvas border border-mnema-border'
                 ]"
               >
-                <div :class="['w-4 h-4 rounded-full bg-white transition-transform shadow-sm', voiceStore.echoCancellation ? 'translate-x-5' : 'translate-x-0']"></div>
+                <div :class="['w-4 h-4 rounded-full bg-white transition-transform shadow-xs', voiceStore.echoCancellation ? 'translate-x-5' : 'translate-x-0']"></div>
               </button>
             </div>
 
@@ -417,11 +417,11 @@ function playPreviewSound(sound: SoundEvent = 'join') {
                 :aria-checked="voiceStore.qosHighPriority ? 'true' : 'false'"
                 :aria-label="$t('audio.qosTitle')"
                 :class="[
-                  'w-10 h-5 rounded-full transition-colors relative flex items-center px-0.5 flex-shrink-0 mt-1',
+                  'w-10 h-5 rounded-full transition-colors relative flex items-center px-0.5 shrink-0 mt-1',
                   voiceStore.qosHighPriority ? 'bg-mnema-accent' : 'bg-mnema-canvas border border-mnema-border'
                 ]"
               >
-                <div :class="['w-4 h-4 rounded-full bg-white transition-transform shadow-sm', voiceStore.qosHighPriority ? 'translate-x-5' : 'translate-x-0']"></div>
+                <div :class="['w-4 h-4 rounded-full bg-white transition-transform shadow-xs', voiceStore.qosHighPriority ? 'translate-x-5' : 'translate-x-0']"></div>
               </button>
             </div>
           </div>
@@ -447,11 +447,11 @@ function playPreviewSound(sound: SoundEvent = 'join') {
                 :aria-checked="voiceStore.warnNoAudioDetected ? 'true' : 'false'"
                 :aria-label="$t('audio.noAudioWarningTitle')"
                 :class="[
-                  'w-10 h-5 rounded-full transition-colors relative flex items-center px-0.5 flex-shrink-0 mt-1',
+                  'w-10 h-5 rounded-full transition-colors relative flex items-center px-0.5 shrink-0 mt-1',
                   voiceStore.warnNoAudioDetected ? 'bg-mnema-accent' : 'bg-mnema-canvas border border-mnema-border'
                 ]"
               >
-                <div :class="['w-4 h-4 rounded-full bg-white transition-transform shadow-sm', voiceStore.warnNoAudioDetected ? 'translate-x-5' : 'translate-x-0']"></div>
+                <div :class="['w-4 h-4 rounded-full bg-white transition-transform shadow-xs', voiceStore.warnNoAudioDetected ? 'translate-x-5' : 'translate-x-0']"></div>
               </button>
             </div>
 
@@ -469,11 +469,11 @@ function playPreviewSound(sound: SoundEvent = 'join') {
                 :aria-checked="voiceStore.warnSwitchChannel ? 'true' : 'false'"
                 :aria-label="$t('audio.switchChannelWarningTitle')"
                 :class="[
-                  'w-10 h-5 rounded-full transition-colors relative flex items-center px-0.5 flex-shrink-0 mt-1',
+                  'w-10 h-5 rounded-full transition-colors relative flex items-center px-0.5 shrink-0 mt-1',
                   voiceStore.warnSwitchChannel ? 'bg-mnema-accent' : 'bg-mnema-canvas border border-mnema-border'
                 ]"
               >
-                <div :class="['w-4 h-4 rounded-full bg-white transition-transform shadow-sm', voiceStore.warnSwitchChannel ? 'translate-x-5' : 'translate-x-0']"></div>
+                <div :class="['w-4 h-4 rounded-full bg-white transition-transform shadow-xs', voiceStore.warnSwitchChannel ? 'translate-x-5' : 'translate-x-0']"></div>
               </button>
             </div>
           </div>
@@ -498,11 +498,11 @@ function playPreviewSound(sound: SoundEvent = 'join') {
                 :aria-checked="voiceStore.soundEffectsEnabled ? 'true' : 'false'"
                 :aria-label="$t('audio.soundsTitle')"
                 :class="[
-                  'w-10 h-5 rounded-full transition-colors relative flex items-center px-0.5 flex-shrink-0 mt-1',
+                  'w-10 h-5 rounded-full transition-colors relative flex items-center px-0.5 shrink-0 mt-1',
                   voiceStore.soundEffectsEnabled ? 'bg-mnema-accent' : 'bg-mnema-canvas border border-mnema-border'
                 ]"
               >
-                <div :class="['w-4 h-4 rounded-full bg-white transition-transform shadow-sm', voiceStore.soundEffectsEnabled ? 'translate-x-5' : 'translate-x-0']"></div>
+                <div :class="['w-4 h-4 rounded-full bg-white transition-transform shadow-xs', voiceStore.soundEffectsEnabled ? 'translate-x-5' : 'translate-x-0']"></div>
               </button>
             </div>
 
@@ -548,7 +548,7 @@ function playPreviewSound(sound: SoundEvent = 'join') {
                       type="button"
                       @click="playPreviewSound(sound)"
                       :aria-label="$t('audio.soundsTest') + ': ' + $t(`audio.sound_${sound}`)"
-                      class="w-6 h-6 rounded flex items-center justify-center bg-mnema-raised text-mnema-tertiary hover:text-mnema-accent hover:bg-mnema-surface transition flex-shrink-0"
+                      class="w-6 h-6 rounded-sm flex items-center justify-center bg-mnema-raised text-mnema-tertiary hover:text-mnema-accent hover:bg-mnema-surface transition shrink-0"
                     >
                       <Play class="w-3 h-3 fill-current ml-0.5" />
                     </button>
@@ -561,11 +561,11 @@ function playPreviewSound(sound: SoundEvent = 'join') {
                     :aria-checked="voiceStore.soundEvents[sound] !== false ? 'true' : 'false'"
                     :aria-label="$t(`audio.sound_${sound}`)"
                     :class="[
-                      'w-8 h-4 rounded-full transition-colors relative flex items-center px-0.5 flex-shrink-0',
+                      'w-8 h-4 rounded-full transition-colors relative flex items-center px-0.5 shrink-0',
                       voiceStore.soundEvents[sound] !== false ? 'bg-mnema-accent' : 'bg-mnema-surface border border-mnema-border'
                     ]"
                   >
-                    <div :class="['w-3 h-3 rounded-full bg-white transition-transform shadow-sm', voiceStore.soundEvents[sound] !== false ? 'translate-x-4' : 'translate-x-0']"></div>
+                    <div :class="['w-3 h-3 rounded-full bg-white transition-transform shadow-xs', voiceStore.soundEvents[sound] !== false ? 'translate-x-4' : 'translate-x-0']"></div>
                   </button>
                 </div>
               </div>
@@ -585,7 +585,7 @@ function playPreviewSound(sound: SoundEvent = 'join') {
               <select
                 v-model="voiceStore.selectedInputDeviceId"
                 @change="handleDeviceChange"
-                class="w-full bg-mnema-canvas border border-mnema-border rounded-lg px-3 py-2 text-sm text-mnema-text focus:outline-none focus:border-mnema-accent focus:ring-1 focus:ring-mnema-accent"
+                class="w-full bg-mnema-canvas border border-mnema-border rounded-lg px-3 py-2 text-sm text-mnema-text focus:outline-hidden focus:border-mnema-accent focus:ring-1 focus:ring-mnema-accent"
               >
                 <option value="">{{ $t('audio.defaultDevice') }}</option>
                 <option 
@@ -622,7 +622,7 @@ function playPreviewSound(sound: SoundEvent = 'join') {
                 id="audio-output-device"
                 v-model="voiceStore.selectedOutputDeviceId"
                 data-testid="output-device"
-                class="w-full bg-mnema-canvas border border-mnema-border rounded-lg px-3 py-2 text-sm text-mnema-text focus:outline-none focus:border-mnema-accent focus:ring-1 focus:ring-mnema-accent"
+                class="w-full bg-mnema-canvas border border-mnema-border rounded-lg px-3 py-2 text-sm text-mnema-text focus:outline-hidden focus:border-mnema-accent focus:ring-1 focus:ring-mnema-accent"
               >
                 <option value="">{{ $t('audio.defaultDevice') }}</option>
                 <option
@@ -664,7 +664,7 @@ function playPreviewSound(sound: SoundEvent = 'join') {
         </span>
         <button
           @click="emit('close')"
-          class="px-5 py-2 rounded-lg bg-mnema-accent text-mnema-accent-ink hover:bg-mnema-accent-hover font-semibold text-sm transition shadow-sm"
+          class="px-5 py-2 rounded-lg bg-mnema-accent text-mnema-accent-ink hover:bg-mnema-accent-hover font-semibold text-sm transition shadow-xs"
         >
           {{ $t('audio.done') }}
         </button>

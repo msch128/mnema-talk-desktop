@@ -242,7 +242,7 @@ onMounted(() => {
 onUnmounted(() => {
   document.removeEventListener('visibilitychange', updatePageActive)
   window.removeEventListener('focus', updatePageActive)
-  window.removeEventListener('blur', updatePageActive)
+  window.removeEventListener('blur-sm', updatePageActive)
 })
 const ownPreviewPaused = computed(() => ownOnStage.value && !pageActive.value)
 
@@ -441,7 +441,7 @@ const fade = computed(() => [
 ])
 
 // Shared button looks: the header's square buttons, the stage's dark ones.
-const focusRing = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mnema-accent'
+const focusRing = 'focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-mnema-accent'
 function headerButton(active: boolean) {
   return [
     'relative w-8 h-8 flex items-center justify-center rounded-md border transition-colors motion-reduce:transition-none',
@@ -451,7 +451,7 @@ function headerButton(active: boolean) {
       : 'border-mnema-hairline bg-mnema-surface text-mnema-tertiary hover:text-mnema-text hover:bg-mnema-hover'
   ]
 }
-const overlayButton = 'w-8 h-8 flex items-center justify-center rounded-lg text-white transition-colors motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80'
+const overlayButton = 'w-8 h-8 flex items-center justify-center rounded-lg text-white transition-colors motion-reduce:transition-none focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-white/80'
 
 </script>
 
@@ -464,32 +464,32 @@ const overlayButton = 'w-8 h-8 flex items-center justify-center rounded-lg text-
     @focusin="onActivity"
   >
     <!-- Talk header -->
-    <header class="h-12 px-4 border-b border-mnema-hairline bg-mnema-canvas flex items-center justify-between gap-3 flex-shrink-0 z-10">
+    <header class="h-12 px-4 border-b border-mnema-hairline bg-mnema-canvas flex items-center justify-between gap-3 shrink-0 z-10">
       <div class="flex items-center gap-3 min-w-0">
         <div
           v-if="!headerNarrow"
-          class="w-8 h-8 rounded-md bg-mnema-band border border-mnema-mint/30 flex items-center justify-center text-mnema-mint flex-shrink-0"
+          class="w-8 h-8 rounded-md bg-mnema-band border border-mnema-mint/30 flex items-center justify-center text-mnema-mint shrink-0"
           aria-hidden="true"
         >
           <Volume2 class="w-4 h-4" />
         </div>
         <div class="flex items-center gap-2 min-w-0">
-          <h2 class="font-semibold text-base leading-5 text-mnema-text truncate min-w-[3rem]">
+          <h2 class="font-semibold text-base leading-5 text-mnema-text truncate min-w-12">
             {{ activeVoiceChannel?.name || $t('voice.channelFallback') }}
           </h2>
-          <TalkParticipants class="flex-shrink-0" :users="usersInVoice" :started-at="roomStartedAt" />
+          <TalkParticipants class="shrink-0" :users="usersInVoice" :started-at="roomStartedAt" />
           <VoiceTimer
             v-if="roomStartedAt && !headerNarrow"
             :since="roomStartedAt"
             data-testid="talk-timer"
             v-tooltip="$t('talk.runningForTip')"
-            class="text-xs text-mnema-tertiary flex-shrink-0"
+            class="text-xs text-mnema-tertiary shrink-0"
           />
         </div>
       </div>
 
       <!-- Top Right Actions -->
-      <div class="flex items-center gap-2 flex-shrink-0">
+      <div class="flex items-center gap-2 shrink-0">
         <!-- The Talk's chat (under the stage), with its unread count while closed -->
         <button
           type="button"
@@ -541,7 +541,7 @@ const overlayButton = 'w-8 h-8 flex items-center justify-center rounded-lg text-
       ref="area"
       data-testid="talk-area"
       :class="[
-        'flex-1 min-h-0 relative flex flex-col bg-gradient-to-b from-mnema-raised/40 to-transparent'
+        'flex-1 min-h-0 relative flex flex-col bg-linear-to-b from-mnema-raised/40 to-transparent'
       ]"
       @dblclick="onAreaDblclick"
     >
@@ -555,7 +555,7 @@ const overlayButton = 'w-8 h-8 flex items-center justify-center rounded-lg text-
              as large as the free space allows in the video's own shape -->
         <div
           v-if="hasStage"
-          :class="['w-full flex justify-center flex-shrink-0', stageBox.width ? '' : 'flex-1 min-h-0']"
+          :class="['w-full flex justify-center shrink-0', stageBox.width ? '' : 'flex-1 min-h-0']"
           :style="stageBox.height ? { height: `${stageBox.height}px` } : null"
         >
           <div
@@ -612,18 +612,18 @@ const overlayButton = 'w-8 h-8 flex items-center justify-center rounded-lg text-
             <!-- Top: who is on the stage, and its controls (fade with the call bar) -->
             <div :class="['absolute top-3 inset-x-3 flex items-start justify-between gap-2 z-20 pointer-events-none', fade]">
               <div class="min-w-0 overflow-hidden pointer-events-auto bg-black/80 border border-white/10 h-8 px-2.5 rounded-lg flex items-center gap-2 text-sm text-white">
-                <Video v-if="cameraOnStage" class="w-3.5 h-3.5 text-white/80 flex-shrink-0" />
-                <span v-else class="px-1.5 py-0.5 rounded bg-red-600 text-white text-[10px] font-black uppercase tracking-wider flex items-center gap-1 flex-shrink-0">
+                <Video v-if="cameraOnStage" class="w-3.5 h-3.5 text-white/80 shrink-0" />
+                <span v-else class="px-1.5 py-0.5 rounded-sm bg-red-600 text-white text-[10px] font-black uppercase tracking-wider flex items-center gap-1 shrink-0">
                   <span class="w-1.5 h-1.5 rounded-full bg-white animate-pulse motion-reduce:animate-none"></span>
                   {{ $t('talk.live') }}
                 </span>
-                <ScreenViewers v-if="!cameraOnStage && stage?.userId" :user-id="stage.userId" :show-zero="ownOnStage" class="-mx-1 flex-shrink-0" />
+                <ScreenViewers v-if="!cameraOnStage && stage?.userId" :user-id="stage.userId" :show-zero="ownOnStage" class="-mx-1 shrink-0" />
                 <span v-if="!stageTiny" class="font-semibold text-xs truncate">{{ stageName }}</span>
-                <span v-if="videoResolution && !stageNarrow" class="text-white/60 text-xs font-mono flex-shrink-0">{{ videoResolution }}</span>
+                <span v-if="videoResolution && !stageNarrow" class="text-white/60 text-xs font-mono shrink-0">{{ videoResolution }}</span>
               </div>
 
               <div
-                class="flex items-center gap-1.5 flex-shrink-0 pointer-events-auto"
+                class="flex items-center gap-1.5 shrink-0 pointer-events-auto"
                 @pointerenter="onOverlayPointer($event, true)"
                 @pointerleave="onOverlayPointer($event, false)"
               >
@@ -650,7 +650,7 @@ const overlayButton = 'w-8 h-8 flex items-center justify-center rounded-lg text-
                   <button
                     type="button"
                     data-testid="viewer-stream-audio-mute"
-                    class="p-0.5 rounded text-white hover:text-mnema-accent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
+                    class="p-0.5 rounded-sm text-white hover:text-mnema-accent transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-white/80"
                     :aria-label="isCurrentStreamMuted ? $t('talk.unmuteStreamAudio') : $t('talk.muteStreamAudio')"
                     :aria-pressed="isCurrentStreamMuted ? 'true' : 'false'"
                     v-tooltip="isCurrentStreamMuted ? $t('talk.unmuteStreamAudio') : $t('talk.muteStreamAudio')"
@@ -752,7 +752,7 @@ const overlayButton = 'w-8 h-8 flex items-center justify-center rounded-lg text-
         <div
           v-if="screenCards.length"
           ref="cardsEl"
-          :class="['w-full flex flex-wrap justify-center gap-2 flex-shrink-0', hasStage ? '' : 'max-w-5xl']"
+          :class="['w-full flex flex-wrap justify-center gap-2 shrink-0', hasStage ? '' : 'max-w-5xl']"
         >
           <div
             v-for="card in screenCards"
@@ -761,7 +761,7 @@ const overlayButton = 'w-8 h-8 flex items-center justify-center rounded-lg text-
             :data-screen-card="card.key"
             class="flex items-center gap-3 min-w-0 max-w-full rounded-lg border border-mnema-accent/30 bg-mnema-accent-subtle pl-3 pr-1.5 py-1.5"
           >
-            <Monitor class="w-4 h-4 text-mnema-accent flex-shrink-0" />
+            <Monitor class="w-4 h-4 text-mnema-accent shrink-0" />
             <span class="text-sm text-mnema-text truncate">
               {{ card.kind === 'own' ? $t('talk.ownScreen') : $t('talk.screenShareCard', { name: card.user.display_name || card.user.username }) }}
             </span>
@@ -774,7 +774,7 @@ const overlayButton = 'w-8 h-8 flex items-center justify-center rounded-lg text-
               type="button"
               data-testid="screen-card-action"
               :disabled="card.state === 'pending'"
-              :class="['h-7 px-3 rounded-md text-sm font-semibold bg-mnema-accent text-mnema-accent-ink hover:bg-mnema-accent-hover transition-colors disabled:opacity-60 flex-shrink-0', focusRing, 'focus-visible:ring-offset-2 focus-visible:ring-offset-mnema-accent-subtle']"
+              :class="['h-7 px-3 rounded-md text-sm font-semibold bg-mnema-accent text-mnema-accent-ink hover:bg-mnema-accent-hover transition-colors disabled:opacity-60 shrink-0', focusRing, 'focus-visible:ring-offset-2 focus-visible:ring-offset-mnema-accent-subtle']"
               @click="onScreenCard(card)"
             >
               {{ card.state === 'idle' ? $t('talk.watchScreen') : card.state === 'queued' ? $t('talk.toStage') : $t('talk.screenConnecting') }}
@@ -783,7 +783,7 @@ const overlayButton = 'w-8 h-8 flex items-center justify-center rounded-lg text-
             <button
               v-if="card.kind === 'remote' && card.state !== 'idle'"
               type="button"
-              :class="['w-7 h-7 flex items-center justify-center rounded-md text-mnema-muted hover:text-mnema-text hover:bg-mnema-hover transition-colors flex-shrink-0', focusRing]"
+              :class="['w-7 h-7 flex items-center justify-center rounded-md text-mnema-muted hover:text-mnema-text hover:bg-mnema-hover transition-colors shrink-0', focusRing]"
               v-tooltip="$t('talk.unwatchScreen')"
               @click="voiceStore.unwatchScreen(card.user.id)"
             >
@@ -798,7 +798,7 @@ const overlayButton = 'w-8 h-8 flex items-center justify-center rounded-lg text-
           v-if="hasStage && tileUsers.length"
           ref="stripRegion"
           data-testid="talk-strip-region"
-          class="w-full flex-shrink-0 flex flex-col items-center"
+          class="w-full shrink-0 flex flex-col items-center"
         >
           <button
             type="button"
@@ -851,7 +851,7 @@ const overlayButton = 'w-8 h-8 flex items-center justify-center rounded-lg text-
                     @watch-stream="watchStream(user.id)"
                     @stop-watching="voiceStore.unwatchScreen(user.id)"
                     compact
-                    class="flex-shrink-0"
+                    class="shrink-0"
                     @open-profile="chatStore.openUserProfile"
                     @menu="openMemberMenu($event, user)"
                   />
@@ -902,7 +902,7 @@ const overlayButton = 'w-8 h-8 flex items-center justify-center rounded-lg text-
               :compact="gridSized && gridLayout.tileWidth < 300"
               :show-status="isConnectedHere"
               :style="tileStyle"
-              :class="gridSized ? 'flex-shrink-0' : 'w-56'"
+              :class="gridSized ? 'shrink-0' : 'w-56'"
               @open-profile="chatStore.openUserProfile"
               @menu="openMemberMenu($event, user)"
             />

@@ -187,7 +187,7 @@ onUnmounted(() => {
         <div class="flex max-h-[75vh] min-h-0 flex-col" @keydown="handleKeydown">
           <!-- Search Input Bar -->
           <div class="flex items-center gap-3 px-4 py-3.5 border-b border-mnema-border bg-mnema-surface/50">
-            <Search class="w-5 h-5 text-mnema-tertiary flex-shrink-0" />
+            <Search class="w-5 h-5 text-mnema-tertiary shrink-0" />
             <input
               ref="searchInput"
               data-search-input
@@ -199,10 +199,10 @@ onUnmounted(() => {
               :aria-activedescendant="results.length ? `search-result-${selectedIndex}` : undefined"
               :placeholder="$t('chat.searchPlaceholder')"
               :aria-label="$t('chat.search')"
-              class="flex-1 bg-transparent text-base text-mnema-text placeholder-mnema-tertiary focus:outline-none"
+              class="flex-1 bg-transparent text-base text-mnema-text placeholder-mnema-tertiary focus:outline-hidden"
               @input="onInput"
             />
-            <Loader2 v-if="isSearching" class="w-4 h-4 animate-spin text-mnema-accent flex-shrink-0" />
+            <Loader2 v-if="isSearching" class="w-4 h-4 animate-spin text-mnema-accent shrink-0" />
             <button
               type="button"
               data-dialog-close
@@ -221,7 +221,7 @@ onUnmounted(() => {
             <select
               v-model="channelId"
               :aria-label="$t('chat.searchChannel')"
-              class="max-w-[10rem] px-2 py-1 rounded-md border border-mnema-border bg-mnema-surface text-mnema-muted focus:outline-none focus:border-mnema-accent"
+              class="max-w-40 px-2 py-1 rounded-md border border-mnema-border bg-mnema-surface text-mnema-muted focus:outline-hidden focus:border-mnema-accent"
               @change="performSearch"
             >
               <option value="">{{ $t('chat.searchAllChannels') }}</option>
@@ -234,7 +234,7 @@ onUnmounted(() => {
             <select
               v-model="authorId"
               :aria-label="$t('chat.searchAuthor')"
-              class="max-w-[10rem] px-2 py-1 rounded-md border border-mnema-border bg-mnema-surface text-mnema-muted focus:outline-none focus:border-mnema-accent"
+              class="max-w-40 px-2 py-1 rounded-md border border-mnema-border bg-mnema-surface text-mnema-muted focus:outline-hidden focus:border-mnema-accent"
               @change="performSearch"
             >
               <option value="">{{ $t('chat.searchAnyAuthor') }}</option>
@@ -295,7 +295,7 @@ onUnmounted(() => {
                   <span class="font-medium text-sm text-mnema-text truncate">
                     {{ msg.display_name || msg.username }}
                   </span>
-                  <span v-if="channelNames.get(msg.channel_id)" class="px-1.5 py-0.5 rounded bg-mnema-surface border border-mnema-border text-xs text-mnema-muted flex items-center gap-1">
+                  <span v-if="channelNames.get(msg.channel_id)" class="px-1.5 py-0.5 rounded-sm bg-mnema-surface border border-mnema-border text-xs text-mnema-muted flex items-center gap-1">
                     <Volume2 v-if="channelTypes.get(msg.channel_id) === 'voice'" class="w-2.5 h-2.5 text-mnema-tertiary" />
                     <Hash v-else class="w-2.5 h-2.5 text-mnema-tertiary" />
                     {{ channelNames.get(msg.channel_id) }}
@@ -309,7 +309,7 @@ onUnmounted(() => {
                   </span>
                 </div>
 
-                <p class="text-sm text-mnema-muted line-clamp-2 break-words">
+                <p class="text-sm text-mnema-muted line-clamp-2 wrap-break-word">
                   {{ msg.content }}
                 </p>
 
@@ -319,7 +319,7 @@ onUnmounted(() => {
                 </div>
               </div>
 
-              <ArrowRight class="w-4 h-4 text-mnema-tertiary group-hover:text-mnema-text mt-1 opacity-0 group-hover:opacity-100 transition flex-shrink-0" />
+              <ArrowRight class="w-4 h-4 text-mnema-tertiary group-hover:text-mnema-text mt-1 opacity-0 group-hover:opacity-100 transition shrink-0" />
             </button>
 
             <button

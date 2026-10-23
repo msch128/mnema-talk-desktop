@@ -60,7 +60,7 @@ const voiceUsers = computed(() => {
 
 // Shared row styling (34px channel rows, rounded hover/selected states).
 const rowClass = computed(() => [
-  'relative w-full h-[34px] flex items-center justify-between gap-1.5 px-2 mb-px rounded-md text-nav transition-colors motion-reduce:transition-none group cursor-pointer text-left min-w-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-mnema-accent',
+  'relative w-full h-[34px] flex items-center justify-between gap-1.5 px-2 mb-px rounded-md text-nav transition-colors motion-reduce:transition-none group cursor-pointer text-left min-w-0 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-mnema-accent',
   active.value
     ? 'bg-mnema-hover text-mnema-text font-medium shadow-[inset_2px_0_0_0_#2DA771]'
     : unread.value > 0
@@ -111,12 +111,12 @@ const rowClass = computed(() => [
       <div class="flex items-center gap-1.5 min-w-0">
         <Volume2
           v-if="isVoice"
-          :class="['w-5 h-5 flex-shrink-0 transition-colors', voiceStore.currentChannelId === channel.id ? 'text-mnema-accent' : 'text-mnema-tertiary group-hover:text-mnema-text']"
+          :class="['w-5 h-5 shrink-0 transition-colors', voiceStore.currentChannelId === channel.id ? 'text-mnema-accent' : 'text-mnema-tertiary group-hover:text-mnema-text']"
         />
         <Hash
           v-else
           :class="[
-            'w-5 h-5 flex-shrink-0 transition-colors',
+            'w-5 h-5 shrink-0 transition-colors',
             chatStore.activeChannel?.id === channel.id
               ? 'text-mnema-accent'
               : unread > 0
@@ -128,7 +128,7 @@ const rowClass = computed(() => [
       </div>
 
       <!-- Unread & Mention Badges; for a Talk in use, how long it runs -->
-      <div class="flex items-center gap-1 ml-auto flex-shrink-0">
+      <div class="flex items-center gap-1 ml-auto shrink-0">
         <VoiceTimer
           v-if="isVoice && voiceStore.roomStartedAt[channel.id]"
           :since="voiceStore.roomStartedAt[channel.id]"
@@ -158,7 +158,7 @@ const rowClass = computed(() => [
         @click.stop="emit('delete')"
         v-tooltip="isVoice ? $t('sidebar.deleteVoiceChannel') : $t('sidebar.deleteChannel')"
         :aria-label="isVoice ? $t('sidebar.deleteVoiceChannel') : $t('sidebar.deleteChannel')"
-        class="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 w-6 h-6 flex items-center justify-center rounded text-mnema-tertiary hover:text-mnema-danger transition flex-shrink-0"
+        class="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 w-6 h-6 flex items-center justify-center rounded-sm text-mnema-tertiary hover:text-mnema-danger transition shrink-0"
       >
         <Trash2 class="w-4 h-4" />
       </button>
@@ -169,7 +169,7 @@ const rowClass = computed(() => [
       <div
         v-for="user in voiceUsers"
         :key="user.id"
-        class="min-h-8 py-1 flex items-center gap-2 px-2 rounded-md text-mnema-muted hover:bg-mnema-hover/70 hover:text-mnema-text transition-colors min-w-0 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-mnema-accent"
+        class="min-h-8 py-1 flex items-center gap-2 px-2 rounded-md text-mnema-muted hover:bg-mnema-hover/70 hover:text-mnema-text transition-colors min-w-0 cursor-pointer focus:outline-hidden focus-visible:ring-2 focus-visible:ring-mnema-accent"
         role="button"
         tabindex="0"
         aria-haspopup="menu"
@@ -185,7 +185,7 @@ const rowClass = computed(() => [
           <span class="truncate text-sm">{{ user.display_name || user.username }}</span>
           <VoiceTimer :since="user.joined_at" class="text-[11px] text-mnema-tertiary" />
         </span>
-        <span class="ml-auto flex flex-shrink-0 items-center gap-1.5">
+        <span class="ml-auto flex shrink-0 items-center gap-1.5">
           <MuteMarks
             :muted="voiceStore.muteStateOf(user.id).muted"
             :deafened="voiceStore.muteStateOf(user.id).deafened"
@@ -193,14 +193,14 @@ const rowClass = computed(() => [
           />
           <span
             v-if="voiceStore.mediaState[user.id]?.screen"
-            class="px-1.5 py-0.5 rounded bg-red-600 text-white text-[10px] font-black uppercase tracking-wider flex items-center gap-1 shadow-sm flex-shrink-0"
+            class="px-1.5 py-0.5 rounded-sm bg-red-600 text-white text-[10px] font-black uppercase tracking-wider flex items-center gap-1 shadow-xs shrink-0"
             data-testid="sidebar-live-badge"
             v-tooltip="$t('talk.liveTooltip')"
           >
             <Monitor class="w-3 h-3" />
             {{ $t('talk.live') }}
           </span>
-          <span v-else-if="user.role === 'admin'" class="text-xs px-1 rounded bg-amber-500/10 text-amber-400 flex-shrink-0">
+          <span v-else-if="user.role === 'admin'" class="text-xs px-1 rounded-sm bg-amber-500/10 text-amber-400 shrink-0">
             {{ $t('role.admin') }}
           </span>
         </span>

@@ -243,9 +243,9 @@ function handleMention() {
     <template #default="{ titleId }">
     <div class="flex min-h-0 flex-col overflow-y-auto">
       <!-- Top banner -->
-      <div class="h-28 bg-gradient-to-br from-emerald-950 via-mnema-raised to-emerald-900 border-b border-mnema-hairline relative flex items-start justify-end p-3 overflow-hidden">
+      <div class="h-28 bg-linear-to-br from-emerald-950 via-mnema-raised to-emerald-900 border-b border-mnema-hairline relative flex items-start justify-end p-3 overflow-hidden">
         <!-- Background pattern -->
-        <div class="absolute inset-0 opacity-20 bg-[radial-gradient(#10b981_1px,transparent_1px)] [background-size:12px_12px] pointer-events-none"></div>
+        <div class="absolute inset-0 opacity-20 bg-[radial-gradient(#10b981_1px,transparent_1px)] bg-size-[12px_12px] pointer-events-none"></div>
 
         <button 
           @click="emit('close')"
@@ -320,7 +320,7 @@ function handleMention() {
             <button 
               v-if="!isSelf"
               @click="handleMention"
-              class="px-3 py-1.5 rounded-lg bg-mnema-band hover:bg-mnema-raised text-mnema-text text-sm font-medium border border-mnema-border flex items-center gap-1.5 transition active:scale-95 shadow-sm"
+              class="px-3 py-1.5 rounded-lg bg-mnema-band hover:bg-mnema-raised text-mnema-text text-sm font-medium border border-mnema-border flex items-center gap-1.5 transition active:scale-95 shadow-xs"
               v-tooltip.visual="$t('profile.mentionHint')"
             >
               <AtSign class="w-4 h-4 text-mnema-accent" />
@@ -410,21 +410,21 @@ function handleMention() {
                 :maxlength="MAX_STATUS"
                 :aria-label="$t('profile.status')"
                 :placeholder="$t('profile.statusPlaceholder')"
-                class="min-w-0 flex-1 rounded-lg border border-mnema-border bg-mnema-canvas px-2.5 py-1.5 text-sm text-mnema-text focus:border-mnema-accent focus:outline-none"
+                class="min-w-0 flex-1 rounded-lg border border-mnema-border bg-mnema-canvas px-2.5 py-1.5 text-sm text-mnema-text focus:border-mnema-accent focus:outline-hidden"
                 @keydown.esc.stop.prevent="isEditingStatus = false"
               />
               <span class="w-10 text-right text-xs tabular-nums text-mnema-tertiary">{{ editStatus.length }}/{{ MAX_STATUS }}</span>
               <button
                 type="submit"
                 :disabled="isSavingStatus"
-                class="flex items-center gap-1 rounded bg-mnema-accent px-2.5 py-1 text-xs font-bold text-mnema-canvas hover:brightness-110 active:scale-95 disabled:opacity-50"
+                class="flex items-center gap-1 rounded-sm bg-mnema-accent px-2.5 py-1 text-xs font-bold text-mnema-canvas hover:brightness-110 active:scale-95 disabled:opacity-50"
               >
                 <Loader2 v-if="isSavingStatus" class="h-3.5 w-3.5 animate-spin" />
                 <Save v-else class="h-3.5 w-3.5" />
                 <span>{{ $t('common.save') }}</span>
               </button>
             </form>
-            <p v-else-if="profileUser.status_text" class="break-words text-sm text-mnema-text">{{ profileUser.status_text }}</p>
+            <p v-else-if="profileUser.status_text" class="wrap-break-word text-sm text-mnema-text">{{ profileUser.status_text }}</p>
             <p v-else class="text-sm italic text-mnema-tertiary">{{ $t('profile.noStatus') }}</p>
           </div>
 
@@ -467,7 +467,7 @@ function handleMention() {
                   v-model="editDisplayName" 
                   type="text" 
                   maxlength="24"
-                  class="w-full text-sm px-2.5 py-1.5 rounded-lg bg-mnema-canvas border border-mnema-border text-mnema-text focus:outline-none focus:border-mnema-accent"
+                  class="w-full text-sm px-2.5 py-1.5 rounded-lg bg-mnema-canvas border border-mnema-border text-mnema-text focus:outline-hidden focus:border-mnema-accent"
                 />
               </div>
               <div>
@@ -477,7 +477,7 @@ function handleMention() {
                   v-model="editBio" 
                   rows="3" 
                   maxlength="250"
-                  class="w-full text-sm px-2.5 py-1.5 rounded-lg bg-mnema-canvas border border-mnema-border text-mnema-text focus:outline-none focus:border-mnema-accent resize-none"
+                  class="w-full text-sm px-2.5 py-1.5 rounded-lg bg-mnema-canvas border border-mnema-border text-mnema-text focus:outline-hidden focus:border-mnema-accent resize-none"
                   :placeholder="$t('profile.bioPlaceholder')"
                 ></textarea>
                 <div class="flex justify-between items-center text-xs text-mnema-tertiary mt-0.5">
@@ -486,14 +486,14 @@ function handleMention() {
                     <button
                       type="button"
                       @click="cancelEditBio"
-                      class="px-2 py-0.5 rounded text-mnema-muted hover:text-mnema-text"
+                      class="px-2 py-0.5 rounded-sm text-mnema-muted hover:text-mnema-text"
                     >
                       {{ $t('common.cancel') }}
                     </button>
                     <button 
                       @click="saveProfile" 
                       :disabled="isSavingProfile"
-                      class="px-2.5 py-1 rounded bg-mnema-accent text-mnema-canvas font-bold flex items-center gap-1 hover:brightness-110 active:scale-95 disabled:opacity-50"
+                      class="px-2.5 py-1 rounded-sm bg-mnema-accent text-mnema-canvas font-bold flex items-center gap-1 hover:brightness-110 active:scale-95 disabled:opacity-50"
                     >
                       <Loader2 v-if="isSavingProfile" class="w-3.5 h-3.5 animate-spin" />
                       <Save v-else class="w-3.5 h-3.5" />
@@ -504,7 +504,7 @@ function handleMention() {
               </div>
             </div>
 
-            <div v-if="profileSaveError" role="alert" class="mt-2 p-1.5 rounded bg-mnema-danger/10 border border-mnema-danger/30 text-mnema-danger text-sm flex items-center gap-1.5">
+            <div v-if="profileSaveError" role="alert" class="mt-2 p-1.5 rounded-sm bg-mnema-danger/10 border border-mnema-danger/30 text-mnema-danger text-sm flex items-center gap-1.5">
               <span>{{ profileSaveError }}</span>
             </div>
           </div>
@@ -529,34 +529,34 @@ function handleMention() {
                 type="password"
                 autocomplete="current-password"
                 :placeholder="$t('profile.currentPassword')" :aria-label="$t('profile.currentPassword')"
-                class="w-full text-sm px-2.5 py-1.5 rounded-lg bg-mnema-canvas border border-mnema-border text-mnema-text focus:outline-none focus:border-mnema-accent"
+                class="w-full text-sm px-2.5 py-1.5 rounded-lg bg-mnema-canvas border border-mnema-border text-mnema-text focus:outline-hidden focus:border-mnema-accent"
               />
               <input
                 v-model="newPassword"
                 type="password"
                 autocomplete="new-password"
                 :placeholder="$t('profile.newPassword', { count: MIN_PASSWORD_LENGTH })" :aria-label="$t('profile.newPassword', { count: MIN_PASSWORD_LENGTH })"
-                class="w-full text-sm px-2.5 py-1.5 rounded-lg bg-mnema-canvas border border-mnema-border text-mnema-text focus:outline-none focus:border-mnema-accent"
+                class="w-full text-sm px-2.5 py-1.5 rounded-lg bg-mnema-canvas border border-mnema-border text-mnema-text focus:outline-hidden focus:border-mnema-accent"
               />
               <input
                 v-model="newPasswordRepeat"
                 type="password"
                 autocomplete="new-password"
                 :placeholder="$t('profile.repeatPassword')" :aria-label="$t('profile.repeatPassword')"
-                class="w-full text-sm px-2.5 py-1.5 rounded-lg bg-mnema-canvas border border-mnema-border text-mnema-text focus:outline-none focus:border-mnema-accent"
+                class="w-full text-sm px-2.5 py-1.5 rounded-lg bg-mnema-canvas border border-mnema-border text-mnema-text focus:outline-hidden focus:border-mnema-accent"
               />
               <div class="flex justify-end items-center gap-1.5 text-xs">
                 <button
                   type="button"
                   @click="isChangingPassword = false; currentPassword = newPassword = newPasswordRepeat = ''"
-                  class="px-2 py-0.5 rounded text-mnema-muted hover:text-mnema-text"
+                  class="px-2 py-0.5 rounded-sm text-mnema-muted hover:text-mnema-text"
                 >
                   {{ $t('common.cancel') }}
                 </button>
                 <button
                   type="submit"
                   :disabled="isSavingPassword"
-                  class="px-2.5 py-1 rounded bg-mnema-accent text-mnema-canvas font-bold flex items-center gap-1 hover:brightness-110 active:scale-95 disabled:opacity-50"
+                  class="px-2.5 py-1 rounded-sm bg-mnema-accent text-mnema-canvas font-bold flex items-center gap-1 hover:brightness-110 active:scale-95 disabled:opacity-50"
                 >
                   <Loader2 v-if="isSavingPassword" class="w-3.5 h-3.5 animate-spin" />
                   <Save v-else class="w-3.5 h-3.5" />
@@ -565,7 +565,7 @@ function handleMention() {
               </div>
             </form>
 
-            <div v-if="passwordError" role="alert" class="mt-2 p-1.5 rounded bg-mnema-danger/10 border border-mnema-danger/30 text-mnema-danger text-sm flex items-center gap-1.5">
+            <div v-if="passwordError" role="alert" class="mt-2 p-1.5 rounded-sm bg-mnema-danger/10 border border-mnema-danger/30 text-mnema-danger text-sm flex items-center gap-1.5">
               <span>{{ passwordError }}</span>
             </div>
           </div>
@@ -580,7 +580,7 @@ function handleMention() {
               v-if="voiceHangout" 
               class="flex items-center gap-2 p-2 rounded-lg bg-mnema-accent/10 border border-mnema-accent/25 text-mnema-accent text-sm"
             >
-              <Volume2 class="w-4 h-4 flex-shrink-0" />
+              <Volume2 class="w-4 h-4 shrink-0" />
               <div class="truncate">
                 <span class="font-medium">{{ $t('profile.inVoice') }}</span>
                 <span class="font-bold ml-1 text-mnema-text">#{{ voiceHangout.name }}</span>

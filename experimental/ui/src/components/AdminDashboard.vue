@@ -55,7 +55,7 @@ watch(activeTab, (tab) => {
     @close="emit('close')"
   >
     <!-- Navigation tabs -->
-    <div class="flex items-center gap-1 px-6 py-2.5 border-b border-mnema-hairline bg-mnema-canvas/40 text-sm overflow-x-auto flex-shrink-0">
+    <div class="flex items-center gap-1 px-6 py-2.5 border-b border-mnema-hairline bg-mnema-canvas/40 text-sm overflow-x-auto shrink-0">
       <button
         v-for="tab in TABS"
         :key="tab"

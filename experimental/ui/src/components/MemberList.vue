@@ -51,11 +51,11 @@ function getUserVoiceChannel(userId: string) {
   <!-- Member column; width and visibility are controlled by App.vue -->
   <aside class="w-full bg-mnema-raised border-l border-mnema-hairline flex flex-col h-full select-none">
     <!-- 48px header, aligned with the channel header and sidebar header -->
-    <div class="h-12 px-4 border-b border-mnema-hairline flex items-center justify-between gap-2 flex-shrink-0">
+    <div class="h-12 px-4 border-b border-mnema-hairline flex items-center justify-between gap-2 shrink-0">
       <span class="text-xs font-semibold uppercase tracking-wide text-mnema-tertiary truncate">
         {{ $t('members.title') }}
       </span>
-      <span class="text-xs text-mnema-tertiary tabular-nums flex-shrink-0">
+      <span class="text-xs text-mnema-tertiary tabular-nums shrink-0">
         {{ chatStore.members.length }}
       </span>
     </div>
@@ -65,7 +65,7 @@ function getUserVoiceChannel(userId: string) {
       <!-- 1. Administrators -->
       <section v-if="admins.length">
         <h3 class="pt-6 pb-1 px-2 text-xs font-semibold uppercase tracking-wide text-mnema-amber flex items-center gap-1.5 min-w-0">
-          <Crown class="w-3.5 h-3.5 flex-shrink-0" />
+          <Crown class="w-3.5 h-3.5 shrink-0" />
           <span class="truncate">{{ $t('members.admins', { count: admins.length }) }}</span>
         </h3>
         <MemberRow

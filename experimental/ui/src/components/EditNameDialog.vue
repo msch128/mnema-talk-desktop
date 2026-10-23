@@ -78,7 +78,7 @@ async function submit() {
           type="text"
           maxlength="64"
           :placeholder="isCreate ? $t('admin.categoryNamePlaceholder') : undefined"
-          class="w-full bg-mnema-canvas border border-mnema-border-field rounded-md px-3 py-2 text-sm text-mnema-text placeholder-mnema-tertiary focus:outline-none focus:border-mnema-accent"
+          class="w-full bg-mnema-canvas border border-mnema-border-field rounded-md px-3 py-2 text-sm text-mnema-text placeholder-mnema-tertiary focus:outline-hidden focus:border-mnema-accent"
         />
       </div>
 
@@ -92,7 +92,7 @@ async function submit() {
           type="text"
           maxlength="200"
           :placeholder="$t('admin.channelTopicPlaceholder')"
-          class="w-full bg-mnema-canvas border border-mnema-border-field rounded-md px-3 py-2 text-sm text-mnema-text placeholder-mnema-tertiary focus:outline-none focus:border-mnema-accent"
+          class="w-full bg-mnema-canvas border border-mnema-border-field rounded-md px-3 py-2 text-sm text-mnema-text placeholder-mnema-tertiary focus:outline-hidden focus:border-mnema-accent"
         />
       </div>
 

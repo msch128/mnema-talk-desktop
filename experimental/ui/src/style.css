@@ -1,6 +1,60 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import 'tailwindcss';
+
+@custom-variant dark (&:is(.dark *));
+
+@theme {
+  --color-mnema-canvas: #0f1110;
+  --color-mnema-raised: #171918;
+  --color-mnema-surface: #1a1e1c;
+  --color-mnema-elevated: #1c1e1d;
+  --color-mnema-hover: #202423;
+  --color-mnema-hairline: #242826;
+  --color-mnema-border: #2b2f2d;
+  --color-mnema-border-strong: #3b413e;
+  --color-mnema-border-field: #6e7672;
+  --color-mnema-text: #e6eae8;
+  --color-mnema-muted: #a3b3aa;
+  --color-mnema-tertiary: #8e9c94;
+  --color-mnema-body-ink: #c4c9ce;
+  --color-mnema-accent: #2da771;
+  --color-mnema-accent-hover: #36bd81;
+  --color-mnema-accent-subtle: #17231d;
+  --color-mnema-accent-ink: #0a0a0b;
+  --color-mnema-band: #143d2e;
+  --color-mnema-band-mark: #8ccbaa;
+  --color-mnema-mint: #8ccbaa;
+  --color-mnema-danger: #f35549;
+  --color-mnema-warning: #d97706;
+  --color-mnema-away: #e0a23a;
+  --color-mnema-focus: #8e97f2;
+  --color-mnema-amber: #fce4a8;
+
+  --text-nav: 0.9375rem;
+  --text-nav--line-height: 1.25rem;
+  --text-message: 1rem;
+  --text-message--line-height: 1.375rem;
+
+  --font-sans: Inter, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+}
+
+/*
+  The default border color has changed to `currentcolor` in Tailwind CSS v4,
+  so we've added these compatibility styles to make sure everything still
+  looks the same as it did with Tailwind CSS v3.
+
+  If we ever want to remove these styles, we need to add an explicit border
+  color utility to any element that depends on these defaults.
+*/
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-gray-200, currentcolor);
+  }
+}
 
 /* Mnema Forest Identity Base */
 @layer base {
