@@ -277,6 +277,20 @@ impl Jar {
         write_private(&self.file, &raw);
     }
 
+    /// Forgets every cookie, in memory and at rest (the keychain entry and the
+    /// fallback file). Removing a server from the client ends here.
+    pub fn forget(&self) {
+        if let Ok(mut cookies) = self.cookies.lock() {
+            cookies.clear();
+        }
+        if let Some((vault, account)) = &self.vault {
+            vault.remove(account);
+        }
+        if let Some(file) = &self.file {
+            let _ = std::fs::remove_file(file);
+        }
+    }
+
     /// The `Cookie` header for a request, if any cookie applies.
     pub fn header(&self, now: i64) -> Option<String> {
         let cookies = self.cookies.lock().ok()?;

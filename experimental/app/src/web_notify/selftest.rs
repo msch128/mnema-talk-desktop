@@ -36,6 +36,20 @@ pub fn clicked(click: &Click) {
     ));
 }
 
+/// A server of its own for the toasts, so that they are tied to one like the
+/// page's are; its name never leaves this test.
+fn selftest_server(app: &tauri::AppHandle) -> Option<(String, String)> {
+    use crate::instances::AddError;
+    let trusted = app.state::<crate::web_client::Trusted>();
+    let mut registry = trusted.registry.lock().ok()?;
+    let id = match registry.add(url::Url::parse("https://selftest.invalid/").ok()?) {
+        Ok(id) | Err(AddError::Known(id)) => id,
+        Err(AddError::Full) => return None,
+    };
+    let generation = registry.slot(&id)?.generation.clone();
+    Some((id, generation))
+}
+
 pub fn start(app: &tauri::AppHandle) {
     if std::env::var_os("MNEMA_NOTIFY_SELFTEST").is_none() {
         return;
@@ -54,7 +68,10 @@ pub fn start(app: &tauri::AppHandle) {
                 channel_id: CHANNEL.into(),
                 message_id: MESSAGE.into(),
             };
-            let session = app.state::<super::Notifier>().session();
+            let Some((_, session)) = selftest_server(&app) else {
+                record("synthetic-activation reported=false stale-dropped=false");
+                return;
+            };
             let before = CLICKS.load(SeqCst);
             platform::simulate_activation(&app, click.clone(), &session);
             let reported = CLICKS.load(SeqCst) == before + 1;
@@ -64,13 +81,18 @@ pub fn start(app: &tauri::AppHandle) {
                 "synthetic-activation reported={reported} stale-dropped={dropped}"
             ));
         }
-        // The badge too, on the selector window: the app-wide count is read back from outside.
-        if let Some(window) = app.get_webview_window("main") {
+        // The badge too, on the window: the app-wide count is read back from outside.
+        if let Some(window) = app.get_window("shell") {
             record(&format!("badge={:?}", apply_badge(&window, 3)));
         }
+        let Some((server, _)) = selftest_server(&app) else {
+            record("shown=error no server");
+            return;
+        };
         record(&format!("permission={:?}", platform::permission().await));
         let result = deliver(
             &app,
+            &server,
             "Mnema selftest",
             "A test toast from the installed app",
             CHANNEL.into(),

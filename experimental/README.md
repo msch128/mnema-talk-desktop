@@ -50,6 +50,19 @@ so the host decision is what runs. Each probe window has its own WebView2
 profile, because a refusal is remembered for the origin and then WebView2
 does not ask again. The check does not click the prompt, and
 a microphone grant is not part of the result.
+
+**Several servers (1.1).** The window is a rail of the host on the left and the
+page of one server next to it, as separate webviews (Tauri's `unstable`
+multiwebview). Each server has its own webview with its own storage, its own
+session and its own sockets; commands and the protocol handler pick the server
+by the label of the calling webview (`i-<id>`), never by an argument. A
+separate check, `scripts/multi-instance-selftest.mjs`, runs a build with the
+test-only `multi-selftest` feature against two stand-in instances
+(`scripts/fake-instance.mjs`) on Windows and macOS CI: storage, cookies, counters
+and sockets of one server are not those of the other, Ctrl+1/2 switch, a report
+from the background server raises its own badge, and removing a server wipes its
+stored session and its browser storage. It uses the machine's own profile on
+Windows, so it refuses to run outside CI there.
 The check does not qualify a human permission prompt, a physical device,
 sealed media, a real game, login, screensharing or E2EE.
 A separate [published v0.7.1 Windows acceptance](https://github.com/msch128/mnema-talk/actions/runs/37888635202)

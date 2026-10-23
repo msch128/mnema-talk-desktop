@@ -1,12 +1,18 @@
-//! Gaming display/control adapter for the selected ordinary web session.
-//! It grants no authentication, cryptographic or media authority. Windows
-//! detection/input reuse the existing native foundations; no game injection.
+//! Gaming display/control adapter for the ordinary web sessions. It grants no
+//! authentication, cryptographic or media authority. Windows detection/input
+//! reuse the existing native foundations; no game injection.
+//!
+//! Several servers can be open at once, but the overlay, the shortcuts and the
+//! sidepeek belong to exactly one: the server that owns the Talk the person is
+//! in. Only that server's page may feed them, and only its page receives what
+//! they send back.
 use serde::{Deserialize, Serialize};
 use std::{
+    collections::HashMap,
     sync::Mutex,
     time::{Duration, Instant},
 };
-use tauri::{Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
+use tauri::{Manager, Webview, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 #[cfg_attr(not(windows), allow(dead_code))]
 #[path = "../../../src/windows.rs"]
 mod games;
@@ -158,9 +164,12 @@ pub struct Snapshot {
     active: bool,
 }
 pub struct Gaming {
-    /// The app origin the session is bound to (`local_origin` of its windows).
+    /// The app origin the sessions are bound to (`local_origin` of their pages).
     origin: Option<String>,
-    token: String,
+    /// The bridge token of each server's page, by server id.
+    tokens: HashMap<String, String>,
+    /// The server that owns the Talk gaming is attached to.
+    owner: Option<String>,
     voice: Voice,
     updated: Instant,
     settings: Settings,
@@ -177,7 +186,8 @@ impl Default for Gaming {
     fn default() -> Self {
         Self {
             origin: None,
-            token: String::new(),
+            tokens: HashMap::new(),
+            owner: None,
             voice: Voice::default(),
             updated: Instant::now(),
             settings: Settings::default(),
@@ -195,38 +205,59 @@ impl Default for Gaming {
 fn local(window: &WebviewWindow) -> bool {
     window.url().is_ok_and(|u| super::web_client::bundled(&u))
 }
+impl Gaming {
+    /// A page reports its Talk. The page must hold the token of its own
+    /// server, and while another server's Talk is live that one keeps gaming:
+    /// this page's state is ignored, not mixed in.
+    fn accept_sync(
+        &mut self,
+        server: &str,
+        token: &str,
+        origin: Option<&str>,
+        voice: Voice,
+    ) -> Result<(), String> {
+        let token_ok = !token.is_empty() && self.tokens.get(server).is_some_and(|t| t == token);
+        if !token_ok || origin.is_none() || origin != self.origin.as_deref() {
+            return Err("Wrong gaming session.".into());
+        }
+        voice.validate()?;
+        let held_elsewhere = self.owner.as_deref().is_some_and(|o| o != server)
+            && self.voice.connected
+            && self.updated.elapsed() < Duration::from_secs(2);
+        if held_elsewhere || (!voice.connected && self.owner.as_deref() != Some(server)) {
+            return Ok(());
+        }
+        if !voice.connected
+            || voice.account != self.voice.account
+            || voice.channel != self.voice.channel
+            || voice.scope != self.voice.scope
+        {
+            self.overlay = false;
+            self.active = false;
+            self.previous = [true; 4];
+            self.ptt_down = false;
+            self.ptt_armed = false;
+        }
+        self.owner = voice.connected.then(|| server.to_owned());
+        self.voice = voice;
+        self.updated = Instant::now();
+        Ok(())
+    }
+}
 #[tauri::command]
 pub fn desktop_gaming_sync(
-    window: WebviewWindow,
+    webview: Webview,
     state: tauri::State<'_, Mutex<Gaming>>,
     token: String,
     voice: Voice,
 ) -> Result<(), String> {
-    let origin = super::web_client::local_origin(&window.url().map_err(|_| "Gaming unavailable.")?);
-    let mut g = state.lock().map_err(|_| "Gaming unavailable.")?;
-    if window.label() != "instance"
-        || token.is_empty()
-        || token != g.token
-        || origin.is_none()
-        || origin != g.origin
-    {
+    let origin =
+        super::web_client::local_origin(&webview.url().map_err(|_| "Gaming unavailable.")?);
+    let Some(server) = super::instances::id_of_instance_label(webview.label()) else {
         return Err("Wrong gaming session.".into());
-    }
-    voice.validate()?;
-    if !voice.connected
-        || voice.account != g.voice.account
-        || voice.channel != g.voice.channel
-        || voice.scope != g.voice.scope
-    {
-        g.overlay = false;
-        g.active = false;
-        g.previous = [true; 4];
-        g.ptt_down = false;
-        g.ptt_armed = false;
-    }
-    g.voice = voice;
-    g.updated = Instant::now();
-    Ok(())
+    };
+    let mut g = state.lock().map_err(|_| "Gaming unavailable.")?;
+    g.accept_sync(server, &token, origin.as_deref(), voice)
 }
 #[tauri::command]
 pub fn desktop_gaming_snapshot(
@@ -260,6 +291,8 @@ pub fn desktop_gaming_snapshot(
 struct Command {
     created: Instant,
     issued: f64,
+    /// The server the command goes back to, and its page's token.
+    owner: Option<String>,
     token: String,
     origin: Option<String>,
     scope: Option<String>,
@@ -271,7 +304,13 @@ impl Command {
         Self {
             created: Instant::now(),
             issued: g.voice.clock + g.updated.elapsed().as_secs_f64() * 1000.0,
-            token: g.token.clone(),
+            owner: g.owner.clone(),
+            token: g
+                .owner
+                .as_ref()
+                .and_then(|o| g.tokens.get(o))
+                .cloned()
+                .unwrap_or_default(),
             origin: g.origin.clone(),
             scope: g.voice.scope.clone(),
             action: action.into(),
@@ -282,6 +321,7 @@ impl Command {
         let Self {
             created,
             issued,
+            owner,
             token,
             origin,
             scope,
@@ -295,7 +335,12 @@ impl Command {
             let Ok(current) = shared.lock() else {
                 return;
             };
-            if current.token != token
+            let token_current = owner
+                .as_ref()
+                .and_then(|o| current.tokens.get(o))
+                .is_some_and(|t| *t == token);
+            if !token_current
+                || current.owner != owner
                 || current.origin != origin
                 || (action != "ptt-release"
                     && (created.elapsed() >= Duration::from_millis(150)
@@ -307,20 +352,22 @@ impl Command {
                 return;
             }
             drop(current);
-            if let Some(window) = next.get_webview_window("instance") {
+            let Some(server) = owner else {
+                return;
+            };
+            if let Some(page) = next.get_webview(&super::instances::instance_label(&server)) {
                 if origin.is_none()
-                    || !window
+                    || !page
                         .url()
                         .is_ok_and(|u| super::web_client::local_origin(&u) == origin)
                 {
                     return;
                 }
-                let _ = window.eval(format!(
+                let _ = page.eval(format!(
                 "window.dispatchEvent(new CustomEvent('mnema-gaming-command',{{detail:{detail}}}));"
             ));
                 if focus {
-                    let _ = window.show();
-                    let _ = window.set_focus();
+                    super::web_shell::bring_forward(&next, &server);
                 }
             }
         });
@@ -389,37 +436,71 @@ pub fn desktop_gaming_settings(
     command.dispatch(window.app_handle());
     Ok(())
 }
-pub fn bind(app: &tauri::AppHandle) -> String {
+/// Hands a server's page the token that lets it feed gaming.
+pub fn bind(app: &tauri::AppHandle, server: &str) -> String {
     let token = uuid::Uuid::new_v4().to_string();
     if let Ok(mut g) = app.state::<Mutex<Gaming>>().lock() {
         g.origin = super::web_client::local_origin(&super::web_client::app_url());
-        g.token = token.clone();
-        g.voice = Voice::default();
-        g.overlay = false;
-        g.active = false;
-        g.previous = [true; 4];
-        g.ptt_armed = false;
+        g.tokens.insert(server.to_owned(), token.clone());
+        if g.owner.as_deref() == Some(server) {
+            g.release();
+        }
     }
     token
 }
-pub fn clear(app: &tauri::AppHandle) {
-    if let Ok(mut g) = app.state::<Mutex<Gaming>>().lock() {
-        *g = Gaming {
-            settings: g.settings.clone(),
+impl Gaming {
+    /// Nobody owns the Talk: no overlay, nothing held.
+    fn release(&mut self) {
+        let keep = (self.origin.clone(), std::mem::take(&mut self.tokens));
+        *self = Gaming {
+            settings: self.settings.clone(),
+            origin: keep.0,
+            tokens: keep.1,
             ..Gaming::default()
         };
     }
+}
+/// A server's page is gone (its server left the list): it no longer has a
+/// token, and gaming lets go of it if it owned the Talk.
+pub fn forget(app: &tauri::AppHandle, server: &str) {
+    let owned = app.state::<Mutex<Gaming>>().lock().is_ok_and(|mut g| {
+        g.tokens.remove(server);
+        let owned = g.owner.as_deref() == Some(server);
+        if owned {
+            g.release();
+        }
+        owned
+    });
+    if owned {
+        close_surfaces(app);
+    }
+}
+/// The window is closing: everything lets go.
+pub fn clear(app: &tauri::AppHandle) {
+    if let Ok(mut g) = app.state::<Mutex<Gaming>>().lock() {
+        g.tokens.clear();
+        g.release();
+    }
+    close_surfaces(app);
+}
+fn close_surfaces(app: &tauri::AppHandle) {
     for label in ["sidepeek", "gaming-overlay", "gaming-settings"] {
         if let Some(w) = app.get_webview_window(label) {
             let _ = w.close();
         }
     }
 }
-pub fn menu(app: &tauri::AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> {
+/// The entries of the menu bar that are not about servers: gaming settings and
+/// the client's own update.
+pub fn menu_items(
+    app: &tauri::AppHandle,
+) -> tauri::Result<(
+    tauri::menu::MenuItem<tauri::Wry>,
+    tauri::menu::MenuItem<tauri::Wry>,
+)> {
     let item =
         tauri::menu::MenuItem::with_id(app, "gaming-settings", "Gaming", true, None::<&str>)?;
-    let update = super::native_updates::menu_item(app)?;
-    tauri::menu::Menu::with_items(app, &[&item, &update])
+    Ok((item, super::native_updates::menu_item(app)?))
 }
 pub fn open_settings(app: &tauri::AppHandle) -> tauri::Result<()> {
     let window = surface(app, "gaming-settings", true)?;
@@ -445,7 +526,7 @@ fn surface(
     } else {
         "Mnema Sidepeek DEV"
     })
-    .initialization_script(super::web_client::identity_script(app, "surface"))
+    .initialization_script(super::web_client::identity_script(app, "surface", None))
     .initialization_script(format!(
         "Object.defineProperty(window,'__MNEMA_GAMING_SURFACE__',{{value:'{label}'}});"
     ));
@@ -454,23 +535,27 @@ fn surface(
     } else {
         builder
     };
-    let w = crate::web_permissions::with_probe_args(app, label, builder)
-        .inner_size(
-            if interactive { 420.0 } else { 240.0 },
-            if interactive { 650.0 } else { 430.0 },
-        )
-        .decorations(false)
-        .shadow(false)
-        .transparent(true)
-        .always_on_top(true)
-        .skip_taskbar(true)
-        .visible(false)
-        .focused(false)
-        .focusable(interactive)
-        .on_navigation(super::web_client::bundled)
-        .on_new_window(|_, _| tauri::webview::NewWindowResponse::Deny)
-        .on_permission_request(super::web_client::allow_permission)
-        .build()?;
+    let w = crate::web_permissions::with_probe_args(
+        app,
+        label,
+        super::web_shell::host_profile_window(builder, app),
+    )
+    .inner_size(
+        if interactive { 420.0 } else { 240.0 },
+        if interactive { 650.0 } else { 430.0 },
+    )
+    .decorations(false)
+    .shadow(false)
+    .transparent(true)
+    .always_on_top(true)
+    .skip_taskbar(true)
+    .visible(false)
+    .focused(false)
+    .focusable(interactive)
+    .on_navigation(super::web_client::bundled)
+    .on_new_window(|_, _| tauri::webview::NewWindowResponse::Deny)
+    .on_permission_request(super::web_client::allow_permission)
+    .build()?;
     #[cfg(windows)]
     if let Ok(hwnd) = w.hwnd() {
         let color: u32 = 0xfffffffe; // DWMWA_COLOR_NONE, Windows 11 border only.
@@ -857,6 +942,138 @@ mod tests {
         assert!(g.advance(now, true, [true; 4]).is_empty());
         assert!(!g.ptt_armed);
     }
+    fn talk(account: &str, channel: &str, scope: &str) -> Voice {
+        Voice {
+            connected: true,
+            scope: Some(scope.into()),
+            account: Some(account.into()),
+            channel: Some(channel.into()),
+            members: vec![Member {
+                id: account.into(),
+                name: "Player".into(),
+                speaking: false,
+                muted: false,
+                sharing: false,
+            }],
+            ..Voice::default()
+        }
+    }
+
+    fn two_servers() -> Gaming {
+        let mut g = Gaming {
+            origin: Some("mnema://localhost".into()),
+            ..Gaming::default()
+        };
+        g.tokens.insert("a".into(), "token-a".into());
+        g.tokens.insert("b".into(), "token-b".into());
+        g
+    }
+
+    const U1: &str = "11111111-1111-4111-8111-111111111111";
+    const U2: &str = "22222222-2222-4222-8222-222222222222";
+    const U3: &str = "33333333-3333-4333-8333-333333333333";
+
+    #[test]
+    fn a_page_needs_the_token_of_its_own_server_and_the_apps_origin() {
+        let mut g = two_servers();
+        let origin = Some("mnema://localhost");
+        assert!(
+            g.accept_sync("a", "token-b", origin, talk(U1, U2, U3))
+                .is_err()
+        );
+        assert!(g.accept_sync("a", "", origin, talk(U1, U2, U3)).is_err());
+        assert!(
+            g.accept_sync("c", "token-a", origin, talk(U1, U2, U3))
+                .is_err()
+        );
+        assert!(
+            g.accept_sync(
+                "a",
+                "token-a",
+                Some("https://evil.example"),
+                talk(U1, U2, U3)
+            )
+            .is_err()
+        );
+        assert!(
+            g.accept_sync("a", "token-a", None, talk(U1, U2, U3))
+                .is_err()
+        );
+        assert!(g.owner.is_none(), "nothing was accepted");
+        assert!(
+            g.accept_sync("a", "token-a", origin, talk(U1, U2, U3))
+                .is_ok()
+        );
+        assert_eq!(g.owner.as_deref(), Some("a"));
+    }
+
+    #[test]
+    fn gaming_stays_with_the_server_that_owns_the_talk() {
+        let mut g = two_servers();
+        let origin = Some("mnema://localhost");
+        g.accept_sync("a", "token-a", origin, talk(U1, U2, U3))
+            .unwrap();
+        // B reports its own Talk while A's is live: ignored, not mixed in.
+        g.accept_sync("b", "token-b", origin, talk(U3, U2, U1))
+            .unwrap();
+        assert_eq!(g.owner.as_deref(), Some("a"));
+        assert_eq!(g.voice.account.as_deref(), Some(U1));
+        // B saying "not connected" does not end A's Talk either.
+        g.accept_sync("b", "token-b", origin, Voice::default())
+            .unwrap();
+        assert_eq!(g.owner.as_deref(), Some("a"));
+        assert!(g.voice.connected);
+        // Commands go back to A's page with A's token.
+        let command = Command::new(&g, "mute");
+        assert_eq!(
+            (command.owner.as_deref(), command.token.as_str()),
+            (Some("a"), "token-a")
+        );
+        // A leaves its Talk: gaming lets go, and B may take it.
+        g.accept_sync("a", "token-a", origin, Voice::default())
+            .unwrap();
+        assert_eq!(g.owner, None);
+        g.accept_sync("b", "token-b", origin, talk(U3, U2, U1))
+            .unwrap();
+        assert_eq!(g.owner.as_deref(), Some("b"));
+        let command = Command::new(&g, "mute");
+        assert_eq!(
+            (command.owner.as_deref(), command.token.as_str()),
+            (Some("b"), "token-b")
+        );
+    }
+
+    #[test]
+    fn a_stale_owner_does_not_hold_gaming_forever() {
+        let mut g = two_servers();
+        let origin = Some("mnema://localhost");
+        g.accept_sync("a", "token-a", origin, talk(U1, U2, U3))
+            .unwrap();
+        g.updated = Instant::now() - Duration::from_secs(3);
+        g.accept_sync("b", "token-b", origin, talk(U3, U2, U1))
+            .unwrap();
+        assert_eq!(
+            g.owner.as_deref(),
+            Some("b"),
+            "A stopped reporting, B takes over"
+        );
+        assert!(!g.overlay && !g.active, "a different Talk starts clean");
+    }
+
+    #[test]
+    fn letting_go_of_a_server_forgets_its_token_and_keeps_the_settings() {
+        let mut g = two_servers();
+        g.settings.sidepeek_opacity = 20;
+        g.accept_sync("a", "token-a", Some("mnema://localhost"), talk(U1, U2, U3))
+            .unwrap();
+        g.release();
+        assert_eq!(g.owner, None);
+        assert!(!g.voice.connected);
+        assert_eq!(g.settings.sidepeek_opacity, 20);
+        assert_eq!(g.tokens.len(), 2, "release keeps the tokens of live pages");
+        assert_eq!(g.origin.as_deref(), Some("mnema://localhost"));
+    }
+
     #[test]
     fn own_membership_is_required() {
         let mut v = Voice {

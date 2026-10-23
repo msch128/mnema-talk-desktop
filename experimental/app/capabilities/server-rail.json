@@ -1,0 +1,16 @@
+{
+  "identifier": "server-rail",
+  "description": "The server rail, a page of the host, drives the list of servers. No page of a server and no bundle can.",
+  "webviews": [
+    "rail"
+  ],
+  "permissions": [
+    "allow-rail-state",
+    "allow-rail-activate",
+    "allow-rail-add",
+    "allow-rail-cancel-add",
+    "allow-rail-move",
+    "allow-rail-remove",
+    "allow-rail-reconnect"
+  ]
+}

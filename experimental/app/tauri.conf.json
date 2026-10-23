@@ -11,6 +11,7 @@
     "security": {
       "capabilities": [
         "main",
+        "server-rail",
         "trusted-instance",
         "gaming-remote",
         "gaming-surfaces",

@@ -1,23 +1,27 @@
 //! The trusted desktop client. The web app runs from a signed bundle that this
-//! host verified, at the host's own origin; the selected instance is reached
-//! through the host (`web_proxy`, `web_ws`), so it supplies data and never
-//! code. See mnema-talk `doc/desktop-trusted-client.md`.
+//! host verified, at the host's own origin; the servers are reached through
+//! the host (`web_proxy`, `web_ws`), so they supply data and never code. Each
+//! server has its own page and its own session (`instances`, `web_shell`).
+//! See mnema-talk `doc/desktop-trusted-client.md`.
+use crate::instances::{
+    Phase, Registry, Session, Stored, id_of_attachment_label, id_of_instance_label,
+};
 use crate::web_bundle::{Held, Refusal, ServerInfo, Store, TrustedKey, Version, trusted_keys};
-use crate::web_proxy::{Instance, Jar, Limits, Resp, client, forward, now, serve_bundle};
+use crate::web_proxy::{Resp, forward, now, serve_bundle};
 use crate::web_trust::{Accepted, TrustState, root_key};
-use crate::web_ws::{Sockets, WsEvent};
+use crate::web_ws::WsEvent;
 use reqwest::{Client, redirect::Policy};
 use serde::Deserialize;
-use sha2::{Digest, Sha256};
 use std::{
     borrow::Cow,
     sync::{Arc, Mutex},
     time::Duration,
 };
-use tauri::{Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
+use tauri::{Manager, Webview};
 use url::Url;
 
 const MAX_DISCOVERY_BYTES: usize = 16 * 1024;
+const INSTANCES_FILE: &str = "instances.json";
 
 /// The signed bundle compiled into this executable (empty when the build
 /// had none; the client then has to download one before it can start).
@@ -51,8 +55,7 @@ pub(super) fn bundled(url: &Url) -> bool {
     local_origin(url).is_some() && super::local_route::app_path(url.path())
 }
 
-/// The state of the trusted client: verified bundles, the selected instance
-/// and its sockets.
+/// The state of the trusted client: verified bundles and the servers.
 pub struct Trusted {
     store: Mutex<Store>,
     /// Bundle keys in force: the trust statement's, else the compiled-in ones.
@@ -64,14 +67,23 @@ pub struct Trusted {
     /// Without it nothing new is installed (freeze protection); the already
     /// verified bundles keep running.
     fresh: std::sync::atomic::AtomicBool,
-    session: Mutex<Option<Arc<Session>>>,
-    sockets: Arc<Sockets>,
+    /// The servers, their sessions and their counters.
+    pub(crate) registry: Mutex<Registry>,
+    /// The client replaces a single-server one whose browser storage may hold
+    /// the end-to-end state of its server. True until the first server is
+    /// added; that server takes the old storage over if it was the one that
+    /// had a session here.
+    adoptable: std::sync::atomic::AtomicBool,
     data_dir: Option<std::path::PathBuf>,
 }
 
-pub struct Session {
-    instance: Arc<Instance>,
-    held: Held,
+/// Something an earlier client leaves in its data directory, and the list of
+/// servers (written by this one) does not exist yet.
+fn old_client_left_data(dir: &std::path::Path) -> bool {
+    !dir.join(INSTANCES_FILE).exists()
+        && ["sessions", "web-trust", "web-bundles", "EBWebView"]
+            .iter()
+            .any(|name| dir.join(name).exists())
 }
 
 impl Trusted {
@@ -87,15 +99,34 @@ impl Trusted {
             builtin,
             &keys,
         );
+        let registry = Registry::restore(&Stored::load(
+            data_dir.as_ref().map(|d| d.join(INSTANCES_FILE)).as_deref(),
+        ));
         Trusted {
             store: Mutex::new(store),
             keys: Mutex::new(keys),
             fresh: std::sync::atomic::AtomicBool::new(false),
             trust: Mutex::new(trust),
-            session: Mutex::new(None),
-            sockets: Arc::new(Sockets::default()),
+            registry: Mutex::new(registry),
+            adoptable: std::sync::atomic::AtomicBool::new(
+                data_dir.as_deref().is_some_and(old_client_left_data),
+            ),
             data_dir,
         }
+    }
+
+    /// Whether the server being added takes over the storage the single-server
+    /// client left. Asked once: only the first server added can, and only if
+    /// an earlier client stored a session for it.
+    pub(crate) fn adopts_old_storage(
+        &self,
+        origin: &Url,
+        vault: &dyn crate::web_vault::Vault,
+    ) -> bool {
+        self.adoptable
+            .swap(false, std::sync::atomic::Ordering::SeqCst)
+            && (vault.load(&crate::instances::id_for(origin)).is_some()
+                || self.jar_file(origin).is_some_and(|f| f.exists()))
     }
 
     #[cfg(test)]
@@ -136,9 +167,10 @@ impl Trusted {
     }
 
     /// Re-checks the held bundles against the keys and caps in force and ends
-    /// a running session whose bundle (key and version) is no longer held,
-    /// whether a revoked key or a cap withdrew it. Returns whether any bundle
-    /// was withdrawn, so the caller reloads the window.
+    /// every session whose bundle (key and version) is no longer held, whether
+    /// a revoked key or a cap withdrew it: that server's sockets close and its
+    /// tab says why. Returns whether any bundle was withdrawn, so the caller
+    /// reloads the pages.
     fn enforce(
         &self,
         store: &mut Store,
@@ -149,14 +181,23 @@ impl Trusted {
         store.reconcile(keys);
         store.apply_caps(caps);
         let dropped = store.held().len() < before;
-        if let Some(session) = self.session()
-            && !store.held().iter().any(|h| {
+        let Ok(mut registry) = self.registry.lock() else {
+            return dropped;
+        };
+        for id in registry.ids() {
+            let Some(session) = registry.session(&id) else {
+                continue;
+            };
+            let held = store.held().iter().any(|h| {
                 h.bundle.key_id == session.held.bundle.key_id
                     && h.bundle.version == session.held.bundle.version
-            })
-        {
-            self.sockets.close_all();
-            self.set_session(None);
+            });
+            if !held {
+                session.sockets.close_all();
+                if let Some(slot) = registry.slot_mut(&id) {
+                    slot.phase = Phase::Refused(WITHDRAWN.into());
+                }
+            }
         }
         dropped
     }
@@ -198,26 +239,44 @@ impl Trusted {
         }
     }
 
-    fn session(&self) -> Option<Arc<Session>> {
-        self.session.lock().ok()?.clone()
+    /// The running session of a server.
+    pub(crate) fn session(&self, id: &str) -> Option<Arc<Session>> {
+        self.registry.lock().ok()?.session(id)
     }
 
-    fn set_session(&self, session: Option<Arc<Session>>) {
-        if let Ok(mut current) = self.session.lock() {
-            *current = session;
-        }
-    }
-
-    /// The bundle new windows run: the selected instance's, else the newest.
+    /// The bundle new windows run: the front server's, else the newest.
     fn view(&self) -> Option<Held> {
-        match self.session() {
-            Some(session) => Some(session.held.clone()),
+        let front = {
+            let registry = self.registry.lock().ok()?;
+            registry
+                .active()
+                .and_then(|id| registry.session(id))
+                .map(|s| s.held.clone())
+        };
+        match front {
+            Some(held) => Some(held),
             None => self.store.lock().ok()?.newest().cloned(),
         }
     }
 
-    fn jar_file(&self, origin: &Url) -> Option<std::path::PathBuf> {
-        let name = hex::encode(&Sha256::digest(origin.as_str().as_bytes())[..8]);
+    pub(crate) fn instances_file(&self) -> Option<std::path::PathBuf> {
+        Some(self.data_dir.as_ref()?.join(INSTANCES_FILE))
+    }
+
+    /// Writes the list of servers down (addresses only).
+    pub(crate) fn save_instances(&self) {
+        if let Ok(registry) = self.registry.lock() {
+            registry.stored().save(self.instances_file().as_deref());
+        }
+    }
+
+    #[cfg_attr(target_os = "macos", allow(dead_code))]
+    pub(crate) fn data_dir(&self) -> Option<&std::path::Path> {
+        self.data_dir.as_deref()
+    }
+
+    pub(crate) fn jar_file(&self, origin: &Url) -> Option<std::path::PathBuf> {
+        let name = crate::instances::id_for(origin);
         Some(
             self.data_dir
                 .as_ref()?
@@ -227,17 +286,37 @@ impl Trusted {
     }
 }
 
+/// Why a server's tab stopped when its bundle was withdrawn.
+const WITHDRAWN: &str =
+    "The web app of this server was withdrawn. Restart the client to get a current one.";
+
 /// What this host offers the page beyond the common surface. The web app
 /// detects these instead of bumping `web_client_api`; older bundles ignore it.
+/// `notify`: toasts and the badge. `unread`: the page reports unread channels
+/// and mentions for the server rail. `ws_query`: the socket may ask for
+/// conversation events (`/api/ws?dm=1`).
 fn capabilities(role: &str) -> &'static [&'static str] {
-    if role == "instance" { &["notify"] } else { &[] }
+    if role == "instance" {
+        &["notify", "unread", "ws_query"]
+    } else {
+        &[]
+    }
 }
 
 /// Announces the verified bundle to the page before any of its scripts run.
-/// The app honours it only on the host's own origin.
-pub fn identity_script(app: &tauri::AppHandle, role: &str) -> String {
-    let Some(held) = app.state::<Trusted>().view() else {
-        return String::new();
+/// The app honours it only on the host's own origin. A server's page passes
+/// the bundle it was given; every other window runs the one in front.
+pub fn identity_script(app: &tauri::AppHandle, role: &str, held: Option<&Held>) -> String {
+    let front;
+    let held = match held {
+        Some(held) => held,
+        None => {
+            let Some(view) = app.state::<Trusted>().view() else {
+                return String::new();
+            };
+            front = view;
+            &front
+        }
     };
     let identity = serde_json::json!({
         "version": held.bundle.version.to_string(),
@@ -262,7 +341,7 @@ fn loopback(url: &Url) -> bool {
     }
 }
 
-fn address(input: &str) -> Result<Url, String> {
+pub(crate) fn address(input: &str) -> Result<Url, String> {
     if input.len() > 2048 || input.chars().any(char::is_control) {
         return Err("Enter an HTTPS instance address.".into());
     }
@@ -315,7 +394,7 @@ fn parse_health(bytes: &[u8]) -> Result<ServerInfo, String> {
     }
 }
 
-async fn discover(origin: &Url) -> Result<ServerInfo, String> {
+pub(crate) async fn discover(origin: &Url) -> Result<ServerInfo, String> {
     let client = Client::builder()
         .redirect(Policy::none())
         .no_proxy()
@@ -351,7 +430,7 @@ async fn discover(origin: &Url) -> Result<ServerInfo, String> {
 /// The verified bundle for this server. When the server is ahead of every
 /// bundle held, look for an update first; never fall back to the server's own
 /// JavaScript.
-async fn choose(trusted: &Trusted, server: &ServerInfo) -> Result<Held, String> {
+pub(crate) async fn choose(trusted: &Trusted, server: &ServerInfo) -> Result<Held, String> {
     let first = trusted.store.lock().map_err(|_| "busy")?.select(server);
     match first {
         Ok(held) => Ok(held),
@@ -388,7 +467,56 @@ fn into_response(resp: Resp) -> tauri::http::Response<Cow<'static, [u8]>> {
     response
 }
 
-/// Answers one request of one window.
+/// Why a server's page shows nothing but a sentence: it is still being
+/// checked, or it was refused (the instance is too old or too new for any
+/// verified bundle, or cannot be reached). Shown in that server's tab only.
+fn unavailable(trusted: &Trusted, id: &str) -> Resp {
+    let text = trusted
+        .registry
+        .lock()
+        .ok()
+        .and_then(|registry| match registry.slot(id)?.phase {
+            Phase::Starting => Some("Connecting to the server.".to_owned()),
+            Phase::Refused(ref why) => Some(why.clone()),
+            Phase::Ready(_) => None,
+        })
+        .unwrap_or_else(|| "No instance is selected.".into());
+    plain(503, &text)
+}
+
+/// One request of the page (or attachment window) of a server: its API calls
+/// go to that server with that server's cookies, and its files come from the
+/// bundle that server was matched with. No other server is reachable from here.
+async fn page_request(trusted: &Trusted, id: &str, request: tauri::http::Request<Vec<u8>>) -> Resp {
+    let Some(session) = trusted.session(id) else {
+        return unavailable(trusted, id);
+    };
+    let method = request.method().as_str().to_owned();
+    let path = request.uri().path().to_owned();
+    if path == "/api" || path.starts_with("/api/") {
+        let path_and_query = request
+            .uri()
+            .path_and_query()
+            .map_or(path.clone(), |p| p.as_str().to_owned());
+        let headers: Vec<(String, String)> = request
+            .headers()
+            .iter()
+            .filter_map(|(n, v)| Some((n.as_str().to_owned(), v.to_str().ok()?.to_owned())))
+            .collect();
+        forward(
+            &session.instance,
+            &method,
+            &path_and_query,
+            &headers,
+            request.into_body(),
+        )
+        .await
+    } else {
+        serve_bundle(&session.held.bundle, &method, &path)
+    }
+}
+
+/// Answers one request of one webview.
 async fn handle(
     app: &tauri::AppHandle,
     label: &str,
@@ -400,43 +528,19 @@ async fn handle(
     if super::web_permissions::take_probe(label, &path, request.uri().query()) {
         return plain(204, "");
     }
-    let path_and_query = request
-        .uri()
-        .path_and_query()
-        .map_or(path.clone(), |p| p.as_str().to_owned());
     let api = path == "/api" || path.starts_with("/api/");
+    if let Some(id) = id_of_instance_label(label).or_else(|| id_of_attachment_label(label)) {
+        return page_request(&trusted, id, request).await;
+    }
     match label {
-        "instance" | "attachment" => {
-            let Some(session) = trusted.session() else {
-                // The probe opens an instance-labelled window before any server
-                // is selected, so its document still comes from the verified
-                // bundle. API calls keep having no session.
-                if label == "instance" && !api && super::web_permissions::probe_enabled() {
-                    return match trusted.view() {
-                        Some(held) => serve_bundle(&held.bundle, &method, &path),
-                        None => plain(503, "No instance is selected."),
-                    };
-                }
-                return plain(503, "No instance is selected.");
-            };
-            if api {
-                let headers: Vec<(String, String)> = request
-                    .headers()
-                    .iter()
-                    .filter_map(|(n, v)| Some((n.as_str().to_owned(), v.to_str().ok()?.to_owned())))
-                    .collect();
-                forward(
-                    &session.instance,
-                    &method,
-                    &path_and_query,
-                    &headers,
-                    request.into_body(),
-                )
-                .await
-            } else {
-                serve_bundle(&session.held.bundle, &method, &path)
-            }
-        }
+        // The probe opens an instance-labelled page before any server is
+        // selected, so its document still comes from the verified bundle. API
+        // calls have no server.
+        "instance" if !api && super::web_permissions::probe_enabled() => match trusted.view() {
+            Some(held) => serve_bundle(&held.bundle, &method, &path),
+            None => plain(503, "No instance is selected."),
+        },
+        "instance" => plain(503, "No instance is selected."),
         // The host's own update page; independent of the web bundle.
         "updater" if !api => match super::native_updates::asset(&path) {
             Some((kind, body)) if method == "GET" || method == "HEAD" => Resp {
@@ -454,6 +558,9 @@ async fn handle(
             },
             _ => plain(404, "Not found."),
         },
+        // The server rail: the host's own page, independent of the web bundle
+        // and of every server.
+        "rail" if !api => super::web_shell::rail_asset(&method, &path),
         "main" | "sidepeek" | "gaming-overlay" | "gaming-settings" if !api => {
             match trusted.view() {
                 Some(held) => serve_bundle(&held.bundle, &method, &path),
@@ -467,7 +574,9 @@ async fn handle(
                 }
             }
         }
-        "main" | "sidepeek" | "gaming-overlay" | "gaming-settings" => plain(404, "Not found."),
+        "main" | "rail" | "sidepeek" | "gaming-overlay" | "gaming-settings" => {
+            plain(404, "Not found.")
+        }
         _ => plain(403, "Forbidden."),
     }
 }
@@ -483,67 +592,48 @@ fn plain(status: u16, text: &str) -> Resp {
     }
 }
 
-pub(super) fn instance_window(window: &WebviewWindow) -> Result<Arc<Session>, String> {
-    if window.label() != "instance" || !window.url().is_ok_and(|u| local_origin(&u).is_some()) {
+/// The server whose page made a call, if the call comes from the app's own
+/// origin in the page of a server that is running. Every command that acts for
+/// a server derives the server from here and from nowhere else: the label of
+/// the calling webview, never an argument.
+pub(super) fn instance_page(webview: &Webview) -> Result<Arc<Session>, String> {
+    let id = id_of_instance_label(webview.label());
+    let local = webview.url().is_ok_and(|u| local_origin(&u).is_some());
+    let Some(id) = id.filter(|_| local) else {
         return Err("Only the instance window may use this.".into());
-    }
-    window
+    };
+    webview
         .app_handle()
         .state::<Trusted>()
-        .session()
+        .session(id)
         .ok_or_else(|| "No instance is selected.".into())
 }
 
 #[tauri::command]
 fn desktop_ws_open(
-    window: WebviewWindow,
+    webview: Webview,
     path: String,
     on_event: tauri::ipc::Channel<WsEvent>,
 ) -> Result<u64, String> {
-    let session = instance_window(&window)?;
-    if path != "/api/ws" {
-        return Err("Only /api/ws can be opened.".into());
-    }
-    let trusted = window.app_handle().state::<Trusted>();
+    let session = instance_page(&webview)?;
+    let dm = crate::web_ws::socket_request(&path)?;
     crate::web_ws::open(
-        &trusted.sockets,
+        &session.sockets,
         Arc::clone(&session.instance),
+        dm,
         move |event| on_event.send(event).is_ok(),
     )
 }
 
 #[tauri::command]
-fn desktop_ws_send(window: WebviewWindow, id: u64, data: String) -> Result<(), String> {
-    instance_window(&window)?;
-    window
-        .app_handle()
-        .state::<Trusted>()
-        .sockets
-        .send(id, data)
+fn desktop_ws_send(webview: Webview, id: u64, data: String) -> Result<(), String> {
+    instance_page(&webview)?.sockets.send(id, data)
 }
 
 #[tauri::command]
-fn desktop_ws_close(window: WebviewWindow, id: u64) -> Result<(), String> {
-    instance_window(&window)?;
-    window.app_handle().state::<Trusted>().sockets.close(id);
+fn desktop_ws_close(webview: Webview, id: u64) -> Result<(), String> {
+    instance_page(&webview)?.sockets.close(id);
     Ok(())
-}
-
-/// Window options every app window shares.
-fn app_window<'a>(
-    app: &'a tauri::AppHandle,
-    label: &str,
-    role: &str,
-) -> WebviewWindowBuilder<'a, tauri::Wry, tauri::AppHandle> {
-    let builder = WebviewWindowBuilder::new(app, label, WebviewUrl::CustomProtocol(app_url()))
-        .use_https_scheme(true)
-        .initialization_script(identity_script(app, role));
-    let builder = if super::web_permissions::probe_enabled() {
-        builder.initialization_script(super::web_permissions::PROBE_SCRIPT)
-    } else {
-        builder
-    };
-    super::web_permissions::with_probe_args(app, label, builder)
 }
 
 pub(super) fn allow_permission(
@@ -554,117 +644,8 @@ pub(super) fn allow_permission(
     super::web_permissions::decide(webview.label(), url.as_ref(), kind)
 }
 
-#[tauri::command]
-async fn desktop_open_instance(
-    window: WebviewWindow,
-    state: tauri::State<'_, Trusted>,
-    address: String,
-) -> Result<(), String> {
-    if window.label() != "main" || !window.url().is_ok_and(|u| bundled(&u)) {
-        return Err("Only the instance selector may open an instance.".into());
-    }
-    let origin = self::address(&address)?;
-    let server = discover(&origin).await?;
-    let held = choose(&state, &server).await?;
-    if window.app_handle().get_webview_window("instance").is_some() {
-        return Err("Close the current instance before selecting another.".into());
-    }
-    let instance = Arc::new(Instance {
-        client: client().map_err(|_| "Unable to initialize HTTPS.")?,
-        jar: Jar::in_vault(
-            state.jar_file(&origin),
-            Arc::new(crate::web_vault::Os),
-            now(),
-        ),
-        origin,
-        limits: Limits::default(),
-    });
-    state.set_session(Some(Arc::new(Session { instance, held })));
-    match open_instance_window(&window) {
-        Ok(()) => Ok(()),
-        Err(message) => {
-            state.set_session(None);
-            Err(message)
-        }
-    }
-}
-
-fn open_instance_window(window: &WebviewWindow) -> Result<(), String> {
-    let app = window.app_handle().clone();
-    let gaming_token = super::web_gaming::bind(&app);
-    let popup_app = app.clone();
-    let instance = app_window(&app, "instance", "instance")
-        .title("Mnema Desktop DEV")
-        .menu(super::web_gaming::menu(&app).map_err(|_| "Gaming settings unavailable.")?)
-        // The bridge token exists only in a top-level page of the app origin
-        // (a custom origin is "null" to `location.origin`, so compare the URL).
-        .initialization_script(format!(
-            "if(window===window.top&&window.location.href.startsWith({}))Object.defineProperty(window,'__MNEMA_GAMING_BRIDGE__',{{value:{}}});",
-            serde_json::to_string(app_url().as_str()).map_err(|_| "Gaming setup failed.")?,
-            serde_json::to_string(&gaming_token).map_err(|_| "Gaming setup failed.")?
-        ))
-        .inner_size(1200.0, 820.0)
-        // Routes of the app, and the API paths that downloads and attachment
-        // links navigate to. The proxy answers the latter.
-        .on_navigation(move |url| bundled(url) || app_api(url))
-        .on_new_window(move |url, features| {
-            if app_api(&url) {
-                if let Some(attachment) = popup_app.get_webview_window("attachment") {
-                    let _ = attachment.navigate(url);
-                    let _ = attachment.set_focus();
-                } else {
-                    // Reuse the opener's browser environment without granting
-                    // native capabilities: the child gets no identity script.
-                    let child = super::web_permissions::with_probe_args(
-                        &popup_app,
-                        "attachment",
-                        WebviewWindowBuilder::new(
-                            &popup_app,
-                            "attachment",
-                            WebviewUrl::CustomProtocol(url),
-                        )
-                        .use_https_scheme(true)
-                        .window_features(features)
-                        .title("Mnema Desktop DEV — Attachment")
-                        .on_navigation(app_api)
-                        .on_new_window(|_, _| tauri::webview::NewWindowResponse::Deny)
-                        .on_permission_request(allow_permission),
-                    )
-                    .build();
-                    if let Ok(window) = child {
-                        return tauri::webview::NewWindowResponse::Create { window };
-                    }
-                }
-            } else {
-                open_external(&url);
-            }
-            tauri::webview::NewWindowResponse::Deny
-        })
-        .on_permission_request(allow_permission)
-        .build()
-        .map_err(|_| "Unable to open the instance. Check the WebView2 runtime.")?;
-    let selector = window.clone();
-    instance.on_window_event(move |event| {
-        if matches!(event, tauri::WindowEvent::Destroyed) {
-            super::web_notify::closed(selector.app_handle());
-            let trusted = selector.app_handle().state::<Trusted>();
-            trusted.sockets.close_all();
-            trusted.set_session(None);
-            super::web_gaming::clear(selector.app_handle());
-            if let Some(attachment) = selector.app_handle().get_webview_window("attachment") {
-                let _ = attachment.close();
-            }
-            let _ = selector.show();
-        }
-    });
-    window
-        .hide()
-        .map_err(|_| "Unable to hide the instance selector.")?;
-    Ok(())
-}
-
-/// A path the proxy serves for the selected instance, on the app origin.
-fn app_api(url: &Url) -> bool {
+/// A path the proxy serves for a server, on the app origin.
+pub(super) fn app_api(url: &Url) -> bool {
     local_origin(url).is_some() && url.path().starts_with("/api/")
 }
 
@@ -715,12 +696,10 @@ async fn refresh_once(app: &tauri::AppHandle, first: bool) {
     if let Ok(mut store) = trusted.store.lock() {
         store.mark_checked(now() as u64);
     }
-    // A window that was showing a withdrawn bundle, or none, moves to the
-    // newly installed one, or shows why there is none.
-    if (dropped || (!had_bundle && matches!(installed, Ok(Some(_)))))
-        && let Some(main) = app.get_webview_window("main")
-    {
-        let _ = main.navigate(app_url());
+    // Pages that were showing a withdrawn bundle, or none, move to the newly
+    // installed one, or show why there is none.
+    if dropped || (!had_bundle && matches!(installed, Ok(Some(_)))) {
+        super::web_shell::bundles_changed(app);
     }
 }
 
@@ -741,10 +720,17 @@ pub(super) fn run() {
             });
         })
         .invoke_handler(tauri::generate_handler![
-            desktop_open_instance,
+            super::web_shell::desktop_open_instance,
             desktop_ws_open,
             desktop_ws_send,
             desktop_ws_close,
+            super::web_shell::rail_state,
+            super::web_shell::rail_activate,
+            super::web_shell::rail_add,
+            super::web_shell::rail_cancel_add,
+            super::web_shell::rail_move,
+            super::web_shell::rail_remove,
+            super::web_shell::rail_reconnect,
             super::web_gaming::desktop_gaming_sync,
             super::web_gaming::desktop_gaming_snapshot,
             super::web_gaming::desktop_gaming_control,
@@ -755,13 +741,17 @@ pub(super) fn run() {
             super::web_notify::desktop_notify,
             super::web_notify::desktop_notify_permission,
             super::web_notify::desktop_notify_request_permission,
-            super::web_notify::desktop_set_badge
+            super::web_notify::desktop_set_badge,
+            super::web_notify::desktop_report_unread
         ])
         .on_menu_event(|app, event| {
-            if event.id().as_ref() == "gaming-settings" {
+            let id = event.id().as_ref();
+            if id == "gaming-settings" {
                 let _ = super::web_gaming::open_settings(app);
-            } else if event.id().as_ref() == super::native_updates::MENU_ID {
+            } else if id == super::native_updates::MENU_ID {
                 super::native_updates::menu_clicked(app);
+            } else {
+                super::web_shell::menu_clicked(app, id);
             }
         })
         .setup(|app| {
@@ -777,24 +767,7 @@ pub(super) fn run() {
             super::web_notify::setup(app.handle());
             super::native_updates::setup(app.handle());
             super::web_gaming::setup(app.handle());
-            app_window(app.handle(), "main", "selector")
-                .title("Mnema Desktop DEV — Instance")
-                .menu(super::web_gaming::menu(app.handle())?)
-                .inner_size(520.0, 520.0)
-                .on_navigation(bundled)
-                .on_new_window(|_, _| tauri::webview::NewWindowResponse::Deny)
-                .on_permission_request(allow_permission)
-                .build()?;
-            if super::web_permissions::probe_enabled() {
-                let _ = app_window(app.handle(), "instance", "probe")
-                    .title("Mnema Desktop DEV — Probe")
-                    .focused(false)
-                    .on_navigation(bundled)
-                    .on_new_window(|_, _| tauri::webview::NewWindowResponse::Deny)
-                    .on_permission_request(allow_permission)
-                    .build();
-                super::web_gaming::open_probe_surfaces(app.handle());
-            }
+            super::web_shell::create(app.handle())?;
             refresh_in_background(app.handle());
             Ok(())
         })
@@ -836,7 +809,7 @@ fn external_allowed(url: &Url) -> bool {
         && url.as_str().len() <= 4096
 }
 
-fn open_external(url: &Url) {
+pub(super) fn open_external(url: &Url) {
     let allowed = external_allowed(url);
     #[cfg(not(target_os = "windows"))]
     let _ = allowed;
@@ -903,7 +876,7 @@ mod tests {
 
     #[test]
     fn only_the_instance_window_announces_notifications() {
-        assert_eq!(capabilities("instance"), ["notify"]);
+        assert_eq!(capabilities("instance"), ["notify", "unread", "ws_query"]);
         for role in ["selector", "surface", "probe", ""] {
             assert!(capabilities(role).is_empty(), "{role}");
         }
@@ -1060,35 +1033,299 @@ mod tests {
         assert_eq!(trusted.apply_trust(doc, sig, NOW), Ok(false));
     }
 
+    /// Starts a server on the list with a running session on `held`.
+    fn run_server(trusted: &Trusted, host: &str, held: Held) -> (String, Arc<Session>) {
+        run_server_at(
+            trusted,
+            Url::parse(&format!("https://{host}/")).unwrap(),
+            held,
+        )
+    }
+
+    fn run_server_at(trusted: &Trusted, origin: Url, held: Held) -> (String, Arc<Session>) {
+        use crate::web_proxy::{Instance, Jar, Limits, client};
+        let mut registry = trusted.registry.lock().unwrap();
+        let id = registry.add(origin.clone()).unwrap();
+        let session = Arc::new(Session {
+            id: id.clone(),
+            instance: Arc::new(Instance {
+                client: client().unwrap(),
+                jar: Jar::new(None, 0),
+                origin,
+                limits: Limits::default(),
+            }),
+            held,
+            sockets: Arc::new(crate::web_ws::Sockets::default()),
+        });
+        registry.slot_mut(&id).unwrap().phase = Phase::Ready(Arc::clone(&session));
+        (id, session)
+    }
+
+    fn held_of(version: &'static str, seed: u8) -> Held {
+        use crate::web_bundle::fixture::{Spec, bundle, trusted as keys};
+        let mut spec = Spec::new(version);
+        spec.seed = seed;
+        Store::load(None, Some(&bundle(&spec)), &keys(seed))
+            .select(&ServerInfo {
+                version: Version::parse(version),
+                web_client_api: 1,
+            })
+            .unwrap()
+    }
+
     #[test]
     fn a_cap_that_withdraws_the_running_bundle_ends_the_session() {
         use crate::web_bundle::fixture::{Spec, bundle, trusted as keys};
         let trusted = Trusted::new(None, None);
         let caps = |v: Version| std::collections::BTreeMap::from([(1, v)]);
-        {
+        let (id, session) = {
             let mut store = trusted.store.lock().unwrap();
             *store = Store::load(None, Some(&bundle(&Spec::new("0.9.0"))), &keys(7));
-            let held = store
-                .select(&ServerInfo {
-                    version: Some(Version(0, 9, 0)),
-                    web_client_api: 1,
-                })
-                .unwrap();
-            let instance = Arc::new(Instance {
-                client: client().unwrap(),
-                jar: Jar::new(None, 0),
-                origin: Url::parse("https://community.example/").unwrap(),
-                limits: Limits::default(),
-            });
-            trusted.set_session(Some(Arc::new(Session { instance, held })));
-        }
+            run_server(&trusted, "community.example", held_of("0.9.0", 7))
+        };
         // A cap at the running version changes nothing.
         let mut store = trusted.store.lock().unwrap();
         assert!(!trusted.enforce(&mut store, &keys(7), &caps(Version(0, 9, 0))));
-        assert!(trusted.session().is_some());
+        assert!(trusted.session(&id).is_some());
         // A cap below it withdraws the bundle, and the session ends with it.
         assert!(trusted.enforce(&mut store, &keys(7), &caps(Version(0, 8, 0))));
-        assert!(trusted.session().is_none());
+        assert!(trusted.session(&id).is_none());
+        drop(store);
+        let registry = trusted.registry.lock().unwrap();
+        let Phase::Refused(why) = &registry.slot(&id).unwrap().phase else {
+            panic!("the server's tab must say why it stopped")
+        };
+        assert_eq!(why, WITHDRAWN);
+        drop(registry);
+        // Its sockets went with it (none were open, and none may be opened).
+        assert!(session.sockets.send(1, "x".into()).is_err());
+    }
+
+    #[test]
+    fn a_withdrawn_bundle_ends_only_the_sessions_that_run_it() {
+        use crate::web_bundle::fixture::{Spec, bundle, trusted as keys};
+        let trusted = Trusted::new(None, None);
+        let (a, b) = {
+            let mut store = trusted.store.lock().unwrap();
+            *store = Store::load(None, Some(&bundle(&Spec::new("0.9.0"))), &keys(7));
+            // B runs a bundle signed by a key that is not in force (revoked).
+            let a = run_server(&trusted, "a.example", held_of("0.9.0", 7)).0;
+            let b = run_server(&trusted, "b.example", held_of("0.9.0", 8)).0;
+            (a, b)
+        };
+        let mut store = trusted.store.lock().unwrap();
+        trusted.enforce(&mut store, &keys(7), &std::collections::BTreeMap::new());
+        drop(store);
+        assert!(
+            trusted.session(&a).is_some(),
+            "the server on a held bundle keeps running"
+        );
+        assert!(
+            trusted.session(&b).is_none(),
+            "the one on a revoked key stops"
+        );
+    }
+
+    /// A server that answers `/api/login` with a session cookie named after
+    /// itself, `/api/me` only for that cookie, and `/api/echo` with the cookie
+    /// it was sent.
+    async fn tiny_server(name: &'static str) -> Url {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let origin = Url::parse(&format!("http://{}/", listener.local_addr().unwrap())).unwrap();
+        tokio::spawn(async move {
+            loop {
+                let Ok((mut stream, _)) = listener.accept().await else {
+                    return;
+                };
+                tokio::spawn(async move {
+                    let mut buffer = vec![0u8; 8192];
+                    let n = stream.read(&mut buffer).await.unwrap_or(0);
+                    let request = String::from_utf8_lossy(&buffer[..n]).to_string();
+                    let cookie = request.lines().find_map(|l| {
+                        l.to_ascii_lowercase()
+                            .strip_prefix("cookie: ")
+                            .map(str::to_owned)
+                    });
+                    let path = request.split(' ').nth(1).unwrap_or("").to_owned();
+                    let valid = cookie.as_deref() == Some(&format!("session={name}-token"));
+                    let (status, extra, body) = match path.as_str() {
+                        "/api/login" => (
+                            "200 OK",
+                            format!("set-cookie: session={name}-token; Max-Age=3600\r\n"),
+                            "{}".to_owned(),
+                        ),
+                        "/api/me" if valid => ("200 OK", String::new(), "{}".to_owned()),
+                        "/api/me" => ("401 Unauthorized", String::new(), "{}".to_owned()),
+                        _ => (
+                            "200 OK",
+                            String::new(),
+                            serde_json::json!({"server": name, "cookie": cookie}).to_string(),
+                        ),
+                    };
+                    let reply = format!(
+                        "HTTP/1.1 {status}\r\ncontent-type: application/json\r\n{extra}content-length: {}\r\nconnection: close\r\n\r\n{body}",
+                        body.len()
+                    );
+                    let _ = stream.write_all(reply.as_bytes()).await;
+                });
+            }
+        });
+        origin
+    }
+
+    async fn page_call(trusted: &Trusted, id: &str, method: &str, path: &str) -> Resp {
+        let request = tauri::http::Request::builder()
+            .method(method)
+            .uri(format!("mnema://localhost{path}"))
+            .body(Vec::new())
+            .unwrap();
+        page_request(trusted, id, request).await
+    }
+
+    fn json(resp: &Resp) -> serde_json::Value {
+        serde_json::from_slice(&resp.body).unwrap_or_default()
+    }
+
+    #[tokio::test]
+    async fn the_page_of_a_server_reaches_that_server_with_that_servers_cookies_only() {
+        let trusted = Trusted::new(None, None);
+        let (a, _) = run_server_at(&trusted, tiny_server("a").await, held_of("0.9.0", 7));
+        let (b, _) = run_server_at(&trusted, tiny_server("b").await, held_of("0.9.0", 7));
+        // A signs in. B's page sees none of it.
+        page_call(&trusted, &a, "POST", "/api/login").await;
+        assert_eq!(
+            json(&page_call(&trusted, &a, "GET", "/api/echo").await)["cookie"],
+            "session=a-token"
+        );
+        let from_b = json(&page_call(&trusted, &b, "GET", "/api/echo").await);
+        assert_eq!(
+            (from_b["server"].as_str(), from_b["cookie"].is_null()),
+            (Some("b"), true)
+        );
+        // B signs in: both keep their own.
+        page_call(&trusted, &b, "POST", "/api/login").await;
+        assert_eq!(
+            json(&page_call(&trusted, &b, "GET", "/api/echo").await)["cookie"],
+            "session=b-token"
+        );
+        assert_eq!(
+            json(&page_call(&trusted, &a, "GET", "/api/echo").await)["cookie"],
+            "session=a-token"
+        );
+        assert_eq!(page_call(&trusted, &a, "GET", "/api/me").await.status, 200);
+        assert_eq!(page_call(&trusted, &b, "GET", "/api/me").await.status, 200);
+    }
+
+    #[tokio::test]
+    async fn a_page_of_a_server_that_is_not_running_gets_a_sentence_and_no_other_servers_data() {
+        let trusted = Trusted::new(None, None);
+        let (a, _) = run_server_at(&trusted, tiny_server("a").await, held_of("0.9.0", 7));
+        page_call(&trusted, &a, "POST", "/api/login").await;
+        // A page that is not (or no longer) on the list.
+        let gone = page_call(&trusted, "0000000000000000", "GET", "/api/echo").await;
+        assert_eq!(gone.status, 503);
+        assert_eq!(gone.body, b"No instance is selected.");
+        // A starting and a refused slot say what they are doing.
+        let old = trusted
+            .registry
+            .lock()
+            .unwrap()
+            .add(Url::parse("https://old.example/").unwrap())
+            .unwrap();
+        assert_eq!(
+            page_call(&trusted, &old, "GET", "/").await.body,
+            b"Connecting to the server."
+        );
+        trusted
+            .registry
+            .lock()
+            .unwrap()
+            .slot_mut(&old)
+            .unwrap()
+            .phase = Phase::Refused("This instance needs an update for the desktop client.".into());
+        let refused = page_call(&trusted, &old, "GET", "/api/echo").await;
+        assert_eq!(
+            (refused.status, refused.body.as_slice()),
+            (
+                503,
+                b"This instance needs an update for the desktop client.".as_slice()
+            )
+        );
+        // The running one is unaffected.
+        assert_eq!(
+            json(&page_call(&trusted, &a, "GET", "/api/echo").await)["cookie"],
+            "session=a-token"
+        );
+    }
+
+    #[tokio::test]
+    async fn after_a_removal_from_the_server_the_next_sign_in_replaces_the_stale_session() {
+        // The instance ended the session (a kick, a password change, a sign-out
+        // elsewhere): the stored cookie is refused until the person signs in
+        // again, and the new cookie replaces it. Nothing retries by itself.
+        let trusted = Trusted::new(None, None);
+        let (id, session) = run_server_at(&trusted, tiny_server("a").await, held_of("0.9.0", 7));
+        session
+            .instance
+            .jar
+            .store(&["session=revoked; Max-Age=3600".into()], false, now());
+        assert_eq!(page_call(&trusted, &id, "GET", "/api/me").await.status, 401);
+        assert_eq!(
+            page_call(&trusted, &id, "GET", "/api/me").await.status,
+            401,
+            "the same answer every time, no side effects"
+        );
+        page_call(&trusted, &id, "POST", "/api/login").await;
+        assert_eq!(page_call(&trusted, &id, "GET", "/api/me").await.status, 200);
+        assert_eq!(
+            session.instance.jar.header(now()).as_deref(),
+            Some("session=a-token")
+        );
+    }
+
+    #[test]
+    fn the_first_server_with_a_session_from_the_old_client_takes_over_its_storage() {
+        use crate::web_vault::{Vault, fake::Memory};
+        let dir = std::env::temp_dir().join(format!("mnema-adopt-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("sessions")).unwrap();
+        let old = Url::parse("https://old.example/").unwrap();
+        let new = Url::parse("https://new.example/").unwrap();
+        std::fs::write(
+            dir.join("sessions")
+                .join(format!("{}.json", crate::instances::id_for(&old))),
+            b"[]",
+        )
+        .unwrap();
+        let vault = Memory::default();
+        // A client that left nothing, or a list that exists already: no.
+        let fresh = Trusted::new(Some(std::env::temp_dir().join("mnema-adopt-none")), None);
+        assert!(!fresh.adopts_old_storage(&old, &vault));
+        let trusted = Trusted::new(Some(dir.clone()), None);
+        // A server the old client had no session for does not take it, and
+        // neither can any server after the first one was added.
+        assert!(!trusted.adopts_old_storage(&new, &vault));
+        assert!(!trusted.adopts_old_storage(&old, &vault));
+        // The one it had does, once.
+        let again = Trusted::new(Some(dir.clone()), None);
+        assert!(again.adopts_old_storage(&old, &vault));
+        assert!(!again.adopts_old_storage(&old, &vault));
+        // A session in the keychain counts like the file.
+        let keychain = Trusted::new(Some(dir.clone()), None);
+        vault.save(&crate::instances::id_for(&new), b"[]");
+        assert!(keychain.adopts_old_storage(&new, &vault));
+        // Once the list exists the old storage is not up for grabs any more.
+        keychain.save_instances();
+        assert!(
+            Trusted::new(Some(dir.clone()), None)
+                .instances_file()
+                .unwrap()
+                .exists()
+        );
+        let later = Trusted::new(Some(dir.clone()), None);
+        assert!(!later.adopts_old_storage(&old, &vault));
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]
@@ -1123,7 +1360,7 @@ mod tests {
     fn a_client_without_any_bundle_says_so_instead_of_loading_server_code() {
         let trusted = Trusted::new(None, None);
         assert!(trusted.view().is_none());
-        assert!(trusted.session().is_none());
+        assert!(trusted.session("0000000000000000").is_none());
         assert_eq!(trusted.jar_file(&url("https://a.example")), None);
         let dir = std::env::temp_dir().join("mnema-trusted-test");
         let with_dir = Trusted::new(Some(dir.clone()), None);

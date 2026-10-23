@@ -1,8 +1,8 @@
 {
   "identifier": "gaming-remote",
-  "description": "Talk-state sync from the instance window, which runs the verified bundle at the host's own origin.",
-  "windows": [
-    "instance"
+  "description": "Talk-state sync from the page of a server, which runs the verified bundle at the host's own origin.",
+  "webviews": [
+    "i-*"
   ],
   "permissions": [
     "allow-desktop-gaming-sync"

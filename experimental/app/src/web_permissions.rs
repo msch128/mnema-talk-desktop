@@ -69,6 +69,34 @@ where
     }
 }
 
+/// The same for a webview inside the window of the client (the rail, the page
+/// for adding a server, the probe's own page): each keeps a profile of its own.
+pub fn with_probe_args_child<R, M>(
+    app: &M,
+    label: &str,
+    builder: tauri::webview::WebviewBuilder<R>,
+) -> tauri::webview::WebviewBuilder<R>
+where
+    R: tauri::Runtime,
+    M: tauri::Manager<R>,
+{
+    let Some(args) = probe_browser_arguments() else {
+        return builder;
+    };
+    note_synthetic_devices();
+    let builder = builder.additional_browser_args(args);
+    match probe_profile(app, label) {
+        Some(dir) => {
+            emit(&format!("[probe] profile {label}"));
+            builder.data_directory(dir)
+        }
+        None => {
+            emit(&format!("[probe] profile {label} shared"));
+            builder
+        }
+    }
+}
+
 fn probe_profile<R, M>(app: &M, label: &str) -> Option<PathBuf>
 where
     R: tauri::Runtime,
@@ -100,12 +128,14 @@ fn note_synthetic_devices() {
     emit("[probe] browser-args synthetic");
 }
 
-/// The instance window keeps the engine's prompt for every kind, and only
-/// while its document is the app's own origin. Every other window is refused.
-/// `Default` does not grant the device; WebView2 still asks.
+/// The page of a server keeps the engine's prompt for every kind, and only
+/// while its document is the app's own origin. Every other window (the rail,
+/// the selector, the gaming surfaces, attachments) is refused. `Default` does
+/// not grant the device; WebView2 still asks.
 pub fn decide(label: &str, url: Option<&Url>, kind: PermissionKind) -> PermissionResponse {
     let on_app_origin = url.is_some_and(|candidate| local_origin(candidate).is_some());
-    let response = if label == "instance" && on_app_origin {
+    let is_page = label == "instance" || crate::instances::id_of_instance_label(label).is_some();
+    let response = if is_page && on_app_origin {
         PermissionResponse::Default
     } else {
         PermissionResponse::Deny
@@ -240,8 +270,19 @@ mod tests {
                 PermissionResponse::Deny
             );
             assert_eq!(decide("instance", None, kind), PermissionResponse::Deny);
+            // The page of any server is a page; its attachment window is not.
+            let page = "i-0123456789abcdef";
+            assert_eq!(decide(page, Some(&home), kind), PermissionResponse::Default);
+            assert_eq!(
+                decide(page, Some(&elsewhere), kind),
+                PermissionResponse::Deny
+            );
             for label in [
                 "main",
+                "rail",
+                "shell",
+                "a-0123456789abcdef",
+                "i-nothex",
                 "attachment",
                 "sidepeek",
                 "gaming-overlay",

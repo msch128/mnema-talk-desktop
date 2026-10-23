@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-rail-reconnect"
+description = "Enables the rail_reconnect command without any pre-configured scope."
+commands.allow = ["rail_reconnect"]
+
+[[permission]]
+identifier = "deny-rail-reconnect"
+description = "Denies the rail_reconnect command without any pre-configured scope."
+commands.deny = ["rail_reconnect"]

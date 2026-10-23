@@ -1,17 +1,20 @@
-//! OS notifications and the taskbar/dock badge for the instance window.
+//! OS notifications and the taskbar/dock badge for the pages of the servers.
 //!
 //! The web app asks for a toast with plain text and the ids of the message it
 //! is about; the host shows it through the platform's own API (Windows toast,
-//! macOS UserNotifications) and, when the user clicks the toast, tells the
-//! page which message to jump to. The platform code is driven only from here:
-//! no page can call it directly. Only the instance window may use these
-//! commands, never a gaming surface or the selector.
+//! macOS UserNotifications) and, when the user clicks the toast, brings that
+//! server to the front and tells its page which message to jump to. The
+//! platform code is driven only from here: no page can call it directly. Only
+//! the page of a server may use these commands, never a gaming surface, the
+//! rail or the selector, and a toast always belongs to the server that asked
+//! for it.
 use serde::Serialize;
 use std::{
+    collections::HashMap,
     sync::Mutex,
     time::{Duration, Instant},
 };
-use tauri::{Manager, WebviewWindow};
+use tauri::{Manager, Webview};
 
 #[cfg(target_os = "macos")]
 mod mac;
@@ -30,6 +33,7 @@ mod selftest;
 
 const MAX_TITLE: usize = 100;
 const MAX_BODY: usize = 240;
+const MAX_SERVER_NAME: usize = 60;
 const MAX_ID: usize = 64;
 /// Shortest gap between two toasts, so a flooding page cannot spam the desktop.
 const MIN_GAP: Duration = Duration::from_millis(300);
@@ -54,14 +58,12 @@ pub enum Permission {
     Unsupported,
 }
 
+/// What the host remembers between two toasts.
 #[derive(Default)]
 pub struct Notifier {
-    clicks: Mutex<Option<tauri::ipc::Channel<Click>>>,
-    last: Mutex<Option<Instant>>,
-    /// Names the instance a toast was shown for; a new one is taken whenever
-    /// the instance window goes away, so a toast of an earlier instance (or
-    /// of an earlier run of the app) can never deliver its ids to a later one.
-    session: Mutex<String>,
+    /// When each server last showed a toast: one that floods does not hold up
+    /// the others.
+    last: Mutex<HashMap<String, Instant>>,
 }
 
 /// Plain text only: control characters become spaces, the length is bounded
@@ -88,89 +90,95 @@ pub fn valid_id(id: &str) -> bool {
 }
 
 impl Notifier {
-    fn due(&self, now: Instant) -> bool {
+    fn due(&self, server: &str, now: Instant) -> bool {
         let Ok(mut last) = self.last.lock() else {
             return false;
         };
-        if last.is_some_and(|at| now.duration_since(at) < MIN_GAP) {
+        if last
+            .get(server)
+            .is_some_and(|at| now.duration_since(*at) < MIN_GAP)
+        {
             return false;
         }
-        *last = Some(now);
+        last.insert(server.to_owned(), now);
         true
     }
 
-    /// The session toasts shown now belong to.
-    fn session(&self) -> String {
-        let Ok(mut session) = self.session.lock() else {
-            return String::new();
-        };
-        if session.is_empty() {
-            *session = uuid::Uuid::new_v4().simple().to_string();
-        }
-        session.clone()
-    }
-
-    fn current(&self, session: &str) -> bool {
-        !session.is_empty() && self.session.lock().is_ok_and(|now| *now == session)
-    }
-
-    fn forget(&self) {
-        if let Ok(mut clicks) = self.clicks.lock() {
-            *clicks = None;
-        }
-        if let Ok(mut session) = self.session.lock() {
-            *session = uuid::Uuid::new_v4().simple().to_string();
+    fn forget(&self, server: &str) {
+        if let Ok(mut last) = self.last.lock() {
+            last.remove(server);
         }
     }
 }
 
-fn instance_only(window: &WebviewWindow) -> Result<(), String> {
-    super::web_client::instance_window(window).map(|_| ())
+/// The server whose page made the call.
+fn server_page(webview: &Webview) -> Result<std::sync::Arc<crate::instances::Session>, String> {
+    super::web_client::instance_page(webview)
 }
 
 #[tauri::command]
 pub fn desktop_notify_open(
-    window: WebviewWindow,
+    webview: Webview,
     on_event: tauri::ipc::Channel<Click>,
 ) -> Result<(), String> {
-    instance_only(&window)?;
-    let notifier = window.app_handle().state::<Notifier>();
-    *notifier.clicks.lock().map_err(|_| "busy")? = Some(on_event);
+    let session = server_page(&webview)?;
+    let trusted = webview.app_handle().state::<super::web_client::Trusted>();
+    let mut registry = trusted.registry.lock().map_err(|_| "busy")?;
+    registry
+        .slot_mut(&session.id)
+        .ok_or("No instance is selected.")?
+        .clicks = Some(on_event);
     Ok(())
 }
 
 /// What the OS currently allows, without asking.
 #[tauri::command]
-pub async fn desktop_notify_permission(window: WebviewWindow) -> Result<Permission, String> {
-    instance_only(&window)?;
+pub async fn desktop_notify_permission(webview: Webview) -> Result<Permission, String> {
+    server_page(&webview)?;
     Ok(platform::permission().await)
 }
 
 /// Asks the OS for permission if it has not been asked yet (macOS shows its
 /// own prompt then) and reports the outcome.
 #[tauri::command]
-pub async fn desktop_notify_request_permission(
-    window: WebviewWindow,
-) -> Result<Permission, String> {
-    instance_only(&window)?;
+pub async fn desktop_notify_request_permission(webview: Webview) -> Result<Permission, String> {
+    server_page(&webview)?;
     Ok(platform::request_permission().await)
 }
 
 #[tauri::command]
 pub async fn desktop_notify(
-    window: WebviewWindow,
+    webview: Webview,
     title: String,
     body: String,
     channel_id: String,
     message_id: String,
 ) -> Result<(), String> {
-    instance_only(&window)?;
+    let session = server_page(&webview)?;
     if !valid_id(&channel_id) || !valid_id(&message_id) {
         return Err("Invalid notification target.".into());
     }
-    deliver(window.app_handle(), &title, &body, channel_id, message_id)
-        .await
-        .map(|_| ())
+    deliver(
+        webview.app_handle(),
+        &session.id,
+        &title,
+        &body,
+        channel_id,
+        message_id,
+    )
+    .await
+    .map(|_| ())
+}
+
+/// The title with the name of the server behind it, once there is more than
+/// one: a toast says which server it is from.
+fn tagged(title: &str, name: &str, several: bool) -> String {
+    let title = clean(title, MAX_TITLE);
+    if several {
+        format!("{title} \u{b7} {}", clean(name, MAX_SERVER_NAME))
+    } else {
+        title
+    }
 }
 
 /// Shows one toast: bounded plain text, rate limited, and, where the OS has
@@ -178,48 +186,52 @@ pub async fn desktop_notify(
 /// the OS is dropped without an error, like the browser does.
 async fn deliver(
     app: &tauri::AppHandle,
+    server: &str,
     title: &str,
     body: &str,
     channel_id: String,
     message_id: String,
 ) -> Result<bool, String> {
-    if !app.state::<Notifier>().due(Instant::now()) {
+    if !app.state::<Notifier>().due(server, Instant::now()) {
         return Ok(false);
     }
     let click = Click {
         channel_id,
         message_id,
     };
-    let session = app.state::<Notifier>().session();
-    platform::show(
-        app,
-        &clean(title, MAX_TITLE),
-        &clean(body, MAX_BODY),
-        click,
-        session,
-    )
-    .await
+    let (session, title) = {
+        let trusted = app.state::<super::web_client::Trusted>();
+        let registry = trusted.registry.lock().map_err(|_| "busy")?;
+        let slot = registry.slot(server).ok_or("No instance is selected.")?;
+        (
+            slot.generation.clone(),
+            tagged(title, &slot.name(), registry.len() > 1),
+        )
+    };
+    platform::show(app, &title, &clean(body, MAX_BODY), click, session).await
 }
 
-/// The user used a toast: bring the instance window forward and tell its page
-/// which message the toast was about.
+/// The user used a toast: bring the server it came from to the front and tell
+/// its page which message the toast was about.
 ///
-/// A toast that belongs to an instance that is no longer the open one is
-/// dropped: its ids mean nothing to (and must not reach) another instance.
+/// A toast of a server that is no longer in the list, or of an earlier run of
+/// its page, is dropped: its ids mean nothing to (and must not reach) any
+/// other page.
 pub(crate) fn activated(app: &tauri::AppHandle, click: Click, session: &str) {
-    if !app.state::<Notifier>().current(session) {
+    let trusted = app.state::<super::web_client::Trusted>();
+    let Some(id) = trusted
+        .registry
+        .lock()
+        .ok()
+        .and_then(|r| r.by_generation(session).map(|s| s.id.clone()))
+    else {
         return;
-    }
+    };
     #[cfg(feature = "notify-selftest")]
     selftest::clicked(&click);
-    if let Some(window) = app.get_webview_window("instance") {
-        let _ = window.show();
-        let _ = window.unminimize();
-        let _ = window.set_focus();
-    }
-    let notifier = app.state::<Notifier>();
-    if let Ok(clicks) = notifier.clicks.lock()
-        && let Some(channel) = clicks.as_ref()
+    super::web_shell::bring_forward(app, &id);
+    if let Ok(registry) = trusted.registry.lock()
+        && let Some(channel) = registry.slot(&id).and_then(|s| s.clicks.as_ref())
     {
         let _ = channel.send(click);
     }
@@ -233,14 +245,41 @@ pub fn setup(app: &tauri::AppHandle) {
     selftest::start(app);
 }
 
+/// What the page of a server has waiting, both numbers. The host sums the
+/// mentions over its servers for the icon and shows both on the rail.
 #[tauri::command]
-pub fn desktop_set_badge(window: WebviewWindow, count: u32) -> Result<(), String> {
-    instance_only(&window)?;
-    apply_badge(&window, count.min(MAX_BADGE))
+pub fn desktop_report_unread(webview: Webview, unread: u32, mentions: u32) -> Result<(), String> {
+    let session = server_page(&webview)?;
+    let app = webview.app_handle();
+    let trusted = app.state::<super::web_client::Trusted>();
+    trusted
+        .registry
+        .lock()
+        .map_err(|_| "busy")?
+        .report(&session.id, unread, mentions);
+    super::web_shell::counts_changed(app);
+    Ok(())
 }
 
+/// The plain badge of a bundle from before `desktop_report_unread`: its
+/// mentions, for its server only.
+#[tauri::command]
+pub fn desktop_set_badge(webview: Webview, count: u32) -> Result<(), String> {
+    let session = server_page(&webview)?;
+    let app = webview.app_handle();
+    let trusted = app.state::<super::web_client::Trusted>();
+    trusted
+        .registry
+        .lock()
+        .map_err(|_| "busy")?
+        .report_badge(&session.id, count.min(MAX_BADGE));
+    super::web_shell::counts_changed(app);
+    Ok(())
+}
+
+/// The icon badge for the sum over all servers.
 #[cfg(not(windows))]
-fn apply_badge(window: &WebviewWindow, count: u32) -> Result<(), String> {
+pub(crate) fn apply_badge(window: &tauri::Window, count: u32) -> Result<(), String> {
     window
         .set_badge_count((count > 0).then_some(i64::from(count)))
         .map_err(|_| "The badge could not be set.".into())
@@ -248,7 +287,7 @@ fn apply_badge(window: &WebviewWindow, count: u32) -> Result<(), String> {
 
 /// Windows has no counter on the taskbar button, only an overlay icon: a red dot.
 #[cfg(windows)]
-fn apply_badge(window: &WebviewWindow, count: u32) -> Result<(), String> {
+pub(crate) fn apply_badge(window: &tauri::Window, count: u32) -> Result<(), String> {
     let icon = (count > 0).then(dot);
     window
         .set_overlay_icon(icon)
@@ -273,10 +312,11 @@ fn dot() -> tauri::image::Image<'static> {
     tauri::image::Image::new_owned(rgba, SIZE, SIZE)
 }
 
-/// The instance window is gone: nothing may be delivered to its page anymore.
-pub fn closed(app: &tauri::AppHandle) {
-    app.state::<Notifier>().forget();
-    // Toasts still on the screen or in the notification centre are of that instance.
+/// A server left the list or its page went away: nothing may be delivered to
+/// it anymore, and the toasts still on the screen or in the notification
+/// centre are of servers that may be gone.
+pub fn closed(app: &tauri::AppHandle, server: &str) {
+    app.state::<Notifier>().forget(server);
     platform::clear(app);
 }
 
@@ -304,26 +344,33 @@ mod tests {
     }
 
     #[test]
-    fn toasts_are_rate_limited() {
+    fn toasts_are_rate_limited_per_server() {
         let n = Notifier::default();
         let t = Instant::now();
-        assert!(n.due(t));
-        assert!(!n.due(t + Duration::from_millis(100)));
-        assert!(n.due(t + MIN_GAP + Duration::from_millis(1)));
+        assert!(n.due("a", t));
+        assert!(!n.due("a", t + Duration::from_millis(100)));
+        assert!(
+            n.due("b", t + Duration::from_millis(100)),
+            "another server is not held up"
+        );
+        assert!(n.due("a", t + MIN_GAP + Duration::from_millis(1)));
+        n.forget("a");
+        assert!(n.due("a", t + MIN_GAP + Duration::from_millis(2)));
     }
 
     #[test]
-    fn a_toast_of_an_earlier_instance_is_not_current() {
-        let n = Notifier::default();
-        assert!(!n.current(""));
-        let first = n.session();
-        assert_eq!(first, n.session());
-        assert!(n.current(&first));
-        n.forget();
-        assert!(!n.current(&first));
-        let second = n.session();
-        assert_ne!(first, second);
-        assert!(n.current(&second));
+    fn a_toast_names_its_server_once_there_are_several() {
+        assert_eq!(
+            tagged("Ann in #general", "chat.example", false),
+            "Ann in #general"
+        );
+        assert_eq!(
+            tagged("Ann in #general", "chat.example", true),
+            "Ann in #general \u{b7} chat.example"
+        );
+        let long = tagged(&"t".repeat(500), &"n\n".repeat(200), true);
+        assert!(long.chars().count() <= MAX_TITLE + MAX_SERVER_NAME + 3);
+        assert!(!long.contains('\n'));
     }
 
     #[test]
@@ -360,12 +407,15 @@ mod tests {
             let json: serde_json::Value = serde_json::from_str(&text).unwrap();
             let names_notify = json["permissions"].as_array().is_some_and(|all| {
                 all.iter().filter_map(|p| p.as_str()).any(|p| {
-                    p.starts_with("allow-desktop-notify") || p == "allow-desktop-set-badge"
+                    p.starts_with("allow-desktop-notify")
+                        || p == "allow-desktop-set-badge"
+                        || p == "allow-desktop-report-unread"
                 })
             });
             if json["identifier"] == "trusted-instance" {
                 assert!(names_notify);
-                assert_eq!(json["windows"], serde_json::json!(["instance"]));
+                assert_eq!(json["webviews"], serde_json::json!(["i-*"]));
+                assert!(json.get("windows").is_none());
                 instance = true;
             } else {
                 assert!(!names_notify, "{path:?}");
