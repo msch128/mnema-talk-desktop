@@ -13,7 +13,7 @@ openmls_traits = { path = "../../../vendor/openmls/traits" }
 openmls_rust_crypto = { path = "../../../vendor/openmls/openmls_rust_crypto" }
 openmls_sqlite_storage = { package = "mnema-private-checked-openmls-sqlite-storage", path = "../checked-sqlite-storage" }
 openmls_basic_credential = { path = "../../../vendor/openmls/basic_credential" }
-rusqlite = { version = "=0.37.0", features = ["bundled-sqlcipher-vendored-openssl"] }
+rusqlite = { version = "=0.39.0", features = ["bundled-sqlcipher-vendored-openssl"] }
 serde = "=1.0.229"
 serde_json = "=1.0.154"
 ed25519-dalek = { version = "=3.0.0", default-features = false, features = ["zeroize"] }

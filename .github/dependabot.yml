@@ -6,6 +6,12 @@
 # actions stay pinned by commit SHA (Dependabot rewrites the SHA and comment).
 version: 2
 updates:
+  # rusqlite 0.40 (libsqlite3-sys 0.38) bundles SQLCipher 4.14.0, which recurses
+  # without end on Windows when VirtualLock fails with memory security on
+  # (sqlcipher/sqlcipher#619, fixed upstream in SQLCipher 4.18/4.19). The Windows
+  # CI of the protected SDK dies with a stack overflow; 0.39.0 passes (bisected
+  # 0.37, 0.38, 0.39, 0.40.2). Lift the ignore once libsqlite3-sys bundles a
+  # fixed SQLCipher; the crates that use rusqlite have no Dependabot entry.
   # TypeScript 7 is deferred (checked 2026-10-23): typescript 7.0.2 is latest, but
   # typescript-eslint 8.72.0 (and @typescript-eslint/typescript-estree) declare the
   # peer range typescript ">=4.8.4 <6.1.0", so npm ci fails with TypeScript 7, and
@@ -13,6 +19,9 @@ updates:
   # provide. Remove the ignore once both support 7; tracked for the 1.2 desktop review.
   - package-ecosystem: cargo
     directory: /
+    ignore:
+      - dependency-name: rusqlite
+        versions: [">=0.40.0"]
     schedule: { interval: monthly }
     cooldown: { default-days: 5 }
     open-pull-requests-limit: 3
@@ -24,6 +33,9 @@ updates:
 
   - package-ecosystem: cargo
     directory: /experimental/app
+    ignore:
+      - dependency-name: rusqlite
+        versions: [">=0.40.0"]
     schedule: { interval: monthly }
     cooldown: { default-days: 5 }
     open-pull-requests-limit: 3
