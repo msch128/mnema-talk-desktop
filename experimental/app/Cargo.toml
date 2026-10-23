@@ -68,6 +68,9 @@ keyring-core = { version = "=1.0.1", optional = true }
 minisign = "=0.10.0"
 tauri = { version = "=2.12.5", features = ["test"] }
 tokio = { version = "=1.54.1", features = ["net", "io-util", "rt", "macros"] }
+[target.'cfg(any(target_os="macos",target_os="windows"))'.dev-dependencies]
+# keyring 3 wrote the session items of releases up to 0.3.x; a test reads them with the new store.
+keyring-v3 = { package = "keyring", version = "=3.6.3", default-features = false, features = ["apple-native", "windows-native"] }
 [target.'cfg(unix)'.dev-dependencies]
 libc = "=0.2.191"
 [build-dependencies]

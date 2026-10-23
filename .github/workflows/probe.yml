@@ -80,6 +80,7 @@ jobs:
         run: |
           set -euo pipefail
           npm ci --prefix ui --no-audit --no-fund
+          node scripts/ensure-npm-optional.mjs ui
           npm --prefix ui run check
           npm audit --prefix ui --omit=dev --audit-level=high
       - name: Rust format, tests and native checks

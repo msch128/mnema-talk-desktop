@@ -107,3 +107,91 @@ pub mod fake {
         }
     }
 }
+
+/// Items written by keyring 3 (releases up to 0.3.x) must stay readable and
+/// removable through the keyring-core stores, and the other way round for a
+/// downgrade. Touches the real credential store, so CI opts in with
+/// `MNEMA_KEYRING_COMPAT=1`; a developer machine is left alone.
+#[cfg(all(test, any(target_os = "macos", target_os = "windows")))]
+mod keyring_compat {
+    use super::{Os, SERVICE, Vault};
+
+    struct Account(String);
+
+    impl Account {
+        fn new(tag: &str) -> Option<Account> {
+            (std::env::var("MNEMA_KEYRING_COMPAT").as_deref() == Ok("1")).then(|| {
+                let nanos = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos();
+                Account(format!("compat-{tag}-{}-{nanos}", std::process::id()))
+            })
+        }
+    }
+
+    impl Drop for Account {
+        fn drop(&mut self) {
+            if let Ok(entry) = keyring_v3::Entry::new(SERVICE, &self.0) {
+                let _ = entry.delete_credential();
+            }
+        }
+    }
+
+    /// Not valid UTF-8, and large enough for a cookie jar.
+    fn secret(fill: u8) -> Vec<u8> {
+        let mut bytes = vec![0xff, 0x00, 0xfe, fill];
+        bytes.extend((0..2000u32).map(|i| (i % 251) as u8));
+        bytes
+    }
+
+    #[test]
+    fn an_item_written_by_keyring_3_is_read_replaced_and_removed_by_the_new_store() {
+        let Some(account) = Account::new("old") else {
+            return;
+        };
+        let old = secret(1);
+        keyring_v3::Entry::new(SERVICE, &account.0)
+            .unwrap()
+            .set_secret(&old)
+            .unwrap();
+        assert_eq!(Os.load(&account.0), Some(old));
+
+        let new = secret(2);
+        assert!(Os.save(&account.0, &new));
+        assert_eq!(
+            keyring_v3::Entry::new(SERVICE, &account.0)
+                .unwrap()
+                .get_secret()
+                .unwrap(),
+            new,
+            "an item replaced by the new store is still the one keyring 3 reads"
+        );
+
+        Os.remove(&account.0);
+        assert_eq!(Os.load(&account.0), None);
+        assert!(matches!(
+            keyring_v3::Entry::new(SERVICE, &account.0)
+                .unwrap()
+                .get_secret(),
+            Err(keyring_v3::Error::NoEntry)
+        ));
+    }
+
+    #[test]
+    fn an_item_written_by_the_new_store_is_readable_by_keyring_3() {
+        let Some(account) = Account::new("new") else {
+            return;
+        };
+        let value = secret(3);
+        assert!(Os.save(&account.0, &value));
+        assert_eq!(
+            keyring_v3::Entry::new(SERVICE, &account.0)
+                .unwrap()
+                .get_secret()
+                .unwrap(),
+            value
+        );
+        assert_eq!(Os.load(&account.0), Some(value));
+    }
+}
