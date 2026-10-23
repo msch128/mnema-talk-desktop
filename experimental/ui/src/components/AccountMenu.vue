@@ -107,7 +107,7 @@ onMounted(() => {
 })
 onBeforeUnmount(() => document.removeEventListener('pointerdown', onPointerDown))
 
-const item = 'flex min-h-8 w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-sm text-mnema-body-ink transition-colors hover:bg-mnema-hover hover:text-mnema-text focus:outline-none focus-visible:bg-mnema-hover focus-visible:text-mnema-text'
+const item = 'flex min-h-8 w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-sm text-mnema-body-ink transition-colors hover:bg-mnema-hover hover:text-mnema-text focus:outline-hidden focus-visible:bg-mnema-hover focus-visible:text-mnema-text'
 </script>
 
 <template>
@@ -128,18 +128,18 @@ const item = 'flex min-h-8 w-full items-center gap-2.5 rounded-md px-2 py-1.5 te
     <div class="mx-0.5 my-1 h-px bg-mnema-hairline" role="separator"></div>
 
     <button type="button" role="menuitem" tabindex="-1" :class="item" @click="run(openOwnProfile)">
-      <User class="h-4 w-4 flex-shrink-0 text-mnema-tertiary" />{{ $t('account.editProfile') }}
+      <User class="h-4 w-4 shrink-0 text-mnema-tertiary" />{{ $t('account.editProfile') }}
     </button>
     <button type="button" role="menuitem" tabindex="-1" :class="item" @click="run(() => { voiceStore.showAudioSettings = true })">
-      <Sliders class="h-4 w-4 flex-shrink-0 text-mnema-tertiary" />{{ $t('account.audio') }}
+      <Sliders class="h-4 w-4 shrink-0 text-mnema-tertiary" />{{ $t('account.audio') }}
     </button>
     <template v-if="voiceStore.isConnected">
       <button type="button" role="menuitem" tabindex="-1" :class="item" @click="run(() => { voiceStore.showStatsModal = true })">
-        <Activity class="h-4 w-4 flex-shrink-0 text-mnema-tertiary" />{{ $t('voice.panel.details') }}
+        <Activity class="h-4 w-4 shrink-0 text-mnema-tertiary" />{{ $t('voice.panel.details') }}
       </button>
       <button type="button" role="menuitem" tabindex="-1" :class="item" @click="run(toggleShare)">
-        <MonitorOff v-if="voiceStore.isScreenSharing" class="h-4 w-4 flex-shrink-0 text-mnema-tertiary" />
-        <Monitor v-else class="h-4 w-4 flex-shrink-0 text-mnema-tertiary" />
+        <MonitorOff v-if="voiceStore.isScreenSharing" class="h-4 w-4 shrink-0 text-mnema-tertiary" />
+        <Monitor v-else class="h-4 w-4 shrink-0 text-mnema-tertiary" />
         {{ voiceStore.isScreenSharing ? $t('voice.stopShare') : $t('voice.share') }}
       </button>
     </template>
@@ -155,7 +155,7 @@ const item = 'flex min-h-8 w-full items-center gap-2.5 rounded-md px-2 py-1.5 te
         :class="[item, langOpen ? 'bg-mnema-hover text-mnema-text' : '']"
         @click="langOpen ? (langOpen = false) : openLang()"
       >
-        <Languages class="h-4 w-4 flex-shrink-0 text-mnema-tertiary" />
+        <Languages class="h-4 w-4 shrink-0 text-mnema-tertiary" />
         {{ $t('account.language') }}
         <span class="ml-auto flex items-center gap-1.5 whitespace-nowrap text-[13px] text-mnema-tertiary">
           {{ currentLanguage }}<ChevronRight class="h-3.5 w-3.5" />
@@ -180,14 +180,14 @@ const item = 'flex min-h-8 w-full items-center gap-2.5 rounded-md px-2 py-1.5 te
           @click="chooseLanguage(l)"
         >
           {{ $t(`language.${l}`) }}
-          <span :class="['ml-auto h-3.5 w-3.5 flex-shrink-0 rounded-full', locale === l ? 'bg-mnema-accent shadow-[inset_0_0_0_1.5px_#2DA771,inset_0_0_0_4px_#1C1E1D]' : 'shadow-[inset_0_0_0_1.5px_#6E7672]']"></span>
+          <span :class="['ml-auto h-3.5 w-3.5 shrink-0 rounded-full', locale === l ? 'bg-mnema-accent shadow-[inset_0_0_0_1.5px_#2DA771,inset_0_0_0_4px_#1C1E1D]' : 'shadow-[inset_0_0_0_1.5px_#6E7672]']"></span>
         </button>
       </div>
     </div>
 
     <div class="mx-0.5 my-1 h-px bg-mnema-hairline" role="separator"></div>
     <button v-if="authStore.isAdmin" type="button" role="menuitem" tabindex="-1" :class="item" @click="run(() => emit('open-admin'))">
-      <ShieldCheck class="h-4 w-4 flex-shrink-0 text-mnema-tertiary" />{{ $t('menu.adminConsole') }}
+      <ShieldCheck class="h-4 w-4 shrink-0 text-mnema-tertiary" />{{ $t('menu.adminConsole') }}
       <span
         v-if="versionStore.adminUpdateAvailable"
         data-testid="admin-update-badge"
@@ -195,11 +195,11 @@ const item = 'flex min-h-8 w-full items-center gap-2.5 rounded-md px-2 py-1.5 te
       >{{ $t('update.badge', { version: versionStore.adminUpdate?.latest_version }) }}</span>
     </button>
     <button type="button" role="menuitem" tabindex="-1" :class="item" @click="run(() => emit('open-legal'))">
-      <HelpCircle class="h-4 w-4 flex-shrink-0 text-mnema-tertiary" />{{ $t('menu.legal') }}
+      <HelpCircle class="h-4 w-4 shrink-0 text-mnema-tertiary" />{{ $t('menu.legal') }}
     </button>
     <div class="mx-0.5 my-1 h-px bg-mnema-hairline" role="separator"></div>
     <button type="button" role="menuitem" tabindex="-1" :class="item" @click="run(() => authStore.logout())">
-      <LogOut class="h-4 w-4 flex-shrink-0 text-mnema-tertiary" />{{ $t('account.signOut') }}
+      <LogOut class="h-4 w-4 shrink-0 text-mnema-tertiary" />{{ $t('account.signOut') }}
     </button>
   </div>
 </template>

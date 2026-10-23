@@ -30,7 +30,7 @@ const name = computed(() => props.reply?.display_name || props.reply?.username |
     ></span>
 
     <template v-if="reply.deleted">
-      <span class="w-4 h-4 rounded-full bg-mnema-surface border border-mnema-border flex items-center justify-center flex-shrink-0">
+      <span class="w-4 h-4 rounded-full bg-mnema-surface border border-mnema-border flex items-center justify-center shrink-0">
         <Reply class="w-2.5 h-2.5 text-mnema-tertiary" />
       </span>
       <button
@@ -44,7 +44,7 @@ const name = computed(() => props.reply?.display_name || props.reply?.username |
 
     <template v-else>
       <UserAvatar :user="reply" size="xxs" />
-      <span class="font-semibold text-mnema-muted flex-shrink-0 max-w-[40%] truncate">{{ name }}</span>
+      <span class="font-semibold text-mnema-muted shrink-0 max-w-[40%] truncate">{{ name }}</span>
       <button
         type="button"
         class="reply-preview-jump flex items-center gap-1 min-w-0 text-left text-mnema-tertiary hover:text-mnema-text transition-colors cursor-pointer"
@@ -54,7 +54,7 @@ const name = computed(() => props.reply?.display_name || props.reply?.username |
         <span v-if="text" class="truncate">{{ text }}</span>
         <template v-else-if="reply.has_attachments">
           <span class="italic truncate">{{ $t('chat.seeAttachment') }}</span>
-          <ImageIcon class="w-4 h-4 flex-shrink-0" />
+          <ImageIcon class="w-4 h-4 shrink-0" />
         </template>
         <span v-else class="italic truncate">{{ $t('chat.message') }}</span>
       </button>

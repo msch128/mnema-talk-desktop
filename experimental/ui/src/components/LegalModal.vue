@@ -62,11 +62,11 @@ onMounted(async () => {
     @close="emit('close')"
   >
     <template #badge>
-      <span v-if="serverLoaded" class="flex-shrink-0 rounded border border-mnema-border bg-mnema-surface px-1.5 py-0.5 font-mono text-xs font-normal text-mnema-tertiary">{{ $t('legal.version', { version: legalVersion }) }}</span>
+      <span v-if="serverLoaded" class="shrink-0 rounded-sm border border-mnema-border bg-mnema-surface px-1.5 py-0.5 font-mono text-xs font-normal text-mnema-tertiary">{{ $t('legal.version', { version: legalVersion }) }}</span>
     </template>
 
     <!-- Navigation tabs -->
-    <div class="flex items-center gap-1 px-6 py-2 border-b border-mnema-hairline bg-mnema-canvas/40 text-sm overflow-x-auto flex-shrink-0">
+    <div class="flex items-center gap-1 px-6 py-2 border-b border-mnema-hairline bg-mnema-canvas/40 text-sm overflow-x-auto shrink-0">
       <button
         v-for="tab in TABS"
         :key="tab"
@@ -261,7 +261,7 @@ onMounted(async () => {
                 rel="noopener"
                 v-tooltip="$t('legal.oss.openSite', { name: lib.name })"
                 :aria-label="$t('legal.oss.openSite', { name: lib.name })"
-                class="text-mnema-tertiary hover:text-mnema-accent transition flex-shrink-0"
+                class="text-mnema-tertiary hover:text-mnema-accent transition shrink-0"
               >
                 <ExternalLink class="w-4 h-4" />
               </a>
@@ -275,13 +275,13 @@ onMounted(async () => {
     </div>
 
     <!-- Footer -->
-    <div class="px-6 py-3 border-t border-mnema-hairline bg-mnema-surface/50 flex items-center justify-between gap-3 flex-shrink-0">
+    <div class="px-6 py-3 border-t border-mnema-hairline bg-mnema-surface/50 flex items-center justify-between gap-3 shrink-0">
       <span v-if="serverLoaded" class="text-xs text-mnema-tertiary truncate">
         {{ $t('legal.footer', { year: new Date().getFullYear(), name: operator.name }) }}
       </span>
       <button
         type="button"
-        class="px-4 py-1.5 rounded-md bg-mnema-accent hover:bg-mnema-accent-hover text-mnema-accent-ink text-sm font-semibold transition shadow-sm flex-shrink-0"
+        class="px-4 py-1.5 rounded-md bg-mnema-accent hover:bg-mnema-accent-hover text-mnema-accent-ink text-sm font-semibold transition shadow-xs shrink-0"
         @click="emit('close')"
       >
         {{ $t('common.close') }}

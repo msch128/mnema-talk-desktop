@@ -121,7 +121,7 @@ onMounted(refresh)
           min="1"
           :placeholder="$t('admin.days')"
           :aria-label="$t('admin.pruneDaysLabel')"
-          class="bg-mnema-canvas border border-mnema-border-field rounded-md px-2 py-1 text-sm text-mnema-text w-20 outline-none focus:border-mnema-accent"
+          class="bg-mnema-canvas border border-mnema-border-field rounded-md px-2 py-1 text-sm text-mnema-text w-20 outline-hidden focus:border-mnema-accent"
         />
         <span class="text-sm text-mnema-muted">{{ $t('admin.days') }}</span>
         <button
@@ -159,7 +159,7 @@ onMounted(refresh)
               {{ item.is_deleted ? $t('admin.deletedMarker') : item.original_filename }}
             </div>
           </div>
-          <div class="relative z-10 p-2 bg-gradient-to-t from-black/85 via-black/40 to-transparent flex items-end justify-between mt-auto">
+          <div class="relative z-10 p-2 bg-linear-to-t from-black/85 via-black/40 to-transparent flex items-end justify-between mt-auto">
             <div class="text-xs text-white truncate max-w-[120px]">
               <p class="truncate font-medium">{{ item.original_filename }}</p>
               <p class="text-mnema-muted">{{ formatBytes(item.size_bytes) }} • {{ item.uploader_name }}</p>
@@ -167,7 +167,7 @@ onMounted(refresh)
             <template v-if="!item.is_deleted">
               <button
                 type="button"
-                class="p-1 rounded bg-mnema-danger/80 hover:bg-mnema-danger text-mnema-accent-ink transition flex-shrink-0"
+                class="p-1 rounded-sm bg-mnema-danger/80 hover:bg-mnema-danger text-mnema-accent-ink transition shrink-0"
                 :title="$t('admin.deleteFile')"
                 :aria-label="$t('admin.deleteFile')"
                 @click.stop="deleteMedia(item)"

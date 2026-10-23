@@ -62,7 +62,7 @@ function onKeydown(event: KeyboardEvent) {
     <!-- The only intentional v-html: renderMarkdown escapes all input before adding markup. -->
     <!-- eslint-disable vue/no-v-html -->
     <div
-      class="markdown-body break-words whitespace-pre-wrap select-text text-message"
+      class="markdown-body wrap-break-word whitespace-pre-wrap select-text text-message"
       @click="onClick"
       @keydown="onKeydown"
       v-html="parsedHtml"
