@@ -1828,4 +1828,59 @@ mod shared_vectors {
             }
         }
     }
+
+    /// A signed release bundle (`MNEMA_REAL_BUNDLE=path/to/mnema-web-X.Y.Z.zip`,
+    /// from the mnema-talk GitHub release) against the key pinned in this build,
+    /// so a change to the signature or hash crates is checked on real data, not
+    /// only on bundles the tests sign themselves.
+    #[test]
+    #[ignore = "needs MNEMA_REAL_BUNDLE, a signed release bundle"]
+    fn a_real_signed_release_bundle_verifies_and_every_tampered_form_is_refused() {
+        let path = std::env::var("MNEMA_REAL_BUNDLE").expect("MNEMA_REAL_BUNDLE");
+        let data = std::fs::read(path).unwrap();
+        let keys = trusted_keys();
+        let bundle = verify(&data, &keys).expect("the release bundle verifies");
+        assert!(bundle.file("index.html").is_some());
+
+        type Entries = Vec<(String, Vec<u8>)>;
+        let mut entries: Entries = {
+            let mut zip = zip::ZipArchive::new(Cursor::new(&data[..])).unwrap();
+            (0..zip.len())
+                .filter_map(|i| {
+                    let mut f = zip.by_index(i).unwrap();
+                    if f.is_dir() {
+                        return None;
+                    }
+                    let mut body = Vec::new();
+                    f.read_to_end(&mut body).unwrap();
+                    Some((f.name().unwrap().into_owned(), body))
+                })
+                .collect()
+        };
+        // Repacked unchanged: still valid, so the refusals below are the edits.
+        verify(&fixture::zip_of(&entries), &keys).expect("the repacked bundle verifies");
+        let refused = |edit: &dyn Fn(&mut Entries)| {
+            let mut copy = entries.clone();
+            edit(&mut copy);
+            verify(&fixture::zip_of(&copy), &keys).is_err()
+        };
+        let flip = |e: &mut Entries, name: &str| {
+            let body = &mut e.iter_mut().find(|(n, _)| n == name).unwrap().1;
+            body[0] ^= 1;
+        };
+        assert!(refused(&|e| flip(e, "app/index.html")));
+        assert!(refused(&|e| flip(e, "manifest.json")));
+        assert!(refused(&|e| {
+            let sig = &mut e.iter_mut().find(|(n, _)| n == "manifest.sig").unwrap().1;
+            // A different, well-formed signature of the right length.
+            let mut other = STANDARD.decode(sig.trim_ascii()).unwrap();
+            other[0] ^= 1;
+            *sig = STANDARD.encode(other).into_bytes();
+        }));
+        assert!(refused(&|e| e.push(("app/evil.js".into(), b"x".to_vec()))));
+        assert!(refused(&|e| e.retain(|(n, _)| n != "manifest.sig")));
+        // The right bundle under a key that did not sign it.
+        assert!(verify(&data, &fixture::trusted(9)).is_err());
+        entries.clear();
+    }
 }

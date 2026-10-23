@@ -217,14 +217,20 @@ describe('desktop probe boundaries', () => {
   })
 
   it('reports whether WebCrypto can sign media frames with Ed25519', async () => {
+    // Both probes are answered by the spy, set up before the first mount: the
+    // real generateKey finishes on a worker thread, so waiting for it with
+    // flushPromises is a race.
+    const generateKey = vi.spyOn(globalThis.crypto.subtle, 'generateKey')
+      .mockResolvedValueOnce({} as CryptoKeyPair)
+      .mockRejectedValueOnce(new Error('NotSupportedError'))
     const supported = app()
     await flushPromises()
     expect(supported.get('[data-testid="ed25519"]').text()).toContain('vorhanden')
-    const generateKey = vi.spyOn(globalThis.crypto.subtle, 'generateKey').mockRejectedValueOnce(new Error('NotSupportedError'))
     const missing = app()
     expect(missing.get('[data-testid="ed25519"]').text()).toContain('wird geprüft')
     await flushPromises()
     expect(missing.get('[data-testid="ed25519"]').text()).toContain('fehlt')
+    expect(generateKey).toHaveBeenCalledTimes(2)
     generateKey.mockRestore()
   })
 })
