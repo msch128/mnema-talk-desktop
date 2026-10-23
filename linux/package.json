@@ -2,7 +2,7 @@
   "name": "mnema-desktop-linux",
   "productName": "Mnema Desktop DEV",
   "description": "Mnema Talk desktop client for Linux (Electron). Runs only the signed web bundle.",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "private": true,
   "type": "module",
   "license": "AGPL-3.0-only",
