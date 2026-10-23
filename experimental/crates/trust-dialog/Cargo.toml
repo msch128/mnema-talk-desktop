@@ -12,7 +12,7 @@ os-modal=["dep:tauri","dep:objc2","dep:objc2-app-kit","dep:objc2-foundation","de
 mnema-private-native-client-broker={path="../broker"}
 uuid={version="=1.29.0",features=["v4"]}
 url="=2.5.8"
-base64="=0.22.1"
+base64="=0.23.1"
 tokio={version="=1.54.1",features=["sync","time"]}
 tauri={version="=2.12.5",optional=true}
 [target.'cfg(target_os="macos")'.dependencies]

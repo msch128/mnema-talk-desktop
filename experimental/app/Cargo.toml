@@ -15,21 +15,21 @@ synthetic-media-fixture = ["dep:mnema-private-synthetic-media-actor","dep:mnema-
 synthetic-transport-fixture=["mnema-private-native-client-broker/synthetic-transport-fixture","dep:libc"]
 native-crypto=["tauri/dynamic-acl","dep:libc","dep:mnema-private-native-crypto-owner","dep:mnema-private-native-trust-dialog","mnema-private-native-trust-dialog/os-modal","dep:mnema-private-native-crypto-seeds","dep:mnema-crypto-enrollment-prototype","dep:getrandom","dep:chrono","dep:security-framework","dep:security-framework-sys","dep:core-foundation"]
 [dependencies]
-reqwest = { version = "=0.12.28", optional = true, default-features = false, features = ["native-tls", "json"] }
+reqwest = { version = "=0.13.5", optional = true, default-features = false, features = ["native-tls", "json"] }
 mnema-private-native-crypto-owner={path="../crates/crypto-owner",optional=true,features=["opaque-relay"]}
 mnema-private-native-trust-dialog={path="../crates/trust-dialog",optional=true}
 mnema-private-native-crypto-seeds={path="../crates/crypto-seeds",optional=true}
 mnema-crypto-enrollment-prototype={path="../crates/crypto-stack/crypto-enrollment",optional=true}
 zeroize={version="=1.9.1"}
-getrandom={version="=0.3.4",optional=true}
+getrandom={version="=0.4.3",optional=true}
 chrono={version="=0.4.45",optional=true,default-features=false,features=["clock"]}
 mnema-private-synthetic-media-actor={path="../crates/media/rust-actor",optional=true,features=["synthetic-media-fixture"]}
 mnema-private-synthetic-media-policy={path="../crates/media/rust",optional=true,features=["synthetic-media-fixture"]}
 libc={version="=0.2.191",optional=true}
-ed25519-dalek = { version = "=2.2.0", optional = true, default-features = false, features = ["std"] }
-sha2 = { version = "=0.10.9", optional = true }
+ed25519-dalek = { version = "=3.0.0", optional = true, default-features = false, features = [] }
+sha2 = { version = "=0.11.1", optional = true }
 hex = { version = "=0.4.3", optional = true }
-base64 = { version = "=0.22.1", optional = true }
+base64 = { version = "=0.23.1", optional = true }
 zip = { version = "=9.0.5", optional = true, default-features = false, features = ["deflate-flate2"] }
 # zip selects flate2 without a backend; the pure-Rust one keeps the build free of C.
 flate2 = { version = "=1.1.10", optional = true, default-features = false, features = ["rust_backend"] }
@@ -61,7 +61,7 @@ block2={version="=0.6.2",optional=true}
 keyring = { version = "=3.6.3", optional = true, default-features = false, features = ["apple-native", "windows-native"] }
 [dev-dependencies]
 # Signs the throwaway test releases; never part of the shipped program.
-minisign = "=0.9.1"
+minisign = "=0.10.0"
 tauri = { version = "=2.12.5", features = ["test"] }
 tokio = { version = "=1.54.1", features = ["net", "io-util", "rt", "macros"] }
 [target.'cfg(unix)'.dev-dependencies]
