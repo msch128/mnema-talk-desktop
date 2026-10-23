@@ -12,7 +12,7 @@ use crate::instances::{
     AddError, Phase, RailState, Session, attachment_label, id_for, instance_label,
 };
 use crate::web_bundle::Held;
-use crate::web_client::{Trusted, app_api, app_url, bundled, choose, discover};
+use crate::web_client::{OldStorage, Trusted, app_api, app_url, bundled, choose, discover};
 use crate::web_proxy::{Instance, Jar, Limits, Resp, client, now};
 use crate::web_vault::{Os, Vault};
 use crate::web_ws::Sockets;
@@ -226,24 +226,10 @@ fn isolate(
 /// Removes what a server's page stored in the browser engine. The webview is
 /// already closed; the engine may hold its files a moment longer, so this
 /// tries again for a while, in the background.
-fn wipe_storage(app: &tauri::AppHandle, id: &str, legacy: bool) {
+fn wipe_storage(app: &tauri::AppHandle, id: &str) {
     let app = app.clone();
     let id = id.to_owned();
     tauri::async_runtime::spawn(async move {
-        // The storage of the old client is the engine's default one. Its page
-        // was cleared when it closed; on Windows the folder goes as well.
-        #[cfg(not(target_os = "macos"))]
-        if legacy && let Some(base) = app.state::<Trusted>().data_dir() {
-            let default = base.join("EBWebView");
-            for _ in 0..WIPE_ATTEMPTS {
-                if !default.exists() || std::fs::remove_dir_all(&default).is_ok() {
-                    break;
-                }
-                tokio::time::sleep(Duration::from_millis(500)).await;
-            }
-        }
-        #[cfg(target_os = "macos")]
-        let _ = legacy;
         #[cfg(target_os = "macos")]
         for _ in 0..WIPE_ATTEMPTS {
             if app.remove_data_store(store_identifier(&id)).await.is_ok() {
@@ -269,6 +255,49 @@ fn wipe_storage(app: &tauri::AppHandle, id: &str, legacy: bool) {
     });
 }
 
+/// Wipes the engine's default storage: where the single-server client kept
+/// everything (cookies, IndexedDB with the end-to-end state, caches). It works
+/// with no page open: a hidden webview on the default storage is made for the
+/// purpose, asked to remove every kind of website data, and closed. On
+/// Windows the engine's folder goes too.
+pub(crate) async fn wipe_default_storage(app: &tauri::AppHandle) {
+    if let Ok(page) = open_default_page(app, "wipe").await {
+        let _ = page.clear_all_browsing_data();
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        let _ = page.close();
+    }
+    #[cfg(not(target_os = "macos"))]
+    if let Some(base) = app.state::<Trusted>().data_dir() {
+        let default = base.join("EBWebView");
+        for _ in 0..WIPE_ATTEMPTS {
+            if !default.exists() || std::fs::remove_dir_all(&default).is_ok() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(500)).await;
+        }
+    }
+}
+
+/// A hidden webview on the engine's default storage (never a server's, never
+/// the host's own pages').
+pub(crate) async fn open_default_page(
+    app: &tauri::AppHandle,
+    label: &str,
+) -> Result<Webview, String> {
+    let window = app.get_window(SHELL).ok_or("The window is gone.")?;
+    let page = window
+        .add_child(
+            WebviewBuilder::new(label, WebviewUrl::CustomProtocol(app_url()))
+                .use_https_scheme(true)
+                .on_navigation(bundled),
+            LogicalPosition::new(0.0, 0.0),
+            LogicalSize::new(1.0, 1.0),
+        )
+        .map_err(|e| format!("Unable to reach the old storage ({e})."))?;
+    let _ = page.hide();
+    Ok(page)
+}
+
 /// Storage of servers that are no longer in the list (a removal that was cut
 /// short by the end of the program) goes at the next start.
 fn sweep_orphans(app: &tauri::AppHandle) {
@@ -285,7 +314,7 @@ fn sweep_orphans(app: &tauri::AppHandle) {
         for entry in entries.flatten() {
             let name = entry.file_name().to_string_lossy().into_owned();
             if name != HOST_PROFILE && !known.contains(&name) {
-                wipe_storage(app, &name, false);
+                wipe_storage(app, &name);
             }
         }
     }
@@ -882,7 +911,11 @@ pub async fn add_server(
     check_room(state)?;
     let server = discover(&origin).await?;
     let held = choose(state, &server).await?;
-    let adopts = state.adopts_old_storage(&origin, &Os);
+    let old = state.old_storage_for(&origin, &Os);
+    let adopts = old == OldStorage::Adopt;
+    if old == OldStorage::Wipe {
+        wipe_default_storage(&app).await;
+    }
     let session = make_session(state, &id, origin.clone(), held)?;
     {
         let mut registry = state.registry.lock().map_err(|_| "busy")?;
@@ -1047,7 +1080,10 @@ pub(crate) async fn remove_server(app: &tauri::AppHandle, id: &str) {
     if let Some(attachment) = app.get_webview_window(&attachment_label(id)) {
         let _ = attachment.close();
     }
-    wipe_storage(app, id, legacy);
+    wipe_storage(app, id);
+    if legacy {
+        wipe_default_storage(app).await;
+    }
     changed(app);
     counts_changed(app);
     focus_front(app);
