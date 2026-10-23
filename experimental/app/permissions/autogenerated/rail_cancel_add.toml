@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-rail-cancel-add"
+description = "Enables the rail_cancel_add command without any pre-configured scope."
+commands.allow = ["rail_cancel_add"]
+
+[[permission]]
+identifier = "deny-rail-cancel-add"
+description = "Denies the rail_cancel_add command without any pre-configured scope."
+commands.deny = ["rail_cancel_add"]

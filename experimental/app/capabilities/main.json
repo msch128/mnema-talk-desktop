@@ -23,5 +23,8 @@
     "allow-native-auth-register",
     "allow-native-admin-request",
     "allow-desktop-open-instance"
+  ],
+  "webviews": [
+    "main"
   ]
 }

@@ -44,6 +44,23 @@ There is no external security audit.
   installer's Start-menu shortcut registers the app for toasts. The instance
   window announces the `notify` capability; web bundles from before this
   feature keep working with the browser's own notifications.
+- **Several servers side by side (1.1).** A rail on the left lists your servers
+  with an unread dot and a mention count each. Add as many as nine, switch with
+  Ctrl+1 to Ctrl+9 (Cmd on macOS), drag or Alt+arrow to reorder, and remove one
+  from its menu (right-click or Delete). One account per server, no federation:
+  every server has its own session in the keychain, its own browser storage
+  (a WebView2 profile per server on Windows, a data store per server on macOS
+  14 and newer, a session partition on Linux) and its own connection. Removing a
+  server wipes its stored session and its local data from this device. The
+  taskbar or dock badge is the sum of the mentions; a toast names its server
+  and brings it to the front when used. Servers in the background keep running
+  (hidden, not stopped), so their counts and calls stay live. Overlay and
+  shortcuts of the gaming integration belong to the server that owns the Talk
+  you are in. On macOS before 14 the data stores cannot be separated, so the
+  client runs one server there. Servers on different versions work side by side:
+  each runs the verified web app that fits it, and one that is too old or too
+  new says so in its own tab. See
+  [desktop-trusted-client.md](https://github.com/msch128/mnema-talk/blob/main/doc/desktop-trusted-client.md#several-servers-at-once).
 - **Gaming integration (Windows).** A left-hand sidepeek shows who is in your
   Talk, who is speaking and who is sharing, and `Alt+M` opens an interactive
   overlay with Talk controls, while you have a connected Talk and a detected

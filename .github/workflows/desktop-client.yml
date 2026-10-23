@@ -405,6 +405,58 @@ jobs:
           & ./scripts/test-windows-notify.ps1 -Installer (Join-Path $env:RUNNER_TEMP 'notify-setup.exe')
           if ($LASTEXITCODE -ne $null -and $LASTEXITCODE -ne 0) { throw 'The notification check failed' }
 
+  # Several servers side by side on a real Windows desktop: a build with the
+  # test-only `multi-selftest` feature (never in a shipped build) adds two
+  # stand-in instances, signs in to both, and checks that browser storage,
+  # cookies, counters and sockets of one are not those of the other, that a
+  # report from the server in the background raises its own badge while the
+  # other is in front, that Ctrl+1/2 switch, and that removing one wipes its
+  # stored session and its WebView2 profile. The instances answer from this
+  # machine; scripts/multi-instance-selftest.mjs reads the host's record and
+  # what the instances saw.
+  windows-multi-instance:
+    if: inputs.acceptance_release == ''
+    runs-on: windows-2025
+    timeout-minutes: 60
+    env:
+      RUST_VERSION: 1.99.0
+      CARGO_TARGET_DIR: ${{ github.workspace }}/experimental/app/target
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.ref || github.sha }}
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26
+      - name: Select pinned Rust toolchain
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          rustup toolchain install $env:RUST_VERSION --profile minimal
+          if ($LASTEXITCODE -ne 0) { throw 'Rust installation failed' }
+          rustup default $env:RUST_VERSION
+          if ($LASTEXITCODE -ne 0) { throw 'Rust selection failed' }
+      - name: Stage the signed web bundle
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/stage-web-bundle.sh
+      - name: Build the host with the self-test
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          node scripts/checked-glib.mjs
+          if ($LASTEXITCODE -ne 0) { throw 'Reviewed dependency source verification failed' }
+          cargo build --locked --release --manifest-path experimental/app/Cargo.toml --features shell,web-client,custom-protocol,multi-selftest
+          if ($LASTEXITCODE -ne 0) { throw 'Host build failed' }
+      - name: Two servers side by side, isolated from each other
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          node scripts/multi-instance-selftest.mjs experimental/app/target/release/mnema-native-client-preview.exe
+          if ($LASTEXITCODE -ne 0) { throw 'The multi-instance check failed' }
+
   # The same host on macOS: unit tests and Clippy on every change, and for a
   # release the Apple silicon (arm64) executable that desktop-release.yml
   # turns into the app bundle. The macOS build has no gaming overlay (the
@@ -448,6 +500,12 @@ jobs:
           node scripts/checked-glib.mjs
           cargo test --locked --manifest-path experimental/app/Cargo.toml --features shell,web-client,custom-protocol
           cargo clippy --locked --manifest-path experimental/app/Cargo.toml --features shell,web-client,custom-protocol --all-targets -- -D warnings
+      # Two servers side by side (see windows-multi-instance): the data stores
+      # of WKWebView keep their storage apart from macOS 14 on.
+      - name: Two servers side by side, isolated from each other
+        run: |
+          cargo build --locked --manifest-path experimental/app/Cargo.toml --features shell,web-client,custom-protocol,multi-selftest
+          node scripts/multi-instance-selftest.mjs "$CARGO_TARGET_DIR/debug/mnema-native-client-preview"
       # A release (desktop-release.yml) bundles this tested executable; nothing
       # is rebuilt after the tests.
       - name: Build the Apple silicon executable

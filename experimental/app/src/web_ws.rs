@@ -80,8 +80,22 @@ impl Sockets {
     }
 }
 
-fn socket_url(instance: &Instance) -> Option<url::Url> {
+/// What a page may ask the host to open: the instance's `/api/ws`, with the
+/// one question the server knows, `dm=1` (also send conversation events, 1.1).
+/// Anything else, in the path or the query, is refused instead of passed on.
+pub fn socket_request(path: &str) -> Result<bool, String> {
+    match path {
+        "/api/ws" => Ok(false),
+        "/api/ws?dm=1" => Ok(true),
+        _ => Err("Only /api/ws can be opened.".into()),
+    }
+}
+
+fn socket_url(instance: &Instance, dm: bool) -> Option<url::Url> {
     let mut url = instance.origin.join("api/ws").ok()?;
+    if dm {
+        url.set_query(Some("dm=1"));
+    }
     let scheme = if url.scheme() == "https" { "wss" } else { "ws" };
     url.set_scheme(scheme).ok()?;
     Some(url)
@@ -89,11 +103,12 @@ fn socket_url(instance: &Instance) -> Option<url::Url> {
 
 async fn connect(
     instance: &Instance,
+    dm: bool,
 ) -> Result<
     tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>,
     (),
 > {
-    let url = socket_url(instance).ok_or(())?;
+    let url = socket_url(instance, dm).ok_or(())?;
     let mut request = url.as_str().into_client_request().map_err(|_| ())?;
     let headers = request.headers_mut();
     headers.insert(
@@ -128,6 +143,7 @@ async fn connect(
 pub fn open(
     sockets: &Arc<Sockets>,
     instance: Arc<Instance>,
+    dm: bool,
     emit: impl Fn(WsEvent) -> bool + Send + Sync + 'static,
 ) -> Result<u64, String> {
     let id = {
@@ -140,7 +156,7 @@ pub fn open(
         open.insert(id, tx);
         let sockets = Arc::clone(sockets);
         tauri::async_runtime::spawn(async move {
-            run(id, &instance, rx, &emit).await;
+            run(id, &instance, dm, rx, &emit).await;
             if let Ok(mut open) = sockets.open.lock() {
                 open.remove(&id);
             }
@@ -154,10 +170,11 @@ pub fn open(
 async fn run(
     id: u64,
     instance: &Instance,
+    dm: bool,
     mut rx: mpsc::UnboundedReceiver<Outgoing>,
     emit: &impl Fn(WsEvent) -> bool,
 ) {
-    let Ok(mut ws) = connect(instance).await else {
+    let Ok(mut ws) = connect(instance, dm).await else {
         return;
     };
     if !emit(WsEvent::Open { id }) {
@@ -249,6 +266,36 @@ mod tests {
     }
 
     #[test]
+    fn a_page_may_ask_for_the_plain_socket_or_the_one_with_conversations_and_nothing_else() {
+        assert_eq!(socket_request("/api/ws"), Ok(false));
+        assert_eq!(socket_request("/api/ws?dm=1"), Ok(true));
+        for refused in [
+            "/api/ws?dm=0",
+            "/api/ws?dm=1&x=1",
+            "/api/ws?x=1",
+            "/api/ws?",
+            "/api/ws/",
+            "/api/ws#x",
+            "/api/other",
+            "/api/ws?dm=1\n",
+            "//evil.example/api/ws",
+            "",
+        ] {
+            assert!(socket_request(refused).is_err(), "{refused:?}");
+        }
+    }
+
+    #[tokio::test]
+    async fn the_conversation_question_reaches_the_server_only_when_asked() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let instance = instance_with(listener, false).await;
+        assert_eq!(socket_url(&instance, false).unwrap().query(), None);
+        assert_eq!(socket_url(&instance, true).unwrap().query(), Some("dm=1"));
+        assert_eq!(socket_url(&instance, true).unwrap().path(), "/api/ws");
+        assert_eq!(socket_url(&instance, true).unwrap().scheme(), "ws");
+    }
+
+    #[test]
     fn unknown_sockets_and_oversized_messages_are_refused() {
         let sockets = Sockets::default();
         assert!(sockets.send(1, "x".into()).is_err());
@@ -296,7 +343,7 @@ mod tests {
         });
         let sockets = Arc::new(Sockets::default());
         let (emit, mut events) = collector();
-        let id = open(&sockets, Arc::clone(&instance), emit).unwrap();
+        let id = open(&sockets, Arc::clone(&instance), false, emit).unwrap();
         let (path, origin, cookie) = seen_rx.await.unwrap();
         assert_eq!(path, "/api/ws");
         assert_eq!(
@@ -330,12 +377,39 @@ mod tests {
     }
 
     #[tokio::test]
+    #[allow(clippy::result_large_err)]
+    async fn the_conversation_question_is_sent_to_the_server_when_the_page_asked_it() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let instance = instance_with(listener, false).await;
+        let server = TcpListener::bind(addr).await.unwrap();
+        let (seen_tx, seen_rx) = tokio::sync::oneshot::channel();
+        tokio::spawn(async move {
+            let (stream, _) = server.accept().await.unwrap();
+            let mut seen = Some(seen_tx);
+            let _ws =
+                tokio_tungstenite::accept_hdr_async(stream, |req: &Request, resp: Response| {
+                    let _ = seen.take().unwrap().send(req.uri().to_string());
+                    Ok(resp)
+                })
+                .await
+                .unwrap();
+            tokio::time::sleep(Duration::from_secs(2)).await;
+        });
+        let sockets = Arc::new(Sockets::default());
+        let (emit, _events) = collector();
+        let id = open(&sockets, instance, true, emit).unwrap();
+        assert_eq!(seen_rx.await.unwrap(), "/api/ws?dm=1");
+        sockets.close(id);
+    }
+
+    #[tokio::test]
     async fn an_unreachable_instance_closes_the_socket_without_opening_it() {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let instance = instance_with(listener, false).await;
         let sockets = Arc::new(Sockets::default());
         let (emit, mut events) = collector();
-        let id = open(&sockets, instance, emit).unwrap();
+        let id = open(&sockets, instance, false, emit).unwrap();
         assert_eq!(next(&mut events).await, WsEvent::Close { id });
         assert_eq!(sockets.count(), 0);
     }
@@ -360,9 +434,9 @@ mod tests {
         let emit = Arc::new(emit);
         for _ in 0..MAX_SOCKETS {
             let emit = Arc::clone(&emit);
-            open(&sockets, Arc::clone(&instance), move |e| emit(e)).unwrap();
+            open(&sockets, Arc::clone(&instance), false, move |e| emit(e)).unwrap();
         }
-        assert!(open(&sockets, Arc::clone(&instance), |_| true).is_err());
+        assert!(open(&sockets, Arc::clone(&instance), false, |_| true).is_err());
         let mut opened = 0;
         while opened < MAX_SOCKETS {
             if matches!(next(&mut events).await, WsEvent::Open { .. }) {
@@ -408,7 +482,7 @@ mod tests {
         );
         let sockets = Arc::new(Sockets::default());
         let (emit, mut events) = collector();
-        let id = open(&sockets, instance, emit).unwrap();
+        let id = open(&sockets, instance, false, emit).unwrap();
         assert_eq!(next(&mut events).await, WsEvent::Open { id });
         let WsEvent::Message { data, .. } = next(&mut events).await else {
             panic!("expected a message")

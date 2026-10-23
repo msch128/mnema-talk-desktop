@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-rail-add"
+description = "Enables the rail_add command without any pre-configured scope."
+commands.allow = ["rail_add"]
+
+[[permission]]
+identifier = "deny-rail-add"
+description = "Denies the rail_add command without any pre-configured scope."
+commands.deny = ["rail_add"]

@@ -1,8 +1,8 @@
 {
   "identifier": "trusted-instance",
-  "description": "The instance window reaches the instance's WebSocket through the host and shows OS notifications.",
-  "windows": [
-    "instance"
+  "description": "The page of a server reaches that server's WebSocket through the host and shows OS notifications. Matched by webview label, so each server's page (i-<id>) has it and nothing else does.",
+  "webviews": [
+    "i-*"
   ],
   "permissions": [
     "allow-desktop-ws-open",
@@ -12,6 +12,7 @@
     "allow-desktop-notify",
     "allow-desktop-notify-permission",
     "allow-desktop-notify-request-permission",
-    "allow-desktop-set-badge"
+    "allow-desktop-set-badge",
+    "allow-desktop-report-unread"
   ]
 }
