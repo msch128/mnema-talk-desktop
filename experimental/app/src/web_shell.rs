@@ -158,16 +158,19 @@ fn host_identifier() -> [u8; 16] {
     store_identifier(HOST_PROFILE)
 }
 
+#[cfg(target_os = "macos")]
+pub fn host_profile(
+    builder: WebviewBuilder<tauri::Wry>,
+    _app: &tauri::AppHandle,
+) -> WebviewBuilder<tauri::Wry> {
+    builder.data_store_identifier(host_identifier())
+}
+
+#[cfg(not(target_os = "macos"))]
 pub fn host_profile(
     builder: WebviewBuilder<tauri::Wry>,
     app: &tauri::AppHandle,
 ) -> WebviewBuilder<tauri::Wry> {
-    #[cfg(target_os = "macos")]
-    {
-        let _ = app;
-        builder.data_store_identifier(host_identifier())
-    }
-    #[cfg(not(target_os = "macos"))]
     match profile_dir(app, HOST_PROFILE) {
         Ok(dir) => builder.data_directory(dir),
         Err(_) => builder,
@@ -175,16 +178,19 @@ pub fn host_profile(
 }
 
 /// The same for a window of the host.
+#[cfg(target_os = "macos")]
+pub fn host_profile_window<'a>(
+    builder: WebviewWindowBuilder<'a, tauri::Wry, tauri::AppHandle>,
+    _app: &tauri::AppHandle,
+) -> WebviewWindowBuilder<'a, tauri::Wry, tauri::AppHandle> {
+    builder.data_store_identifier(host_identifier())
+}
+
+#[cfg(not(target_os = "macos"))]
 pub fn host_profile_window<'a>(
     builder: WebviewWindowBuilder<'a, tauri::Wry, tauri::AppHandle>,
     app: &tauri::AppHandle,
 ) -> WebviewWindowBuilder<'a, tauri::Wry, tauri::AppHandle> {
-    #[cfg(target_os = "macos")]
-    {
-        let _ = app;
-        builder.data_store_identifier(host_identifier())
-    }
-    #[cfg(not(target_os = "macos"))]
     match profile_dir(app, HOST_PROFILE) {
         Ok(dir) => builder.data_directory(dir),
         Err(_) => builder,
