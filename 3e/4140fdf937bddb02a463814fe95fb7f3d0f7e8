@@ -1,0 +1,35 @@
+experimental/app/Cargo.lock
+  s_06fcde5dbef956::t_410360d07afb08 1183,1965,1967,1969,1977-1979,1983,1985,1987,3049,3051,4648,4650,4658,4660,4677,4679,4778-4787,4800,4802,4810,5426-5437
+experimental/crates/checked-storage/bootstrap/Cargo.toml
+  s_06fcde5dbef956::t_2bfc9f2672cfd6 16
+experimental/crates/checked-storage/checked-sqlite-storage/Cargo.toml
+  s_06fcde5dbef956::t_cc8a73b3b4d98b 18-19
+experimental/crates/crypto-owner/Cargo.lock
+  s_06fcde5dbef956::t_c03caf5070b467 851,853,1036,1038,1048-1050,1054,1056,1058,1832,1834,2672,2674,2682,2684,2701,2703,2787-2796,2799,2801,2809,3151-3162
+experimental/crates/crypto-owner/qualified-sdk/Cargo.lock
+  s_06fcde5dbef956::t_7d19b01f1cb2ce 806,808,939,941,951-953,957,959,961,1607,1609,2310,2312,2320,2322,2339,2341,2390-2399,2402,2404,2412,2715-2726
+experimental/crates/crypto-owner/qualified-sdk/Cargo.toml
+  s_06fcde5dbef956::t_f75cba5624e0b8 19
+experimental/crates/crypto-stack/crypto-core/Cargo.toml
+  s_06fcde5dbef956::t_1d8f9e0427d7d5 16
+experimental/crates/crypto-stack/crypto-enrollment/Cargo.toml
+  s_06fcde5dbef956::t_c970ed54efc439 18
+experimental/vendor/openmls/sqlite_storage/Cargo.toml
+  s_06fcde5dbef956::t_debde694a8f419 16-17
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3e4140fdf937bddb02a463814fe95fb7f3d0f7e8",
+  "prompts": {},
+  "sessions": {
+    "s_06fcde5dbef956": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "94b73314-95fe-4e96-8c43-d20b0f28358d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}
