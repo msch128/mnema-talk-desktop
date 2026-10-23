@@ -16,7 +16,9 @@ openmls_traits = { path = "../../../vendor/openmls/traits" }
 openmls_rust_crypto = { path = "../../../vendor/openmls/openmls_rust_crypto" }
 openmls_sqlite_storage = { package = "mnema-private-checked-openmls-sqlite-storage", path = "../../checked-storage/checked-sqlite-storage" }
 openmls_basic_credential = { path = "../../../vendor/openmls/basic_credential" }
-rusqlite = { version = "=0.40.2", features = ["bundled-sqlcipher-vendored-openssl"] }
+# Held at 0.39: 0.40 bundles SQLCipher 4.14.0, which overflows the stack on Windows
+# (sqlcipher/sqlcipher#619, fixed in SQLCipher 4.18+). See .github/dependabot.yml.
+rusqlite = { version = "=0.39.0", features = ["bundled-sqlcipher-vendored-openssl"] }
 serde = "=1.0.229"
 serde_json = "=1.0.154"
 coset = "=0.4.2"

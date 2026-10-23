@@ -15,7 +15,7 @@ name = "openmls_sqlite_storage"
 [dependencies]
 openmls_traits = { path = "../../../vendor/openmls/traits" }
 serde = { version = "=1.0.229", features = ["derive"] }
-rusqlite = { version = "=0.40.2", features = ["bundled"] }
+rusqlite = { version = "=0.39.0", features = ["bundled"] }
 refinery = { version = "=0.10.0", features = ["rusqlite", "enums"] }
 
 [dev-dependencies]
