@@ -253,7 +253,10 @@ mod tests {
             (" example.com ", "https://example.com/"),
             ("https://EXAMPLE.com:443", "https://example.com/"),
             ("example.com:8443", "https://example.com:8443/"),
-            ("https://b\u{fc}cher.example", "https://xn--bcher-kva.example/"),
+            (
+                "https://b\u{fc}cher.example",
+                "https://xn--bcher-kva.example/",
+            ),
         ] {
             assert_eq!(normalize_address(input).unwrap().as_str(), expected);
         }
