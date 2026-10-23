@@ -18,7 +18,7 @@ let server: Server
 let wss: WebSocketServer
 let address = ''
 const seen: { path: string, headers: IncomingHttpHeaders }[] = []
-const sockets: { origin?: string, cookie?: string, messages: string[] }[] = []
+const sockets: { origin?: string, cookie?: string, messages: string[], url?: string }[] = []
 let app: Running
 let selector: Page
 let instance: Page
@@ -39,9 +39,9 @@ before(async () => {
   })
   wss = new WebSocketServer({ noServer: true })
   server.on('upgrade', (req, socket, head) => {
-    if (req.url !== '/api/ws') { socket.destroy(); return }
+    if (req.url !== '/api/ws' && req.url !== '/api/ws?dm=1') { socket.destroy(); return }
     wss.handleUpgrade(req, socket, head, (ws) => {
-      const record: (typeof sockets)[number] = { origin: req.headers.origin, cookie: req.headers.cookie, messages: [] }
+      const record: (typeof sockets)[number] = { origin: req.headers.origin, cookie: req.headers.cookie, messages: [], url: req.url }
       sockets.push(record)
       ws.on('message', (data) => { record.messages.push(data.toString()); ws.send(`echo:${data.toString()}`) })
       ws.send('hello')
@@ -50,7 +50,7 @@ before(async () => {
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
   address = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
   app = await launch()
-  selector = await app.page((t) => t.url.startsWith('mnema://localhost'))
+  selector = await app.role('selector')
   await selector.watch()
 })
 
@@ -98,8 +98,8 @@ test('commands are refused to windows that may not call them', async () => {
 
 test('an instance is opened through the host and its pages run the same verified bundle', async () => {
   assert.equal(await selector.evaluate(`window.__TAURI_INTERNALS__.invoke('desktop_open_instance', { address: '${address}' }).then(() => 'ok', (e) => String(e))`), 'ok')
-  // The selector is hidden; the instance window is the other page of the app.
-  instance = await app.page((t) => t.id !== selector.target.id && t.url.startsWith('mnema://localhost'))
+  // The selector is hidden; the page of the server is the one that runs the bundle in the instance role.
+  instance = await app.role('instance')
   await instance.watch()
   const identity = await instance.evaluate<{ role: string, keyId: string }>('JSON.parse(JSON.stringify(window.__MNEMA_TRUSTED_APP__))')
   assert.deepEqual([identity.role, identity.keyId], ['instance', '1069c76ff2e11272'])
@@ -142,6 +142,32 @@ test('the WebSocket of the instance is opened by the host with its origin and co
   assert.deepEqual(result.events.filter((e) => e.kind === 'message').map((e) => e.data), ['hello', 'echo:ping'])
   assert.deepEqual([sockets[0]?.origin, sockets[0]?.cookie, sockets[0]?.messages], [address, 'session=s3cret', ['ping']])
   assert.equal(await instance.evaluate(`window.__TAURI_INTERNALS__.invoke('desktop_ws_open', { path: '/api/other', onEvent: { id: 1 } }).then(() => 'ok', (e) => String(e))`), 'Only /api/ws can be opened.')
+  assert.equal(await instance.evaluate(`window.__TAURI_INTERNALS__.invoke('desktop_ws_open', { path: '/api/ws?x=1', onEvent: { id: 1 } }).then(() => 'ok', (e) => String(e))`), 'Only /api/ws can be opened.')
+})
+
+test('the conversation question is relayed to the server and nothing else of the query', async () => {
+  const before = sockets.length
+  const id = await instance.evaluate<number>(`window.__TAURI_INTERNALS__.invoke('desktop_ws_open', { path: '/api/ws?dm=1', onEvent: { id: window.__TAURI_INTERNALS__.transformCallback(() => {}) } })`)
+  await waitFor(async () => sockets.length > before)
+  assert.equal(sockets.at(-1)?.url, '/api/ws?dm=1')
+  await instance.evaluate(`window.__TAURI_INTERNALS__.invoke('desktop_ws_close', { id: ${id} })`)
+  const identity = await instance.evaluate<string[]>('[...window.__MNEMA_TRUSTED_APP__.capabilities]')
+  assert.deepEqual(identity, ['notify', 'unread', 'ws_query'])
+})
+
+test('the rail is a page of the host that no server page can reach or imitate', async () => {
+  const rail = await app.role('rail')
+  assert.equal(await rail.evaluate("typeof window.__TAURI_INTERNALS__ + typeof window.__MNEMA_TRUSTED_APP__"), 'undefinedundefined')
+  assert.equal(await rail.evaluate("fetch('/api/health').then((r) => r.status, () => 'blocked')"), 'blocked')
+  assert.equal(await rail.evaluate("document.querySelectorAll('.tile').length"), 1)
+  // Its policy: no network at all.
+  assert.equal(await rail.evaluate("fetch('mnema://localhost/rail.js').then(() => 'reached', () => 'blocked')"), 'blocked')
+  // A server page and the selector cannot name the rail's commands, even though they have the same origin.
+  for (const page of [instance, selector]) {
+    assert.equal(await page.evaluate("window.__TAURI_INTERNALS__.invoke('rail_remove', { id: '0000000000000000' }).then(() => 'ok', (e) => String(e))"), 'Unknown command.')
+    assert.equal(await page.evaluate('typeof window.__MNEMA_RAIL_HOST__'), 'undefined')
+  }
+  rail.close()
 })
 
 test('only what the app uses is permitted, and only to the instance window', async () => {

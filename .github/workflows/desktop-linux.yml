@@ -27,6 +27,7 @@ on:
       - icons/**
       - scripts/**
       - experimental/app/fixtures/**
+      - experimental/app/rail-ui/**
       - experimental/app/tauri.conf.json
       - .github/workflows/desktop-linux.yml
   push:
@@ -37,6 +38,7 @@ on:
       - icons/**
       - scripts/**
       - experimental/app/fixtures/**
+      - experimental/app/rail-ui/**
       - experimental/app/tauri.conf.json
       - .github/workflows/desktop-linux.yml
 

@@ -108,6 +108,13 @@ export class Jar {
     writePrivate(this.file, raw)
   }
 
+  /** Forgets every cookie, in memory and at rest (the secret store entry and the fallback file). Removing a server ends here. */
+  forget(): void {
+    this.cookies = []
+    if (this.vault) this.vault.vault.remove(this.vault.account)
+    if (this.file) rmSync(this.file, { force: true })
+  }
+
   /** The `Cookie` header for a request, if any cookie applies. */
   header(now: number): string | null {
     const live = this.cookies.filter((c) => c.expires === null || c.expires > now).map((c) => `${c.name}=${c.value}`)

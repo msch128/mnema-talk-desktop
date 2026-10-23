@@ -107,13 +107,18 @@ src/core        no Electron: runs in plain Node, where the tests run
   cookies.ts      the jar, vault or 0600 file  (web_proxy.rs, web_vault.rs)
   sockets.ts      /api/ws relay  (web_ws.rs)
   updates.ts      newer bundles and the trust statement from GitHub  (web_updates.rs)
-  trusted.ts      the state of the client: store, keys, statement, session  (web_client.rs)
+  instances.ts    the servers side by side: slots, counters, the rail's state, the list at rest  (instances.rs)
+  trusted.ts      the state of the client: store, keys, statement, the servers' sessions  (web_client.rs)
   client.ts       address, health, links, app routes  (web_client.rs, local_route.rs)
   minisign.ts     package signatures  (native_updates.rs, verify_package)
   selfupdate.ts   check / download / verify / install now or later  (native_updates.rs)
-src/main        Electron: windows, sessions, protocol, IPC, menus
-src/preload     the only script next to the page
-assets          the update window (the Tauri host's page, plus the .deb case) and the screen picker
+src/main        Electron: the window with the rail and the pages, sessions, protocol, IPC, menus
+  shell.ts        the window: rail, page for adding a server, one page per server  (web_shell.rs)
+  sessions.ts     one session and one protocol handler per server, bound to its id
+  rail.ts         the commands of the rail, on a channel of their own
+src/preload     the scripts next to the pages: the app bridge, and the rail's own
+assets          the update window (the Tauri host's page, plus the .deb case), the screen picker and the server rail
+                (`rail-ui` is the same file set as `experimental/app/rail-ui`; a test keeps them equal)
 ```
 
 **The web app is not changed.** It was written for the Tauri host: it imports
@@ -128,11 +133,50 @@ the gaming commands answer "Unknown command" (there is no overlay on Linux).
 A host-neutral `isTrustedDesktop()` in the web app would remove the need for the
 shim; it would need a new bundle and is not required.
 
-Each kind of window has its own session (selector, instance, attachment, update,
-picker), so what a window can fetch does not depend on a label it could claim.
-Only the instance session is persistent: the app keeps the state of its
-end-to-end encryption in the browser storage of that partition, as on the other
-platforms.
+Each kind of window has its own session (rail, selector, update, picker), and
+so has every server and its attachment window, so what a page can fetch does not
+depend on a label it could claim. The server sessions are persistent: the app
+keeps the state of its end-to-end encryption in the browser storage of that
+partition, as on the other platforms.
+
+## Several servers side by side
+
+One window: the server rail of the host on the left (the same page as in the
+Tauri host), and next to it the page of one server or the page for adding one.
+Each page is a `WebContentsView`. Up to nine servers, switched with Ctrl+1 to
+Ctrl+9 or the rail, added with Ctrl+Shift+N, reordered by dragging or Alt+arrow
+and removed from the rail's menu. No federation: one account per server.
+
+How the servers are kept apart:
+
+* **Storage.** Every server has its own persistent session partition
+  (`persist:inst-<id>`, the id being the first 16 hex digits of the SHA-256 of
+  its origin), so local storage, IndexedDB (the end-to-end state) and caches of
+  one are not those of another. The attachment window of a server has its own
+  partition too.
+* **Session cookie.** It lives in the host, one jar per server, in the secret
+  service (or its 0600 file) under the server's id; a page only ever gets the
+  cookie of its own server. The `mnema:` handler of a server's partition is made
+  for that server alone, so a page cannot reach another server's API.
+* **Commands.** The server a command acts for is the one the calling page was
+  made for, taken from the host's own record of the page, never from an
+  argument. The rail has a preload and a channel of its own and is answered only
+  for its own page; the pages of servers cannot name those commands.
+* **WebSocket relay.** One budget per server; only `/api/ws` and
+  `/api/ws?dm=1` can be opened, with that server's cookie and origin.
+* **Counters.** A page reports `desktop_report_unread` (unread channels,
+  mentions); an older bundle's `desktop_set_badge` stands in as mentions until
+  the page reports. The launcher badge is the sum of the mentions. A toast names
+  its server once there are several; using it brings that server forward and
+  reaches only its page.
+* **Removal** takes the server out of the list and wipes its stored session, its
+  partition (storage, cache and directory), its sockets, its toasts and its
+  attachment window. A directory the engine still holds is removed again later,
+  and leftovers are swept at the next start.
+* **Background servers** are hidden, not stopped: their sockets and counters stay
+  alive.
+* **Update from the single-server client.** Its browser storage (end-to-end
+  state) stays with the first server added afterwards.
 
 ## Develop
 
@@ -177,7 +221,9 @@ relay behave as specified, permissions and navigation are locked, the fuses are
 set, the unsandboxed start is refused. The AppImage and the installed `.deb` start
 and show the selector.
 
-**Not checked** (no such machine or device in CI): a real Wayland session and
+The two-server end-to-end run (`test/e2e/multi.e2e.ts`) signs in to two stand-in\ninstances and checks storage, cookies, sockets, counters, switching, reordering and\nremoval against the real app.
+
+**Not checked** (no such machine or device in CI): the Ctrl+1 to Ctrl+9 menu accelerators on a real desktop (the action behind them is unit-tested), a real Wayland session and
 the PipeWire/portal screen picker, X11 screen sharing with real windows,
 microphone and camera hardware, VA-API encoding, libsecret with a running
 keyring (the fallback file was exercised), a private CA, a self-update against

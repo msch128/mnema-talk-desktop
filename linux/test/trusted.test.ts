@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { afterEach, test } from 'node:test'
 import { readFileSync } from 'node:fs'
 import { appApi, bundled, localOrigin, pickerUi, updateUi } from '../src/core/origin.ts'
-import { Trusted, type TrustedDeps, defaultDeps, pinnedKeys } from '../src/core/trusted.ts'
+import { Trusted, type TrustedDeps, WITHDRAWN, defaultDeps, pinnedKeys } from '../src/core/trusted.ts'
 import { parseUtc } from '../src/core/trust.ts'
 import { ROOT_PUB } from '../src/core/pinned.ts'
 import { bundle, spec, testKey, trusted as keysFor } from './helpers/fixtures.ts'
@@ -29,6 +29,15 @@ function deps(change: Partial<TrustedDeps> = {}): TrustedDeps {
 }
 
 const url = (raw: string) => new URL(raw)
+
+/** Starts a server on the list with its running session, as the shell does. */
+async function run(t: Trusted, address: string) {
+  const session = await t.connect(address)
+  const id = t.registry.add(session.instance.origin)
+  const slot = t.registry.slot(id)
+  if (slot) slot.phase = { kind: 'ready', session }
+  return session
+}
 
 test('only the hosts own origin and its routes are app pages', () => {
   const id = '11111111-1111-1111-1111-111111111111'
@@ -104,7 +113,7 @@ test('installs need a fresh statement and a successful fetch in this round', () 
 test('a client without any bundle says so instead of loading server code', () => {
   const t = new Trusted(null, null, deps())
   assert.equal(t.view(), undefined)
-  assert.equal(t.session(), null)
+  assert.equal(t.session('0000000000000000'), null)
   assert.deepEqual(t.store.emptyReason(), { kind: 'no_bundle' })
   const withDir = new Trusted(tmp(), null, deps())
   assert.notEqual(withDir.jarName(url('https://a.example/')), withDir.jarName(url('https://b.example/')))
@@ -115,22 +124,23 @@ test('a statement that withdraws the key of the running bundle ends the session'
   const server = await health({ status: 'ok', version: '0.9.0', web_client_api: 1 })
   const withKey7 = deps({ pinned: () => keysFor(7), root: testKey(9).hex, discover: async () => ({ version: [0, 9, 0], webClientApi: 1 }) })
   const t = new Trusted(null, bundle(spec('0.9.0')), withKey7)
-  const session = await t.openInstance(server.origin.href)
+  const session = await run(t, server.origin.href)
   assert.deepEqual(session.held.bundle.version, [0, 9, 0])
+  t.registry.activate(session.id)
   assert.equal(t.view(), session.held)
-  assert.equal(t.session(), session)
-  await assert.rejects(t.openInstance(server.origin.href), /Close the current instance/)
+  assert.equal(t.session(session.id), session)
   const text = JSON.stringify({ schema: 1, serial: 1, issued_at: '2026-10-17T10:00:00Z', expires_at: '2027-01-15T10:00:00Z', bundle_keys: [testKey(2).hex], revoked_bundle_keys: [testKey(7).id], updater_keys: [], revoked_updater_keys: [] })
   const { signText } = await import('./helpers/fixtures.ts')
   assert.equal(t.applyTrust(Buffer.from(text), Buffer.from(signText(testKey(9), text)), NOW), true)
-  assert.equal(t.session(), null, 'the session on a withdrawn bundle is ended')
+  assert.equal(t.session(session.id), null, 'the session on a withdrawn bundle is ended')
+  assert.deepEqual(t.registry.slot(session.id)?.phase, { kind: 'refused', why: WITHDRAWN }, 'and the tab says why')
   assert.equal(t.view(), undefined)
 })
 
 test('a cap that withdraws the running bundle ends the session', async () => {
   const server = await health({ status: 'ok', version: '0.9.0', web_client_api: 1 })
   const t = new Trusted(null, bundle(spec('0.9.0')), deps({ pinned: () => keysFor(7), root: testKey(9).hex, discover: async () => ({ version: [0, 9, 0], webClientApi: 1 }) }))
-  const session = await t.openInstance(server.origin.href)
+  const session = await run(t, server.origin.href)
   const { signText } = await import('./helpers/fixtures.ts')
   const statement = (serial: number, cap: string) => {
     const text = JSON.stringify({ schema: 1, serial, issued_at: '2026-10-17T10:00:00Z', expires_at: '2027-01-15T10:00:00Z', bundle_keys: [testKey(7).hex], revoked_bundle_keys: [], updater_keys: [], revoked_updater_keys: [], max_version: { 1: cap } })
@@ -138,10 +148,10 @@ test('a cap that withdraws the running bundle ends the session', async () => {
   }
   // A cap at the running version leaves it running.
   assert.equal(t.applyTrust(...statement(1, '0.9.0'), NOW), false)
-  assert.equal(t.session(), session)
+  assert.equal(t.session(session.id), session)
   // A cap below it withdraws the bundle, and the session ends with it.
   assert.equal(t.applyTrust(...statement(2, '0.8.0'), NOW), true)
-  assert.equal(t.session(), null)
+  assert.equal(t.session(session.id), null)
   assert.equal(t.view(), undefined)
 })
 
@@ -154,22 +164,22 @@ async function health(body: object): Promise<TestServer> {
 test('opening an instance picks the verified bundle by the server health and never the servers code', async () => {
   const server = await health({ status: 'ok', version: '0.9.0', web_client_api: 1 })
   const t = new Trusted(null, bundle(spec('0.8.0')), deps({ pinned: () => keysFor(7) }))
-  const session = await t.openInstance(server.origin.href)
+  const session = await t.connect(server.origin.href)
   assert.deepEqual(session.held.bundle.version, [0, 8, 0])
   assert.equal(session.instance.origin.href, `${server.origin.href}`)
-  t.closeSession()
+  assert.equal(t.registry.length, 0, 'a server that was only checked has no place in the list')
   // A newer contract than any bundle: no update is installed without a fresh statement, and the client says so.
   const newer = await health({ status: 'ok', version: '1.0.0', web_client_api: 2 })
   const updates: string[] = []
   await assert.rejects(
-    new Trusted(null, bundle(spec('0.8.0')), deps({ pinned: () => keysFor(7), installNewer: async () => { updates.push('tried') }, fetchTrust: async () => { throw new Error('offline') } })).openInstance(newer.origin.href),
+    new Trusted(null, bundle(spec('0.8.0')), deps({ pinned: () => keysFor(7), installNewer: async () => { updates.push('tried') }, fetchTrust: async () => { throw new Error('offline') } })).connect(newer.origin.href),
     /needs a newer Mnema app/,
   )
   assert.deepEqual(updates, [], 'nothing is installed without a fresh trust statement')
   // Addresses that are not an HTTPS origin are refused before any request.
-  await assert.rejects(t.openInstance('http://community.example'), /Use an HTTPS origin/)
+  await assert.rejects(t.connect('http://community.example'), /Use an HTTPS origin/)
   // An instance that is down.
   const down = await serve(reply(503, {}, 'x'))
   servers.push(down)
-  await assert.rejects(t.openInstance(down.origin.href), /unavailable or redirects/)
+  await assert.rejects(t.connect(down.origin.href), /unavailable or redirects/)
 })

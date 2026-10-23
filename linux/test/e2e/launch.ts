@@ -13,6 +13,10 @@ export interface Running {
   child: ChildProcess
   /** The first page that satisfies `match`, waiting for it to appear. */
   page(match: (target: Target) => boolean, timeoutMs?: number): Promise<Page>
+  /** The first page of the app (its own pages, not the DevTools') for which `check` holds, evaluated inside it. */
+  pageWhere(check: (page: Page) => Promise<boolean>, timeoutMs?: number): Promise<Page>
+  /** The page that runs the bundle in the given role (`selector`, `instance`) or the server rail (`rail`). */
+  role(role: 'rail' | 'selector' | 'instance', timeoutMs?: number): Promise<Page>
   stop(): Promise<void>
 }
 
@@ -40,7 +44,7 @@ export async function launch(env: Record<string, string> = {}, args: string[] = 
     child.once('exit', (code) => { clearTimeout(timer); reject(new Error(`the app exited with ${code}:\n${output.join('')}`)) })
   })
   const open: Page[] = []
-  return {
+  const running: Running = {
     port, dataDir, output, child,
     async page(match, timeoutMs = 20_000) {
       const deadline = Date.now() + timeoutMs
@@ -56,6 +60,23 @@ export async function launch(env: Record<string, string> = {}, args: string[] = 
         await new Promise((resolve) => setTimeout(resolve, 200))
       }
     },
+    async pageWhere(check, timeoutMs = 20_000) {
+      const deadline = Date.now() + timeoutMs
+      for (;;) {
+        for (const target of await pages(port)) {
+          if (!target.url.startsWith('mnema://localhost')) continue
+          const page = new Page(target)
+          await page.opened
+          if (await check(page).catch(() => false)) { open.push(page); return page }
+          page.close()
+        }
+        if (Date.now() > deadline) throw new Error(`no matching page appeared:\n${output.join('')}`)
+        await new Promise((resolve) => setTimeout(resolve, 300))
+      }
+    },
+    async role(role, timeoutMs) {
+      return running.pageWhere(async (page) => (await page.evaluate<string | null>("window.__MNEMA_RAIL_HOST__ ? 'rail' : (window.__MNEMA_TRUSTED_APP__ ? window.__MNEMA_TRUSTED_APP__.role : null)")) === role, timeoutMs)
+    },
     async stop() {
       for (const page of open) page.close()
       child.removeAllListeners('exit')
@@ -64,4 +85,5 @@ export async function launch(env: Record<string, string> = {}, args: string[] = 
       rmSync(dataDir, { recursive: true, force: true })
     },
   }
+  return running
 }

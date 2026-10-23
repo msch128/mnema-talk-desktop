@@ -1,16 +1,17 @@
 /**
  * The state of the trusted client: verified bundles, the keys in force, the
- * trust statement, the selected instance and its sockets. A port of `Trusted`
+ * trust statement and the servers with their sessions. A port of `Trusted`
  * in `experimental/app/src/web_client.rs`, without the windowing (see
  * `src/main`).
  */
-import { createHash } from 'node:crypto'
+import { rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { type TrustedKey, parseKey } from './bundle.ts'
 import { parseAddress } from './client.ts'
 import { Jar, type Vault } from './cookies.ts'
 import { discover } from './discover.ts'
-import { Limits, type Instance } from './proxy.ts'
+import { Registry, type Session, emptyStored, idFor, loadStored, saveStored } from './instances.ts'
+import { Limits } from './proxy.ts'
 import { PINNED_BUNDLE_KEYS, ROOT_PUB } from './pinned.ts'
 import { Sockets } from './sockets.ts'
 import { compareVersions } from './version.ts'
@@ -22,10 +23,8 @@ export function pinnedKeys(): TrustedKey[] {
   return PINNED_BUNDLE_KEYS.map((raw) => parseKey(raw)).filter((k): k is TrustedKey => k !== null)
 }
 
-export interface Session {
-  readonly instance: Instance
-  readonly held: Held
-}
+/** Why a server's tab stopped when its bundle was withdrawn. */
+export const WITHDRAWN = 'The web app of this server was withdrawn. Restart the client to get a current one.'
 
 /** What the state needs from the outside; tests replace all of it. */
 export interface TrustedDeps {
@@ -54,7 +53,8 @@ export function defaultDeps(vault: Vault | null): TrustedDeps {
 
 export class Trusted {
   readonly store: Store
-  readonly sockets = new Sockets()
+  /** The servers, their sessions and their counters. */
+  readonly registry: Registry
   private keys: TrustedKey[]
   private readonly trust: TrustState
   /**
@@ -65,7 +65,6 @@ export class Trusted {
    * running.
    */
   private freshRound = false
-  private current: Session | null = null
   private readonly dataDir: string | null
   private readonly deps: TrustedDeps
 
@@ -75,6 +74,20 @@ export class Trusted {
     this.trust = TrustState.load(dataDir ? join(dataDir, 'web-trust') : null, rootKey(deps.root))
     this.keys = this.trust.effectiveKeys(deps.pinned())
     this.store = Store.load(dataDir ? join(dataDir, 'web-bundles') : null, builtin, this.keys)
+    this.registry = Registry.restore(dataDir ? loadStored(this.instancesFile()) : emptyStored())
+  }
+
+  dataDirectory(): string | null {
+    return this.dataDir
+  }
+
+  instancesFile(): string | null {
+    return this.dataDir ? join(this.dataDir, 'instances.json') : null
+  }
+
+  /** Writes the list of servers down (addresses only). */
+  saveInstances(): void {
+    saveStored(this.instancesFile(), this.registry.stored())
   }
 
   keysInForce(): readonly TrustedKey[] {
@@ -103,11 +116,15 @@ export class Trusted {
     this.store.reconcile(this.keys)
     this.store.applyCaps(caps)
     const dropped = this.store.held().length < before
-    // A bundle withdrawn by a revoked key or a cap stops running, whatever withdrew it.
-    const session = this.current
-    if (session && !this.store.held().some((h) => h.bundle.keyId === session.held.bundle.keyId && compareVersions(h.bundle.version, session.held.bundle.version) === 0)) {
-      this.sockets.closeAll()
-      this.closeSession()
+    // A bundle withdrawn by a revoked key or a cap stops running, whatever withdrew it: that server's sockets close and its tab says why.
+    for (const id of this.registry.ids()) {
+      const session = this.registry.session(id)
+      const slot = this.registry.slot(id)
+      if (!session || !slot) continue
+      if (!this.store.held().some((h) => h.bundle.keyId === session.held.bundle.keyId && compareVersions(h.bundle.version, session.held.bundle.version) === 0)) {
+        session.sockets.closeAll()
+        slot.phase = { kind: 'refused', why: WITHDRAWN }
+      }
     }
     return dropped
   }
@@ -141,17 +158,16 @@ export class Trusted {
     return this.applyRound(fetched, this.deps.now())
   }
 
-  session(): Session | null {
-    return this.current
+  /** The running session of a server. */
+  session(id: string): Session | null {
+    return this.registry.session(id)
   }
 
-  closeSession(): void {
-    this.current = null
-  }
-
-  /** The bundle new windows run: the selected instance's, else the newest. */
+  /** The bundle new windows run: the front server's, else the newest. */
   view(): Held | undefined {
-    return this.current ? this.current.held : this.store.newest()
+    const front = this.registry.active()
+    const session = front ? this.registry.session(front) : null
+    return session ? session.held : this.store.newest()
   }
 
   /**
@@ -174,21 +190,29 @@ export class Trusted {
     throw new Error(refusalText(first.refusal))
   }
 
-  /** The account name in the secret store and the fallback file name of an instance's cookies. */
+  /** The account name in the secret store and the fallback file name of a server's cookies. */
   jarName(origin: URL): string {
-    return createHash('sha256').update(origin.href).digest('hex').slice(0, 16)
+    return idFor(origin)
   }
 
-  /** Checks the address, reads the server's health, picks the verified bundle and selects the instance. */
-  async openInstance(address: string): Promise<Session> {
-    const origin = parseAddress(address)
+  /**
+   * Checks the address, reads the server's health and picks the verified
+   * bundle. The session is returned, not registered: a server that cannot be
+   * served never takes a place in the list.
+   */
+  async connect(address: string | URL): Promise<Session> {
+    const origin = typeof address === 'string' ? parseAddress(address) : address
     const server = await this.deps.discover(origin)
     const held = await this.choose(server)
-    if (this.current) throw new Error('Close the current instance before selecting another.')
     const name = this.jarName(origin)
     const jar = new Jar(this.dataDir ? join(this.dataDir, 'sessions', `${name}.json`) : null, this.deps.vault ? { vault: this.deps.vault, account: name } : null, this.deps.now())
-    const session: Session = { instance: { origin, jar, limits: new Limits(), now: this.deps.now }, held }
-    this.current = session
-    return session
+    return { id: name, instance: { origin, jar, limits: new Limits(), now: this.deps.now }, held, sockets: new Sockets() }
+  }
+
+  /** Forgets the stored session of a server that never started in this run (the keychain entry and the fallback file). */
+  forgetStoredSession(origin: URL): void {
+    const name = this.jarName(origin)
+    this.deps.vault?.remove(name)
+    if (this.dataDir) rmSync(join(this.dataDir, 'sessions', `${name}.json`), { force: true })
   }
 }
