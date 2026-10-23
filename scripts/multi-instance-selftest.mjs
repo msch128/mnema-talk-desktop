@@ -62,7 +62,7 @@ try {
   console.log(result.join('\n'))
   must(result.includes('done'), 'the host did not finish')
   for (const line of result.filter((l) => l.startsWith('fail'))) fails.push(line)
-  must(result.filter((l) => l.startsWith('ok ')).length >= 30, `too few checks passed (${result.filter((l) => l.startsWith('ok ')).length})`)
+  must(result.filter((l) => l.startsWith('ok ')).length >= 33, `too few checks passed (${result.filter((l) => l.startsWith('ok ')).length})`)
 
   const [a, b] = logs.map(entries)
   const origins = ports.map((p) => `http://127.0.0.1:${p}`)

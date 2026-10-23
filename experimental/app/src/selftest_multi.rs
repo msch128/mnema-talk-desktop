@@ -58,6 +58,18 @@ async fn eval(app: &tauri::AppHandle, label: &str, script: &str) -> Option<Strin
         .ok()
 }
 
+/// The same, for a page that was just made: tries until the page answers.
+async fn run_when_ready(app: &tauri::AppHandle, label: &str, body: &str) -> String {
+    for _ in 0..100 {
+        let result = run(app, label, body).await;
+        if result != "no page" {
+            return result;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    "no page".into()
+}
+
 /// Runs an async body in the page and waits for its (JSON) result.
 async fn run(app: &tauri::AppHandle, label: &str, body: &str) -> String {
     let start = format!(
@@ -187,6 +199,7 @@ async fn drive(app: &tauri::AppHandle, first: &str, second: &str) {
     counters(app, &a, &b, &page_a, &page_b).await;
     sockets(app, &trusted, &a, &b).await;
     removal(app, &trusted, &a, &b, second).await;
+    old_storage(app).await;
 }
 
 async fn isolation(app: &tauri::AppHandle, page_a: &str, page_b: &str) {
@@ -465,4 +478,62 @@ fn a_text(trusted: &Trusted, id: &str) -> String {
         .ok()
         .and_then(|r| r.slot(id).map(|s| s.origin.to_string()))
         .unwrap_or_default()
+}
+
+/// The storage the single-server client left is the engine's default one. It
+/// must go even when no page is open, and on every kind of website data.
+async fn old_storage(app: &tauri::AppHandle) {
+    let read = "return localStorage.getItem('old')";
+    let seeded = async {
+        let seed = web_shell::open_default_page(app, "legacyseed").await.ok()?;
+        for _ in 0..100 {
+            let wrote = run(
+                app,
+                "legacyseed",
+                "localStorage.setItem('old','secret');await new Promise((r)=>{const o=indexedDB.open('old');o.onsuccess=()=>{o.result.close();r()};o.onerror=()=>r()});return localStorage.getItem('old')",
+            )
+            .await;
+            if wrote == "\"secret\"" {
+                let _ = seed.close();
+                return Some(());
+            }
+            tokio::time::sleep(Duration::from_millis(200)).await;
+        }
+        None
+    }
+    .await;
+    check(
+        "data can be left in the default storage",
+        seeded.is_some(),
+        "",
+    );
+    let probe = web_shell::open_default_page(app, "legacyprobe").await;
+    let before = if probe.is_ok() {
+        run_when_ready(app, "legacyprobe", read).await
+    } else {
+        "no page".into()
+    };
+    check(
+        "a new page on the default storage sees it",
+        before == "\"secret\"",
+        &before,
+    );
+    if let Ok(probe) = probe {
+        let _ = probe.close();
+    }
+    web_shell::wipe_default_storage(app).await;
+    let after_page = web_shell::open_default_page(app, "legacyafter").await;
+    let after = if after_page.is_ok() {
+        run_when_ready(app, "legacyafter", read).await
+    } else {
+        "no page".into()
+    };
+    check(
+        "the default storage is empty after the wipe",
+        after == "null",
+        &after,
+    );
+    if let Ok(page) = after_page {
+        let _ = page.close();
+    }
 }
