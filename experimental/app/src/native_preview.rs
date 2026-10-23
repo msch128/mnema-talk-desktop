@@ -192,19 +192,19 @@ fn rejected(context: String, error: Error) -> NativeReply {
         Error::Stale => (
             499,
             "NATIVE_STALE",
-            "This request is no longer current.",
+            "This request is no longer current or valid.",
         ),
         Error::Cancelled => (
             499,
             "NATIVE_CANCELLED",
-            "This request was cancelled.",
+            "This request was cancelled by the app.",
         ),
         Error::NoProfile
         | Error::Unauthorized
         | Error::ReauthRequired
         | Error::Expired
         | Error::UncertainRotation => {
-            (401, "UNAUTHORIZED", "A new sign-in is required.")
+            (401, "UNAUTHORIZED", "A new sign-in is required to continue.")
         }
         Error::Busy => (429, "RATE_LIMITED", "Try again later."),
         Error::Denied => (403, "FORBIDDEN", "This action is not allowed."),
