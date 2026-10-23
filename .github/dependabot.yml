@@ -1,61 +1,71 @@
-# Weekly dependency updates, one PR per ecosystem and directory. Security
-# updates are opened immediately regardless of this schedule. Version updates
-# wait 5 days after a release (cooldown) so a hijacked or yanked version is
+# Monthly dependency updates: one grouped PR per ecosystem and directory for
+# patch and minor bumps; major bumps stay separate PRs for individual review.
+# Security updates are opened immediately regardless of this schedule. Version
+# updates wait 5 days after a release (cooldown) so a hijacked or yanked version is
 # usually caught before it reaches a PR. Lockfiles keep their integrity hashes;
 # actions stay pinned by commit SHA (Dependabot rewrites the SHA and comment).
 version: 2
 updates:
   - package-ecosystem: cargo
     directory: /
-    schedule: { interval: weekly, day: monday }
+    schedule: { interval: monthly }
     cooldown: { default-days: 5 }
     open-pull-requests-limit: 3
     commit-message: { prefix: "build(deps)" }
     groups:
-      cargo-host: { patterns: ["*"] }
+      cargo-host:
+        patterns: ["*"]
+        update-types: [minor, patch]
 
   - package-ecosystem: cargo
     directory: /experimental/app
-    schedule: { interval: weekly, day: monday }
+    schedule: { interval: monthly }
     cooldown: { default-days: 5 }
     open-pull-requests-limit: 3
     commit-message: { prefix: "build(deps)" }
     groups:
-      cargo-app: { patterns: ["*"] }
+      cargo-app:
+        patterns: ["*"]
+        update-types: [minor, patch]
 
   - package-ecosystem: npm
     directory: /ui
-    schedule: { interval: weekly, day: monday }
+    schedule: { interval: monthly }
     cooldown: { default-days: 5 }
     open-pull-requests-limit: 3
     commit-message: { prefix: "build(deps)", prefix-development: "build(deps-dev)" }
     groups:
-      npm-ui-runtime: { dependency-type: production }
-      npm-ui-dev: { dependency-type: development }
+      npm-ui:
+        patterns: ["*"]
+        update-types: [minor, patch]
 
   - package-ecosystem: npm
     directory: /linux
-    schedule: { interval: weekly, day: monday }
+    schedule: { interval: monthly }
     cooldown: { default-days: 5 }
     open-pull-requests-limit: 3
     commit-message: { prefix: "build(deps)", prefix-development: "build(deps-dev)" }
     groups:
-      npm-linux-runtime: { dependency-type: production }
-      npm-linux-dev: { dependency-type: development }
+      npm-linux:
+        patterns: ["*"]
+        update-types: [minor, patch]
 
   - package-ecosystem: npm
     directory: /experimental/ui
-    schedule: { interval: weekly, day: monday }
+    schedule: { interval: monthly }
     cooldown: { default-days: 5 }
     open-pull-requests-limit: 3
     commit-message: { prefix: "build(deps)", prefix-development: "build(deps-dev)" }
     groups:
-      npm-native-ui-runtime: { dependency-type: production }
-      npm-native-ui-dev: { dependency-type: development }
+      npm-native-ui:
+        patterns: ["*"]
+        update-types: [minor, patch]
 
   - package-ecosystem: github-actions
     directory: /
-    schedule: { interval: weekly, day: monday }
+    schedule: { interval: monthly }
     commit-message: { prefix: "ci(deps)" }
     groups:
-      actions: { patterns: ["*"] }
+      actions:
+        patterns: ["*"]
+        update-types: [minor, patch]
