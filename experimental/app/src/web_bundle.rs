@@ -1842,7 +1842,8 @@ mod shared_vectors {
         let bundle = verify(&data, &keys).expect("the release bundle verifies");
         assert!(bundle.file("index.html").is_some());
 
-        let mut entries: Vec<(String, Vec<u8>)> = {
+        type Entries = Vec<(String, Vec<u8>)>;
+        let mut entries: Entries = {
             let mut zip = zip::ZipArchive::new(Cursor::new(&data[..])).unwrap();
             (0..zip.len())
                 .filter_map(|i| {
@@ -1858,12 +1859,12 @@ mod shared_vectors {
         };
         // Repacked unchanged: still valid, so the refusals below are the edits.
         verify(&fixture::zip_of(&entries), &keys).expect("the repacked bundle verifies");
-        let refused = |edit: &dyn Fn(&mut Vec<(String, Vec<u8>)>)| {
+        let refused = |edit: &dyn Fn(&mut Entries)| {
             let mut copy = entries.clone();
             edit(&mut copy);
             verify(&fixture::zip_of(&copy), &keys).is_err()
         };
-        let flip = |e: &mut Vec<(String, Vec<u8>)>, name: &str| {
+        let flip = |e: &mut Entries, name: &str| {
             let body = &mut e.iter_mut().find(|(n, _)| n == name).unwrap().1;
             body[0] ^= 1;
         };
