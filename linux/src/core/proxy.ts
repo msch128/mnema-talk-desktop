@@ -9,6 +9,7 @@ import type { Agent } from 'node:http'
 import type { Bundle } from './bundle.ts'
 import type { Jar } from './cookies.ts'
 import { defaultAgent, headerText, readBody, send } from './http.ts'
+import { type Version, compareVersions } from './version.ts'
 
 /**
  * Largest body the proxy buffers before the instance has announced its upload
@@ -32,11 +33,32 @@ export const LARGE_BODY_BUDGET = 1 << 30
 const BUDGET_UNIT = 64 << 10
 const BUDGET_WAIT_MS = 30_000
 
-/** Same policy as the server's SPA (`httpx.SPAContentSecurityPolicy`), plus the IPC the host needs. */
-export const APP_CSP = "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; "
-  + "img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self' data:; "
+const APP_CSP_REST = "img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self' data:; "
   + "connect-src 'self'; worker-src 'self' blob:; "
   + "frame-ancestors 'none'; base-uri 'none'; form-action 'self'; object-src 'none'"
+
+/**
+ * Same policy as the server's SPA (`httpx.SPAContentSecurityPolicy`) since
+ * mnema-talk 1.1.0: no inline styles, neither elements nor attributes. Only
+ * bundles that were built for it get it (see `appCsp`).
+ */
+export const APP_CSP = "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; style-src-attr 'none'; " + APP_CSP_REST
+
+/**
+ * The policy of bundles before 1.1.0: their emoji picker writes a `<style>`
+ * element and `style` attributes, so they need `'unsafe-inline'`. The shell
+ * can still load such a bundle (a 1.0.x instance), and the strict policy
+ * would show its picker unstyled.
+ */
+export const LEGACY_APP_CSP = "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; " + APP_CSP_REST
+
+/** First bundle version that runs under `APP_CSP`. */
+const STRICT_STYLE_FROM: Version = [1, 1, 0]
+
+/** The policy for a verified bundle, by the version in its signed manifest. */
+export function appCsp(version: Version): string {
+  return compareVersions(version, STRICT_STYLE_FROM) >= 0 ? APP_CSP : LEGACY_APP_CSP
+}
 
 /**
  * Applied to everything that comes from the instance. `sandbox` (without
@@ -103,7 +125,7 @@ export function mimeFor(name: string): string {
  * A file of the verified bundle, or the app shell for client-side routes, as
  * `web/web.go` does for browsers. `path` is the URL path without the query.
  */
-export function serveBundle(bundle: Bundle, method: string, path: string, csp = APP_CSP): Resp {
+export function serveBundle(bundle: Bundle, method: string, path: string, csp = appCsp(bundle.version)): Resp {
   if (method !== 'GET' && method !== 'HEAD') {
     const resp = plain(405, 'method not allowed')
     resp.headers.push(['allow', 'GET, HEAD'])
