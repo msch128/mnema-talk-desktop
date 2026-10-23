@@ -216,12 +216,11 @@ test('a list that does not hold up is not trusted', () => {
     assert.deepEqual(loadStored(file).servers, [], bad)
   }
   const many = Array.from({ length: 20 }, (_, n) => `https://s${n}.example/`)
-  writeFileSync(file, JSON.stringify({ version: 1, servers: ['http://plain.example/', 'https://a.example/path', 'https://a.example/', 'https://a.example/', 'javascript:alert(1)', '', 7, ...many], active: 'https://unknown.example/', legacy: 'ffffffffffffffff' }))
+  writeFileSync(file, JSON.stringify({ version: 1, servers: ['http://plain.example/', 'https://a.example/path', 'https://a.example/', 'https://a.example/', 'javascript:alert(1)', '', 7, ...many], active: 'https://unknown.example/' }))
   const stored = loadStored(file)
   assert.equal(stored.servers.length, MAX_INSTANCES)
   assert.equal(stored.servers[0]!.href, 'https://a.example/')
   assert.equal(stored.active, null, 'the front must be a server on the list')
-  assert.equal(stored.legacy, null, 'so must the server that keeps the old storage')
   assert.equal(Registry.restore(stored).active(), id('a.example'))
   writeFileSync(file, ' '.repeat(16 * 1024 + 1))
   assert.deepEqual(loadStored(file).servers, [])
@@ -259,15 +258,11 @@ test('the requests of two servers carry only their own cookies', async () => {
   }
 })
 
-test('the storage of the single-server client stays with the one server that adopted it', () => {
+test('a list that names a server to keep the old storage is read without it: no server ever inherits it', () => {
   const file = join(tmp(), 'instances.json')
-  const r = registry('a.example', 'b.example')
-  r.legacy = id('a.example')
-  saveStored(file, r.stored())
-  assert.equal(Registry.restore(loadStored(file)).legacy, id('a.example'))
-  r.remove(id('a.example'))
-  assert.equal(r.legacy, null, 'removing that server lets go of it')
-  // Only a server on the list may hold it.
-  writeFileSync(file, JSON.stringify({ version: 1, servers: ['https://b.example/'], active: null, legacy: id('a.example') }))
-  assert.equal(loadStored(file).legacy, null)
+  writeFileSync(file, JSON.stringify({ version: 1, servers: ['https://a.example/'], active: null, legacy: id('a.example') }))
+  const stored = loadStored(file)
+  assert.equal('legacy' in stored, false)
+  const r = Registry.restore(stored)
+  assert.deepEqual(r.stored(), { servers: [new URL('https://a.example/')], active: new URL('https://a.example/') })
 })

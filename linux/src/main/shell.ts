@@ -12,7 +12,7 @@
  */
 import { existsSync, readdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
-import { BaseWindow, WebContentsView, app } from 'electron'
+import { BaseWindow, WebContentsView, app, session } from 'electron'
 import { parseAddress } from '../core/client.ts'
 import { AddError, MAX_INSTANCES, idFor } from '../core/instances.ts'
 import { APP_URL } from '../core/origin.ts'
@@ -229,8 +229,6 @@ export async function addServer(ctx: Context, address: string): Promise<void> {
   }
   const slot = registry.slot(id)
   if (slot) { registry.restart(id); slot.phase = { kind: 'ready', session } }
-  // The first server after the update keeps the storage of the single-server client (its end-to-end state).
-  if (ctx.shell.adoptLegacy && registry.length === 1) { registry.legacy = id; ctx.shell.adoptLegacy = false }
   registry.activate(id)
   try {
     openPage(ctx, id)
@@ -332,8 +330,23 @@ function sweepOrphans(ctx: Context): void {
   }
 }
 
-/** Whether the single-server client left its storage behind and no list of servers exists yet. */
+/** Removes the storage of the single-server client: its data, then its directory. */
+export async function wipeLegacyStorage(ctx: Context): Promise<void> {
+  const ses = session.fromPartition(LEGACY_PARTITION)
+  await ses.clearStorageData().catch(() => undefined)
+  await ses.clearCache().catch(() => undefined)
+  const dir = partitionDir(ctx, LEGACY_PARTITION)
+  let attempts = 0
+  const attempt = () => {
+    if (!existsSync(dir)) return
+    try { rmSync(dir, { recursive: true, force: true }) } catch { /* tried again below */ }
+    if (existsSync(dir) && ++attempts < 20) setTimeout(attempt, 500).unref()
+  }
+  attempt()
+}
+
+/** Whether the single-server client left its storage behind (it is gone once wiped, so this is true once). */
 export function legacyStorageWaits(ctx: Context): boolean {
   const dir = partitionDir(ctx, LEGACY_PARTITION)
-  return existsSync(dir) && ctx.trusted.registry.length === 0
+  return existsSync(dir)
 }
