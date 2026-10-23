@@ -26,7 +26,6 @@ export interface Shell {
   /** The attachment window a server's page opened, by server id. */
   attachments: Map<string, BrowserWindow>
   /** The single-server client left storage behind and no list exists yet: the first server added adopts it. */
-  adoptLegacy: boolean
 }
 
 export interface Context {
@@ -44,7 +43,7 @@ export interface Context {
 }
 
 export function serverPartition(ctx: Context, id: string): string {
-  return ctx.trusted.registry.legacy === id ? LEGACY_PARTITION : `persist:inst-${id}`
+  return `persist:inst-${id}`
 }
 
 export function attachmentPartition(id: string): string {

@@ -12,7 +12,7 @@ use crate::instances::{
     AddError, Phase, RailState, Session, attachment_label, id_for, instance_label,
 };
 use crate::web_bundle::Held;
-use crate::web_client::{OldStorage, Trusted, app_api, app_url, bundled, choose, discover};
+use crate::web_client::{Trusted, app_api, app_url, bundled, choose, discover};
 use crate::web_proxy::{Instance, Jar, Limits, Resp, client, now};
 use crate::web_vault::{Os, Vault};
 use crate::web_ws::Sockets;
@@ -197,22 +197,14 @@ pub fn host_profile_window<'a>(
     }
 }
 
-/// Gives the page of a server browser storage of its own. The server that took
-/// over the storage of the single-server client keeps using it (that is where
-/// its end-to-end state is); no other page of the host touches it.
+/// Gives the page of a server browser storage of its own. Every server gets
+/// one; the storage of the single-server client is never handed to any.
 fn isolate(
     builder: WebviewBuilder<tauri::Wry>,
     app: &tauri::AppHandle,
     id: &str,
 ) -> Result<WebviewBuilder<tauri::Wry>, String> {
-    let legacy = app
-        .state::<Trusted>()
-        .registry
-        .lock()
-        .is_ok_and(|r| r.legacy() == Some(id));
-    if legacy {
-        return Ok(builder);
-    }
+    let _ = app;
     #[cfg(target_os = "macos")]
     {
         Ok(builder.data_store_identifier(store_identifier(id)))
@@ -619,6 +611,15 @@ pub fn create(app: &tauri::AppHandle) -> tauri::Result<()> {
         tauri::WindowEvent::Destroyed => shut_down(&events),
         _ => {}
     });
+    // The storage of the single-server client belongs to no one server: wipe
+    // it once, then write the list, which ends the wipe for every later start.
+    if app.state::<Trusted>().take_old_storage_wipe() {
+        let app = app.clone();
+        tauri::async_runtime::spawn(async move {
+            wipe_default_storage(&app).await;
+            app.state::<Trusted>().save_instances();
+        });
+    }
     sweep_orphans(app);
     let ids = app
         .state::<Trusted>()
@@ -911,11 +912,6 @@ pub async fn add_server(
     check_room(state)?;
     let server = discover(&origin).await?;
     let held = choose(state, &server).await?;
-    let old = state.old_storage_for(&origin);
-    let adopts = old == OldStorage::Adopt;
-    if old == OldStorage::Wipe {
-        wipe_default_storage(&app).await;
-    }
     let session = make_session(state, &id, origin.clone(), held)?;
     {
         let mut registry = state.registry.lock().map_err(|_| "busy")?;
@@ -926,9 +922,6 @@ pub async fn add_server(
         if let Some(slot) = registry.slot_mut(&id) {
             slot.restart();
             slot.phase = Phase::Ready(Arc::clone(&session));
-        }
-        if adopts {
-            registry.set_legacy(&id);
         }
         registry.activate(&id);
     }
@@ -1053,17 +1046,10 @@ pub async fn rail_reconnect(webview: Webview, id: String) -> Result<(), String> 
 /// storage, its sockets, its toasts and its gaming token.
 pub(crate) async fn remove_server(app: &tauri::AppHandle, id: &str) {
     let trusted = app.state::<Trusted>();
-    let (slot, legacy_before) = match trusted.registry.lock() {
-        Ok(mut registry) => {
-            let legacy = registry.legacy().map(str::to_owned);
-            (registry.remove(id), legacy)
-        }
-        Err(_) => return,
-    };
+    let slot = trusted.registry.lock().ok().and_then(|mut r| r.remove(id));
     let Some(slot) = slot else {
         return;
     };
-    let legacy = legacy_before.as_deref() == Some(id);
     match &slot.phase {
         Phase::Ready(session) => {
             session.sockets.close_all();
@@ -1081,9 +1067,6 @@ pub(crate) async fn remove_server(app: &tauri::AppHandle, id: &str) {
         let _ = attachment.close();
     }
     wipe_storage(app, id);
-    if legacy {
-        wipe_default_storage(app).await;
-    }
     changed(app);
     counts_changed(app);
     focus_front(app);

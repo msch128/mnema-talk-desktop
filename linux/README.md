@@ -175,8 +175,10 @@ How the servers are kept apart:
   and leftovers are swept at the next start.
 * **Background servers** are hidden, not stopped: their sockets and counters stay
   alive.
-* **Update from the single-server client.** Its browser storage (end-to-end
-  state) stays with the first server added afterwards.
+* **Update from the single-server client.** Its browser storage held every
+  server it showed and recorded none, so it belongs to no one server: it is
+  wiped once at the first start of this version and never handed on. Every server
+  starts with a storage of its own.
 
 ## Develop
 
