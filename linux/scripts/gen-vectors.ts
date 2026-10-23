@@ -39,7 +39,7 @@ type Json = Record<string, unknown>
 function bundleVectors(): Json {
   const versions = ['0.7.16', '0.0.0', '1.2.3', '123456789.0.0', '', '1', '1.2', '1.2.3.4', 'v1.2.3', '01.2.3', '1.2.x', '1..3', '1.2.3-rc1', '-1.0.0', '99999999999.0.0', '+1.0.0', '1.2.3 ', ' 1.2.3']
     .map((input) => ({ input, parsed: parseVersion(input) }))
-  const paths = ['index.html', 'assets/a-b.js', 'ünï/x.js', 'a b/c', '', '/abs', 'a//b', 'a/./b', 'a/../b', '..', '.', 'a/', 'a\\b', 'a\0b', 'a\u007f', 'a\nb', 'a'.repeat(MAX_PATH), 'a'.repeat(MAX_PATH + 1)]
+  const paths = ['index.html', 'assets/a-b.js', '\u00fcn\u00ef/x.js', 'a b/c', '', '/abs', 'a//b', 'a/./b', 'a/../b', '..', '.', 'a/', 'a\\b', 'a\0b', 'a\u007f', 'a\nb', 'a'.repeat(MAX_PATH), 'a'.repeat(MAX_PATH + 1)]
     .map((path) => ({ path, valid: validPath(path) }))
 
   const base = spec('0.8.0')
@@ -111,7 +111,7 @@ function bundleVectors(): Json {
     let result: Json
     try {
       const b = verifyBundle(zip, trusted(...keys.map((k) => [7, 5, 8].find((s) => hex(s) === k) as number)))
-      const paths = ['index.html', 'assets/app-1.js', 'ünï/x.js'].filter((p) => b.file(p) !== undefined)
+      const paths = ['index.html', 'assets/app-1.js', '\u00fcn\u00ef/x.js'].filter((p) => b.file(p) !== undefined)
       result = {
         ok: {
           version: formatVersion(b.version), web_client_api: b.webClientApi, min_server_version: formatVersion(b.minServerVersion),

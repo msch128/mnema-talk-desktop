@@ -25,8 +25,8 @@ function setup({ lastReadAt = null, notifPermission = 'granted' }: { lastReadAt?
   auth.user = userFixture({ id: 'me', username: 'me', role: 'user' })
   const chat = useChatStore()
   chat.notificationPermission = notifPermission
-  chat.categories = [categoryFixture({ id: 'c', channels: [channelFixture({ id: 'ch1', name: 'allgemein', type: 'text' })] })]
-  chat.activeChannel = channelFixture({ id: 'ch1', name: 'allgemein', type: 'text' })
+  chat.categories = [categoryFixture({ id: 'c', channels: [channelFixture({ id: 'ch1', name: 'lobby', type: 'text' })] })]
+  chat.activeChannel = channelFixture({ id: 'ch1', name: 'lobby', type: 'text' })
   chat.activeChannelLastReadAt = lastReadAt
   chat.members = [userFixture({ id: 'u2', username: 'anna', display_name: 'Anna' })]
   chat.messages = [msg('a', 'u2', 0), msg('b', 'u2', 30), msg('c', 'me', 40), msg('d', 'u2', 50)]
@@ -248,7 +248,7 @@ describe('ChatArea message actions', () => {
 
   it('clears the file input after a failed upload', async () => {
     const chat = setup()
-    vi.spyOn(chat, 'uploadMedia').mockRejectedValue(new Error('zu groß'))
+    vi.spyOn(chat, 'uploadMedia').mockRejectedValue(new Error('too large'))
     const input = w.find<HTMLInputElement>('input[type="file"]').element
     const file = new File(['x'], 'a.png', { type: 'image/png' })
     Object.defineProperty(input, 'files', { configurable: true, value: [file] })

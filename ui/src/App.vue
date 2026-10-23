@@ -59,13 +59,13 @@ async function probeLayers(): Promise<boolean> {
 }
 void probeLayers().then(result => { layers.value = result })
 const gameStatus = computed(() => snapshot.value?.platform === 'unsupported_probe_host'
-  ? 'Diese Spielprüfung benötigt Windows.' : snapshot.value?.game ?? 'Kein freigegebenes Spiel im Vordergrund.')
+  ? 'This game check needs Windows.' : snapshot.value?.game ?? 'No approved game in the foreground.')
 watch(address, () => { candidate.value = null; error.value = '' })
 
 async function inspectServer() {
   if (busy.value) return
   if (!address.value.trim() || address.value.length > 2048) {
-    error.value = 'Bitte eine Serveradresse mit höchstens 2048 Zeichen eingeben.'
+    error.value = 'Enter a server address of at most 2048 characters.'
     return
   }
   const own = ++generation
@@ -74,7 +74,7 @@ async function inspectServer() {
     const result = await invoke<Candidate>('inspect_server', { address: address.value })
     if (own === generation) candidate.value = result
   } catch {
-    if (own === generation) error.value = 'Keine kompatible, über HTTPS erreichbare Mnema-Discovery. Adresse, Zertifikat und Serverversion prüfen.'
+    if (own === generation) error.value = 'No compatible Mnema discovery reachable over HTTPS. Check the address, the certificate and the server version.'
   } finally {
     if (own === generation) busy.value = false
   }
@@ -100,7 +100,7 @@ async function pollGame() {
     if (own === gameGeneration && watching.value) {
       snapshot.value = null
       lastGame.value = null
-      gameError.value = 'Die lokale Spielprüfung ist fehlgeschlagen. Prüfung stoppen und erneut starten.'
+      gameError.value = 'The local game check failed. Stop the check and start it again.'
     }
   } finally { polling = false }
 }
@@ -128,33 +128,33 @@ onUnmounted(() => {
 
 <template>
   <main>
-    <header><span class="brand-mark" aria-hidden="true">M</span><h1>Mnema Talk</h1><span class="badge">Desktop · Entwicklung</span></header>
+    <header><span class="brand-mark" aria-hidden="true">M</span><h1>Mnema Talk</h1><span class="badge">Desktop · Development</span></header>
     <section aria-labelledby="connect-title">
-      <h2 id="connect-title">Community prüfen</h2>
+      <h2 id="connect-title">Check community</h2>
       <form @submit.prevent="inspectServer">
-        <label for="server">Serveradresse</label>
-        <div class="row"><input id="server" v-model="address" type="text" placeholder="https://talk.example.com" autocomplete="off" spellcheck="false" maxlength="2048" :disabled="busy"><button :disabled="busy || !address.trim()">{{ busy ? 'Prüft …' : 'Verbindung prüfen' }}</button></div>
+        <label for="server">Server address</label>
+        <div class="row"><input id="server" v-model="address" type="text" placeholder="https://talk.example.com" autocomplete="off" spellcheck="false" maxlength="2048" :disabled="busy"><button :disabled="busy || !address.trim()">{{ busy ? 'Checking …' : 'Check connection' }}</button></div>
       </form>
       <p v-if="error" role="alert">{{ error }}</p>
-      <dl v-if="candidate"><dt>Zielserver</dt><dd>{{ candidate.origin }}</dd><dt>Community-ID</dt><dd>{{ candidate.community_id }}</dd><dt>API-Vertrag</dt><dd>{{ candidate.api_version }}</dd></dl>
-      <p class="help">Nur öffentliche Serverdaten. Anmeldung und Voice benötigen erst ein geprüftes Sitzungs- und E2EE-Verfahren.</p>
+      <dl v-if="candidate"><dt>Target server</dt><dd>{{ candidate.origin }}</dd><dt>Community ID</dt><dd>{{ candidate.community_id }}</dd><dt>API contract</dt><dd>{{ candidate.api_version }}</dd></dl>
+      <p class="help">Public server data only. Sign-in and voice first need a reviewed session and E2EE scheme.</p>
     </section>
     <section aria-labelledby="game-title">
-      <h2 id="game-title">Aktives Spiel erkennen</h2>
-      <label for="games">Programmdateien, durch Komma getrennt</label>
-      <div class="row"><input id="games" v-model="games" :disabled="watching" spellcheck="false" :aria-invalid="invalidGames" :aria-describedby="invalidGames ? 'games-validation' : undefined"><button type="button" :disabled="!watching && invalidGames" @click="toggleWatching">{{ watching ? 'Prüfung stoppen' : 'Spielprüfung starten' }}</button></div>
-      <p v-if="invalidGames" id="games-validation" role="alert">Bitte 1 bis 32 Programmdateien mit .exe-Endung eingeben. Beginn mit Buchstabe oder Zahl, danach auch Leerzeichen, Punkt, Minus oder Unterstrich; keine Pfade oder aufeinanderfolgenden Punkte. Höchstens 128 Zeichen pro Name.</p>
+      <h2 id="game-title">Detect the active game</h2>
+      <label for="games">Executable files, separated by commas</label>
+      <div class="row"><input id="games" v-model="games" :disabled="watching" spellcheck="false" :aria-invalid="invalidGames" :aria-describedby="invalidGames ? 'games-validation' : undefined"><button type="button" :disabled="!watching && invalidGames" @click="toggleWatching">{{ watching ? 'Stop check' : 'Start game check' }}</button></div>
+      <p v-if="invalidGames" id="games-validation" role="alert">Enter 1 to 32 executable files ending in .exe. Start with a letter or digit, then spaces, dots, hyphens or underscores are allowed; no paths and no consecutive dots. At most 128 characters per name.</p>
       <p v-if="gameError" role="alert">{{ gameError }}</p>
       <p class="status" aria-live="polite">{{ gameStatus }}</p>
-      <p v-if="lastGame" class="help">Zuletzt lokal erkannt: {{ lastGame.game }}. Monitorfüllende Geometrie: {{ lastGame.covers_monitor ? 'ja' : 'nein' }}. Exklusives Vollbild: noch nicht nachgewiesen.</p>
-      <p class="help">Nach dem Start zum Spiel wechseln, dann hier das Ergebnis prüfen. Nur das Programm im Vordergrund wird gelesen; Fenstername und vollständiger Dateipfad werden weder angezeigt noch übertragen.</p>
+      <p v-if="lastGame" class="help">Last detected locally: {{ lastGame.game }}. Monitor-filling geometry: {{ lastGame.covers_monitor ? 'yes' : 'no' }}. Exclusive fullscreen: not yet proven.</p>
+      <p class="help">After starting, switch to the game, then check the result here. Only the foreground program is read; the window title and the full file path are neither shown nor sent.</p>
     </section>
     <section aria-labelledby="media-title">
-      <h2 id="media-title">Laufzeit-Funktionen</h2>
-      <ul class="runtime-list"><li>WebRTC-API <span>{{ mediaHooks.webRtc ? 'vorhanden' : 'fehlt' }}</span></li><li>Bildschirm-Capture-API <span>{{ mediaHooks.capture ? 'vorhanden' : 'fehlt' }}</span></li><li>Encoded-Frame-Transform-API <span>{{ mediaHooks.frameTransform ? 'vorhanden' : 'fehlt' }}</span></li><li data-testid="ed25519">Ed25519 (WebCrypto, Frame-Signaturen) <span>{{ ed25519 === null ? 'wird geprüft' : ed25519 ? 'vorhanden' : 'fehlt' }}</span></li><li data-testid="layers">Sender-Parameter für Bildschirm-Ebenen (Skalierung, Abschalten) <span>{{ layers === null ? 'wird geprüft' : layers ? 'vorhanden' : 'fehlt' }}</span></li></ul>
-      <p class="help">API-Verfügbarkeit belegt weder Aufnahme, E2EE noch Hardware-Encoding. Dieser Client startet keine Aufnahme.</p>
+      <h2 id="media-title">Runtime features</h2>
+      <ul class="runtime-list"><li>WebRTC-API <span>{{ mediaHooks.webRtc ? 'present' : 'missing' }}</span></li><li>Screen capture API <span>{{ mediaHooks.capture ? 'present' : 'missing' }}</span></li><li>Encoded-Frame-Transform-API <span>{{ mediaHooks.frameTransform ? 'present' : 'missing' }}</span></li><li data-testid="ed25519">Ed25519 (WebCrypto, frame signatures) <span>{{ ed25519 === null ? 'checking' : ed25519 ? 'present' : 'missing' }}</span></li><li data-testid="layers">Sender parameters for screen layers (scaling, switching off) <span>{{ layers === null ? 'checking' : layers ? 'present' : 'missing' }}</span></li></ul>
+      <p class="help">API availability proves neither capture, E2EE nor hardware encoding. This client does not start a capture.</p>
     </section>
-    <details><summary>Open-Source-Lizenzen und Abhängigkeiten</summary><pre>{{ thirdPartyNotices }}</pre></details>
-    <footer>Probe, kein veröffentlichter 0.7-Client. Ohne Voice erscheinen weder Widget noch Overlay.</footer>
+    <details><summary>Open-source licenses and dependencies</summary><pre>{{ thirdPartyNotices }}</pre></details>
+    <footer>Probe, not a released 0.7 client. Without voice, neither the widget nor the overlay appears.</footer>
   </main>
 </template>

@@ -165,7 +165,7 @@ mod tests {
     fn origin_port_and_idn_are_not_renderer_replacement_targets() {
         let mut profiles = Profiles::new().unwrap();
         let handle = profiles
-            .select("https://bücher.example:8443", "shared-id")
+            .select("https://b\u{fc}cher.example:8443", "shared-id")
             .unwrap();
         let operation = profiles.begin_operation(handle).unwrap();
         assert_eq!(

@@ -304,7 +304,7 @@ mod tests {
             "track\n".into(),
             "track\0".into(),
             "track\u{7f}".into(),
-            "träck".into(),
+            "tr\u{e4}ck".into(),
         ] {
             let mut fields = tail();
             fields[5] = Value::Text(track);

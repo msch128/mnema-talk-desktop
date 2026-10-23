@@ -954,7 +954,7 @@ mod tests {
 
     #[test]
     fn path_rules_match_the_signing_tool() {
-        for ok in ["index.html", "assets/a-b.js", "ünï/x.js"] {
+        for ok in ["index.html", "assets/a-b.js", "\u{fc}n\u{ef}/x.js"] {
             assert!(valid_path(ok), "{ok}");
         }
         let long = "a".repeat(MAX_PATH + 1);

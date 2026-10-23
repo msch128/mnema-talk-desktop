@@ -192,27 +192,27 @@ fn rejected(context: String, error: Error) -> NativeReply {
         Error::Stale => (
             499,
             "NATIVE_STALE",
-            "Diese Anforderung ist nicht mehr aktuell.",
+            "This request is no longer current.",
         ),
         Error::Cancelled => (
             499,
             "NATIVE_CANCELLED",
-            "Diese Anforderung wurde abgebrochen.",
+            "This request was cancelled.",
         ),
         Error::NoProfile
         | Error::Unauthorized
         | Error::ReauthRequired
         | Error::Expired
         | Error::UncertainRotation => {
-            (401, "UNAUTHORIZED", "Eine neue Anmeldung ist erforderlich.")
+            (401, "UNAUTHORIZED", "A new sign-in is required.")
         }
-        Error::Busy => (429, "RATE_LIMITED", "Bitte versuche es später erneut."),
-        Error::Denied => (403, "FORBIDDEN", "Diese Aktion ist nicht freigegeben."),
-        Error::InvalidInput => (400, "INVALID_INPUT", "Die Eingabe ist ungültig."),
+        Error::Busy => (429, "RATE_LIMITED", "Try again later."),
+        Error::Denied => (403, "FORBIDDEN", "This action is not allowed."),
+        Error::InvalidInput => (400, "INVALID_INPUT", "The input is not valid."),
         _ => (
             503,
             "UNAVAILABLE",
-            "Diese Funktion ist in dieser Entwicklungsprüfung nicht verfügbar.",
+            "This feature is not available in this development check.",
         ),
     };
     NativeReply {

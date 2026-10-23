@@ -18,7 +18,7 @@ afterEach(() => { vi.unstubAllGlobals(); localStorage.clear() })
 it.each(['voice', 'camera', 'screen'] as const)('denies unqualified %s before physical capture or signaling', async action => {
   const rtc = useWebRTC()
   const start = action === 'voice' ? rtc.joinVoiceChannel('00000000-0000-4000-8000-000000000001') : action === 'camera' ? rtc.startCamera() : rtc.startScreenShare()
-  await expect(start).rejects.toThrow('noch gesperrt')
+  await expect(start).rejects.toThrow('still locked')
   expect(capture).not.toHaveBeenCalled(); expect(display).not.toHaveBeenCalled()
   expect(network).not.toHaveBeenCalled(); expect(peer).not.toHaveBeenCalled()
   expect(useVoiceStore().currentChannelId).toBeNull()

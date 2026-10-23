@@ -15,7 +15,7 @@ const origin = ref('')
 let attempt = 0
 onMounted(async () => {
   try { await initializeNativeContext(); ready.value = true }
-  catch { error.value = 'Die lokale Verbindung konnte nicht gestartet werden.' }
+  catch { error.value = 'The local connection could not be started.' }
 })
 async function connect() {
   const current = ++attempt; busy.value = true; error.value = ''
@@ -28,7 +28,7 @@ async function connect() {
     if (url.protocol !== 'https:' || url.origin !== body.origin || url.username || url.password) throw new Error('Invalid origin')
     origin.value = body.origin; connected.value = true
   } catch {
-    if (current === attempt) error.value = 'Dieser Server ist nicht erreichbar oder unterstützt diese Testversion nicht.'
+    if (current === attempt) error.value = 'This server is unreachable or does not support this test version.'
   } finally { if (current === attempt) busy.value = false }
 }
 async function changeServer() {
@@ -37,7 +37,7 @@ async function changeServer() {
   useVoiceStore().disconnect()
   useAuthStore().user = null
   try { await disconnectNative() }
-  catch { error.value = 'Die Verbindung wurde beendet. Bitte erneut verbinden.' }
+  catch { error.value = 'The connection ended. Connect again.' }
   finally { busy.value = false; origin.value = '' }
 }
 </script>
@@ -55,9 +55,9 @@ async function changeServer() {
       <div class="native-connect-heading"><span class="native-connect-mark" aria-hidden="true">M</span><h1 id="native-connect-title">Mnema Talk</h1></div>
       <p>Mit deiner Community verbinden.</p>
       <form @submit.prevent="connect">
-        <label for="native-server-url">Serveradresse</label>
+        <label for="native-server-url">Server address</label>
         <input id="native-server-url" v-model="address" type="text" inputmode="url" placeholder="talk.example.org" autocomplete="off" autocapitalize="off" spellcheck="false" :disabled="!ready || busy" required />
-        <button type="submit" :disabled="!ready || busy">{{ busy ? 'Verbindung wird geprüft …' : 'Verbinden' }}</button>
+        <button type="submit" :disabled="!ready || busy">{{ busy ? 'Checking the connection …' : 'Connect' }}</button>
       </form>
       <p v-if="error" class="native-connect-error" role="alert">{{ error }}</p>
       <p class="native-connect-note">Entwicklungsversion.</p>

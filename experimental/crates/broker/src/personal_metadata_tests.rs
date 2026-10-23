@@ -7,7 +7,7 @@ const PRESENCE: &str = "/api/native/v1/users/me/presence";
 const STATUS: &str = "/api/native/v1/users/me/status";
 fn profile() -> PersonalMetadataOperation {
     PersonalMetadataOperation::Profile {
-        display_name: "Ö🦀".repeat(12),
+        display_name: "\u{d6}🦀".repeat(12),
         bio: "é🦀".repeat(125),
     }
 }
@@ -17,7 +17,7 @@ async fn personal_five_fixed_https_routes_validate_wire_and_canonical_target() {
     let f = Fixture::start();
     let (b, w) = logged(&f).await;
     for (input, path, field, expected) in [
-        (profile(), PROFILE, "display_name", json!("Ö🦀".repeat(12))),
+        (profile(), PROFILE, "display_name", json!("\u{d6}🦀".repeat(12))),
         (
             PersonalMetadataOperation::Locale {
                 locale: MetadataLocale::De,

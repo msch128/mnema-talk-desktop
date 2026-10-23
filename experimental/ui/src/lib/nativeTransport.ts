@@ -19,7 +19,7 @@ const chatDisplayCache = new NativeChatDisplayCache()
 const sockets = new Set<NativeSocket>()
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const cancelled = () => new DOMException('Native operation cancelled', 'AbortError')
-const unavailable = () => ({ status: 503, body: { error: { code: 'UNAVAILABLE', message: 'Diese Funktion ist in dieser Testversion noch nicht verfügbar.' } } })
+const unavailable = () => ({ status: 503, body: { error: { code: 'UNAVAILABLE', message: 'This feature is not available in this test version yet.' } } })
 function object(value: unknown): value is Record<string, unknown> { return typeof value === 'object' && value !== null && !Array.isArray(value) }
 function validReply(value: unknown, expected: string): value is NativeReply {
   return object(value) && value['context'] === expected && Number.isInteger(value['status']) && Number(value['status']) >= 100 && Number(value['status']) <= 599
@@ -55,7 +55,7 @@ async function call(command: string, payload: Record<string, unknown> = {}, sign
   } finally { signal?.removeEventListener('abort', abort) }
 }
 export async function connectNative(address: string, signal?: AbortSignal): Promise<NativeReply> {
-  if (new TextEncoder().encode(address).length > 2048) throw new Error('Serveradresse zu lang')
+  if (new TextEncoder().encode(address).length > 2048) throw new Error('Server address too long')
   if (profileIntent === null) {
     // A lost Connect response may have selected a native profile. Read its
     // public comparator for a new explicit connection attempt, never for login.
@@ -186,7 +186,7 @@ export class NativeSocket {
     const payload = action['payload']
     const ping = action['type'] === 'ping' && Object.keys(payload).length === 1 && Number.isSafeInteger(payload['t']) && Number(payload['t']) >= 0
     const idle = action['type'] === 'presence_idle' && Object.keys(payload).length === 1 && typeof payload['idle'] === 'boolean'
-    if (!ping && !idle) throw new Error('Diese Funktion ist in dieser Testversion noch nicht verfügbar.')
+    if (!ping && !idle) throw new Error('This feature is not available in this test version yet.')
     void this.currentPort.invoke('native_socket_send', { context: this.owner, profileIntent: this.expectedProfile, handle: this.handle, action }).then(reply => {
       if (!validReply(reply, this.owner!) || reply.status !== 204) this.close()
     }).catch(() => this.close())

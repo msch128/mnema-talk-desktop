@@ -30,12 +30,12 @@ Normal production instances advertise `web_client_api` and `version` in
   fails the build without one. An instance on this machine may be entered as
   `http://127.0.0.1:<port>`; every other address must be HTTPS.
 
-Download the clearly named Windows **Desktop DEV** ZIP from the
-[mnema-talk releases](https://github.com/msch128/mnema-talk/releases) (v0.7.3
-and earlier; later mnema-talk releases do not attach it), extract the entire
-archive and run `Mnema Desktop DEV.exe`. The server is supplied
-as a Linux Docker image for amd64 and arm64. There are no server EXE downloads in
-new releases. The desktop client requires Microsoft Edge WebView2 Runtime.
+Download the installer for your platform from the
+[desktop releases](https://github.com/msch128/mnema-talk-desktop/releases); the
+[main README](../README.md#get-it) lists the files. Each release also has a
+portable Windows ZIP that does not update itself. The server is supplied as a
+Linux Docker image for amd64 and arm64. On Windows the client requires the
+Microsoft Edge WebView2 Runtime.
 
 The release workflow starts the actual Windows executable and checks that its
 instance-selector window appears before publishing. That startup check also
@@ -96,10 +96,13 @@ npm --prefix mnema-talk/web run build
 cargo build --locked --release --manifest-path experimental/app/Cargo.toml --features shell,web-client,custom-protocol
 ```
 
-All desktop packages are explicitly unsigned DEV builds. No desktop automatic
-updater is configured. The existing DeepFilterNet WASM transitive provenance
+All desktop packages are unsigned DEV builds (no platform code-signing
+certificate). The program updates itself from releases signed with the pinned
+minisign key; see [Updates in the main README](../README.md#updates). The existing DeepFilterNet WASM transitive provenance
 inventory remains incomplete; this is not a claim of final license closure.
-Windows has priority; macOS/Linux runtime qualification remains separate.
+Windows and macOS run this Tauri host. Linux runs the Electron client in
+[`../linux`](../linux/README.md). Runtime qualification on macOS and Linux
+hardware remains separate.
 
 ## Preserved native research checkpoint
 
@@ -140,8 +143,7 @@ The protected native-crypto mode still lacks qualified native voice and complete
 web feature parity. The separate web-client mode uses the same Vue web app and
 provides the Windows Gaming DEV integration described in [desktop-app.md](https://github.com/msch128/mnema-talk/blob/main/doc/desktop-app.md#windows-gaming-dev).
 The published v0.7.1 Windows web-client executable has startup/login/chat/logout
-evidence; this does not qualify native-crypto mode or real-game overlays. Development builds have no code-signing certificate or
-approved automatic updater. This checkpoint does not activate experimental
+evidence; this does not qualify native-crypto mode or real-game overlays. Development builds have no code-signing certificate. This checkpoint does not activate experimental
 server routes or deploy an application.
 
 The shared client rejects desktop call joins, automatic call restoration, camera
@@ -171,11 +173,10 @@ The current `Shared desktop client DEV builds` workflow builds `web-client`
 mode on Windows, rather than this native-crypto research mode. Matching pushes
 to `main` and `codex/**` produce short-lived unsigned DEV artifacts with source
 revision/hash receipts and dependency notices. The managed release workflow
-also calls it for a release tag and publishes the complete Windows Desktop DEV
-ZIP and checksum file on GitHub Releases. Acceptance dispatches can instead
-exercise an existing published EXE. No automatic updater package is created.
-macOS/Linux distribution and native key custody remain separate outstanding
-qualification targets. Linking alone does not qualify runtime behavior or games.
+also calls it for a release tag; the release then carries the installers, the
+signed update files and a portable ZIP (see "Releasing" in the main README).
+Acceptance dispatches can instead exercise an existing published EXE. Native
+key custody for the research mode remains an outstanding qualification target. Linking alone does not qualify runtime behavior or games.
 
 License and source-provenance records accompany the native graph. Existing
 vendored noise-filter assets retain their upstream notices; attribution of every
