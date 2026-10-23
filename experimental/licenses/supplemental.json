@@ -1,11 +1,11 @@
 {
   "rust_standard_library": {
-    "version": "1.99.0",
-    "commit": "b940084d7eb6a299eb4bfeb8e34901bc051e7ac4",
+    "version": "1.99.1",
+    "commit": "58cf8f9c35b355199727627d07ae34a4e2846d67",
     "license": "MIT OR Apache-2.0; exceptions and dependency notices preserved in COPYRIGHT-library.html",
     "file": "RUST-COPYRIGHT-library.html",
     "sha256": "5647be074c8edf7339fd863055923a8fc80bc5610a8d4661ec3b767b9d392c27",
-    "source": "https://github.com/rust-lang/rust/tree/b940084d7eb6a299eb4bfeb8e34901bc051e7ac4/library",
+    "source": "https://github.com/rust-lang/rust/tree/58cf8f9c35b355199727627d07ae34a4e2846d67/library",
     "provenance": "verbatim copyright notice supplied in pinned official Rust toolchain"
   },
   "inter_fonts": {

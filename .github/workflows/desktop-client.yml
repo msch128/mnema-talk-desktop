@@ -74,7 +74,7 @@ jobs:
     outputs:
       revision: ${{ steps.source.outputs.sha }}
     env:
-      RUST_VERSION: 1.99.0
+      RUST_VERSION: 1.99.1
       CARGO_TARGET_DIR: ${{ github.workspace }}/experimental/app/target
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -357,7 +357,7 @@ jobs:
     runs-on: windows-2025
     timeout-minutes: 60
     env:
-      RUST_VERSION: 1.99.0
+      RUST_VERSION: 1.99.1
       CARGO_TARGET_DIR: ${{ github.workspace }}/experimental/app/target
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -416,7 +416,7 @@ jobs:
     outputs:
       revision: ${{ steps.source.outputs.sha }}
     env:
-      RUST_VERSION: 1.99.0
+      RUST_VERSION: 1.99.1
       CARGO_TARGET_DIR: ${{ github.workspace }}/experimental/app/target
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

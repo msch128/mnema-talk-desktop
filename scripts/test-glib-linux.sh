@@ -15,5 +15,5 @@ docker run --rm --name "$container_name" \
   --mount "type=bind,source=$desktop_root,target=/desktop,readonly" \
   --mount "type=volume,target=/build" \
   --env CARGO_TARGET_DIR=/build/target \
-  rust:1.99.0-bookworm@sha256:114c7a4425406451c2866b6aafe69fe29b1b298832db1277d411ac73c82d04d6 \
+  rust:1.99.1-bookworm@sha256:48b7f435b8fc6378ce43b44f15e3a47fd8919b2825f835c39bd4bd3da50af5b8 \
   bash /desktop/scripts/test-glib-in-container.sh
