@@ -128,10 +128,15 @@ fn room_for(running: usize) -> bool {
 }
 
 #[cfg(not(target_os = "macos"))]
-fn profile_dir(app: &tauri::AppHandle, id: &str) -> Option<PathBuf> {
-    let dir = app.state::<Trusted>().data_dir()?.join(PROFILES).join(id);
-    std::fs::create_dir_all(&dir).ok()?;
-    Some(dir)
+fn profile_dir(app: &tauri::AppHandle, id: &str) -> Result<PathBuf, String> {
+    let trusted = app.state::<Trusted>();
+    let base = trusted
+        .data_dir()
+        .ok_or("This client has no data directory for the storage of a server.")?;
+    let dir = base.join(PROFILES).join(id);
+    std::fs::create_dir_all(&dir)
+        .map_err(|e| format!("Unable to prepare storage for this server ({e})."))?;
+    Ok(dir)
 }
 
 #[cfg(target_os = "macos")]
@@ -164,8 +169,8 @@ pub fn host_profile(
     }
     #[cfg(not(target_os = "macos"))]
     match profile_dir(app, HOST_PROFILE) {
-        Some(dir) => builder.data_directory(dir),
-        None => builder,
+        Ok(dir) => builder.data_directory(dir),
+        Err(_) => builder,
     }
 }
 
@@ -181,8 +186,8 @@ pub fn host_profile_window<'a>(
     }
     #[cfg(not(target_os = "macos"))]
     match profile_dir(app, HOST_PROFILE) {
-        Some(dir) => builder.data_directory(dir),
-        None => builder,
+        Ok(dir) => builder.data_directory(dir),
+        Err(_) => builder,
     }
 }
 
@@ -208,8 +213,7 @@ fn isolate(
     }
     #[cfg(not(target_os = "macos"))]
     {
-        let dir = profile_dir(app, id).ok_or("Unable to prepare storage for this server.")?;
-        Ok(builder.data_directory(dir))
+        Ok(builder.data_directory(profile_dir(app, id)?))
     }
 }
 

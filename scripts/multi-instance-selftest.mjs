@@ -40,9 +40,12 @@ try {
   for (let i = 0; i < 50 && !(logs.every((l) => entries(l).some((e) => e.kind === 'listening'))); i++) await sleep(100)
 
   const home = join(dir, 'home')
+  // Elsewhere the data directory follows the home directory; on Windows it is
+  // where the system says (this check only runs on a disposable runner there).
+  const isolated = process.platform === 'win32' ? {} : { HOME: home, XDG_DATA_HOME: join(home, 'share') }
   const env = {
     ...process.env,
-    HOME: home, USERPROFILE: home, LOCALAPPDATA: join(home, 'Local'), APPDATA: join(home, 'Roaming'), XDG_DATA_HOME: join(home, 'share'),
+    ...isolated,
     MNEMA_DESKTOP_NO_UPDATE_CHECK: '1',
     MNEMA_MULTI_SELFTEST: record,
     MNEMA_MULTI_SELFTEST_SERVERS: ports.map((p) => `http://127.0.0.1:${p}`).join(','),
