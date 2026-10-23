@@ -8,7 +8,7 @@ GLib 0.18.5 retains its upstream MIT license and version. [vendor/glib/](vendor/
 
 `keyring` 3.6.3 (MIT OR Apache-2.0) stores the session cookie in the macOS Keychain or Windows Credential Manager, with its macOS and Windows platform dependencies; they are in the locked inventory and licenses/manifest.json.
 
-SQLCipher/OpenSSL source packages and their original notices are included in the locked registry inventory. `tauri-plugin-updater` 2.13.3 (Apache-2.0 OR MIT) and `minisign-verify` 0.3.0 (MIT) update the installed client: the installer is run only after its minisign signature verifies against the public key built into the app. The plugin's archive dependencies (`tar`, `zip`, `flate2`) are in the locked inventory and licenses/manifest.json. The private updater key is not in this repository. No code-signing certificate is configured; the installer is not Authenticode-signed.
+SQLCipher/OpenSSL source packages and their original notices are included in the locked registry inventory. `tauri-plugin-updater` 2.14.0 (Apache-2.0 OR MIT) and `minisign-verify` 0.3.0 (MIT) update the installed client: the installer is run only after its minisign signature verifies against the public key built into the app. The plugin's archive dependencies (`tar`, `zip`, `flate2`) are in the locked inventory and licenses/manifest.json. The private updater key is not in this repository. No code-signing certificate is configured; the installer is not Authenticode-signed.
 
 The copied existing web DeepFilterNet WASM/model has an additional provenance and transitive-license qualification gap. Its existing notices are preserved; this checkpoint makes no claim that a final binary distribution license closure is complete.
 
