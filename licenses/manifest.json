@@ -1,7 +1,7 @@
 {
   "schema": "mnema-desktop-license-bundle-v1",
   "scope": "Conservative locked Rust graph and production npm closure; not a claim that all packages are linked.",
-  "cargo_lock_sha256": "8cd968438159814507ac6d260606ab1a1fbe8547b1b956af916e8c49de9d3fd1",
+  "cargo_lock_sha256": "1e3b3e7c0e43e1fd901e3c077d130c87d80e872afb4f03bccfe5862b1d963787",
   "npm_lock_sha256": "c87adba061e09c972d357cc094666a09452895e565a03b136246f2eb39ca6c14",
   "supplemental": {
     "rust_standard_library": {
@@ -2705,14 +2705,14 @@
     {
       "ecosystem": "cargo",
       "name": "ico",
-      "version": "0.5.0",
+      "version": "0.6.0",
       "license": "MIT",
-      "source": "https://crates.io/crates/ico/0.5.0",
+      "source": "https://crates.io/crates/ico/0.6.0",
       "texts": [
         {
           "name": "LICENSE",
           "sha256": "41ca90213441b294e7517d5858f0cc85bc12e19ec044001b45bc213de461d33b",
-          "source": "https://crates.io/crates/ico/0.5.0",
+          "source": "https://crates.io/crates/ico/0.6.0",
           "provenance": "crate-archive"
         }
       ]
@@ -4600,27 +4600,6 @@
     {
       "ecosystem": "cargo",
       "name": "png",
-      "version": "0.17.16",
-      "license": "MIT OR Apache-2.0",
-      "source": "https://crates.io/crates/png/0.17.16",
-      "texts": [
-        {
-          "name": "LICENSE-APACHE",
-          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
-          "source": "https://crates.io/crates/png/0.17.16",
-          "provenance": "crate-archive"
-        },
-        {
-          "name": "LICENSE-MIT",
-          "sha256": "eaf40297c75da471f7cda1f3458e8d91b4b2ec866e609527a13acfa93b638652",
-          "source": "https://crates.io/crates/png/0.17.16",
-          "provenance": "crate-archive"
-        }
-      ]
-    },
-    {
-      "ecosystem": "cargo",
-      "name": "png",
       "version": "0.18.1",
       "license": "MIT OR Apache-2.0",
       "source": "https://crates.io/crates/png/0.18.1",
@@ -5578,20 +5557,20 @@
     {
       "ecosystem": "cargo",
       "name": "serde_json",
-      "version": "1.0.151",
+      "version": "1.0.154",
       "license": "MIT OR Apache-2.0",
-      "source": "https://crates.io/crates/serde_json/1.0.151",
+      "source": "https://crates.io/crates/serde_json/1.0.154",
       "texts": [
         {
           "name": "LICENSE-APACHE",
           "sha256": "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a",
-          "source": "https://crates.io/crates/serde_json/1.0.151",
+          "source": "https://crates.io/crates/serde_json/1.0.154",
           "provenance": "crate-archive"
         },
         {
           "name": "LICENSE-MIT",
           "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3",
-          "source": "https://crates.io/crates/serde_json/1.0.151",
+          "source": "https://crates.io/crates/serde_json/1.0.154",
           "provenance": "crate-archive"
         }
       ]
@@ -6000,6 +5979,39 @@
     },
     {
       "ecosystem": "cargo",
+      "name": "static_vcruntime",
+      "version": "3.0.0",
+      "license": "MIT OR Apache-2.0 OR Zlib",
+      "source": "https://crates.io/crates/static_vcruntime/3.0.0",
+      "texts": [
+        {
+          "name": "LICENSE",
+          "sha256": "b9290e9d37bc53272ff4f3fb392c1762169fc0a8b797d164803049c81eacb48c",
+          "source": "https://crates.io/crates/static_vcruntime/3.0.0",
+          "provenance": "crate-archive"
+        },
+        {
+          "name": "LICENSE-APACHE",
+          "sha256": "e3ba223bb1423f0aad8c3dfce0fe3148db48926d41e6fbc3afbbf5ff9e1c89cb",
+          "source": "https://crates.io/crates/static_vcruntime/3.0.0",
+          "provenance": "crate-archive"
+        },
+        {
+          "name": "LICENSE-MIT",
+          "sha256": "748c208045a6f00734dbc85a1c0e401c9a25e1f83fc756e99916750dbd2469a7",
+          "source": "https://crates.io/crates/static_vcruntime/3.0.0",
+          "provenance": "crate-archive"
+        },
+        {
+          "name": "LICENSE-ZLIB",
+          "sha256": "c1ff532091cac33bdecedf7268ff4f9bc3ddcffba494249fb723033e9e782f1a",
+          "source": "https://crates.io/crates/static_vcruntime/3.0.0",
+          "provenance": "crate-archive"
+        }
+      ]
+    },
+    {
+      "ecosystem": "cargo",
       "name": "string_cache",
       "version": "0.9.0",
       "license": "MIT OR Apache-2.0",
@@ -6058,20 +6070,20 @@
     {
       "ecosystem": "cargo",
       "name": "swift-rs",
-      "version": "1.0.8",
+      "version": "1.0.9",
       "license": "MIT OR Apache-2.0",
-      "source": "https://crates.io/crates/swift-rs/1.0.8",
+      "source": "https://crates.io/crates/swift-rs/1.0.9",
       "texts": [
         {
           "name": "LICENSE-APACHE",
           "sha256": "908a661cf763bddfa04f2739bea561be62a246f03ad53fcb2272d3ddbd1d943f",
-          "source": "https://crates.io/crates/swift-rs/1.0.8",
+          "source": "https://crates.io/crates/swift-rs/1.0.9",
           "provenance": "crate-archive"
         },
         {
           "name": "LICENSE-MIT",
           "sha256": "f3c3e9f4febe81ff14ccc233c344e6e60051290d1c1e5a2c670d63cc3608a5bb",
-          "source": "https://crates.io/crates/swift-rs/1.0.8",
+          "source": "https://crates.io/crates/swift-rs/1.0.9",
           "provenance": "crate-archive"
         }
       ]
@@ -6256,20 +6268,20 @@
     {
       "ecosystem": "cargo",
       "name": "tauri-build",
-      "version": "2.7.1",
+      "version": "2.7.4",
       "license": "Apache-2.0 OR MIT",
-      "source": "https://crates.io/crates/tauri-build/2.7.1",
+      "source": "https://crates.io/crates/tauri-build/2.7.4",
       "texts": [
         {
           "name": "LICENSE-APACHE-2.0",
           "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594",
-          "source": "https://crates.io/crates/tauri-build/2.7.1",
+          "source": "https://crates.io/crates/tauri-build/2.7.4",
           "provenance": "crate-archive"
         },
         {
           "name": "LICENSE-MIT",
           "sha256": "9dd42ea92cff2ede5cd477cbfcce051b2d0115c0ac7f368ee88cb545055dff1d",
-          "source": "https://crates.io/crates/tauri-build/2.7.1",
+          "source": "https://crates.io/crates/tauri-build/2.7.4",
           "provenance": "crate-archive"
         }
       ]
@@ -6277,20 +6289,20 @@
     {
       "ecosystem": "cargo",
       "name": "tauri-codegen",
-      "version": "2.7.1",
+      "version": "2.7.4",
       "license": "Apache-2.0 OR MIT",
-      "source": "https://crates.io/crates/tauri-codegen/2.7.1",
+      "source": "https://crates.io/crates/tauri-codegen/2.7.4",
       "texts": [
         {
           "name": "LICENSE-APACHE-2.0",
           "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594",
-          "source": "https://crates.io/crates/tauri-codegen/2.7.1",
+          "source": "https://crates.io/crates/tauri-codegen/2.7.4",
           "provenance": "crate-archive"
         },
         {
           "name": "LICENSE-MIT",
           "sha256": "9dd42ea92cff2ede5cd477cbfcce051b2d0115c0ac7f368ee88cb545055dff1d",
-          "source": "https://crates.io/crates/tauri-codegen/2.7.1",
+          "source": "https://crates.io/crates/tauri-codegen/2.7.4",
           "provenance": "crate-archive"
         }
       ]
@@ -6298,20 +6310,20 @@
     {
       "ecosystem": "cargo",
       "name": "tauri-macros",
-      "version": "2.7.1",
+      "version": "2.7.4",
       "license": "Apache-2.0 OR MIT",
-      "source": "https://crates.io/crates/tauri-macros/2.7.1",
+      "source": "https://crates.io/crates/tauri-macros/2.7.4",
       "texts": [
         {
           "name": "LICENSE-APACHE-2.0",
           "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594",
-          "source": "https://crates.io/crates/tauri-macros/2.7.1",
+          "source": "https://crates.io/crates/tauri-macros/2.7.4",
           "provenance": "crate-archive"
         },
         {
           "name": "LICENSE-MIT",
           "sha256": "9dd42ea92cff2ede5cd477cbfcce051b2d0115c0ac7f368ee88cb545055dff1d",
-          "source": "https://crates.io/crates/tauri-macros/2.7.1",
+          "source": "https://crates.io/crates/tauri-macros/2.7.4",
           "provenance": "crate-archive"
         }
       ]
@@ -6319,20 +6331,20 @@
     {
       "ecosystem": "cargo",
       "name": "tauri-runtime-wry",
-      "version": "2.12.1",
+      "version": "2.12.3",
       "license": "Apache-2.0 OR MIT",
-      "source": "https://crates.io/crates/tauri-runtime-wry/2.12.1",
+      "source": "https://crates.io/crates/tauri-runtime-wry/2.12.3",
       "texts": [
         {
           "name": "LICENSE-APACHE-2.0",
           "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594",
-          "source": "https://crates.io/crates/tauri-runtime-wry/2.12.1",
+          "source": "https://crates.io/crates/tauri-runtime-wry/2.12.3",
           "provenance": "crate-archive"
         },
         {
           "name": "LICENSE-MIT",
           "sha256": "9dd42ea92cff2ede5cd477cbfcce051b2d0115c0ac7f368ee88cb545055dff1d",
-          "source": "https://crates.io/crates/tauri-runtime-wry/2.12.1",
+          "source": "https://crates.io/crates/tauri-runtime-wry/2.12.3",
           "provenance": "crate-archive"
         }
       ]
@@ -6340,20 +6352,20 @@
     {
       "ecosystem": "cargo",
       "name": "tauri-runtime",
-      "version": "2.12.1",
+      "version": "2.12.2",
       "license": "Apache-2.0 OR MIT",
-      "source": "https://crates.io/crates/tauri-runtime/2.12.1",
+      "source": "https://crates.io/crates/tauri-runtime/2.12.2",
       "texts": [
         {
           "name": "LICENSE-APACHE-2.0",
           "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594",
-          "source": "https://crates.io/crates/tauri-runtime/2.12.1",
+          "source": "https://crates.io/crates/tauri-runtime/2.12.2",
           "provenance": "crate-archive"
         },
         {
           "name": "LICENSE-MIT",
           "sha256": "9dd42ea92cff2ede5cd477cbfcce051b2d0115c0ac7f368ee88cb545055dff1d",
-          "source": "https://crates.io/crates/tauri-runtime/2.12.1",
+          "source": "https://crates.io/crates/tauri-runtime/2.12.2",
           "provenance": "crate-archive"
         }
       ]
@@ -6361,20 +6373,20 @@
     {
       "ecosystem": "cargo",
       "name": "tauri-utils",
-      "version": "2.10.1",
+      "version": "2.10.2",
       "license": "Apache-2.0 OR MIT",
-      "source": "https://crates.io/crates/tauri-utils/2.10.1",
+      "source": "https://crates.io/crates/tauri-utils/2.10.2",
       "texts": [
         {
           "name": "LICENSE-APACHE-2.0",
           "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594",
-          "source": "https://crates.io/crates/tauri-utils/2.10.1",
+          "source": "https://crates.io/crates/tauri-utils/2.10.2",
           "provenance": "crate-archive"
         },
         {
           "name": "LICENSE-MIT",
           "sha256": "9dd42ea92cff2ede5cd477cbfcce051b2d0115c0ac7f368ee88cb545055dff1d",
-          "source": "https://crates.io/crates/tauri-utils/2.10.1",
+          "source": "https://crates.io/crates/tauri-utils/2.10.2",
           "provenance": "crate-archive"
         }
       ]
@@ -6397,20 +6409,20 @@
     {
       "ecosystem": "cargo",
       "name": "tauri",
-      "version": "2.12.1",
+      "version": "2.12.5",
       "license": "Apache-2.0 OR MIT",
-      "source": "https://crates.io/crates/tauri/2.12.1",
+      "source": "https://crates.io/crates/tauri/2.12.5",
       "texts": [
         {
           "name": "LICENSE-APACHE-2.0",
           "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594",
-          "source": "https://crates.io/crates/tauri/2.12.1",
+          "source": "https://crates.io/crates/tauri/2.12.5",
           "provenance": "crate-archive"
         },
         {
           "name": "LICENSE-MIT",
           "sha256": "9dd42ea92cff2ede5cd477cbfcce051b2d0115c0ac7f368ee88cb545055dff1d",
-          "source": "https://crates.io/crates/tauri/2.12.1",
+          "source": "https://crates.io/crates/tauri/2.12.5",
           "provenance": "crate-archive"
         }
       ]

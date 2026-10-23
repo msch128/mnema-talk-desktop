@@ -6,7 +6,7 @@ publish=false
 license="AGPL-3.0-only"
 [dependencies]
 mnema-private-native-client-broker={path="../broker"}
-uuid={version="=1.27.0",features=["v4"]}
+uuid={version="=1.29.0",features=["v4"]}
 sha2="=0.10.9"
 zeroize="=1.9.1"
 getrandom="=0.3.4"
