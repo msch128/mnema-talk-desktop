@@ -56,7 +56,9 @@ There is no external security audit.
   and brings it to the front when used. Servers in the background keep running
   (hidden, not stopped), so their counts and calls stay live. Overlay and
   shortcuts of the gaming integration belong to the server that owns the Talk
-  you are in. On macOS before 14 the data stores cannot be separated, so the
+  you are in. An update from the single-server client keeps your end-to-end
+  state: the server that had a session here takes over the old browser storage;
+  the host's own pages use a separate one. On macOS before 14 the data stores cannot be separated, so the
   client runs one server there. Servers on different versions work side by side:
   each runs the verified web app that fits it, and one that is too old or too
   new says so in its own tab. See

@@ -143,13 +143,65 @@ fn store_identifier(id: &str) -> [u8; 16] {
     out
 }
 
-/// Gives the page of a server browser storage of its own.
+/// Where the host's own pages (the rail, the page for adding a server, the
+/// gaming surfaces) keep their browser storage: apart from every server's, so
+/// that the storage an old single-server client left can belong to one server.
+const HOST_PROFILE: &str = "host";
+
+#[cfg(target_os = "macos")]
+fn host_identifier() -> [u8; 16] {
+    store_identifier(HOST_PROFILE)
+}
+
+pub fn host_profile(
+    builder: WebviewBuilder<tauri::Wry>,
+    app: &tauri::AppHandle,
+) -> WebviewBuilder<tauri::Wry> {
+    #[cfg(target_os = "macos")]
+    {
+        let _ = app;
+        builder.data_store_identifier(host_identifier())
+    }
+    #[cfg(not(target_os = "macos"))]
+    match profile_dir(app, HOST_PROFILE) {
+        Some(dir) => builder.data_directory(dir),
+        None => builder,
+    }
+}
+
+/// The same for a window of the host.
+pub fn host_profile_window<'a>(
+    builder: WebviewWindowBuilder<'a, tauri::Wry, tauri::AppHandle>,
+    app: &tauri::AppHandle,
+) -> WebviewWindowBuilder<'a, tauri::Wry, tauri::AppHandle> {
+    #[cfg(target_os = "macos")]
+    {
+        let _ = app;
+        builder.data_store_identifier(host_identifier())
+    }
+    #[cfg(not(target_os = "macos"))]
+    match profile_dir(app, HOST_PROFILE) {
+        Some(dir) => builder.data_directory(dir),
+        None => builder,
+    }
+}
+
+/// Gives the page of a server browser storage of its own. The server that took
+/// over the storage of the single-server client keeps using it (that is where
+/// its end-to-end state is); no other page of the host touches it.
 fn isolate(
     builder: WebviewBuilder<tauri::Wry>,
     app: &tauri::AppHandle,
     id: &str,
 ) -> Result<WebviewBuilder<tauri::Wry>, String> {
-    let _ = (app, id);
+    let legacy = app
+        .state::<Trusted>()
+        .registry
+        .lock()
+        .is_ok_and(|r| r.legacy() == Some(id));
+    if legacy {
+        return Ok(builder);
+    }
     #[cfg(target_os = "macos")]
     {
         Ok(builder.data_store_identifier(store_identifier(id)))
@@ -164,10 +216,24 @@ fn isolate(
 /// Removes what a server's page stored in the browser engine. The webview is
 /// already closed; the engine may hold its files a moment longer, so this
 /// tries again for a while, in the background.
-fn wipe_storage(app: &tauri::AppHandle, id: &str) {
+fn wipe_storage(app: &tauri::AppHandle, id: &str, legacy: bool) {
     let app = app.clone();
     let id = id.to_owned();
     tauri::async_runtime::spawn(async move {
+        // The storage of the old client is the engine's default one. Its page
+        // was cleared when it closed; on Windows the folder goes as well.
+        #[cfg(not(target_os = "macos"))]
+        if legacy && let Some(base) = app.state::<Trusted>().data_dir() {
+            let default = base.join("EBWebView");
+            for _ in 0..WIPE_ATTEMPTS {
+                if !default.exists() || std::fs::remove_dir_all(&default).is_ok() {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(500)).await;
+            }
+        }
+        #[cfg(target_os = "macos")]
+        let _ = legacy;
         #[cfg(target_os = "macos")]
         for _ in 0..WIPE_ATTEMPTS {
             if app.remove_data_store(store_identifier(&id)).await.is_ok() {
@@ -208,8 +274,8 @@ fn sweep_orphans(app: &tauri::AppHandle) {
     {
         for entry in entries.flatten() {
             let name = entry.file_name().to_string_lossy().into_owned();
-            if !known.contains(&name) {
-                wipe_storage(app, &name);
+            if name != HOST_PROFILE && !known.contains(&name) {
+                wipe_storage(app, &name, false);
             }
         }
     }
@@ -217,7 +283,11 @@ fn sweep_orphans(app: &tauri::AppHandle) {
     {
         let app = app.clone();
         tauri::async_runtime::spawn(async move {
-            let keep: Vec<[u8; 16]> = known.iter().map(|id| store_identifier(id)).collect();
+            let keep: Vec<[u8; 16]> = known
+                .iter()
+                .map(|id| store_identifier(id))
+                .chain(std::iter::once(host_identifier()))
+                .collect();
             for stored in app.fetch_data_store_identifiers().await.unwrap_or_default() {
                 if !keep.contains(&stored) {
                     let _ = app.remove_data_store(stored).await;
@@ -460,7 +530,7 @@ fn host_page(app: &tauri::AppHandle, label: &str, role: &str) -> WebviewBuilder<
     } else {
         builder
     };
-    super::web_permissions::with_probe_args_child(app, label, builder)
+    super::web_permissions::with_probe_args_child(app, label, host_profile(builder, app))
 }
 
 /// Opens the window with the rail and the page for adding a server, and starts
@@ -802,6 +872,7 @@ pub async fn add_server(
     check_room(state)?;
     let server = discover(&origin).await?;
     let held = choose(state, &server).await?;
+    let adopts = state.adopts_old_storage(&origin, &Os);
     let session = make_session(state, &id, origin.clone(), held)?;
     {
         let mut registry = state.registry.lock().map_err(|_| "busy")?;
@@ -812,6 +883,9 @@ pub async fn add_server(
         if let Some(slot) = registry.slot_mut(&id) {
             slot.restart();
             slot.phase = Phase::Ready(Arc::clone(&session));
+        }
+        if adopts {
+            registry.set_legacy(&id);
         }
         registry.activate(&id);
     }
@@ -936,10 +1010,17 @@ pub async fn rail_reconnect(webview: Webview, id: String) -> Result<(), String> 
 /// storage, its sockets, its toasts and its gaming token.
 pub(crate) async fn remove_server(app: &tauri::AppHandle, id: &str) {
     let trusted = app.state::<Trusted>();
-    let slot = trusted.registry.lock().ok().and_then(|mut r| r.remove(id));
+    let (slot, legacy_before) = match trusted.registry.lock() {
+        Ok(mut registry) => {
+            let legacy = registry.legacy().map(str::to_owned);
+            (registry.remove(id), legacy)
+        }
+        Err(_) => return,
+    };
     let Some(slot) = slot else {
         return;
     };
+    let legacy = legacy_before.as_deref() == Some(id);
     match &slot.phase {
         Phase::Ready(session) => {
             session.sockets.close_all();
@@ -956,7 +1037,7 @@ pub(crate) async fn remove_server(app: &tauri::AppHandle, id: &str) {
     if let Some(attachment) = app.get_webview_window(&attachment_label(id)) {
         let _ = attachment.close();
     }
-    wipe_storage(app, id);
+    wipe_storage(app, id, legacy);
     changed(app);
     counts_changed(app);
     focus_front(app);

@@ -159,6 +159,10 @@ pub struct Registry {
     active: Option<String>,
     /// The page for adding a server is in front.
     adding: bool,
+    /// The server that took over the browser storage of the single-server
+    /// client this one replaced (its end-to-end state lives there). None for
+    /// every server that has a storage of its own.
+    legacy: Option<String>,
 }
 
 /// What the rail draws for one server.
@@ -211,7 +215,23 @@ impl Registry {
             .filter(|id| registry.contains(id))
             .or_else(|| registry.slots.first().map(|s| s.id.clone()));
         registry.adding = registry.active.is_none();
+        registry.legacy = stored
+            .legacy
+            .as_ref()
+            .map(id_for)
+            .filter(|id| registry.contains(id));
         registry
+    }
+
+    pub fn legacy(&self) -> Option<&str> {
+        self.legacy.as_deref()
+    }
+
+    /// The server takes over the storage the single-server client left.
+    pub fn set_legacy(&mut self, id: &str) {
+        if self.contains(id) {
+            self.legacy = Some(id.to_owned());
+        }
     }
 
     pub fn len(&self) -> usize {
@@ -265,6 +285,9 @@ impl Registry {
     pub fn remove(&mut self, id: &str) -> Option<Slot> {
         let index = self.slots.iter().position(|s| s.id == id)?;
         let slot = self.slots.remove(index);
+        if self.legacy.as_deref() == Some(id) {
+            self.legacy = None;
+        }
         if self.active.as_deref() == Some(id) {
             self.active = self
                 .slots
@@ -397,6 +420,11 @@ impl Registry {
                 .as_deref()
                 .and_then(|id| self.slot(id))
                 .map(|s| s.origin.clone()),
+            legacy: self
+                .legacy
+                .as_deref()
+                .and_then(|id| self.slot(id))
+                .map(|s| s.origin.clone()),
         }
     }
 }
@@ -407,6 +435,7 @@ pub struct Stored {
     version: u32,
     pub servers: Vec<Url>,
     pub active: Option<Url>,
+    pub legacy: Option<Url>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -414,6 +443,8 @@ struct StoredFile {
     version: u32,
     servers: Vec<String>,
     active: Option<String>,
+    #[serde(default)]
+    legacy: Option<String>,
 }
 
 impl Stored {
@@ -422,6 +453,7 @@ impl Stored {
             version: STORE_VERSION,
             servers: Vec::new(),
             active: None,
+            legacy: None,
         }
     }
 
@@ -456,10 +488,15 @@ impl Stored {
             .active
             .and_then(|a| crate::web_client::address(&a).ok())
             .filter(|a| servers.contains(a));
+        let legacy = stored
+            .legacy
+            .and_then(|a| crate::web_client::address(&a).ok())
+            .filter(|a| servers.contains(a));
         Stored {
             version: STORE_VERSION,
             servers,
             active,
+            legacy,
         }
     }
 
@@ -469,6 +506,7 @@ impl Stored {
             version: self.version,
             servers: self.servers.iter().map(|u| u.as_str().to_owned()).collect(),
             active: self.active.as_ref().map(|u| u.as_str().to_owned()),
+            legacy: self.legacy.as_ref().map(|u| u.as_str().to_owned()),
         };
         let Ok(raw) = serde_json::to_vec(&stored) else {
             return;
@@ -821,6 +859,35 @@ mod tests {
         assert_eq!(restored.active(), Some(id("b.example").as_str()));
         assert!(!restored.adding());
         assert!(Registry::restore(&Stored::empty()).adding());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn the_server_that_took_over_the_old_storage_is_remembered_until_it_leaves() {
+        let dir = scratch("legacy");
+        let file = dir.join("instances.json");
+        let mut registry = registry(&["a.example", "b.example"]);
+        registry.set_legacy(&id("nobody.example"));
+        assert_eq!(registry.legacy(), None, "only a server on the list can");
+        registry.set_legacy(&id("a.example"));
+        registry.stored().save(Some(&file));
+        let restored = Registry::restore(&Stored::load(Some(&file)));
+        assert_eq!(restored.legacy(), Some(id("a.example").as_str()));
+        // Another server leaving changes nothing; its own leaving frees it.
+        registry.remove(&id("b.example"));
+        assert_eq!(registry.legacy(), Some(id("a.example").as_str()));
+        registry.remove(&id("a.example"));
+        assert_eq!(registry.legacy(), None);
+        assert_eq!(registry.stored().legacy, None);
+        // A list from before this field, or one naming a stranger, has none.
+        std::fs::write(
+            &file,
+            r#"{"version":1,"servers":["https://a.example/"],"active":null}"#,
+        )
+        .unwrap();
+        assert_eq!(Stored::load(Some(&file)).legacy, None);
+        std::fs::write(&file, r#"{"version":1,"servers":["https://a.example/"],"active":null,"legacy":"https://b.example/"}"#).unwrap();
+        assert_eq!(Stored::load(Some(&file)).legacy, None);
         let _ = std::fs::remove_dir_all(dir);
     }
 

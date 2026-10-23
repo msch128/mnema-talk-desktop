@@ -422,7 +422,7 @@ async fn removal(app: &tauri::AppHandle, trusted: &Trusted, a: &str, b: &str, se
         let wiped = async {
             for _ in 0..50 {
                 let ids = app.fetch_data_store_identifiers().await.unwrap_or_default();
-                if ids.len() <= 1 {
+                if ids.len() <= 2 {
                     return true;
                 }
                 tokio::time::sleep(Duration::from_millis(200)).await;

@@ -535,23 +535,27 @@ fn surface(
     } else {
         builder
     };
-    let w = crate::web_permissions::with_probe_args(app, label, builder)
-        .inner_size(
-            if interactive { 420.0 } else { 240.0 },
-            if interactive { 650.0 } else { 430.0 },
-        )
-        .decorations(false)
-        .shadow(false)
-        .transparent(true)
-        .always_on_top(true)
-        .skip_taskbar(true)
-        .visible(false)
-        .focused(false)
-        .focusable(interactive)
-        .on_navigation(super::web_client::bundled)
-        .on_new_window(|_, _| tauri::webview::NewWindowResponse::Deny)
-        .on_permission_request(super::web_client::allow_permission)
-        .build()?;
+    let w = crate::web_permissions::with_probe_args(
+        app,
+        label,
+        super::web_shell::host_profile_window(builder, app),
+    )
+    .inner_size(
+        if interactive { 420.0 } else { 240.0 },
+        if interactive { 650.0 } else { 430.0 },
+    )
+    .decorations(false)
+    .shadow(false)
+    .transparent(true)
+    .always_on_top(true)
+    .skip_taskbar(true)
+    .visible(false)
+    .focused(false)
+    .focusable(interactive)
+    .on_navigation(super::web_client::bundled)
+    .on_new_window(|_, _| tauri::webview::NewWindowResponse::Deny)
+    .on_permission_request(super::web_client::allow_permission)
+    .build()?;
     #[cfg(windows)]
     if let Ok(hwnd) = w.hwnd() {
         let color: u32 = 0xfffffffe; // DWMWA_COLOR_NONE, Windows 11 border only.
