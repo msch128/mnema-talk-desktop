@@ -2,7 +2,10 @@
 //! selected instance for `/api/`. The page sees one origin, as in a browser;
 //! the session cookie stays here and the instance's answers are data, never
 //! code (mnema-talk `doc/desktop-trusted-client.md`).
-use crate::{web_bundle::Bundle, web_vault::Vault};
+use crate::{
+    web_bundle::{Bundle, Version},
+    web_vault::Vault,
+};
 use cookie::Cookie;
 use reqwest::{Client, redirect::Policy};
 use serde::{Deserialize, Serialize};
@@ -43,12 +46,41 @@ const BUDGET_UNIT: usize = 64 << 10;
 const BUDGET_WAIT: Duration = Duration::from_secs(30);
 const MAX_COOKIES: usize = 32;
 
-/// Same policy as the server's SPA (`httpx.SPAContentSecurityPolicy`), plus the
-/// IPC schemes the host needs.
-pub const APP_CSP: &str = "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; \
-img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self' data:; \
-connect-src 'self' ipc: http://ipc.localhost https://ipc.localhost; worker-src 'self' blob:; \
-frame-ancestors 'none'; base-uri 'none'; form-action 'self'; object-src 'none'";
+/// Same policy as the server's SPA (`httpx.SPAContentSecurityPolicy`) since
+/// mnema-talk 1.1.0, plus the IPC schemes the host needs: no inline styles,
+/// neither elements nor attributes. Only bundles built for it get it (see
+/// `app_csp`).
+pub const APP_CSP: &str = concat!(
+    "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; ",
+    "style-src 'self'; style-src-attr 'none'; ",
+    "img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self' data:; ",
+    "connect-src 'self' ipc: http://ipc.localhost https://ipc.localhost; worker-src 'self' blob:; ",
+    "frame-ancestors 'none'; base-uri 'none'; form-action 'self'; object-src 'none'"
+);
+
+/// The policy of bundles before 1.1.0: their emoji picker writes a `<style>`
+/// element and `style` attributes, so they need `'unsafe-inline'`. The host can
+/// still load such a bundle (a 1.0.x instance) and the strict policy would
+/// show its picker unstyled.
+pub const LEGACY_APP_CSP: &str = concat!(
+    "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; ",
+    "style-src 'self' 'unsafe-inline'; ",
+    "img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self' data:; ",
+    "connect-src 'self' ipc: http://ipc.localhost https://ipc.localhost; worker-src 'self' blob:; ",
+    "frame-ancestors 'none'; base-uri 'none'; form-action 'self'; object-src 'none'"
+);
+
+/// First bundle version that runs under `APP_CSP`.
+const STRICT_STYLE_FROM: Version = Version(1, 1, 0);
+
+/// The policy for a verified bundle, by the version in its signed manifest.
+pub fn app_csp(version: Version) -> &'static str {
+    if version >= STRICT_STYLE_FROM {
+        APP_CSP
+    } else {
+        LEGACY_APP_CSP
+    }
+}
 
 /// Applied to everything that comes from the instance. `sandbox` (without
 /// `allow-same-origin` or `allow-scripts`) gives a document opened from such a
@@ -143,7 +175,7 @@ pub fn serve_bundle(bundle: &Bundle, method: &str, path: &str) -> Resp {
         status: 200,
         headers: vec![
             ("content-type".into(), mime_for(name).into()),
-            ("content-security-policy".into(), APP_CSP.into()),
+            ("content-security-policy".into(), app_csp(bundle.version).into()),
             ("x-content-type-options".into(), "nosniff".into()),
             ("referrer-policy".into(), "no-referrer".into()),
             ("permissions-policy".into(), "camera=(self), geolocation=(), payment=(), usb=(), microphone=(self), display-capture=(self)".into()),
@@ -677,7 +709,7 @@ mod tests {
             header(&js, "cache-control"),
             Some("public, max-age=31536000, immutable")
         );
-        assert_eq!(header(&js, "content-security-policy"), Some(APP_CSP));
+        assert_eq!(header(&js, "content-security-policy"), Some(LEGACY_APP_CSP));
         assert_eq!(header(&js, "x-content-type-options"), Some("nosniff"));
         assert_eq!(
             header(&serve_bundle(&b, "GET", "/assets/dfn.wasm"), "content-type"),
@@ -686,7 +718,43 @@ mod tests {
         let head = serve_bundle(&b, "HEAD", "/");
         assert!(head.body.is_empty());
         assert_eq!(head.status, 200);
-        assert!(!APP_CSP.contains("unsafe-eval'") || APP_CSP.contains("wasm-unsafe-eval"));
+        for csp in [APP_CSP, LEGACY_APP_CSP] {
+            assert!(!csp.contains("unsafe-eval'") || csp.contains("wasm-unsafe-eval"));
+        }
+    }
+
+    #[test]
+    fn bundles_from_1_1_0_get_the_strict_style_policy_and_older_ones_keep_inline_styles() {
+        for (version, strict) in [
+            ("0.8.0", false),
+            ("1.0.0", false),
+            ("1.0.9", false),
+            ("1.1.0", true),
+            ("1.1.1", true),
+            ("1.2.0", true),
+            ("2.0.0", true),
+        ] {
+            let mut spec = Spec::new(version);
+            spec.files = vec![("index.html", "<html>shell</html>")];
+            let b = verify(&crate::web_bundle::fixture::bundle(&spec), &trusted(7)).unwrap();
+            let resp = serve_bundle(&b, "GET", "/");
+            let csp = header(&resp, "content-security-policy").unwrap();
+            assert_eq!(csp, app_csp(b.version), "{version}");
+            if strict {
+                assert!(
+                    csp.contains("style-src 'self'; style-src-attr 'none';"),
+                    "{version}"
+                );
+                assert!(!csp.contains("unsafe-inline"), "{version}");
+            } else {
+                assert!(
+                    csp.contains("style-src 'self' 'unsafe-inline';"),
+                    "{version}"
+                );
+                assert!(!csp.contains("style-src-attr"), "{version}");
+            }
+        }
+        assert!(!APP_CSP.contains("unsafe-inline"));
     }
 
     #[test]
