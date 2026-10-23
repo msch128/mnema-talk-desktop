@@ -160,7 +160,7 @@ assets, because reloading cannot install a new desktop build.
 
 From this repository's root, install the shared frontend with `npm ci --prefix mnema-talk/web`,
 then run `npm run build:client:dev`. Native builds use Rust
-1.99.0 and the committed Cargo lockfile. The equivalent native command after
+1.99.1 and the committed Cargo lockfile. The equivalent native command after
 building `mnema-talk/web/dist` is
 `cargo build --locked --manifest-path experimental/app/Cargo.toml --features shell,native-crypto,custom-protocol`.
 This produces an unsigned DEV executable without configuring an automatic updater.

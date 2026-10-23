@@ -17,9 +17,9 @@ rusqlite = { version = "=0.37.0", features = ["bundled-sqlcipher-vendored-openss
 serde = "=1.0.229"
 serde_json = "=1.0.154"
 coset = "=0.4.2"
-ed25519-dalek = { version = "=2.2.0", default-features = false, features = ["std", "zeroize"] }
+ed25519-dalek = { version = "=3.0.0", default-features = false, features = ["zeroize"] }
 zeroize = "=1.9.1"
-sha2 = "=0.10.9"
+sha2 = "=0.11.1"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 security-framework = "=3.7.0"

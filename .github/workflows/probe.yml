@@ -74,7 +74,7 @@ jobs:
         with:
           node-version: '26'
       - name: Install pinned Rust toolchain
-        run: rustup toolchain install 1.99.0 --profile minimal --component rustfmt --component clippy
+        run: rustup toolchain install 1.99.1 --profile minimal --component rustfmt --component clippy
       - name: Frontend dependencies, tests and local-asset build
         shell: bash
         run: |
@@ -87,9 +87,9 @@ jobs:
         run: |
           set -euo pipefail
           node scripts/checked-glib.mjs
-          cargo +1.99.0 fmt --manifest-path Cargo.toml --check
-          cargo +1.99.0 test --locked --manifest-path Cargo.toml
-          cargo +1.99.0 clippy --locked --manifest-path Cargo.toml --all-targets --features shell -- -D warnings
+          cargo +1.99.1 fmt --manifest-path Cargo.toml --check
+          cargo +1.99.1 test --locked --manifest-path Cargo.toml
+          cargo +1.99.1 clippy --locked --manifest-path Cargo.toml --all-targets --features shell -- -D warnings
       - name: Build unsigned feasibility probe (not a release)
         run: npm run build
       - name: Verify distribution notices and development manifest tests
@@ -103,7 +103,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cargo +1.99.0 install cargo-audit --version "$CARGO_AUDIT_VERSION" --locked
+          cargo +1.99.1 install cargo-audit --version "$CARGO_AUDIT_VERSION" --locked
           node scripts/checked-glib.mjs --audit
           cargo audit --file Cargo.lock
       - name: Upload Windows probe for qualification

@@ -18,21 +18,45 @@ pub struct Os;
 
 const SERVICE: &str = "mnema-desktop-session";
 
+/// Installs the platform store once. keyring 4 has no built-in stores: the
+/// entries below go to the default store, which is the legacy keychain on
+/// macOS and the Credential Manager on Windows, under the same service and
+/// account names (and so the same items) as keyring 3 used.
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn entry(account: &str) -> Option<keyring_core::Entry> {
+    use std::sync::OnceLock;
+    static READY: OnceLock<bool> = OnceLock::new();
+    let ready = *READY.get_or_init(|| {
+        #[cfg(target_os = "macos")]
+        let store = apple_native_keyring_store::keychain::Store::new();
+        #[cfg(target_os = "windows")]
+        let store = windows_native_keyring_store::Store::new();
+        match store {
+            Ok(store) => {
+                keyring_core::set_default_store(store);
+                true
+            }
+            Err(_) => false,
+        }
+    });
+    if !ready {
+        return None;
+    }
+    keyring_core::Entry::new(SERVICE, account).ok()
+}
+
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 impl Vault for Os {
     fn load(&self, account: &str) -> Option<Vec<u8>> {
-        keyring::Entry::new(SERVICE, account)
-            .ok()?
-            .get_secret()
-            .ok()
+        entry(account)?.get_secret().ok()
     }
 
     fn save(&self, account: &str, secret: &[u8]) -> bool {
-        keyring::Entry::new(SERVICE, account).is_ok_and(|e| e.set_secret(secret).is_ok())
+        entry(account).is_some_and(|e| e.set_secret(secret).is_ok())
     }
 
     fn remove(&self, account: &str) {
-        if let Ok(entry) = keyring::Entry::new(SERVICE, account) {
+        if let Some(entry) = entry(account) {
             let _ = entry.delete_credential();
         }
     }

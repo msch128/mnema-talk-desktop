@@ -12,7 +12,7 @@ inventory is [../THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md).
 
 | Software | Version | Licence | Where |
 |---|---|---|---|
-| [Electron](https://www.electronjs.org/) | 44.9.0 | MIT | the program (`mnema-desktop-dev`) and its libraries |
+| [Electron](https://www.electronjs.org/) | 45.0.0 | MIT | the program (`mnema-desktop-dev`) and its libraries |
 | [Chromium](https://www.chromium.org/) | embedded in Electron | BSD-3-Clause and the licences of its own dependencies | `LICENSES.chromium.html` lists every one |
 | [Node.js](https://nodejs.org/) | embedded in Electron | MIT and the licences of its own dependencies | `LICENSES.chromium.html` |
 | [ws](https://github.com/websockets/ws) | 8.22.0 | MIT | `resources/app.asar` (`node_modules/ws`), text below |
