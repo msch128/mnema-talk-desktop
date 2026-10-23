@@ -21,7 +21,7 @@ import { buildMenu } from './menu.ts'
 import { HOST_PAGE_CSP, assetHandler } from './protocol.ts'
 import { registerRailIpc } from './rail.ts'
 import { prepare } from './sessions.ts'
-import { bundlesChanged, createShell, legacyStorageWaits } from './shell.ts'
+import { bundlesChanged, createShell, legacyStorageWaits, wipeLegacyStorage } from './shell.ts'
 import { SANDBOX_MESSAGE, debuggingAccepted, debuggingRequested, sandboxAccepted, sandboxDisabled } from './sandbox.ts'
 import { createUpdater, scheduleChecks } from './updater.ts'
 import { osVault } from './vault.ts'
@@ -70,10 +70,10 @@ async function start(): Promise<void> {
   for (const name of trusted.store.rejected) {
     console.error(`Mnema Desktop: refused web bundle ${name}: it does not verify against the pinned keys.`)
   }
-  const shell = { window: null, rail: null, selector: null, pages: new Map(), attachments: new Map(), adoptLegacy: false }
+  const shell = { window: null, rail: null, selector: null, pages: new Map(), attachments: new Map() }
   const ctx: Context = { trusted, updater: null, debug, roles: new Map(), servers: new Map(), prepared: new Set(), shell, windows: {} }
-  // The single-server client kept its storage in one partition; the first server added after the update adopts it (its end-to-end state).
-  shell.adoptLegacy = legacyStorageWaits(ctx)
+  // The single-server client kept every server in one partition and recorded none of them: it belongs to no one server and is never handed on. Wiped once (the partition is gone afterwards).
+  if (legacyStorageWaits(ctx)) void wipeLegacyStorage(ctx)
 
   const assets = (name: string) => loadAssets(join(app.getAppPath(), 'assets', name))
   // The rail, the page for adding a server and the pages of the servers are set up by the shell; these two are the host's own pages.

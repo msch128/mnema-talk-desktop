@@ -77,33 +77,6 @@ pub struct Trusted {
     data_dir: Option<std::path::PathBuf>,
 }
 
-/// What the first server added does with the storage of the old client.
-#[derive(Debug, PartialEq, Eq)]
-pub(crate) enum OldStorage {
-    /// Nothing from an old client (or already decided).
-    None,
-    /// The server is plainly the owner and keeps it.
-    Adopt,
-    /// It cannot be attributed to one server: it is wiped.
-    Wipe,
-}
-
-/// The rule: only the origin the old client persisted can own its storage.
-pub(crate) fn decide_old_storage(persisted: Option<&Url>, added: &Url) -> OldStorage {
-    if persisted == Some(added) {
-        OldStorage::Adopt
-    } else {
-        OldStorage::Wipe
-    }
-}
-
-/// The origin the old client persisted as its server. None: no released client
-/// wrote one (it asked for the address at every start and kept only
-/// `web-trust`, `web-bundles` and per-origin `sessions`).
-pub(crate) fn persisted_origin_of_old_client() -> Option<Url> {
-    None
-}
-
 /// Something an earlier client leaves in its data directory, and the list of
 /// servers (written by this one) does not exist yet.
 fn old_client_left_data(dir: &std::path::Path) -> bool {
@@ -142,23 +115,16 @@ impl Trusted {
         }
     }
 
-    /// What becomes of the storage the single-server client left, decided once
-    /// when the first server is added. That client kept every server it ever
-    /// showed in one shared storage and persisted no address of its server
-    /// (only trust state, bundles and per-origin sessions), so the owner cannot
-    /// be proven. The storage goes to a server only if an origin was persisted
-    /// and is the one being added; otherwise, which is every released client,
-    /// it is wiped. Fail closed: the person signs in again and gets a new
-    /// device key; a server never inherits a stranger's cookies or end-to-end
-    /// state.
-    pub(crate) fn old_storage_for(&self, origin: &Url) -> OldStorage {
-        if !self
-            .adoptable
+    /// Whether the storage the single-server client left is still to be wiped.
+    /// True once: on the first start of this version, before any server of
+    /// this client exists. That client kept every server it ever showed in one
+    /// shared storage and recorded none of them, so the storage can belong to
+    /// no one server and is never handed on; everyone starts with a storage
+    /// of their own and signs in again (a new device key for end-to-end media;
+    /// messages live on the server). Writing the list of servers ends it.
+    pub(crate) fn take_old_storage_wipe(&self) -> bool {
+        self.adoptable
             .swap(false, std::sync::atomic::Ordering::SeqCst)
-        {
-            return OldStorage::None;
-        }
-        decide_old_storage(persisted_origin_of_old_client().as_ref(), origin)
     }
 
     #[cfg(test)]
@@ -1317,56 +1283,34 @@ mod tests {
     }
 
     #[test]
-    fn the_old_storage_goes_to_a_proven_owner_only() {
-        let a = Url::parse("https://a.example/").unwrap();
-        let b = Url::parse("https://b.example/").unwrap();
-        // Persisted origin A, add B: no adopt. Persisted A, add A: adopt.
-        assert_eq!(decide_old_storage(Some(&a), &b), OldStorage::Wipe);
-        assert_eq!(decide_old_storage(Some(&a), &a), OldStorage::Adopt);
-        // Nothing persisted: nobody adopts.
-        assert_eq!(decide_old_storage(None, &a), OldStorage::Wipe);
-        assert_eq!(persisted_origin_of_old_client(), None);
-    }
-
-    #[test]
-    fn a_server_added_next_to_old_sessions_never_inherits_the_old_storage() {
-        use crate::web_vault::{Vault, fake::Memory};
+    fn the_old_storage_is_wiped_once_and_never_handed_on() {
         let dir = std::env::temp_dir().join(format!("mnema-adopt-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(dir.join("sessions")).unwrap();
-        let a = Url::parse("https://a.example/").unwrap();
-        let b = Url::parse("https://b.example/").unwrap();
-        // A's session is in the keychain, B's is a file: neither proves who owns the storage.
-        let vault = Memory::default();
-        vault.save(&crate::instances::id_for(&a), b"[]");
-        std::fs::write(
-            dir.join("sessions")
-                .join(format!("{}.json", crate::instances::id_for(&b))),
-            b"[]",
-        )
-        .unwrap();
-        for first in [&a, &b] {
-            let trusted = Trusted::new(Some(dir.clone()), None);
-            assert_eq!(trusted.old_storage_for(first), OldStorage::Wipe);
-            assert_eq!(
-                trusted.old_storage_for(first),
-                OldStorage::None,
-                "decided once"
-            );
+        // Sessions of two servers, whoever they were: nothing proves who owned the storage.
+        for host in ["a.example", "b.example"] {
+            let origin = Url::parse(&format!("https://{host}/")).unwrap();
+            std::fs::write(
+                dir.join("sessions")
+                    .join(format!("{}.json", crate::instances::id_for(&origin))),
+                b"[]",
+            )
+            .unwrap();
         }
-        // A fresh install has nothing to decide, and neither has a client with a list.
+        // The first start of this version: the wipe is due, once.
+        let first = Trusted::new(Some(dir.clone()), None);
+        assert!(first.take_old_storage_wipe());
+        assert!(!first.take_old_storage_wipe(), "once per start");
+        // Writing the list is what marks it done: no second wipe on any later start.
+        first.save_instances();
+        assert!(!Trusted::new(Some(dir.clone()), None).take_old_storage_wipe());
+        assert!(!Trusted::new(Some(dir.clone()), None).take_old_storage_wipe());
+        // A fresh install has nothing to wipe.
         let none = std::env::temp_dir().join(format!("mnema-adopt-none-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&none);
-        assert_eq!(
-            Trusted::new(Some(none.clone()), None).old_storage_for(&a),
-            OldStorage::None
-        );
-        let listed = Trusted::new(Some(dir.clone()), None);
-        listed.save_instances();
-        assert_eq!(
-            Trusted::new(Some(dir.clone()), None).old_storage_for(&a),
-            OldStorage::None
-        );
+        assert!(!Trusted::new(Some(none.clone()), None).take_old_storage_wipe());
+        // And no data directory, no wipe.
+        assert!(!Trusted::new(None, None).take_old_storage_wipe());
         let _ = std::fs::remove_dir_all(dir);
         let _ = std::fs::remove_dir_all(none);
     }

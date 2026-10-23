@@ -14,7 +14,7 @@ import { existsSync, readdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { BaseWindow, WebContentsView, app, session } from 'electron'
 import { parseAddress } from '../core/client.ts'
-import { AddError, MAX_INSTANCES, decideOldStorage, idFor, persistedOriginOfOldClient } from '../core/instances.ts'
+import { AddError, MAX_INSTANCES, idFor } from '../core/instances.ts'
 import { APP_URL } from '../core/origin.ts'
 import { LEGACY_PARTITION, PARTITIONS, attachmentPartition, serverPartition, type Context } from './context.ts'
 import { buildMenu } from './menu.ts'
@@ -229,12 +229,6 @@ export async function addServer(ctx: Context, address: string): Promise<void> {
   }
   const slot = registry.slot(id)
   if (slot) { registry.restart(id); slot.phase = { kind: 'ready', session } }
-  // The storage of the single-server client holds every server it showed. Only a proven owner keeps it; otherwise it goes.
-  if (ctx.shell.adoptLegacy && registry.length === 1) {
-    ctx.shell.adoptLegacy = false
-    if (decideOldStorage(persistedOriginOfOldClient(), origin.href) === 'adopt') registry.legacy = id
-    else await wipeLegacyStorage(ctx)
-  }
   registry.activate(id)
   try {
     openPage(ctx, id)
@@ -351,8 +345,8 @@ export async function wipeLegacyStorage(ctx: Context): Promise<void> {
   attempt()
 }
 
-/** Whether the single-server client left its storage behind and no list of servers exists yet. */
+/** Whether the single-server client left its storage behind (it is gone once wiped, so this is true once). */
 export function legacyStorageWaits(ctx: Context): boolean {
   const dir = partitionDir(ctx, LEGACY_PARTITION)
-  return existsSync(dir) && ctx.trusted.registry.length === 0
+  return existsSync(dir)
 }

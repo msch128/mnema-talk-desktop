@@ -109,12 +109,10 @@ const bound = (n: number) => Math.min(MAX_COUNT, Math.max(0, Math.trunc(Number.i
 export interface Stored {
   servers: URL[]
   active: URL | null
-  /** The server whose storage lives in the partition of the single-server client, adopted at the update. */
-  legacy: string | null
 }
 
 export function emptyStored(): Stored {
-  return { servers: [], active: null, legacy: null }
+  return { servers: [], active: null }
 }
 
 /** Reads the list. Anything that does not hold up (unknown version, a bad address, a duplicate, too many) is dropped rather than trusted. */
@@ -128,7 +126,7 @@ export function loadStored(file: string | null): Stored {
     return emptyStored()
   }
   if (typeof raw !== 'object' || raw === null) return emptyStored()
-  const { version, servers, active, legacy } = raw as Record<string, unknown>
+  const { version, servers, active } = raw as Record<string, unknown>
   if (version !== STORE_VERSION || !Array.isArray(servers)) return emptyStored()
   const list: URL[] = []
   for (const address of servers) {
@@ -142,8 +140,7 @@ export function loadStored(file: string | null): Stored {
   if (typeof active === 'string') {
     try { front = list.find((u) => u.href === parseAddress(active).href) ?? null } catch { front = null }
   }
-  const adopted = typeof legacy === 'string' && validId(legacy) && list.some((u) => idFor(u) === legacy) ? legacy : null
-  return { servers: list, active: front, legacy: adopted }
+  return { servers: list, active: front }
 }
 
 export function saveStored(file: string | null, stored: Stored): void {
@@ -151,7 +148,7 @@ export function saveStored(file: string | null, stored: Stored): void {
   try {
     mkdirSync(dirname(file), { recursive: true })
     const temporary = `${file}.tmp`
-    writeFileSync(temporary, JSON.stringify({ version: STORE_VERSION, servers: stored.servers.map((u) => u.href), active: stored.active?.href ?? null, legacy: stored.legacy }), { mode: 0o600 })
+    writeFileSync(temporary, JSON.stringify({ version: STORE_VERSION, servers: stored.servers.map((u) => u.href), active: stored.active?.href ?? null }), { mode: 0o600 })
     renameSync(temporary, file)
   } catch { /* the list is a convenience; the sessions do not depend on it */ }
 }
@@ -165,14 +162,12 @@ export class Registry {
   private front: string | null = null
   private addingNow = false
   /** The server that keeps the storage of the single-server client. */
-  legacy: string | null = null
 
   static restore(stored: Stored): Registry {
     const registry = new Registry()
     for (const origin of stored.servers) {
       try { registry.add(origin) } catch { /* a duplicate */ }
     }
-    registry.legacy = stored.legacy
     const wanted = stored.active ? idFor(stored.active) : null
     registry.front = wanted !== null && registry.contains(wanted) ? wanted : (registry.slots[0]?.id ?? null)
     registry.addingNow = registry.front === null
@@ -223,7 +218,6 @@ export class Registry {
     if (index < 0) return null
     const [slot] = this.slots.splice(index, 1)
     if (this.front === id) this.front = this.slots[Math.min(index, this.slots.length - 1)]?.id ?? null
-    if (this.legacy === id) this.legacy = null
     this.addingNow = this.slots.length === 0 || (this.addingNow && this.front !== null)
     return slot ?? null
   }
@@ -325,25 +319,6 @@ export class Registry {
 
   stored(): Stored {
     const front = this.front ? this.slot(this.front) : undefined
-    return { servers: this.slots.map((s) => s.origin), active: front?.origin ?? null, legacy: this.legacy }
+    return { servers: this.slots.map((s) => s.origin), active: front?.origin ?? null }
   }
-}
-
-/**
- * What becomes of the storage the single-server client left. That client kept
- * every server it ever showed in one shared storage and persisted no address
- * of its server (only trust state, bundles and per-origin sessions), so the
- * owner of the storage cannot be proven; it is handed to a server only if an
- * origin was persisted and is the one being added. In every other case, which
- * is every released client, it is wiped. Fail closed: a person who loses it
- * signs in again and gets a new device key; a server that inherits a stranger's
- * storage would read its cookies and end-to-end state.
- */
-export function decideOldStorage(persistedOrigin: string | null, added: string): 'adopt' | 'wipe' {
-  return persistedOrigin !== null && persistedOrigin === added ? 'adopt' : 'wipe'
-}
-
-/** The origin the old client persisted as its server, or null: no released client persisted one. */
-export function persistedOriginOfOldClient(): string | null {
-  return null
 }
