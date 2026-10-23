@@ -350,7 +350,7 @@ onMounted(async () => {
     <template v-else>
       <!-- Left Column: Navigation, Channels & User Controls -->
       <div
-        class="relative flex flex-col h-full flex-shrink-0 border-r border-mnema-hairline bg-mnema-raised"
+        class="relative flex flex-col h-full shrink-0 border-r border-mnema-hairline bg-mnema-raised"
         :style="{ width: `${panels.left.width}px` }"
       >
         <Sidebar @open-admin="openAdmin('users')" @open-legal="showLegalModal = true" class="flex-1 min-h-0" />
@@ -386,7 +386,7 @@ onMounted(async () => {
       <!-- Thread panel -->
       <div
         v-if="chatStore.activeThread"
-        class="relative h-full flex-shrink-0"
+        class="relative h-full shrink-0"
         :style="{ width: `${panels.thread.width}px` }"
       >
         <ThreadSidebar />
@@ -396,7 +396,7 @@ onMounted(async () => {
       <!-- Right column: member list -->
       <div
         v-if="chatStore.showMemberList"
-        class="relative h-full flex-shrink-0"
+        class="relative h-full shrink-0"
         :style="{ width: `${panels.members.width}px` }"
       >
         <MemberList />

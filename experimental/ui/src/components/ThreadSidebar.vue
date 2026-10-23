@@ -190,12 +190,12 @@ function formatDate(dateStr?: string) {
 <template>
   <aside class="w-full min-w-0 bg-mnema-canvas border-l border-mnema-hairline flex flex-col h-full select-none">
     <!-- Thread Header -->
-    <header class="h-12 pl-4 pr-2 border-b border-mnema-hairline bg-mnema-canvas flex items-center justify-between gap-2 flex-shrink-0">
+    <header class="h-12 pl-4 pr-2 border-b border-mnema-hairline bg-mnema-canvas flex items-center justify-between gap-2 shrink-0">
       <div class="flex items-center gap-2 min-w-0">
-        <MessageSquare class="w-5 h-5 text-mnema-accent flex-shrink-0" />
+        <MessageSquare class="w-5 h-5 text-mnema-accent shrink-0" />
         <div class="flex flex-col min-w-0">
           <div class="flex items-center gap-1.5 min-w-0">
-            <span class="font-semibold text-base text-mnema-text flex-shrink-0">{{ $t('thread.title') }}</span>
+            <span class="font-semibold text-base text-mnema-text shrink-0">{{ $t('thread.title') }}</span>
             <span class="text-sm text-mnema-tertiary truncate">
               #{{ chatStore.activeChannel?.name || '' }}
             </span>
@@ -205,7 +205,7 @@ function formatDate(dateStr?: string) {
 
       <button
         @click="chatStore.closeThread"
-        class="w-8 h-8 flex items-center justify-center flex-shrink-0 rounded-md text-mnema-tertiary hover:text-mnema-text hover:bg-mnema-surface transition"
+        class="w-8 h-8 flex items-center justify-center shrink-0 rounded-md text-mnema-tertiary hover:text-mnema-text hover:bg-mnema-surface transition"
         v-tooltip="$t('thread.close')"
       >
         <X class="w-5 h-5" />
@@ -222,7 +222,7 @@ function formatDate(dateStr?: string) {
         role="article"
         @keydown="onRootKeydown($event, chatStore.activeThread)"
         :class="[
-          'relative group bg-mnema-elevated border border-mnema-border/80 rounded-xl p-3.5 shadow-sm space-y-2 focus:outline-none focus-visible:border-mnema-accent/60',
+          'relative group bg-mnema-elevated border border-mnema-border/80 rounded-xl p-3.5 shadow-xs space-y-2 focus:outline-hidden focus-visible:border-mnema-accent/60',
           highlightedId === chatStore.activeThread.id ? 'msg-flash' : ''
         ]"
       >
@@ -230,7 +230,7 @@ function formatDate(dateStr?: string) {
         <button
           type="button"
           @click.stop="startReply(chatStore.activeThread)"
-          class="absolute right-2 top-2 hidden group-hover:flex group-focus-within:flex p-1 rounded bg-mnema-elevated border border-mnema-border text-mnema-tertiary hover:text-mnema-text hover:bg-mnema-surface transition"
+          class="absolute right-2 top-2 hidden group-hover:flex group-focus-within:flex p-1 rounded-sm bg-mnema-elevated border border-mnema-border text-mnema-tertiary hover:text-mnema-text hover:bg-mnema-surface transition"
           v-tooltip="$t('chat.reply')"
         >
           <Reply class="w-3.5 h-3.5" />
@@ -309,7 +309,7 @@ function formatDate(dateStr?: string) {
         role="article"
         @keydown="onReplyKeydown($event, reply)"
         :class="[
-          'relative hover:bg-mnema-surface/50 -mx-2 px-2 py-1.5 rounded-md transition-colors group focus:outline-none focus-visible:bg-mnema-surface/40',
+          'relative hover:bg-mnema-surface/50 -mx-2 px-2 py-1.5 rounded-md transition-colors group focus:outline-hidden focus-visible:bg-mnema-surface/40',
           highlightedId === reply.id ? 'msg-flash' : '',
           reply.user_id !== authStore.user?.id && chatStore.messageMentionsMe(reply) ? 'msg-mentions-me' : ''
         ]"
@@ -326,7 +326,7 @@ function formatDate(dateStr?: string) {
               type="button"
               @click.stop="actions.togglePicker(reply.id)"
               :class="[
-                'p-1 rounded transition',
+                'p-1 rounded-sm transition',
                 activeReactionPickerMsgId === reply.id
                   ? 'bg-mnema-surface text-amber-400'
                   : 'hover:bg-mnema-surface text-mnema-tertiary hover:text-amber-400'
@@ -346,7 +346,7 @@ function formatDate(dateStr?: string) {
           <button
             type="button"
             @click.stop="startReply(reply)"
-            class="p-1 rounded hover:bg-mnema-surface text-mnema-tertiary hover:text-mnema-text transition"
+            class="p-1 rounded-sm hover:bg-mnema-surface text-mnema-tertiary hover:text-mnema-text transition"
             v-tooltip="$t('chat.reply')"
           >
             <Reply class="w-3.5 h-3.5" />
@@ -356,7 +356,7 @@ function formatDate(dateStr?: string) {
             v-if="actions.isOwn(reply)"
             type="button"
             @click.stop="actions.startEdit(reply)"
-            class="p-1 rounded hover:bg-mnema-surface text-mnema-tertiary hover:text-mnema-accent transition"
+            class="p-1 rounded-sm hover:bg-mnema-surface text-mnema-tertiary hover:text-mnema-accent transition"
             v-tooltip="$t('thread.edit')"
           >
             <Pencil class="w-3.5 h-3.5" />
@@ -366,7 +366,7 @@ function formatDate(dateStr?: string) {
             v-if="actions.canDelete(reply)"
             type="button"
             @click.stop="actions.deleteMessage(reply)"
-            class="p-1 rounded hover:bg-mnema-surface text-mnema-tertiary hover:text-red-400 transition"
+            class="p-1 rounded-sm hover:bg-mnema-surface text-mnema-tertiary hover:text-red-400 transition"
             v-tooltip="$t('thread.delete')"
           >
             <Trash2 class="w-3.5 h-3.5" />
@@ -396,7 +396,7 @@ function formatDate(dateStr?: string) {
             >
               {{ reply.display_name || reply.username }}
             </button>
-            <span class="text-xs text-mnema-tertiary flex-shrink-0 tabular-nums">{{ formatTime(reply.created_at) }}</span>
+            <span class="text-xs text-mnema-tertiary shrink-0 tabular-nums">{{ formatTime(reply.created_at) }}</span>
             <span v-if="reply.is_edited" class="text-xs text-mnema-tertiary italic">{{ $t('chat.edited') }}</span>
           </div>
 
@@ -432,11 +432,11 @@ function formatDate(dateStr?: string) {
     </div>
 
     <!-- Thread Composer Input Bar -->
-    <div class="px-4 pb-6 pt-1 flex-shrink-0">
+    <div class="px-4 pb-6 pt-1 shrink-0">
       <ReplyComposerBar v-if="replyingTo" :target="replyingTo" @cancel="cancelReply" />
       <div
         :class="[
-          'relative min-h-[52px] bg-mnema-elevated border border-mnema-border pl-2 pr-2.5 py-2.5 flex items-center gap-2 shadow-sm focus-within:border-mnema-accent focus-within:ring-1 focus-within:ring-mnema-accent transition',
+          'relative min-h-[52px] bg-mnema-elevated border border-mnema-border pl-2 pr-2.5 py-2.5 flex items-center gap-2 shadow-xs focus-within:border-mnema-accent focus-within:ring-1 focus-within:ring-mnema-accent transition',
           replyingTo ? 'rounded-b-lg' : 'rounded-lg'
         ]"
       >
@@ -461,7 +461,7 @@ function formatDate(dateStr?: string) {
         <button
           @click="fileInput?.click()"
           :disabled="isUploading || isSending"
-          class="w-8 h-8 flex items-center justify-center flex-shrink-0 rounded-full text-mnema-tertiary hover:text-mnema-text hover:bg-mnema-surface transition disabled:opacity-50"
+          class="w-8 h-8 flex items-center justify-center shrink-0 rounded-full text-mnema-tertiary hover:text-mnema-text hover:bg-mnema-surface transition disabled:opacity-50"
           v-tooltip="$t('thread.upload')"
         >
           <Plus class="w-5 h-5" />
@@ -483,7 +483,7 @@ function formatDate(dateStr?: string) {
           :placeholder="$t('thread.placeholder')"
           :aria-label="$t('thread.placeholder')"
           rows="1"
-          class="bg-transparent flex-1 min-w-0 resize-none outline-none text-message py-0.5 text-mnema-text placeholder-mnema-tertiary"
+          class="bg-transparent flex-1 min-w-0 resize-none outline-hidden text-message py-0.5 text-mnema-text placeholder-mnema-tertiary"
         ></textarea>
 
         <EmojiButton :disabled="isSending" @pick="assist.insertText" />
@@ -491,7 +491,7 @@ function formatDate(dateStr?: string) {
         <button
           @click="handleSendReply"
           :disabled="!replyInput.trim() || isUploading || isSending"
-          class="w-8 h-8 flex items-center justify-center flex-shrink-0 rounded-md bg-mnema-accent text-mnema-accent-ink hover:bg-mnema-accent-hover font-semibold transition disabled:opacity-20 disabled:bg-mnema-surface disabled:text-mnema-tertiary"
+          class="w-8 h-8 flex items-center justify-center shrink-0 rounded-md bg-mnema-accent text-mnema-accent-ink hover:bg-mnema-accent-hover font-semibold transition disabled:opacity-20 disabled:bg-mnema-surface disabled:text-mnema-tertiary"
           v-tooltip="$t('chat.send')"
         >
           <ArrowUp class="w-4 h-4" />

@@ -65,11 +65,11 @@ async function handleSubmit() {
       aria-modal="true"
       :aria-labelledby="titleId"
       tabindex="-1"
-      class="bg-mnema-elevated w-full max-w-sm p-7 rounded-[14px] shadow-2xl border border-mnema-border flex flex-col space-y-5 focus:outline-none"
+      class="bg-mnema-elevated w-full max-w-sm p-7 rounded-[14px] shadow-2xl border border-mnema-border flex flex-col space-y-5 focus:outline-hidden"
     >
       <!-- Brand & Title -->
       <div class="text-center space-y-2">
-        <div class="w-9 h-9 rounded-lg bg-mnema-band border border-mnema-mint/30 flex items-center justify-center text-mnema-mint font-bold text-base mx-auto shadow-sm">
+        <div class="w-9 h-9 rounded-lg bg-mnema-band border border-mnema-mint/30 flex items-center justify-center text-mnema-mint font-bold text-base mx-auto shadow-xs">
           M
         </div>
         <div>
@@ -96,7 +96,7 @@ async function handleSubmit() {
             required
             autocomplete="username"
             :placeholder="$t('login.usernamePlaceholder')"
-            class="w-full bg-mnema-surface border border-mnema-border-field rounded-md px-3 py-2 text-sm text-mnema-text placeholder-mnema-tertiary outline-none focus:border-mnema-accent transition"
+            class="w-full bg-mnema-surface border border-mnema-border-field rounded-md px-3 py-2 text-sm text-mnema-text placeholder-mnema-tertiary outline-hidden focus:border-mnema-accent transition"
           />
         </div>
 
@@ -107,7 +107,7 @@ async function handleSubmit() {
             v-model="displayName"
             type="text"
             :placeholder="$t('login.displayNamePlaceholder')"
-            class="w-full bg-mnema-surface border border-mnema-border-field rounded-md px-3 py-2 text-sm text-mnema-text placeholder-mnema-tertiary outline-none focus:border-mnema-accent transition"
+            class="w-full bg-mnema-surface border border-mnema-border-field rounded-md px-3 py-2 text-sm text-mnema-text placeholder-mnema-tertiary outline-hidden focus:border-mnema-accent transition"
           />
         </div>
 
@@ -120,7 +120,7 @@ async function handleSubmit() {
             required
             autocomplete="current-password"
             placeholder="••••••••"
-            class="w-full bg-mnema-surface border border-mnema-border-field rounded-md px-3 py-2 text-sm text-mnema-text placeholder-mnema-tertiary outline-none focus:border-mnema-accent transition"
+            class="w-full bg-mnema-surface border border-mnema-border-field rounded-md px-3 py-2 text-sm text-mnema-text placeholder-mnema-tertiary outline-hidden focus:border-mnema-accent transition"
           />
         </div>
 
@@ -132,7 +132,7 @@ async function handleSubmit() {
             type="text"
             required
             :placeholder="$t('login.inviteCodePlaceholder')"
-            class="w-full bg-mnema-surface border border-mnema-border-field rounded-md px-3 py-2 text-sm text-mnema-text placeholder-mnema-tertiary outline-none focus:border-mnema-accent transition font-mono"
+            class="w-full bg-mnema-surface border border-mnema-border-field rounded-md px-3 py-2 text-sm text-mnema-text placeholder-mnema-tertiary outline-hidden focus:border-mnema-accent transition font-mono"
           />
         </div>
 
@@ -150,7 +150,7 @@ async function handleSubmit() {
         <button
           type="submit"
           :disabled="isLoading"
-          class="w-full mt-2 bg-mnema-accent text-mnema-accent-ink hover:bg-mnema-accent-hover font-semibold py-2 rounded-md text-sm transition disabled:opacity-50 flex items-center justify-center gap-2 shadow-sm"
+          class="w-full mt-2 bg-mnema-accent text-mnema-accent-ink hover:bg-mnema-accent-hover font-semibold py-2 rounded-md text-sm transition disabled:opacity-50 flex items-center justify-center gap-2 shadow-xs"
         >
           <component :is="isRegister ? UserPlus : LogIn" class="w-3.5 h-3.5" />
           <span>{{ isLoading ? $t('login.working') : (isRegister ? $t('login.register') : $t('login.signIn')) }}</span>
@@ -174,7 +174,7 @@ async function handleSubmit() {
             type="button"
             :lang="l"
             :aria-pressed="locale === l ? 'true' : 'false'"
-            :class="['px-2 py-0.5 rounded text-xs transition', locale === l ? 'bg-mnema-accent-subtle text-mnema-accent font-semibold' : 'text-mnema-tertiary hover:text-mnema-text']"
+            :class="['px-2 py-0.5 rounded-sm text-xs transition', locale === l ? 'bg-mnema-accent-subtle text-mnema-accent font-semibold' : 'text-mnema-tertiary hover:text-mnema-text']"
             @click="chooseLocale(l)"
           >{{ $t('language.' + l) }}</button>
         </div>

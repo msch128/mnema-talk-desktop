@@ -287,7 +287,7 @@ onMounted(() => loadChannelsData())
             type="text"
             :placeholder="$t('admin.categoryNamePlaceholder')"
             :aria-label="$t('admin.categoryNameLabel')"
-            class="bg-mnema-surface border border-mnema-border-field rounded-md px-2.5 py-1 text-sm text-mnema-text placeholder-mnema-tertiary outline-none focus:border-mnema-accent transition w-44"
+            class="bg-mnema-surface border border-mnema-border-field rounded-md px-2.5 py-1 text-sm text-mnema-text placeholder-mnema-tertiary outline-hidden focus:border-mnema-accent transition w-44"
             @keydown.enter="createCategory"
           />
           <button
@@ -307,7 +307,7 @@ onMounted(() => loadChannelsData())
           type="button"
           :disabled="isSavingLayout"
           :class="[
-            'flex items-center gap-1.5 px-3 py-1 rounded-md text-sm font-semibold transition shadow-sm',
+            'flex items-center gap-1.5 px-3 py-1 rounded-md text-sm font-semibold transition shadow-xs',
             hasLayoutChanges
               ? 'bg-mnema-accent text-mnema-accent-ink hover:bg-mnema-accent-hover ring-2 ring-mnema-accent/40'
               : 'bg-mnema-elevated border border-mnema-border text-mnema-muted hover:text-mnema-text'
@@ -325,7 +325,7 @@ onMounted(() => loadChannelsData())
       <span>{{ $t('admin.hasUnsavedLayout') }}</span>
       <button
         type="button"
-        class="bg-mnema-accent text-mnema-accent-ink px-3 py-1 rounded font-semibold hover:bg-mnema-accent-hover transition flex-shrink-0"
+        class="bg-mnema-accent text-mnema-accent-ink px-3 py-1 rounded-sm font-semibold hover:bg-mnema-accent-hover transition shrink-0"
         @click="saveLayout"
       >
         {{ $t('admin.saveLayout') }}
@@ -352,19 +352,19 @@ onMounted(() => loadChannelsData())
           @drop="onChannelDrop($event, null, chIdx)"
         >
           <div class="flex items-center gap-2 min-w-0 flex-1">
-            <GripVertical class="w-4 h-4 text-mnema-tertiary group-hover:text-mnema-muted flex-shrink-0" />
-            <Hash v-if="ch.type === 'text'" class="w-4 h-4 text-mnema-tertiary flex-shrink-0" />
-            <Volume2 v-else class="w-4 h-4 text-mnema-accent flex-shrink-0" />
+            <GripVertical class="w-4 h-4 text-mnema-tertiary group-hover:text-mnema-muted shrink-0" />
+            <Hash v-if="ch.type === 'text'" class="w-4 h-4 text-mnema-tertiary shrink-0" />
+            <Volume2 v-else class="w-4 h-4 text-mnema-accent shrink-0" />
             <span class="text-sm font-medium text-mnema-text truncate">{{ ch.name }}</span>
             <span v-if="ch.topic" class="text-xs text-mnema-tertiary truncate">({{ ch.topic }})</span>
           </div>
 
-          <div class="flex items-center gap-1 flex-shrink-0">
+          <div class="flex items-center gap-1 shrink-0">
             <button
               data-testid="move-up-channel"
               type="button"
               :disabled="chIdx === 0"
-              class="p-1 rounded text-mnema-tertiary hover:text-mnema-text hover:bg-mnema-surface transition disabled:opacity-30"
+              class="p-1 rounded-sm text-mnema-tertiary hover:text-mnema-text hover:bg-mnema-surface transition disabled:opacity-30"
               :title="$t('admin.moveUp')"
               :aria-label="$t('admin.moveUp')"
               @click="moveChannelBy(null, ch, -1)"
@@ -375,7 +375,7 @@ onMounted(() => loadChannelsData())
               data-testid="move-down-channel"
               type="button"
               :disabled="chIdx === layout.uncategorized.length - 1"
-              class="p-1 rounded text-mnema-tertiary hover:text-mnema-text hover:bg-mnema-surface transition disabled:opacity-30"
+              class="p-1 rounded-sm text-mnema-tertiary hover:text-mnema-text hover:bg-mnema-surface transition disabled:opacity-30"
               :title="$t('admin.moveDown')"
               :aria-label="$t('admin.moveDown')"
               @click="moveChannelBy(null, ch, 1)"
@@ -385,7 +385,7 @@ onMounted(() => loadChannelsData())
             <button
               data-testid="rename-channel"
               type="button"
-              class="p-1 rounded text-mnema-tertiary hover:text-mnema-text hover:bg-mnema-surface transition"
+              class="p-1 rounded-sm text-mnema-tertiary hover:text-mnema-text hover:bg-mnema-surface transition"
               :title="$t('admin.renameChannel')"
               :aria-label="$t('admin.renameChannel')"
               @click="openEditChannel(ch)"
@@ -395,7 +395,7 @@ onMounted(() => loadChannelsData())
             <button
               data-testid="delete-channel"
               type="button"
-              class="p-1 rounded text-mnema-tertiary hover:text-mnema-danger hover:bg-mnema-surface transition"
+              class="p-1 rounded-sm text-mnema-tertiary hover:text-mnema-danger hover:bg-mnema-surface transition"
               :title="$t('sidebar.deleteChannel')"
               :aria-label="$t('sidebar.deleteChannel')"
               @click="deleteChannel(ch)"
@@ -423,17 +423,17 @@ onMounted(() => loadChannelsData())
         <!-- Category Header -->
         <div class="flex items-center justify-between gap-2 border-b border-mnema-hairline/60 pb-2">
           <div class="flex items-center gap-2 min-w-0">
-            <GripVertical class="w-4 h-4 text-mnema-tertiary cursor-grab active:cursor-grabbing flex-shrink-0" />
+            <GripVertical class="w-4 h-4 text-mnema-tertiary cursor-grab active:cursor-grabbing shrink-0" />
             <span class="text-xs font-semibold uppercase font-mono tracking-wider text-mnema-text truncate">{{ cat.name }}</span>
             <span class="text-xs text-mnema-tertiary font-mono">({{ cat.channels?.length || 0 }})</span>
           </div>
 
-          <div class="flex items-center gap-1 flex-shrink-0">
+          <div class="flex items-center gap-1 shrink-0">
             <button
               data-testid="move-up-category"
               type="button"
               :disabled="catIdx === 0"
-              class="p-1 rounded text-mnema-tertiary hover:text-mnema-text hover:bg-mnema-elevated transition disabled:opacity-30"
+              class="p-1 rounded-sm text-mnema-tertiary hover:text-mnema-text hover:bg-mnema-elevated transition disabled:opacity-30"
               :title="$t('admin.moveUp')"
               :aria-label="$t('admin.moveUp')"
               @click="moveCategoryBy(cat, -1)"
@@ -444,7 +444,7 @@ onMounted(() => loadChannelsData())
               data-testid="move-down-category"
               type="button"
               :disabled="catIdx === layout.categories.length - 1"
-              class="p-1 rounded text-mnema-tertiary hover:text-mnema-text hover:bg-mnema-elevated transition disabled:opacity-30"
+              class="p-1 rounded-sm text-mnema-tertiary hover:text-mnema-text hover:bg-mnema-elevated transition disabled:opacity-30"
               :title="$t('admin.moveDown')"
               :aria-label="$t('admin.moveDown')"
               @click="moveCategoryBy(cat, 1)"
@@ -454,7 +454,7 @@ onMounted(() => loadChannelsData())
             <button
               data-testid="rename-category"
               type="button"
-              class="p-1 rounded text-mnema-tertiary hover:text-mnema-text hover:bg-mnema-elevated transition"
+              class="p-1 rounded-sm text-mnema-tertiary hover:text-mnema-text hover:bg-mnema-elevated transition"
               :title="$t('admin.renameCategory')"
               :aria-label="$t('admin.renameCategory')"
               @click="openEditCategory(cat)"
@@ -464,7 +464,7 @@ onMounted(() => loadChannelsData())
             <button
               data-testid="delete-category"
               type="button"
-              class="p-1 rounded text-mnema-tertiary hover:text-mnema-danger hover:bg-mnema-elevated transition"
+              class="p-1 rounded-sm text-mnema-tertiary hover:text-mnema-danger hover:bg-mnema-elevated transition"
               :title="$t('sidebar.deleteCategory')"
               :aria-label="$t('sidebar.deleteCategory')"
               @click="deleteCategory(cat)"
@@ -496,19 +496,19 @@ onMounted(() => loadChannelsData())
             @drop.stop="onChannelDrop($event, cat.id, chIdx)"
           >
             <div class="flex items-center gap-2 min-w-0 flex-1">
-              <GripVertical class="w-4 h-4 text-mnema-tertiary group-hover:text-mnema-muted flex-shrink-0" />
-              <Hash v-if="ch.type === 'text'" class="w-4 h-4 text-mnema-tertiary flex-shrink-0" />
-              <Volume2 v-else class="w-4 h-4 text-mnema-accent flex-shrink-0" />
+              <GripVertical class="w-4 h-4 text-mnema-tertiary group-hover:text-mnema-muted shrink-0" />
+              <Hash v-if="ch.type === 'text'" class="w-4 h-4 text-mnema-tertiary shrink-0" />
+              <Volume2 v-else class="w-4 h-4 text-mnema-accent shrink-0" />
               <span class="text-sm font-medium text-mnema-text truncate">{{ ch.name }}</span>
               <span v-if="ch.topic" class="text-xs text-mnema-tertiary truncate">({{ ch.topic }})</span>
             </div>
 
-            <div class="flex items-center gap-1 flex-shrink-0">
+            <div class="flex items-center gap-1 shrink-0">
               <button
                 data-testid="move-up-channel"
                 type="button"
                 :disabled="chIdx === 0"
-                class="p-1 rounded text-mnema-tertiary hover:text-mnema-text hover:bg-mnema-surface transition disabled:opacity-30"
+                class="p-1 rounded-sm text-mnema-tertiary hover:text-mnema-text hover:bg-mnema-surface transition disabled:opacity-30"
                 :title="$t('admin.moveUp')"
                 :aria-label="$t('admin.moveUp')"
                 @click.stop="moveChannelBy(cat.id, ch, -1)"
@@ -519,7 +519,7 @@ onMounted(() => loadChannelsData())
                 data-testid="move-down-channel"
                 type="button"
                 :disabled="chIdx === (cat.channels || []).length - 1"
-                class="p-1 rounded text-mnema-tertiary hover:text-mnema-text hover:bg-mnema-surface transition disabled:opacity-30"
+                class="p-1 rounded-sm text-mnema-tertiary hover:text-mnema-text hover:bg-mnema-surface transition disabled:opacity-30"
                 :title="$t('admin.moveDown')"
                 :aria-label="$t('admin.moveDown')"
                 @click.stop="moveChannelBy(cat.id, ch, 1)"
@@ -529,7 +529,7 @@ onMounted(() => loadChannelsData())
               <button
                 data-testid="rename-channel"
                 type="button"
-                class="p-1 rounded text-mnema-tertiary hover:text-mnema-text hover:bg-mnema-surface transition"
+                class="p-1 rounded-sm text-mnema-tertiary hover:text-mnema-text hover:bg-mnema-surface transition"
                 :title="$t('admin.renameChannel')"
                 :aria-label="$t('admin.renameChannel')"
                 @click.stop="openEditChannel(ch)"
@@ -539,7 +539,7 @@ onMounted(() => loadChannelsData())
               <button
                 data-testid="delete-channel"
                 type="button"
-                class="p-1 rounded text-mnema-tertiary hover:text-mnema-danger hover:bg-mnema-surface transition"
+                class="p-1 rounded-sm text-mnema-tertiary hover:text-mnema-danger hover:bg-mnema-surface transition"
                 :title="$t('sidebar.deleteChannel')"
                 :aria-label="$t('sidebar.deleteChannel')"
                 @click.stop="deleteChannel(ch)"
@@ -569,7 +569,7 @@ onMounted(() => loadChannelsData())
             type="text"
             :placeholder="$t('admin.categoryNamePlaceholder')"
             :aria-label="$t('admin.categoryNameLabel')"
-            class="w-full bg-mnema-surface border border-mnema-border-field rounded-md px-3 py-2 text-sm text-mnema-text outline-none focus:border-mnema-accent transition"
+            class="w-full bg-mnema-surface border border-mnema-border-field rounded-md px-3 py-2 text-sm text-mnema-text outline-hidden focus:border-mnema-accent transition"
           />
         </div>
         <div class="flex justify-end gap-2 pt-2">
@@ -608,7 +608,7 @@ onMounted(() => loadChannelsData())
             type="text"
             :placeholder="$t('admin.channelNamePlaceholder')"
             :aria-label="$t('admin.channelNameLabel')"
-            class="w-full bg-mnema-surface border border-mnema-border-field rounded-md px-3 py-2 text-sm text-mnema-text outline-none focus:border-mnema-accent transition"
+            class="w-full bg-mnema-surface border border-mnema-border-field rounded-md px-3 py-2 text-sm text-mnema-text outline-hidden focus:border-mnema-accent transition"
           />
         </div>
         <div>
@@ -620,7 +620,7 @@ onMounted(() => loadChannelsData())
             type="text"
             :placeholder="$t('admin.channelTopicPlaceholder')"
             :aria-label="$t('admin.channelTopicLabel')"
-            class="w-full bg-mnema-surface border border-mnema-border-field rounded-md px-3 py-2 text-sm text-mnema-text outline-none focus:border-mnema-accent transition"
+            class="w-full bg-mnema-surface border border-mnema-border-field rounded-md px-3 py-2 text-sm text-mnema-text outline-hidden focus:border-mnema-accent transition"
           />
         </div>
         <div class="flex justify-end gap-2 pt-2">

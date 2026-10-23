@@ -190,12 +190,12 @@ onMounted(refreshUsers)
             type="search"
             :placeholder="$t('admin.searchUsers')"
             :aria-label="$t('admin.searchUsersLabel')"
-            class="w-full bg-mnema-surface border border-mnema-border-field rounded-md pl-8 pr-3 py-1.5 text-sm text-mnema-text placeholder-mnema-tertiary outline-none focus:border-mnema-accent transition"
+            class="w-full bg-mnema-surface border border-mnema-border-field rounded-md pl-8 pr-3 py-1.5 text-sm text-mnema-text placeholder-mnema-tertiary outline-hidden focus:border-mnema-accent transition"
           />
         </div>
         <button
           type="button"
-          class="p-2 rounded-md text-mnema-tertiary hover:text-mnema-text hover:bg-mnema-elevated transition flex-shrink-0"
+          class="p-2 rounded-md text-mnema-tertiary hover:text-mnema-text hover:bg-mnema-elevated transition shrink-0"
           :title="$t('admin.refresh')"
           :aria-label="$t('admin.refresh')"
           @click="refreshUsers"
@@ -249,7 +249,7 @@ onMounted(refreshUsers)
                 <span
                   v-if="u.role === 'admin'"
                   data-testid="user-role"
-                  class="px-2 py-0.5 rounded text-xs font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20"
+                  class="px-2 py-0.5 rounded-sm text-xs font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20"
                 >
                   {{ $t('role.admin') }}
                 </span>
@@ -269,14 +269,14 @@ onMounted(refreshUsers)
                   <span
                     v-if="u.disabled"
                     data-testid="user-status"
-                    class="px-2 py-0.5 rounded text-xs font-medium bg-mnema-danger/10 text-mnema-danger border border-mnema-danger/20"
+                    class="px-2 py-0.5 rounded-sm text-xs font-medium bg-mnema-danger/10 text-mnema-danger border border-mnema-danger/20"
                   >
                     {{ $t('admin.userDisabled') }}
                   </span>
                   <span
                     v-else
                     data-testid="user-status"
-                    class="px-2 py-0.5 rounded text-xs font-medium bg-mnema-accent/10 text-mnema-accent border border-mnema-accent/20"
+                    class="px-2 py-0.5 rounded-sm text-xs font-medium bg-mnema-accent/10 text-mnema-accent border border-mnema-accent/20"
                   >
                     {{ $t('admin.userActive') }}
                   </span>
@@ -284,10 +284,10 @@ onMounted(refreshUsers)
                   <!-- In Voice indicator -->
                   <span
                     v-if="isUserInVoice(u.id)"
-                    class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-mono bg-mnema-band text-mnema-mint border border-mnema-mint/30"
+                    class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm text-[11px] font-mono bg-mnema-band text-mnema-mint border border-mnema-mint/30"
                     :title="$t('admin.inVoice')"
                   >
-                    <Volume2 class="w-3 h-3 flex-shrink-0" />
+                    <Volume2 class="w-3 h-3 shrink-0" />
                     <span class="truncate max-w-[80px]">{{ userVoiceChannelName(u.id) }}</span>
                   </span>
                 </div>
@@ -301,7 +301,7 @@ onMounted(refreshUsers)
                     v-if="isUserInVoice(u.id)"
                     data-testid="action-kick"
                     type="button"
-                    class="p-1.5 rounded text-mnema-danger hover:bg-mnema-danger/15 transition"
+                    class="p-1.5 rounded-sm text-mnema-danger hover:bg-mnema-danger/15 transition"
                     :title="$t('admin.kickFromVoice')"
                     :aria-label="$t('admin.kickFromVoice')"
                     @click="kickUserFromVoice(u)"
@@ -315,7 +315,7 @@ onMounted(refreshUsers)
                       data-testid="action-disable"
                       type="button"
                       :class="[
-                        'p-1.5 rounded transition',
+                        'p-1.5 rounded-sm transition',
                         (u.disabled)
                           ? 'text-mnema-accent hover:bg-mnema-accent/15'
                           : 'text-mnema-tertiary hover:text-mnema-danger hover:bg-mnema-hover'
@@ -332,7 +332,7 @@ onMounted(refreshUsers)
                     <button
                       data-testid="action-reset-password"
                       type="button"
-                      class="p-1.5 rounded text-mnema-tertiary hover:text-mnema-text hover:bg-mnema-hover transition"
+                      class="p-1.5 rounded-sm text-mnema-tertiary hover:text-mnema-text hover:bg-mnema-hover transition"
                       :title="$t('admin.resetPassword')"
                       :aria-label="$t('admin.resetPassword')"
                       @click="openPasswordModal(u)"
@@ -344,7 +344,7 @@ onMounted(refreshUsers)
                     <button
                       data-testid="action-revoke-sessions"
                       type="button"
-                      class="p-1.5 rounded text-mnema-tertiary hover:text-mnema-warning hover:bg-mnema-hover transition"
+                      class="p-1.5 rounded-sm text-mnema-tertiary hover:text-mnema-warning hover:bg-mnema-hover transition"
                       :title="$t('admin.revokeSessions')"
                       :aria-label="$t('admin.revokeSessions')"
                       @click="revokeSessions(u)"
@@ -379,7 +379,7 @@ onMounted(refreshUsers)
             type="password"
             :placeholder="$t('admin.newPasswordPlaceholder', { count: MIN_PASSWORD_LENGTH })"
             :aria-label="$t('admin.newPasswordLabel')"
-            class="w-full bg-mnema-surface border border-mnema-border-field rounded-md px-3 py-2 text-sm text-mnema-text placeholder-mnema-tertiary outline-none focus:border-mnema-accent transition"
+            class="w-full bg-mnema-surface border border-mnema-border-field rounded-md px-3 py-2 text-sm text-mnema-text placeholder-mnema-tertiary outline-hidden focus:border-mnema-accent transition"
           />
           <p v-if="newPasswordInput && passwordTooShort" class="text-xs text-mnema-danger mt-1">
             {{ $t('admin.passwordTooShort', { count: MIN_PASSWORD_LENGTH }) }}

@@ -465,16 +465,16 @@ const groupedIds = computed(() => {
     <!-- Channel Header (48px, aligned with the side columns; 40px in the Talk's chat) -->
     <header
       :class="[
-        'px-4 border-b border-mnema-hairline bg-mnema-canvas flex items-center justify-between gap-3 flex-shrink-0 z-10',
+        'px-4 border-b border-mnema-hairline bg-mnema-canvas flex items-center justify-between gap-3 shrink-0 z-10',
         panel ? 'h-10' : 'h-12'
       ]"
     >
       <!-- Left: Channel name & topic -->
       <div :class="['flex items-center gap-2 min-w-0', panel ? 'flex-1' : '']">
-        <component :is="channelIcon" class="w-5 h-5 text-mnema-tertiary flex-shrink-0" />
+        <component :is="channelIcon" class="w-5 h-5 text-mnema-tertiary shrink-0" />
         <span
           data-testid="chat-channel-name"
-          :class="['font-semibold text-base text-mnema-text truncate', panel ? 'min-w-0' : 'flex-shrink-0 max-w-[60%]']"
+          :class="['font-semibold text-base text-mnema-text truncate', panel ? 'min-w-0' : 'shrink-0 max-w-[60%]']"
         >
           {{ chatStore.activeChannel?.name || $t('chat.selectChannel') }}
         </span>
@@ -484,7 +484,7 @@ const groupedIds = computed(() => {
       </div>
 
       <!-- Right: Badges & member list toggle -->
-      <div class="flex items-center gap-2 flex-shrink-0">
+      <div class="flex items-center gap-2 shrink-0">
         <button
           v-if="chatStore.activeChannel"
           @click="openNotificationMenu"
@@ -528,25 +528,25 @@ const groupedIds = computed(() => {
     <!-- Desktop notification opt-in: shown until answered or dismissed -->
     <div
       v-if="showNotifHint"
-      class="px-4 py-2 border-b border-mnema-hairline bg-mnema-raised flex items-center gap-3 text-sm flex-shrink-0"
+      class="px-4 py-2 border-b border-mnema-hairline bg-mnema-raised flex items-center gap-3 text-sm shrink-0"
       role="region"
       :aria-label="$t('notifications.hintTitle')"
     >
-      <Bell class="w-4 h-4 text-mnema-accent flex-shrink-0" />
+      <Bell class="w-4 h-4 text-mnema-accent shrink-0" />
       <p class="min-w-0 flex-1 text-mnema-muted">
         <span class="font-medium text-mnema-text">{{ $t('notifications.hintTitle') }}</span>
         <span class="ml-2">{{ $t('notifications.hintBody') }}</span>
       </p>
       <button
         type="button"
-        class="px-2.5 py-1 rounded-md bg-mnema-accent text-mnema-accent-ink font-semibold hover:bg-mnema-accent-hover transition flex-shrink-0"
+        class="px-2.5 py-1 rounded-md bg-mnema-accent text-mnema-accent-ink font-semibold hover:bg-mnema-accent-hover transition shrink-0"
         @click="enableNotifications"
       >
         {{ $t('notifications.enable') }}
       </button>
       <button
         type="button"
-        class="p-1 rounded-md text-mnema-tertiary hover:text-mnema-text hover:bg-mnema-hover transition flex-shrink-0"
+        class="p-1 rounded-md text-mnema-tertiary hover:text-mnema-text hover:bg-mnema-hover transition shrink-0"
         :aria-label="$t('notifications.notNow')"
         v-tooltip="$t('notifications.notNow')"
         @click="dismissNotifHint"
@@ -651,7 +651,7 @@ const groupedIds = computed(() => {
       <span class="truncate">
         {{ chatStore.missedLiveCount > 0 ? $t('chat.newMessages') : $t('chat.viewingOlder') }}
       </span>
-      <span class="flex items-center gap-1 flex-shrink-0 font-semibold">
+      <span class="flex items-center gap-1 shrink-0 font-semibold">
         {{ $t('chat.jumpToEnd') }}
         <ArrowDown class="w-4 h-4" />
       </span>
@@ -671,11 +671,11 @@ const groupedIds = computed(() => {
     </div>
 
     <!-- Composer -->
-    <div class="px-4 pb-1 flex-shrink-0">
+    <div class="px-4 pb-1 shrink-0">
       <ReplyComposerBar v-if="replyingTo" :target="replyingTo" @cancel="cancelReply" />
       <div
         :class="[
-          'relative min-h-[52px] bg-mnema-elevated border border-mnema-border pl-2 pr-2.5 py-2.5 flex items-center gap-2 shadow-sm focus-within:border-mnema-accent focus-within:ring-1 focus-within:ring-mnema-accent transition',
+          'relative min-h-[52px] bg-mnema-elevated border border-mnema-border pl-2 pr-2.5 py-2.5 flex items-center gap-2 shadow-xs focus-within:border-mnema-accent focus-within:ring-1 focus-within:ring-mnema-accent transition',
           replyingTo ? 'rounded-b-lg' : 'rounded-lg'
         ]"
       >
@@ -701,7 +701,7 @@ const groupedIds = computed(() => {
         <button
           @click="fileInput?.click()"
           :disabled="isUploading || isSending"
-          class="w-8 h-8 flex items-center justify-center flex-shrink-0 rounded-full hover:bg-mnema-surface text-mnema-tertiary hover:text-mnema-text transition disabled:opacity-50"
+          class="w-8 h-8 flex items-center justify-center shrink-0 rounded-full hover:bg-mnema-surface text-mnema-tertiary hover:text-mnema-text transition disabled:opacity-50"
           v-tooltip="$t('chat.upload')"
         >
           <Plus class="w-5 h-5" />
@@ -724,7 +724,7 @@ const groupedIds = computed(() => {
           :placeholder="placeholder"
           :aria-label="placeholder"
           rows="1"
-          class="bg-transparent flex-1 min-w-0 resize-none outline-none text-message py-0.5 text-mnema-text placeholder-mnema-tertiary"
+          class="bg-transparent flex-1 min-w-0 resize-none outline-hidden text-message py-0.5 text-mnema-text placeholder-mnema-tertiary"
         ></textarea>
 
         <EmojiButton :disabled="isSending" @pick="assist.insertText" />
@@ -733,7 +733,7 @@ const groupedIds = computed(() => {
         <button
           @click="handleSend"
           :disabled="!inputMessage.trim() || isUploading || isSending"
-          class="w-8 h-8 flex items-center justify-center flex-shrink-0 rounded-md bg-mnema-accent text-mnema-accent-ink hover:bg-mnema-accent-hover font-semibold transition disabled:opacity-20 disabled:bg-mnema-surface disabled:text-mnema-tertiary"
+          class="w-8 h-8 flex items-center justify-center shrink-0 rounded-md bg-mnema-accent text-mnema-accent-ink hover:bg-mnema-accent-hover font-semibold transition disabled:opacity-20 disabled:bg-mnema-surface disabled:text-mnema-tertiary"
           v-tooltip="$t('chat.send')"
         >
           <ArrowUp class="w-4 h-4" />
