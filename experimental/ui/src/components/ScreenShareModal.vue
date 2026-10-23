@@ -115,7 +115,7 @@ async function handleStart() {
                 : 'bg-mnema-canvas border-mnema-hairline text-mnema-muted hover:border-mnema-border'
             ]"
           >
-            <div :class="['w-8 h-8 rounded-md flex items-center justify-center flex-shrink-0', currentMode === 'gaming' ? 'bg-mnema-accent/20 text-mnema-accent' : 'bg-mnema-raised text-mnema-tertiary']">
+            <div :class="['w-8 h-8 rounded-md flex items-center justify-center shrink-0', currentMode === 'gaming' ? 'bg-mnema-accent/20 text-mnema-accent' : 'bg-mnema-raised text-mnema-tertiary']">
               <Gamepad2 class="w-4 h-4" />
             </div>
             <div class="min-w-0">
@@ -136,7 +136,7 @@ async function handleStart() {
                 : 'bg-mnema-canvas border-mnema-hairline text-mnema-muted hover:border-mnema-border'
             ]"
           >
-            <div :class="['w-8 h-8 rounded-md flex items-center justify-center flex-shrink-0', currentMode === 'screen' ? 'bg-mnema-accent/20 text-mnema-accent' : 'bg-mnema-raised text-mnema-tertiary']">
+            <div :class="['w-8 h-8 rounded-md flex items-center justify-center shrink-0', currentMode === 'screen' ? 'bg-mnema-accent/20 text-mnema-accent' : 'bg-mnema-raised text-mnema-tertiary']">
               <FileText class="w-4 h-4" />
             </div>
             <div class="min-w-0">
@@ -157,7 +157,7 @@ async function handleStart() {
                 : 'bg-mnema-canvas border-mnema-hairline text-mnema-muted hover:border-mnema-border'
             ]"
           >
-            <div :class="['w-8 h-8 rounded-md flex items-center justify-center flex-shrink-0', currentMode === 'custom' ? 'bg-mnema-accent/20 text-mnema-accent' : 'bg-mnema-raised text-mnema-tertiary']">
+            <div :class="['w-8 h-8 rounded-md flex items-center justify-center shrink-0', currentMode === 'custom' ? 'bg-mnema-accent/20 text-mnema-accent' : 'bg-mnema-raised text-mnema-tertiary']">
               <Sliders class="w-4 h-4" />
             </div>
             <div class="min-w-0">
@@ -227,7 +227,7 @@ async function handleStart() {
           </div>
         </div>
         <p class="text-xs text-mnema-tertiary flex items-start gap-1.5">
-          <Sparkles class="w-3.5 h-3.5 text-mnema-mint flex-shrink-0 mt-0.5" />
+          <Sparkles class="w-3.5 h-3.5 text-mnema-mint shrink-0 mt-0.5" />
           <span>{{ isMotionPriority ? t('talk.quality.motionPriority') : t('talk.quality.detailPriority') }}</span>
         </p>
         <p class="text-xs text-mnema-tertiary">{{ t('talk.quality.targetNote') }}</p>

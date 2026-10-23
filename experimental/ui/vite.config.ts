@@ -1,6 +1,7 @@
 import { defineConfig } from 'vitest/config'
 import type { Plugin } from 'vite'
 import vue from '@vitejs/plugin-vue'
+import tailwindcss from '@tailwindcss/vite'
 import { fileURLToPath, URL } from 'node:url'
 import { readdirSync, readFileSync, writeFileSync, mkdirSync, copyFileSync, existsSync } from 'node:fs'
 import { join, dirname } from 'node:path'
@@ -56,7 +57,7 @@ function shipLicenses(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [vue(), precompress(), shipLicenses()],
+  plugins: [vue(), tailwindcss(), precompress(), shipLicenses()],
   define: {
     __APP_VERSION__: JSON.stringify(appVersion())
   },

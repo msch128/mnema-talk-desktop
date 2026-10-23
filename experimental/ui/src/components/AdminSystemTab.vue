@@ -244,15 +244,15 @@ onMounted(refresh)
         <pre
           v-if="upd.release_notes"
           data-testid="update-notes"
-          class="max-h-60 overflow-y-auto whitespace-pre-wrap break-words rounded-md bg-mnema-canvas p-3 font-mono text-xs text-mnema-muted"
+          class="max-h-60 overflow-y-auto whitespace-pre-wrap wrap-break-word rounded-md bg-mnema-canvas p-3 font-mono text-xs text-mnema-muted"
         >{{ upd.release_notes }}</pre>
         <div class="space-y-1">
           <p class="text-xs text-mnema-muted">{{ $t('admin.system.manualUpdate') }}</p>
           <div class="flex items-center gap-2">
-            <code class="min-w-0 flex-1 truncate rounded bg-mnema-canvas px-2 py-1 font-mono text-xs text-mnema-text" data-testid="update-command">{{ UPDATE_COMMAND }}</code>
+            <code class="min-w-0 flex-1 truncate rounded-sm bg-mnema-canvas px-2 py-1 font-mono text-xs text-mnema-text" data-testid="update-command">{{ UPDATE_COMMAND }}</code>
             <button
               type="button"
-              class="flex-shrink-0 rounded-md px-2 py-1 text-xs text-mnema-tertiary hover:bg-mnema-elevated hover:text-mnema-text"
+              class="shrink-0 rounded-md px-2 py-1 text-xs text-mnema-tertiary hover:bg-mnema-elevated hover:text-mnema-text"
               @click="copyCommand"
             >{{ $t('admin.system.copy') }}</button>
           </div>
