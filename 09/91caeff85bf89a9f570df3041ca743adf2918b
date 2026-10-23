@@ -1,0 +1,23 @@
+experimental/app/Cargo.lock
+  s_06fcde5dbef956::t_0aae2a837329af 120-130,674,687,2722-2723,2725,3217,3228,3240,3252,3266,3301,3306,3312,3329,3343,3531,4965,5524,6721-6733,6768,6786-6792
+experimental/app/Cargo.toml
+  s_06fcde5dbef956::t_3b83229a67998f 10,53,62,86
+experimental/app/src/web_vault.rs
+  s_06fcde5dbef956::t_acd27bc8431241 21-47,51,55,59
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0991caeff85bf89a9f570df3041ca743adf2918b",
+  "prompts": {},
+  "sessions": {
+    "s_06fcde5dbef956": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "94b73314-95fe-4e96-8c43-d20b0f28358d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}
