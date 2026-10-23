@@ -1,0 +1,19 @@
+licenses/manifest.json
+  s_06fcde5dbef956::t_c0b74613fe1e8b 5,8599,8601,8606,8612,8618,8626,8628,8633,8641,8643,8648,8656,8658,8663,8671,8673,8678,8686,8688,8693,8701,8703,8708,8716,8718,8723,8731,8733,8738,8746,8748,8753,8896,8898,8903
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e306d0628ab295a4f05c17b349f93e390b08a124",
+  "prompts": {},
+  "sessions": {
+    "s_06fcde5dbef956": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "94b73314-95fe-4e96-8c43-d20b0f28358d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}
