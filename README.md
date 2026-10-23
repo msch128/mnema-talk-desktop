@@ -7,9 +7,12 @@ JavaScript from the trust equation, and it helps you stay in a Talk while you
 play. Windows and macOS run it in a Tauri host; Linux runs it in Electron
 (Chromium), because the WebKitGTK that Tauri uses on Linux has no WebRTC.
 
-**Status: experimental, Windows first, macOS second, Linux third.** The browser app is the primary,
-fully supported client. This client is an unsigned DEV build (it updates
-itself from signed releases, see below). Windows CI checks the WebView2
+**Status: Beta, unsigned. Windows first, macOS and Linux as DEV builds.** The
+browser app is the primary, fully supported client. This client is Beta: usable
+and maintained, but not signed with a platform certificate, so Windows
+SmartScreen and macOS Gatekeeper warn on first start (steps below), and it has
+not been qualified on real hardware for macOS and Linux. It updates itself from
+signed releases, see below. Windows CI checks the WebView2
 custom-protocol origin, which window may ask for a microphone, and the gaming
 surfaces. The host passes a synthetic capture device as a WebView2 browser
 argument for that run, because the runtime replaces
@@ -19,6 +22,7 @@ other windows are refused. A human permission prompt, physical devices and
 sealed media on real hardware are still outstanding. The macOS build has
 had less testing still (see [macOS](#macos)). See the
 [product status](https://github.com/msch128/mnema-talk/blob/main/doc/product-status.md).
+There is no external security audit.
 
 ## What it adds to the browser
 
