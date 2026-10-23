@@ -2,7 +2,7 @@
   "schema": "mnema-desktop-license-bundle-v1",
   "scope": "Conservative locked Rust graph and production npm closure; not a claim that all packages are linked.",
   "cargo_lock_sha256": "1e3b3e7c0e43e1fd901e3c077d130c87d80e872afb4f03bccfe5862b1d963787",
-  "npm_lock_sha256": "c87adba061e09c972d357cc094666a09452895e565a03b136246f2eb39ca6c14",
+  "npm_lock_sha256": "79aa4deb85bdcc23fc643a46b1b7f5cf3990eacd9d2e0efccd9b9ae8c07b9808",
   "supplemental": {
     "rust_standard_library": {
       "version": "1.99.0",
@@ -8860,14 +8860,14 @@
     {
       "ecosystem": "npm",
       "name": "postcss",
-      "version": "8.5.29",
+      "version": "8.5.31",
       "license": "MIT",
-      "source": "https://www.npmjs.com/package/postcss/v/8.5.29",
+      "source": "https://www.npmjs.com/package/postcss/v/8.5.31",
       "texts": [
         {
           "name": "LICENSE",
           "sha256": "5be1f3465bba68a626777f984878814aaf35e7ef8e9fd314d469bcf887050fb8",
-          "source": "https://www.npmjs.com/package/postcss/v/8.5.29",
+          "source": "https://www.npmjs.com/package/postcss/v/8.5.31",
           "provenance": "npm-archive"
         }
       ]
