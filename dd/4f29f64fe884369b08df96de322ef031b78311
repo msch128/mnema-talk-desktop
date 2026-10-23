@@ -1,0 +1,25 @@
+.github/workflows/diag-sqlite.yml
+  s_06fcde5dbef956::t_a2c216039fcca8 27-28
+experimental/crates/crypto-owner/qualified-sdk/src/diag_overflow.rs
+  s_06fcde5dbef956::t_10f0cacc6c268f 14-21
+experimental/crates/crypto-owner/qualified-sdk/src/host_tests.rs
+  s_06fcde5dbef956::t_eaac7ddacbd510 78-79,169-170,175-176,188-189,206-207,283-284,294-295,959-960,1016-1017,1111-1112,1178-1179,1223-1224,1264-1265,1390-1391,1440-1441,1491-1492,1560-1561,1648-1649
+experimental/crates/crypto-owner/qualified-sdk/src/tests.rs
+  s_06fcde5dbef956::t_6310572751cf78 128-129,175-176,206-207,223-224,247-248,290-291,309-310,347-348,439-440,526-527,557-558,589-590,634-635,655-656,670-671,710-711,1006-1007,1053-1054,1071-1072,1100-1101,1122-1123,1162-1163,1184-1185,1207-1208,1228-1229,1245-1246,1283-1284,1322-1323,1351-1352,1366-1367,1390-1391,1404-1405,1429-1430,1466-1467,1566-1567,1595-1596,1610-1611,1629-1630,1672-1673,1697-1698,1720-1721,1770-1771,1798-1799,1863-1864,1891-1892,1938-1939,2029-2030,2083-2084,2130-2131,2164-2165,2261-2262,2336-2337,2394-2395,2511-2512,2546-2547
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "dd4f29f64fe884369b08df96de322ef031b78311",
+  "prompts": {},
+  "sessions": {
+    "s_06fcde5dbef956": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "94b73314-95fe-4e96-8c43-d20b0f28358d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}
