@@ -14,7 +14,7 @@ synthetic-media-fixture=["synthetic-transport-fixture","dep:mnema-private-synthe
 mnema-private-synthetic-media-policy={path="../media/rust",optional=true,features=["synthetic-media-fixture"]}
 mnema-desktop-probe = { path = "../../..", default-features = false }
 mnema-private-vault-facade = { path = "research-vault-facade", features = ["native-facade"] }
-reqwest = { version = "=0.12.28", default-features = false, features = ["native-tls"] }
+reqwest = { version = "=0.13.5", default-features = false, features = ["native-tls"] }
 tokio = { version = "=1.54.1", features = ["rt", "macros", "time", "sync"] }
 tokio-util = { version = "=0.7.20", features = ["rt"] }
 serde = { version = "=1.0.229", features = ["derive"] }

@@ -1,7 +1,7 @@
 {
   "schema": "mnema-desktop-license-bundle-v1",
   "scope": "Conservative locked Rust graph and production npm closure; not a claim that all packages are linked.",
-  "cargo_lock_sha256": "1e3b3e7c0e43e1fd901e3c077d130c87d80e872afb4f03bccfe5862b1d963787",
+  "cargo_lock_sha256": "a091dea48bcdb38554d2b9354df9e46e168a30c7862f9a54ded7bbb37f38180c",
   "npm_lock_sha256": "c87adba061e09c972d357cc094666a09452895e565a03b136246f2eb39ca6c14",
   "supplemental": {
     "rust_standard_library": {
@@ -5076,27 +5076,6 @@
     {
       "ecosystem": "cargo",
       "name": "reqwest",
-      "version": "0.12.28",
-      "license": "MIT OR Apache-2.0",
-      "source": "https://crates.io/crates/reqwest/0.12.28",
-      "texts": [
-        {
-          "name": "LICENSE-APACHE",
-          "sha256": "751963a8b88c0e3a9f27e98933079fbcf09b9998b2c13ac49c2e4d58444520d6",
-          "source": "https://crates.io/crates/reqwest/0.12.28",
-          "provenance": "crate-archive"
-        },
-        {
-          "name": "LICENSE-MIT",
-          "sha256": "47d4e1803702728e03d30f8a848ae2249ba274bbd9f8443e803f7924d83cd371",
-          "source": "https://crates.io/crates/reqwest/0.12.28",
-          "provenance": "crate-archive"
-        }
-      ]
-    },
-    {
-      "ecosystem": "cargo",
-      "name": "reqwest",
       "version": "0.13.5",
       "license": "MIT OR Apache-2.0",
       "source": "https://crates.io/crates/reqwest/0.13.5",
@@ -5228,27 +5207,6 @@
           "name": "LICENSE-MIT",
           "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3",
           "source": "https://crates.io/crates/rustversion/1.0.23",
-          "provenance": "crate-archive"
-        }
-      ]
-    },
-    {
-      "ecosystem": "cargo",
-      "name": "ryu",
-      "version": "1.0.23",
-      "license": "Apache-2.0 OR BSL-1.0",
-      "source": "https://crates.io/crates/ryu/1.0.23",
-      "texts": [
-        {
-          "name": "LICENSE-APACHE",
-          "sha256": "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a",
-          "source": "https://crates.io/crates/ryu/1.0.23",
-          "provenance": "crate-archive"
-        },
-        {
-          "name": "LICENSE-BOOST",
-          "sha256": "c9bff75738922193e67fa726fa225535870d2aa1059f91452c411736284ad566",
-          "source": "https://crates.io/crates/ryu/1.0.23",
           "provenance": "crate-archive"
         }
       ]
@@ -5634,27 +5592,6 @@
           "name": "LICENSE-MIT",
           "sha256": "6efb0476a1cc085077ed49357026d8c173bf33017278ef440f222fb9cbcb66e6",
           "source": "https://crates.io/crates/serde_spanned/1.1.1",
-          "provenance": "crate-archive"
-        }
-      ]
-    },
-    {
-      "ecosystem": "cargo",
-      "name": "serde_urlencoded",
-      "version": "0.7.1",
-      "license": "MIT/Apache-2.0",
-      "source": "https://crates.io/crates/serde_urlencoded/0.7.1",
-      "texts": [
-        {
-          "name": "LICENSE-APACHE",
-          "sha256": "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a",
-          "source": "https://crates.io/crates/serde_urlencoded/0.7.1",
-          "provenance": "crate-archive"
-        },
-        {
-          "name": "LICENSE-MIT",
-          "sha256": "b9eb266294324f672cbe945fe8f2e32f85024f0d61a1a7d14382cdde0ac44769",
-          "source": "https://crates.io/crates/serde_urlencoded/0.7.1",
           "provenance": "crate-archive"
         }
       ]
