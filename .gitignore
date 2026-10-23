@@ -12,3 +12,4 @@ experimental/app/target/
 /linux/dist/
 /linux/release/
 /linux/bundle/
+/signed-package/

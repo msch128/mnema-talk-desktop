@@ -57,6 +57,8 @@ jobs:
         run: |
           npm ci --no-audit --no-fund
           if ($LASTEXITCODE -ne 0) { throw 'UI dependencies failed' }
+          node ../scripts/ensure-npm-optional.mjs .
+          if ($LASTEXITCODE -ne 0) { throw 'Tauri CLI platform package missing' }
           npm run check
           if ($LASTEXITCODE -ne 0) { throw 'UI checks failed' }
       - name: Native Windows controller, input, owner and fixture tests

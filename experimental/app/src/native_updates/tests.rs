@@ -624,3 +624,50 @@ fn shared_minisign_vectors() {
         assert_eq!(got, want, "{name}");
     }
 }
+
+/// A package signed by the release pipeline (`MNEMA_TEST_UPDATE_PACKAGE`, with
+/// its `.sig` next to it and `MNEMA_TEST_UPDATE_VERSION`) against the updater
+/// key in `tauri.conf.json`: the real signature, not one the tests make, and
+/// every way of getting it wrong.
+#[test]
+fn a_package_signed_by_the_release_pipeline_verifies_and_every_wrong_form_is_refused() {
+    let (Some(package), Some(version)) = (
+        std::env::var_os("MNEMA_TEST_UPDATE_PACKAGE").filter(|p| std::path::Path::new(p).exists()),
+        std::env::var("MNEMA_TEST_UPDATE_VERSION").ok(),
+    ) else {
+        return;
+    };
+    let mut sig_path = package.clone();
+    sig_path.push(".sig");
+    let bytes = std::fs::read(&package).unwrap();
+    let signature = std::fs::read_to_string(sig_path).unwrap();
+    let conf: serde_json::Value =
+        serde_json::from_str(include_str!("../../tauri.conf.json")).unwrap();
+    let pubkey = conf["plugins"]["updater"]["pubkey"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+
+    assert_eq!(
+        verify_package(&bytes, &signature, &pubkey, &version),
+        Ok(())
+    );
+    let mut tampered = bytes.clone();
+    tampered[bytes.len() / 2] ^= 1;
+    assert_eq!(
+        verify_package(&tampered, &signature, &pubkey, &version),
+        Err(VerifyError::Mismatch)
+    );
+    assert_eq!(
+        verify_package(&bytes[..bytes.len() - 1], &signature, &pubkey, &version),
+        Err(VerifyError::Mismatch)
+    );
+    assert_eq!(
+        verify_package(&bytes, &signature, &pubkey, "0.0.1"),
+        Err(VerifyError::Version)
+    );
+    assert_eq!(
+        verify_package(&bytes, &signature, &keys().pubkey(), &version),
+        Err(VerifyError::Mismatch)
+    );
+}

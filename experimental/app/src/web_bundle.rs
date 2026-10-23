@@ -1829,14 +1829,17 @@ mod shared_vectors {
         }
     }
 
-    /// A signed release bundle (`MNEMA_REAL_BUNDLE=path/to/mnema-web-X.Y.Z.zip`,
-    /// from the mnema-talk GitHub release) against the key pinned in this build,
-    /// so a change to the signature or hash crates is checked on real data, not
-    /// only on bundles the tests sign themselves.
+    /// The signed release bundle CI stages (`MNEMA_TEST_BUNDLE_ZIP`, from the
+    /// mnema-talk GitHub release) against the key pinned in this build, so a
+    /// change to the signature or hash crates is checked on real data, not only
+    /// on bundles the tests sign themselves; every tampered form is refused.
     #[test]
-    #[ignore = "needs MNEMA_REAL_BUNDLE, a signed release bundle"]
     fn a_real_signed_release_bundle_verifies_and_every_tampered_form_is_refused() {
-        let path = std::env::var("MNEMA_REAL_BUNDLE").expect("MNEMA_REAL_BUNDLE");
+        let Some(path) =
+            std::env::var_os("MNEMA_TEST_BUNDLE_ZIP").filter(|p| Path::new(p).exists())
+        else {
+            return;
+        };
         let data = std::fs::read(path).unwrap();
         let keys = trusted_keys();
         let bundle = verify(&data, &keys).expect("the release bundle verifies");
