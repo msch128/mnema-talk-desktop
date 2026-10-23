@@ -1,0 +1,55 @@
+.github/dependabot.yml
+  s_06fcde5dbef956::t_f9e5f6825541a4 9-14,22-24,36-38
+README.md
+  s_06fcde5dbef956::t_78f21fb7f19dd9 59
+experimental/app/Cargo.lock
+  s_06fcde5dbef956::t_af42540d053e1c 1183,1965,1967,1969,1980,1982,1984,3046,3048,4645,4647,4655,4657,4674,4676,4775-4784,4797,4799,4807,5423-5434
+experimental/app/src/web_client.rs
+  s_06fcde5dbef956::t_6478cd92ec6c62 118-126,1286,1290-1308,1311-1313,1315
+experimental/app/src/web_shell.rs
+  s_06fcde5dbef956::t_ad57d21398be1d 15,200-201,207,614-622,1049
+experimental/crates/checked-storage/bootstrap/Cargo.toml
+  s_06fcde5dbef956::t_b557cf070c2aae 16
+experimental/crates/checked-storage/checked-sqlite-storage/Cargo.toml
+  s_06fcde5dbef956::t_b534ce074cd7b6 18-19
+experimental/crates/crypto-owner/Cargo.lock
+  s_06fcde5dbef956::t_4b0b16ab9b0a6c 851,853,1036,1038,1051,1053,1055,1829,1831,2669,2671,2679,2681,2698,2700,2784-2793,2796,2798,2806,3148-3159
+experimental/crates/crypto-owner/qualified-sdk/Cargo.lock
+  s_06fcde5dbef956::t_02095b72fe33bf 806,808,939,941,954,956,958,1604,1606,2307,2309,2317,2319,2336,2338,2387-2396,2399,2401,2409,2712-2723
+experimental/crates/crypto-owner/qualified-sdk/Cargo.toml
+  s_06fcde5dbef956::t_36d522d4b8202a 19-21
+experimental/crates/crypto-stack/crypto-core/Cargo.toml
+  s_06fcde5dbef956::t_3d5dc9a090d726 16
+experimental/crates/crypto-stack/crypto-enrollment/Cargo.toml
+  s_06fcde5dbef956::t_a814f5da65b966 18
+experimental/vendor/openmls/sqlite_storage/Cargo.toml
+  s_06fcde5dbef956::t_868167633d4b40 16-17
+linux/README.md
+  s_06fcde5dbef956::t_80933106a2ae29 178-181
+linux/src/core/instances.ts
+  s_06fcde5dbef956::t_e6302c492775fb 115,129,143,151,322
+linux/src/main/context.ts
+  s_06fcde5dbef956::t_1c9e9b009835d9 46
+linux/src/main/main.ts
+  s_06fcde5dbef956::t_1313744cb64ca3 24,73,75-76
+linux/src/main/shell.ts
+  s_06fcde5dbef956::t_5b583eee8291c7 15,333-348,351
+linux/test/instances.test.ts
+  s_06fcde5dbef956::t_00024f32fcfe90 219,261,263-267
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d68e588af49c0aef2d7cd5e170e011f2fa26fbe1",
+  "prompts": {},
+  "sessions": {
+    "s_06fcde5dbef956": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "94b73314-95fe-4e96-8c43-d20b0f28358d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}
