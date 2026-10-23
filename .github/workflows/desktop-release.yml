@@ -73,6 +73,8 @@ jobs:
         run: |
           npm ci --ignore-scripts --no-audit --no-fund
           if ($LASTEXITCODE -ne 0) { throw 'CLI install failed' }
+          node ../scripts/ensure-npm-optional.mjs .
+          if ($LASTEXITCODE -ne 0) { throw 'Tauri CLI platform package missing' }
       - name: Build and sign the installer from the tested executable
         shell: pwsh
         env:
@@ -174,7 +176,9 @@ jobs:
       # without install scripts.
       - name: Install the pinned Tauri CLI
         working-directory: ui
-        run: npm ci --ignore-scripts --no-audit --no-fund
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          node ../scripts/ensure-npm-optional.mjs .
       # The executable is the tested one; the bundle step only wraps it, signs
       # the app ad hoc (tauri.macos.conf.json) and signs the updater archive.
       - name: Bundle the app from the tested executable
@@ -284,7 +288,9 @@ jobs:
       # without install scripts.
       - name: Install the pinned Tauri CLI
         working-directory: ui
-        run: npm ci --ignore-scripts --no-audit --no-fund
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          node ../scripts/ensure-npm-optional.mjs .
       # The AppImages and .debs are the tested ones; they are only signed here,
       # with the version bound into the signature, exactly as the other platforms.
       - name: Sign the AppImages and .debs for the updater

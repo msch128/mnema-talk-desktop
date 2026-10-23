@@ -200,6 +200,14 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Protected chat-owner tests failed' }
           cargo build --locked --release --manifest-path experimental/app/Cargo.toml --features shell,native-crypto,custom-protocol
           if ($LASTEXITCODE -ne 0) { throw 'Protected native host link failed' }
+      # A real package from a published release, signed by the release pipeline:
+      # the host's signature check runs on it, not only on packages the tests sign.
+      - name: Fetch a signed release package for the signature tests
+        if: inputs.acceptance_release == ''
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download v0.3.1 --repo msch128/mnema-talk-desktop --dir signed-package --pattern 'Mnema-Desktop-DEV_0.3.1_x64-setup.exe*'
       - name: Check and link the actual shared-client Tauri host
         if: inputs.acceptance_release == ''
         shell: pwsh
@@ -207,6 +215,10 @@ jobs:
           # A release build must embed a bundle; the test checks that the pinned key verifies it.
           MNEMA_REQUIRE_BUNDLE: ${{ inputs.tag != '' && '1' || '' }}
           MNEMA_TEST_BUNDLE_ZIP: ${{ github.workspace }}/experimental/app/bundle/builtin.zip
+          MNEMA_TEST_UPDATE_PACKAGE: ${{ github.workspace }}/signed-package/Mnema-Desktop-DEV_0.3.1_x64-setup.exe
+          MNEMA_TEST_UPDATE_VERSION: '0.3.1'
+          # Items written by keyring 3 (releases up to 0.3.x) stay readable (web_vault.rs).
+          MNEMA_KEYRING_COMPAT: '1'
         run: |
           node scripts/checked-glib.mjs
           if ($LASTEXITCODE -ne 0) { throw 'Reviewed dependency source verification failed' }
@@ -381,6 +393,8 @@ jobs:
         run: |
           npm ci --ignore-scripts --no-audit --no-fund
           if ($LASTEXITCODE -ne 0) { throw 'CLI install failed' }
+          node ../scripts/ensure-npm-optional.mjs .
+          if ($LASTEXITCODE -ne 0) { throw 'Tauri CLI platform package missing' }
       - name: Build the host with the self-test and wrap it in the installer
         shell: pwsh
         run: |
@@ -491,11 +505,19 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ inputs.tag }}
         run: bash scripts/stage-web-bundle.sh
+      - name: Fetch a signed release package for the signature tests
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download v0.3.1 --repo msch128/mnema-talk-desktop --dir signed-package --pattern 'Mnema-Desktop-DEV_0.3.1_aarch64.app.tar.gz*'
       - name: Test and lint the shared-client host for macOS
         env:
           # A release build must embed a bundle; the test checks that the pinned key verifies it.
           MNEMA_REQUIRE_BUNDLE: ${{ inputs.tag != '' && '1' || '' }}
           MNEMA_TEST_BUNDLE_ZIP: ${{ github.workspace }}/experimental/app/bundle/builtin.zip
+          MNEMA_TEST_UPDATE_PACKAGE: ${{ github.workspace }}/signed-package/Mnema-Desktop-DEV_0.3.1_aarch64.app.tar.gz
+          MNEMA_TEST_UPDATE_VERSION: '0.3.1'
+          # Items written by keyring 3 (releases up to 0.3.x) stay readable (web_vault.rs).
+          MNEMA_KEYRING_COMPAT: '1'
         run: |
           node scripts/checked-glib.mjs
           cargo test --locked --manifest-path experimental/app/Cargo.toml --features shell,web-client,custom-protocol
