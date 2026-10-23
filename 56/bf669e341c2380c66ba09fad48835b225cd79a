@@ -1,0 +1,29 @@
+experimental/THIRD_PARTY_NOTICES.md
+  s_06fcde5dbef956::t_436ce1537318e5 11
+experimental/app/Cargo.lock
+  s_06fcde5dbef956::t_e115667c4d1aab 3279
+experimental/app/Cargo.toml
+  s_06fcde5dbef956::t_32b7b09f8f5136 3
+experimental/app/tauri.conf.json
+  s_06fcde5dbef956::t_6c92e6c8eff0c2 5
+linux/package-lock.json
+  s_06fcde5dbef956::t_6c9404024f93b2 3,9
+linux/package.json
+  s_06fcde5dbef956::t_ae2ecc503af738 5
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "56bf669e341c2380c66ba09fad48835b225cd79a",
+  "prompts": {},
+  "sessions": {
+    "s_06fcde5dbef956": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "94b73314-95fe-4e96-8c43-d20b0f28358d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}
