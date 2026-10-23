@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { afterEach, test } from 'node:test'
 import { verifyBundle } from '../src/core/bundle.ts'
 import { Jar, MAX_COOKIES, type Vault } from '../src/core/cookies.ts'
-import { APP_CSP, LARGE_BODY_BUDGET, Limits, MAX_BODY, SMALL_BODY, forward, inlineSafe, mimeFor, serveBundle, target, type Instance, type Resp } from '../src/core/proxy.ts'
+import { APP_CSP, LEGACY_APP_CSP, appCsp, LARGE_BODY_BUDGET, Limits, MAX_BODY, SMALL_BODY, forward, inlineSafe, mimeFor, serveBundle, target, type Instance, type Resp } from '../src/core/proxy.ts'
 import { bundle, spec, trusted } from './helpers/fixtures.ts'
 import { reply, serve, type TestServer } from './helpers/server.ts'
 
@@ -30,7 +30,7 @@ test('the bundle is served with the app policy, the shell for client-side routes
   const index = serveBundle(served, 'GET', '/')
   assert.equal(index.status, 200)
   assert.equal(Buffer.from(index.body).toString(), '<html>app</html>')
-  assert.equal(header(index, 'content-security-policy'), APP_CSP)
+  assert.equal(header(index, 'content-security-policy'), LEGACY_APP_CSP)
   assert.match(APP_CSP, /script-src 'self' 'wasm-unsafe-eval'/)
   assert.equal(header(index, 'x-content-type-options'), 'nosniff')
   assert.equal(header(index, 'cache-control'), 'no-cache')
@@ -49,6 +49,24 @@ test('the bundle is served with the app policy, the shell for client-side routes
   assert.equal(header(post, 'allow'), 'GET, HEAD')
   assert.equal(mimeFor('a.WASM'), 'application/wasm')
   assert.equal(mimeFor('noext'), 'application/octet-stream')
+})
+
+test('bundles from 1.1.0 get the strict style policy, older ones keep inline styles', () => {
+  const files: [string, string][] = [['index.html', '<html>app</html>']]
+  const csp = (version: string) => header(serveBundle(verifyBundle(bundle(spec(version, { files })), trusted(7)), 'GET', '/'), 'content-security-policy')
+  for (const version of ['1.1.0', '1.1.1', '1.2.0', '2.0.0']) {
+    assert.equal(csp(version), APP_CSP, version)
+  }
+  for (const version of ['0.8.0', '1.0.0', '1.0.1', '1.0.99']) {
+    assert.equal(csp(version), LEGACY_APP_CSP, version)
+  }
+  assert.match(APP_CSP, /style-src 'self'; style-src-attr 'none';/)
+  assert.doesNotMatch(APP_CSP, /unsafe-inline/)
+  assert.match(LEGACY_APP_CSP, /style-src 'self' 'unsafe-inline'/)
+  // Only the style sources differ.
+  assert.equal(APP_CSP.replace("style-src 'self'; style-src-attr 'none'", 'S'), LEGACY_APP_CSP.replace("style-src 'self' 'unsafe-inline'", 'S'))
+  assert.equal(appCsp([1, 1, 0]), APP_CSP)
+  assert.equal(appCsp([1, 0, 9]), LEGACY_APP_CSP)
 })
 
 test('only /api/ of the instance is reachable, whatever the path contains', () => {
