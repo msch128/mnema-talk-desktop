@@ -12,9 +12,9 @@
  */
 import { existsSync, readdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
-import { BaseWindow, WebContentsView, app } from 'electron'
+import { BaseWindow, WebContentsView, app, session } from 'electron'
 import { parseAddress } from '../core/client.ts'
-import { AddError, MAX_INSTANCES, idFor } from '../core/instances.ts'
+import { AddError, MAX_INSTANCES, decideOldStorage, idFor, persistedOriginOfOldClient } from '../core/instances.ts'
 import { APP_URL } from '../core/origin.ts'
 import { LEGACY_PARTITION, PARTITIONS, attachmentPartition, serverPartition, type Context } from './context.ts'
 import { buildMenu } from './menu.ts'
@@ -229,8 +229,12 @@ export async function addServer(ctx: Context, address: string): Promise<void> {
   }
   const slot = registry.slot(id)
   if (slot) { registry.restart(id); slot.phase = { kind: 'ready', session } }
-  // The first server after the update keeps the storage of the single-server client (its end-to-end state).
-  if (ctx.shell.adoptLegacy && registry.length === 1) { registry.legacy = id; ctx.shell.adoptLegacy = false }
+  // The storage of the single-server client holds every server it showed. Only a proven owner keeps it; otherwise it goes.
+  if (ctx.shell.adoptLegacy && registry.length === 1) {
+    ctx.shell.adoptLegacy = false
+    if (decideOldStorage(persistedOriginOfOldClient(), origin.href) === 'adopt') registry.legacy = id
+    else await wipeLegacyStorage(ctx)
+  }
   registry.activate(id)
   try {
     openPage(ctx, id)
@@ -330,6 +334,21 @@ function sweepOrphans(ctx: Context): void {
     const match = /^(?:inst|mnema-att)-([0-9a-f]{16})$/.exec(name)
     if (match && !known.has(match[1] as string)) rmSync(join(root, name), { recursive: true, force: true })
   }
+}
+
+/** Removes the storage of the single-server client: its data, then its directory. */
+export async function wipeLegacyStorage(ctx: Context): Promise<void> {
+  const ses = session.fromPartition(LEGACY_PARTITION)
+  await ses.clearStorageData().catch(() => undefined)
+  await ses.clearCache().catch(() => undefined)
+  const dir = partitionDir(ctx, LEGACY_PARTITION)
+  let attempts = 0
+  const attempt = () => {
+    if (!existsSync(dir)) return
+    try { rmSync(dir, { recursive: true, force: true }) } catch { /* tried again below */ }
+    if (existsSync(dir) && ++attempts < 20) setTimeout(attempt, 500).unref()
+  }
+  attempt()
 }
 
 /** Whether the single-server client left its storage behind and no list of servers exists yet. */

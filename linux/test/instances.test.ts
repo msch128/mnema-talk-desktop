@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, test } from 'node:test'
 import { Jar, type Vault } from '../src/core/cookies.ts'
-import { AddError, MAX_COUNT, MAX_INSTANCES, Registry, emptyStored, idFor, loadStored, saveStored, type Session } from '../src/core/instances.ts'
+import { AddError, MAX_COUNT, MAX_INSTANCES, Registry, decideOldStorage, emptyStored, idFor, persistedOriginOfOldClient, loadStored, saveStored, type Session } from '../src/core/instances.ts'
 import { Limits, forward } from '../src/core/proxy.ts'
 import { Sockets } from '../src/core/sockets.ts'
 import type { Held } from '../src/core/store.ts'
@@ -270,4 +270,12 @@ test('the storage of the single-server client stays with the one server that ado
   // Only a server on the list may hold it.
   writeFileSync(file, JSON.stringify({ version: 1, servers: ['https://b.example/'], active: null, legacy: id('a.example') }))
   assert.equal(loadStored(file).legacy, null)
+})
+
+test('the storage of the single-server client goes to a proven owner only, and is wiped otherwise', () => {
+  assert.equal(persistedOriginOfOldClient(), null, 'no released client persisted its server')
+  // Persisted origin A, add B: no adopt. Persisted A, add A: adopt. Nothing persisted: nobody adopts.
+  assert.equal(decideOldStorage('https://a.example/', 'https://b.example/'), 'wipe')
+  assert.equal(decideOldStorage('https://a.example/', 'https://a.example/'), 'adopt')
+  assert.equal(decideOldStorage(null, 'https://a.example/'), 'wipe')
 })

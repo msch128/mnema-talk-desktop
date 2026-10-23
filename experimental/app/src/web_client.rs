@@ -88,14 +88,20 @@ pub(crate) enum OldStorage {
     Wipe,
 }
 
-/// The rule: the owner is the one server that had a session, and no other
-/// server did.
-pub(crate) fn decide_old_storage(own_session: bool, other_sessions: usize) -> OldStorage {
-    if own_session && other_sessions == 0 {
+/// The rule: only the origin the old client persisted can own its storage.
+pub(crate) fn decide_old_storage(persisted: Option<&Url>, added: &Url) -> OldStorage {
+    if persisted == Some(added) {
         OldStorage::Adopt
     } else {
         OldStorage::Wipe
     }
+}
+
+/// The origin the old client persisted as its server. None: no released client
+/// wrote one (it asked for the address at every start and kept only
+/// `web-trust`, `web-bundles` and per-origin `sessions`).
+pub(crate) fn persisted_origin_of_old_client() -> Option<Url> {
+    None
 }
 
 /// Something an earlier client leaves in its data directory, and the list of
@@ -138,36 +144,21 @@ impl Trusted {
 
     /// What becomes of the storage the single-server client left, decided once
     /// when the first server is added. That client kept every server it ever
-    /// showed in one shared storage, so the storage can only be handed to a
-    /// server that is plainly its owner: the one whose session is the only one
-    /// the old client stored. With none, or with another session stored as
-    /// well, the storage cannot be attributed and is wiped, never inherited by
-    /// a server that may not have owned it.
-    pub(crate) fn old_storage_for(
-        &self,
-        origin: &Url,
-        vault: &dyn crate::web_vault::Vault,
-    ) -> OldStorage {
+    /// showed in one shared storage and persisted no address of its server
+    /// (only trust state, bundles and per-origin sessions), so the owner cannot
+    /// be proven. The storage goes to a server only if an origin was persisted
+    /// and is the one being added; otherwise, which is every released client,
+    /// it is wiped. Fail closed: the person signs in again and gets a new
+    /// device key; a server never inherits a stranger's cookies or end-to-end
+    /// state.
+    pub(crate) fn old_storage_for(&self, origin: &Url) -> OldStorage {
         if !self
             .adoptable
             .swap(false, std::sync::atomic::Ordering::SeqCst)
         {
             return OldStorage::None;
         }
-        let own = vault.load(&crate::instances::id_for(origin)).is_some()
-            || self.jar_file(origin).is_some_and(|f| f.exists());
-        decide_old_storage(own, self.other_stored_sessions(origin))
-    }
-
-    /// Sessions of other servers that the old client left as files.
-    fn other_stored_sessions(&self, origin: &Url) -> usize {
-        let own = self.jar_file(origin);
-        let Some(dir) = own.as_ref().and_then(|f| f.parent()) else {
-            return 0;
-        };
-        std::fs::read_dir(dir)
-            .map(|entries| entries.flatten().filter(|e| Some(e.path()) != own).count())
-            .unwrap_or(0)
+        decide_old_storage(persisted_origin_of_old_client().as_ref(), origin)
     }
 
     #[cfg(test)]
@@ -1326,62 +1317,58 @@ mod tests {
     }
 
     #[test]
-    fn only_the_plain_owner_of_the_old_storage_inherits_it() {
-        assert_eq!(decide_old_storage(true, 0), OldStorage::Adopt);
-        // A server without a session of its own is not the owner.
-        assert_eq!(decide_old_storage(false, 0), OldStorage::Wipe);
-        // Another server was stored too: the shared storage holds both.
-        assert_eq!(decide_old_storage(true, 1), OldStorage::Wipe);
-        assert_eq!(decide_old_storage(false, 2), OldStorage::Wipe);
+    fn the_old_storage_goes_to_a_proven_owner_only() {
+        let a = Url::parse("https://a.example/").unwrap();
+        let b = Url::parse("https://b.example/").unwrap();
+        // Persisted origin A, add B: no adopt. Persisted A, add A: adopt.
+        assert_eq!(decide_old_storage(Some(&a), &b), OldStorage::Wipe);
+        assert_eq!(decide_old_storage(Some(&a), &a), OldStorage::Adopt);
+        // Nothing persisted: nobody adopts.
+        assert_eq!(decide_old_storage(None, &a), OldStorage::Wipe);
+        assert_eq!(persisted_origin_of_old_client(), None);
     }
 
     #[test]
-    fn a_server_added_next_to_a_stranger_in_the_old_data_does_not_inherit_its_storage() {
+    fn a_server_added_next_to_old_sessions_never_inherits_the_old_storage() {
         use crate::web_vault::{Vault, fake::Memory};
         let dir = std::env::temp_dir().join(format!("mnema-adopt-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(dir.join("sessions")).unwrap();
         let a = Url::parse("https://a.example/").unwrap();
         let b = Url::parse("https://b.example/").unwrap();
-        let session = |origin: &Url| {
-            dir.join("sessions")
-                .join(format!("{}.json", crate::instances::id_for(origin)))
-        };
-        std::fs::write(session(&a), b"[]").unwrap();
+        // A's session is in the keychain, B's is a file: neither proves who owns the storage.
         let vault = Memory::default();
-        // Nothing left by an old client, or the list exists already: nothing to decide.
+        vault.save(&crate::instances::id_for(&a), b"[]");
+        std::fs::write(
+            dir.join("sessions")
+                .join(format!("{}.json", crate::instances::id_for(&b))),
+            b"[]",
+        )
+        .unwrap();
+        for first in [&a, &b] {
+            let trusted = Trusted::new(Some(dir.clone()), None);
+            assert_eq!(trusted.old_storage_for(first), OldStorage::Wipe);
+            assert_eq!(
+                trusted.old_storage_for(first),
+                OldStorage::None,
+                "decided once"
+            );
+        }
+        // A fresh install has nothing to decide, and neither has a client with a list.
         let none = std::env::temp_dir().join(format!("mnema-adopt-none-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&none);
-        let fresh = Trusted::new(Some(none.clone()), None);
-        assert_eq!(fresh.old_storage_for(&a, &vault), OldStorage::None);
-        let _ = std::fs::remove_dir_all(none);
-        // A is the only server the old client stored: only A inherits, once.
-        let sole = Trusted::new(Some(dir.clone()), None);
         assert_eq!(
-            sole.old_storage_for(&b, &vault),
-            OldStorage::Wipe,
-            "B is not the owner"
+            Trusted::new(Some(none.clone()), None).old_storage_for(&a),
+            OldStorage::None
         );
-        assert_eq!(
-            sole.old_storage_for(&a, &vault),
-            OldStorage::None,
-            "decided once"
-        );
-        let again = Trusted::new(Some(dir.clone()), None);
-        assert_eq!(again.old_storage_for(&a, &vault), OldStorage::Adopt);
-        // A and B were both stored (A's in the keychain, B's as a file): neither inherits.
-        std::fs::write(session(&b), b"[]").unwrap();
-        vault.save(&crate::instances::id_for(&a), b"[]");
-        for first in [&a, &b] {
-            let both = Trusted::new(Some(dir.clone()), None);
-            assert_eq!(both.old_storage_for(first, &vault), OldStorage::Wipe);
-        }
-        // Once the list exists the old storage is not up for grabs any more.
         let listed = Trusted::new(Some(dir.clone()), None);
         listed.save_instances();
-        let later = Trusted::new(Some(dir.clone()), None);
-        assert_eq!(later.old_storage_for(&a, &vault), OldStorage::None);
+        assert_eq!(
+            Trusted::new(Some(dir.clone()), None).old_storage_for(&a),
+            OldStorage::None
+        );
         let _ = std::fs::remove_dir_all(dir);
+        let _ = std::fs::remove_dir_all(none);
     }
 
     #[test]
