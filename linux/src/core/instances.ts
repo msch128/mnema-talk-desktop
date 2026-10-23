@@ -328,3 +328,22 @@ export class Registry {
     return { servers: this.slots.map((s) => s.origin), active: front?.origin ?? null, legacy: this.legacy }
   }
 }
+
+/**
+ * What becomes of the storage the single-server client left. That client kept
+ * every server it ever showed in one shared storage and persisted no address
+ * of its server (only trust state, bundles and per-origin sessions), so the
+ * owner of the storage cannot be proven; it is handed to a server only if an
+ * origin was persisted and is the one being added. In every other case, which
+ * is every released client, it is wiped. Fail closed: a person who loses it
+ * signs in again and gets a new device key; a server that inherits a stranger's
+ * storage would read its cookies and end-to-end state.
+ */
+export function decideOldStorage(persistedOrigin: string | null, added: string): 'adopt' | 'wipe' {
+  return persistedOrigin !== null && persistedOrigin === added ? 'adopt' : 'wipe'
+}
+
+/** The origin the old client persisted as its server, or null: no released client persisted one. */
+export function persistedOriginOfOldClient(): string | null {
+  return null
+}

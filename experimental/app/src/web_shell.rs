@@ -911,7 +911,7 @@ pub async fn add_server(
     check_room(state)?;
     let server = discover(&origin).await?;
     let held = choose(state, &server).await?;
-    let old = state.old_storage_for(&origin, &Os);
+    let old = state.old_storage_for(&origin);
     let adopts = old == OldStorage::Adopt;
     if old == OldStorage::Wipe {
         wipe_default_storage(&app).await;
