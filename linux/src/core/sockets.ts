@@ -17,8 +17,21 @@ export type WsEvent =
   | { kind: 'message', id: number, data: string }
   | { kind: 'close', id: number }
 
-export function socketUrl(instance: Instance): URL {
+/**
+ * What a page may ask the host to open: the instance's `/api/ws`, with the one
+ * question the server knows, `dm=1` (also send conversation events, 1.1).
+ * Anything else, in the path or the query, is refused instead of passed on.
+ * Returns whether conversation events were asked for.
+ */
+export function socketRequest(path: string): boolean {
+  if (path === '/api/ws') return false
+  if (path === '/api/ws?dm=1') return true
+  throw new Error('Only /api/ws can be opened.')
+}
+
+export function socketUrl(instance: Instance, dm = false): URL {
   const url = new URL('api/ws', instance.origin)
+  if (dm) url.search = 'dm=1'
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
   return url
 }
@@ -36,13 +49,13 @@ export class Sockets {
    * the instance accepted it, the messages, and `close` exactly once. When
    * `emit` returns false the page is gone and the socket is dropped.
    */
-  connect(instance: Instance, emit: (event: WsEvent) => boolean): number {
+  connect(instance: Instance, dm: boolean, emit: (event: WsEvent) => boolean): number {
     if (this.open.size >= MAX_SOCKETS) throw new Error('too many sockets')
     const id = ++this.next
     const headers: Record<string, string> = { Origin: instance.origin.origin }
     const cookie = instance.jar.header(instance.now())
     if (cookie) headers.Cookie = cookie
-    const ws = new WebSocket(socketUrl(instance), {
+    const ws = new WebSocket(socketUrl(instance, dm), {
       headers,
       maxPayload: MAX_FRAME,
       handshakeTimeout: 10_000,

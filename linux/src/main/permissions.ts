@@ -53,7 +53,7 @@ export function secureSession(ctx: Context, ses: Session, role: Role): void {
  */
 async function chooseScreen(ctx: Context, frameUrl: string, gesture: boolean): Promise<DesktopCapturerSource | null> {
   const url = parseUrl(frameUrl)
-  const win = ctx.windows.instance
+  const win = ctx.shell.window
   if (!gesture || !url || localOrigin(url) === null || !win || win.isDestroyed()) return null
   const sources = await desktopCapturer.getSources({ types: ['screen', 'window'], thumbnailSize: { width: 320, height: 180 }, fetchWindowIcons: true }).catch(() => [])
   if (sources.length <= 1) return sources[0] ?? null
@@ -66,7 +66,7 @@ interface PendingPick {
 }
 const pending = new WeakMap<Context, PendingPick>()
 
-function pick(ctx: Context, parent: Electron.BrowserWindow, sources: DesktopCapturerSource[]): Promise<DesktopCapturerSource | null> {
+function pick(ctx: Context, parent: Electron.BaseWindow, sources: DesktopCapturerSource[]): Promise<DesktopCapturerSource | null> {
   pending.get(ctx)?.resolve(null)
   return new Promise((resolve) => {
     let done = false

@@ -6,18 +6,20 @@
  * the main frame, and the URL that frame shows.
  */
 import { type IpcMainEvent, type IpcMainInvokeEvent, type WebContents, ipcMain, shell } from 'electron'
+import { socketRequest, type WsEvent } from '../core/sockets.ts'
 import { bundled, localOrigin, parseUrl, pickerUi, updateUi } from '../core/origin.ts'
 import { RELEASES_PAGE } from '../core/pinned.ts'
-import type { WsEvent } from '../core/sockets.ts'
 import type { Context, Role } from './context.ts'
 import { pickerChoose, pickerSources } from './permissions.ts'
-import { notify, notifyOpen, notifyPermission, setBadge } from './notify.ts'
-import { openInstance } from './windows.ts'
+import { notify, notifyOpen, notifyPermission } from './notify.ts'
+import { addServer, countsChanged } from './shell.ts'
 
 type Args = Record<string, unknown>
 
-/** The window this call comes from, if it is a main frame showing a page it may show. */
-function caller(ctx: Context, event: IpcMainInvokeEvent | IpcMainEvent): { role: Role, contents: WebContents } | null {
+/** The page this call comes from, with the server it belongs to (decided by the host when it made the page). */
+interface Caller { role: Role, contents: WebContents, server: string | null }
+
+function caller(ctx: Context, event: IpcMainInvokeEvent | IpcMainEvent): Caller | null {
   const contents = event.sender
   const frame = event.senderFrame
   const role = ctx.roles.get(contents.id)
@@ -29,14 +31,16 @@ function caller(ctx: Context, event: IpcMainInvokeEvent | IpcMainEvent): { role:
       : role === 'updater' ? updateUi(url)
         : role === 'picker' ? pickerUi(url)
           : false
-  return ok ? { role, contents } : null
+  const server = ctx.servers.get(contents.id) ?? null
+  return ok && (role !== 'instance' || server !== null) ? { role, contents, server } : null
 }
 
 /** The identity the verified bundle announces to the page, before any of its scripts run. */
 function identity(ctx: Context, event: IpcMainEvent): object | null {
   const from = caller(ctx, event)
   if (!from || (from.role !== 'selector' && from.role !== 'instance')) return null
-  const held = ctx.trusted.view()
+  // A server's page runs the bundle its server was matched with; the selector runs the one in front.
+  const held = from.server !== null ? ctx.trusted.session(from.server)?.held : ctx.trusted.view()
   if (!held) return null
   return {
     version: held.bundle.version.join('.'),
@@ -46,7 +50,8 @@ function identity(ctx: Context, event: IpcMainEvent): object | null {
     commit: held.bundle.commit,
     role: from.role === 'selector' ? 'selector' : 'instance',
     // What the host offers this window beyond the common surface; the web app detects it instead of a version bump.
-    capabilities: from.role === 'instance' ? ['notify'] : [],
+    // `unread`: the page reports unread channels and mentions for the server rail. `ws_query`: the socket may ask for conversation events.
+    capabilities: from.role === 'instance' ? ['notify', 'unread', 'ws_query'] : [],
   }
 }
 
@@ -62,36 +67,24 @@ function id(args: Args, name: string): number {
   return value
 }
 
-async function run(ctx: Context, role: Role, contents: WebContents, command: string, args: Args): Promise<unknown> {
-  const { trusted } = ctx
+async function run(ctx: Context, from: Caller, command: string, args: Args): Promise<unknown> {
+  const { role, contents } = from
   const only = (...roles: Role[]) => { if (!roles.includes(role)) throw new Error('Not allowed.') }
+  /** The running session of the server this page belongs to, and nothing else. */
+  const own = () => {
+    const session = from.server === null ? null : ctx.trusted.session(from.server)
+    if (!session) throw new Error('No instance is selected.')
+    return session
+  }
   switch (command) {
-    case 'desktop_open_instance': {
+    case 'desktop_open_instance':
       if (role !== 'selector') throw new Error('Only the instance selector may open an instance.')
-      if (ctx.windows.instance) throw new Error('Close the current instance before selecting another.')
-      await trusted.openInstance(text(args, 'address'))
-      try {
-        const selector = ctx.windows.selector
-        openInstance(ctx, () => {
-          trusted.sockets.closeAll()
-          trusted.closeSession()
-          const attachment = ctx.windows.attachment
-          if (attachment && !attachment.isDestroyed()) attachment.close()
-          const back = ctx.windows.selector
-          if (back && !back.isDestroyed()) back.show()
-        })
-        selector?.hide()
-      } catch {
-        trusted.closeSession()
-        throw new Error('Unable to open the instance.')
-      }
+      await addServer(ctx, text(args, 'address'))
       return null
-    }
     case 'desktop_ws_open': {
       only('instance')
-      const session = trusted.session()
-      if (!session) throw new Error('No instance is selected.')
-      if (text(args, 'path') !== '/api/ws') throw new Error('Only /api/ws can be opened.')
+      const session = own()
+      const dm = socketRequest(text(args, 'path'))
       const channel = id(args, 'onEvent')
       let index = 0
       const send = (message: object) => {
@@ -99,7 +92,7 @@ async function run(ctx: Context, role: Role, contents: WebContents, command: str
         contents.send('mnema:callback', channel, message)
         return true
       }
-      return trusted.sockets.connect(session.instance, (event: WsEvent) => {
+      return session.sockets.connect(session.instance, dm, (event: WsEvent) => {
         const delivered = send({ index: index++, message: event })
         if (event.kind === 'close') send({ index: index++, end: true })
         return delivered
@@ -107,26 +100,35 @@ async function run(ctx: Context, role: Role, contents: WebContents, command: str
     }
     case 'desktop_ws_send':
       only('instance')
-      trusted.sockets.send(id(args, 'id'), text(args, 'data'))
+      own().sockets.send(id(args, 'id'), text(args, 'data'))
       return null
     case 'desktop_ws_close':
       only('instance')
-      trusted.sockets.close(id(args, 'id'))
+      own().sockets.close(id(args, 'id'))
       return null
     case 'desktop_notify_open':
       only('instance')
-      return notifyOpen(contents, id(args, 'onEvent'))
+      own()
+      return notifyOpen(ctx, from.server as string, contents, id(args, 'onEvent'))
     case 'desktop_notify':
       only('instance')
-      return notify(ctx, contents, text(args, 'title'), text(args, 'body'), text(args, 'channelId'), text(args, 'messageId'))
+      own()
+      return notify(ctx, from.server as string, text(args, 'title'), text(args, 'body'), text(args, 'channelId'), text(args, 'messageId'))
     case 'desktop_notify_permission':
     case 'desktop_notify_request_permission':
       only('instance')
       // Electron asks the desktop's notification service, never the person: there is nothing to request.
       return notifyPermission()
+    case 'desktop_report_unread':
+      only('instance')
+      ctx.trusted.registry.report(own().id, id(args, 'unread'), id(args, 'mentions'))
+      countsChanged(ctx)
+      return null
     case 'desktop_set_badge':
       only('instance')
-      return setBadge(id(args, 'count'))
+      ctx.trusted.registry.reportBadge(own().id, id(args, 'count'))
+      countsChanged(ctx)
+      return null
     case 'native_update_state':
       only('updater')
       return ctx.updater?.snapshot() ?? null
@@ -163,7 +165,7 @@ export function registerIpc(ctx: Context): void {
     const from = caller(ctx, event)
     try {
       if (!from || typeof command !== 'string' || typeof args !== 'object' || args === null) throw new Error('Not allowed.')
-      return { ok: true, value: await run(ctx, from.role, from.contents, command, args as Args) }
+      return { ok: true, value: await run(ctx, from, command, args as Args) }
     } catch (error) {
       // Plain text only: no stack, no path.
       return { ok: false, error: (error instanceof Error ? error.message : 'The command failed.').slice(0, 300) }

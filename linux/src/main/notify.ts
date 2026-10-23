@@ -1,61 +1,72 @@
 /**
- * OS notifications and the launcher badge for the instance window. Electron's
- * own Notification does the showing; a click brings the window forward and
- * tells the page which message the toast was about.
+ * OS notifications and the launcher badge for the pages of the servers.
+ * Electron's own Notification does the showing; a toast names its server once
+ * there are several, and using it brings that server forward and tells its
+ * page (and no other) which message the toast was about.
  */
 import { Notification, app, type WebContents } from 'electron'
-import { MAX_BODY, MAX_TITLE, ToastGate, badgeCount, cleanText, validId } from '../core/notify.ts'
+import { MAX_BODY, ToastGates, badgeCount, cleanText, taggedTitle, validId } from '../core/notify.ts'
+import { slotName } from '../core/instances.ts'
 import type { Context } from './context.ts'
+import { bringForward } from './shell.ts'
 
-const gate = new ToastGate()
-/** Keep the shown toasts referenced until they are used or closed; a collected one never fires its click. */
-const shown = new Map<Notification, number>()
-/** The page callback that receives clicks, per window, with the next message index its Channel expects. */
-const listeners = new Map<number, { channel: number, index: number }>()
-
-function send(contents: WebContents, listener: { channel: number, index: number }, message: object): void {
-  if (!contents.isDestroyed()) contents.send('mnema:callback', listener.channel, { index: listener.index++, message })
-}
+const gates = new ToastGates()
+/** Keep the shown toasts referenced until they are used or closed; a collected one never fires its click. The value is the generation of the page run it belongs to. */
+const shown = new Map<Notification, string>()
 
 /** What the web app calls permission: the desktop's notification service either exists or does not. */
 export function notifyPermission(): 'granted' | 'unsupported' {
   return Notification.isSupported() ? 'granted' : 'unsupported'
 }
 
-export function notifyOpen(contents: WebContents, channel: number): null {
-  if (!listeners.has(contents.id)) {
+export function notifyOpen(ctx: Context, server: string, contents: WebContents, channel: number): null {
+  const slot = ctx.trusted.registry.slot(server)
+  if (!slot) throw new Error('No instance is selected.')
+  if (slot.clicks === null) {
+    const generation = slot.generation
     contents.once('destroyed', () => {
-      listeners.delete(contents.id)
-      // Toasts still showing belong to the instance that is gone: take them down, they must not be usable anymore.
-      for (const [toast, owner] of shown) if (owner === contents.id) { shown.delete(toast); toast.close() }
+      // Toasts still showing belong to a page that is gone: take them down, they must not be usable anymore.
+      for (const [toast, owner] of shown) if (owner === generation) { shown.delete(toast); toast.close() }
     })
   }
-  listeners.set(contents.id, { channel, index: 0 })
+  slot.clicks = { channel, index: 0 }
   return null
 }
 
-export function notify(ctx: Context, contents: WebContents, title: string, body: string, channelId: string, messageId: string): null {
+export function notify(ctx: Context, server: string, title: string, body: string, channelId: string, messageId: string): null {
   if (!validId(channelId) || !validId(messageId)) throw new Error('Invalid notification target.')
-  if (!Notification.isSupported() || !gate.allow(Date.now())) return null
-  const toast = new Notification({ title: cleanText(title, MAX_TITLE), body: cleanText(body, MAX_BODY), silent: false })
-  shown.set(toast, contents.id)
+  const registry = ctx.trusted.registry
+  const slot = registry.slot(server)
+  if (!slot) throw new Error('No instance is selected.')
+  if (!Notification.isSupported() || !gates.allow(server, Date.now())) return null
+  const generation = slot.generation
+  const toast = new Notification({ title: taggedTitle(title, slotName(slot.origin), registry.length > 1), body: cleanText(body, MAX_BODY), silent: false })
+  shown.set(toast, generation)
   toast.on('click', () => {
     shown.delete(toast)
-    const win = ctx.windows.instance
-    // A toast of an instance that is no longer the open one is dropped: its ids must not reach another instance.
-    if (!win || win.isDestroyed() || win.webContents.id !== contents.id) return
-    if (win.isMinimized()) win.restore()
-    win.show()
-    win.focus()
-    const listener = listeners.get(contents.id)
-    if (listener) send(contents, listener, { channel_id: channelId, message_id: messageId })
+    // A toast of a server that is no longer on the list, or of an earlier run of its page, is dropped: its ids mean nothing to any other page.
+    const current = registry.byGeneration(generation)
+    if (!current) return
+    bringForward(ctx, current.id)
+    const page = ctx.shell.pages.get(current.id)
+    const listener = current.clicks
+    if (page && listener && !page.webContents.isDestroyed()) {
+      page.webContents.send('mnema:callback', listener.channel, { index: listener.index++, message: { channel_id: channelId, message_id: messageId } })
+    }
   })
   toast.on('close', () => shown.delete(toast))
   toast.show()
   return null
 }
 
-export function setBadge(count: number): null {
-  app.setBadgeCount(badgeCount(count))
-  return null
+/** A server left the list: its toasts go, and so does its gate. */
+export function toastsClosed(server: string, generation: string): void {
+  gates.forget(server)
+  for (const [toast, owner] of shown) if (owner === generation) { shown.delete(toast); toast.close() }
 }
+
+/** The launcher badge: the sum of the mentions over all servers. */
+export function setLauncherBadge(count: number): void {
+  app.setBadgeCount(badgeCount(count))
+}
+

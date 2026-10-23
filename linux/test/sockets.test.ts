@@ -5,7 +5,7 @@ import { afterEach, test } from 'node:test'
 import { WebSocketServer } from 'ws'
 import { Jar } from '../src/core/cookies.ts'
 import { Limits } from '../src/core/proxy.ts'
-import { MAX_FRAME, MAX_SOCKETS, Sockets, type WsEvent } from '../src/core/sockets.ts'
+import { MAX_FRAME, MAX_SOCKETS, Sockets, socketRequest, socketUrl, type WsEvent } from '../src/core/sockets.ts'
 
 const open: { server: Server, wss: WebSocketServer }[] = []
 afterEach(async () => {
@@ -49,7 +49,7 @@ test('the host opens /api/ws with the instance origin and the cookie, and relays
   })
   const sockets = new Sockets()
   const ev = events()
-  const id = sockets.connect(instance, ev.emit)
+  const id = sockets.connect(instance, false, ev.emit)
   await ev.until('message')
   assert.equal(seen.origin, instance.origin.origin)
   assert.equal(seen.cookie, 'session=s3cret')
@@ -69,15 +69,15 @@ test('an oversized frame ends the socket and the number of sockets is bounded', 
   const instance = await start((socket) => { socket.send('x'.repeat(MAX_FRAME + 1)) })
   const sockets = new Sockets()
   const ev = events()
-  sockets.connect(instance, ev.emit)
+  sockets.connect(instance, false, ev.emit)
   await ev.until('close')
   assert.ok(!ev.list.some((e) => e.kind === 'message'))
 
   const quiet = await start(() => {})
   const held = new Sockets()
   const ids: number[] = []
-  for (let i = 0; i < MAX_SOCKETS; i++) ids.push(held.connect(quiet, () => true))
-  assert.throws(() => held.connect(quiet, () => true), /too many sockets/)
+  for (let i = 0; i < MAX_SOCKETS; i++) ids.push(held.connect(quiet, false, () => true))
+  assert.throws(() => held.connect(quiet, false, () => true), /too many sockets/)
   held.closeAll()
 })
 
@@ -86,7 +86,7 @@ test('a refused connection reports close once and never open', async () => {
   const stale = open[open.length - 1]
   await new Promise<void>((resolve) => { stale?.server.closeAllConnections(); stale?.server.close(() => resolve()) })
   const ev = events()
-  new Sockets().connect(instance, ev.emit)
+  new Sockets().connect(instance, false, ev.emit)
   await ev.until('close')
   assert.deepEqual(ev.list.map((e) => e.kind), ['close'])
 })
@@ -95,9 +95,38 @@ test('outgoing messages are bounded', async () => {
   const instance = await start(() => {})
   const sockets = new Sockets()
   const ev = events()
-  const id = sockets.connect(instance, ev.emit)
+  const id = sockets.connect(instance, false, ev.emit)
   await ev.until('open')
   assert.throws(() => sockets.send(id, 'x'.repeat((1 << 20) + 1)), /message too large/)
   sockets.close(id)
   await ev.until('close')
+})
+
+test('a page may ask for the plain socket or the one with conversations and nothing else', () => {
+  assert.equal(socketRequest('/api/ws'), false)
+  assert.equal(socketRequest('/api/ws?dm=1'), true)
+  for (const refused of ['/api/ws?dm=0', '/api/ws?dm=1&x=1', '/api/ws?x=1', '/api/ws?', '/api/ws/', '/api/ws#x', '/api/other', '/api/ws?dm=1\n', '//evil.example/api/ws', '']) {
+    assert.throws(() => socketRequest(refused), /Only \/api\/ws can be opened\./, JSON.stringify(refused))
+  }
+})
+
+test('the conversation question reaches the server only when asked', async () => {
+  const urls: string[] = []
+  const server = createServer()
+  const wss = new WebSocketServer({ server })
+  open.push({ server, wss })
+  wss.on('connection', (socket, request) => { urls.push(request.url ?? ''); socket.send('hello') })
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const origin = new URL(`http://127.0.0.1:${(server.address() as AddressInfo).port}`)
+  const instance = { origin, jar: new Jar(null, null, 0), limits: new Limits(), now: () => 0 }
+  assert.equal(socketUrl(instance).search, '')
+  assert.equal(socketUrl(instance, true).search, '?dm=1')
+  const sockets = new Sockets()
+  for (const dm of [false, true]) {
+    const ev = events()
+    sockets.connect(instance, dm, ev.emit)
+    await ev.until('message')
+  }
+  assert.deepEqual(urls, ['/api/ws', '/api/ws?dm=1'])
+  sockets.closeAll()
 })

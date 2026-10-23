@@ -48,10 +48,10 @@ before(async () => {
   monitor = spawn('dbus-monitor', ['--session', "interface='org.freedesktop.Notifications'"], { stdio: ['ignore', 'pipe', 'ignore'] })
   monitor.stdout?.on('data', (chunk: Buffer) => { bus += chunk.toString() })
   app = await launch()
-  const selector = await app.page((t) => t.url.startsWith('mnema://localhost'))
+  const selector = await app.role('selector')
   await ready(selector)
   await selector.evaluate(`window.__TAURI_INTERNALS__.invoke('desktop_open_instance', { address: '${address}' })`)
-  instance = await app.page((t) => t.id !== selector.target.id && t.url.startsWith('mnema://localhost'))
+  instance = await app.role('instance')
   await ready(instance)
 })
 
@@ -72,7 +72,7 @@ async function until(check: () => boolean | Promise<boolean>, what: string, time
 
 test('the instance window announces the capability and the service is available', { skip: !enabled }, async () => {
   const identity = await instance.evaluate<{ role: string, capabilities: string[] }>('JSON.parse(JSON.stringify(window.__MNEMA_TRUSTED_APP__))')
-  assert.deepEqual([identity.role, identity.capabilities], ['instance', ['notify']])
+  assert.deepEqual([identity.role, identity.capabilities], ['instance', ['notify', 'unread', 'ws_query']])
   const call = (command: string) => instance.evaluate<string>(`window.__TAURI_INTERNALS__.invoke('${command}').then((v) => String(v), (e) => 'error ' + e)`)
   assert.equal(await call('desktop_notify_permission'), 'granted')
   assert.equal(await call('desktop_notify_request_permission'), 'granted')

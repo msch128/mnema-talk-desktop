@@ -9,8 +9,8 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import tls from 'node:tls'
-import { BrowserWindow, app, dialog, protocol, session } from 'electron'
-import { APP_SCHEME, PICKER_PREFIX, UI_PREFIX, APP_URL } from '../core/origin.ts'
+import { BaseWindow, app, dialog, protocol } from 'electron'
+import { APP_SCHEME, PICKER_PREFIX, UI_PREFIX } from '../core/origin.ts'
 import { Trusted, defaultDeps } from '../core/trusted.ts'
 import { checkAndInstall, updatesDisabled } from '../core/updates.ts'
 import { CHECK_INTERVAL_SECS } from '../core/store.ts'
@@ -18,12 +18,13 @@ import { loadAssets } from './assets.ts'
 import { PARTITIONS, type Context } from './context.ts'
 import { registerIpc } from './ipc.ts'
 import { buildMenu } from './menu.ts'
-import { secureSession } from './permissions.ts'
-import { HOST_PAGE_CSP, appHandler, assetHandler } from './protocol.ts'
+import { HOST_PAGE_CSP, assetHandler } from './protocol.ts'
+import { registerRailIpc } from './rail.ts'
+import { prepare } from './sessions.ts'
+import { bundlesChanged, createShell, legacyStorageWaits } from './shell.ts'
 import { SANDBOX_MESSAGE, debuggingAccepted, debuggingRequested, sandboxAccepted, sandboxDisabled } from './sandbox.ts'
 import { createUpdater, scheduleChecks } from './updater.ts'
 import { osVault } from './vault.ts'
-import { openSelector } from './windows.ts'
 
 // The scheme of the app: a secure context for WebCrypto, workers and WebRTC, with fetch and streaming for media.
 protocol.registerSchemesAsPrivileged([{ scheme: APP_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } }])
@@ -69,29 +70,24 @@ async function start(): Promise<void> {
   for (const name of trusted.store.rejected) {
     console.error(`Mnema Desktop: refused web bundle ${name}: it does not verify against the pinned keys.`)
   }
-  const ctx: Context = { trusted, updater: null, debug, roles: new Map(), windows: {} }
+  const shell = { window: null, rail: null, selector: null, pages: new Map(), attachments: new Map(), adoptLegacy: false }
+  const ctx: Context = { trusted, updater: null, debug, roles: new Map(), servers: new Map(), prepared: new Set(), shell, windows: {} }
+  // The single-server client kept its storage in one partition; the first server added after the update adopts it (its end-to-end state).
+  shell.adoptLegacy = legacyStorageWaits(ctx)
 
   const assets = (name: string) => loadAssets(join(app.getAppPath(), 'assets', name))
-  const handlers = {
-    selector: appHandler('selector', trusted, debug),
-    instance: appHandler('instance', trusted, debug),
-    attachment: appHandler('attachment', trusted, debug),
-    updater: assetHandler(UI_PREFIX, assets('update-ui'), HOST_PAGE_CSP),
-    picker: assetHandler(PICKER_PREFIX, assets('picker-ui'), HOST_PAGE_CSP),
-  }
-  for (const role of Object.keys(handlers) as (keyof typeof handlers)[]) {
-    const ses = session.fromPartition(PARTITIONS[role])
-    ses.protocol.handle(APP_SCHEME, handlers[role])
-    secureSession(ctx, ses, role)
-  }
+  // The rail, the page for adding a server and the pages of the servers are set up by the shell; these two are the host's own pages.
+  prepare(ctx, PARTITIONS.updater, 'updater', assetHandler(UI_PREFIX, assets('update-ui'), HOST_PAGE_CSP))
+  prepare(ctx, PARTITIONS.picker, 'picker', assetHandler(PICKER_PREFIX, assets('picker-ui'), HOST_PAGE_CSP))
   registerIpc(ctx)
+  registerRailIpc(ctx)
 
   let restarting = false
   ctx.updater = createUpdater(ctx, () => { restarting = true })
   // A package kept for this start runs before any window opens.
   if (!updatesDisabled() && (await ctx.updater.applyPending()) && restarting) return
   buildMenu(ctx)
-  openSelector(ctx)
+  createShell(ctx, assets)
   scheduleChecks(ctx)
   refreshInBackground(ctx)
 }
@@ -118,9 +114,8 @@ function refreshInBackground(ctx: Context): void {
       installed = await checkAndInstall(trusted.store, () => trusted.keysInForce()).catch(() => null)
     }
     trusted.store.markChecked(Math.floor(Date.now() / 1000))
-    // A window that was showing a withdrawn bundle, or none, moves to the newly installed one, or shows why there is none.
-    const selector = ctx.windows.selector
-    if ((dropped || (!hadBundle && installed !== null)) && selector && !selector.isDestroyed()) void selector.loadURL(APP_URL)
+    // Pages that were showing a withdrawn bundle, or none, move to the newly installed one, or show why there is none.
+    if (dropped || (!hadBundle && installed !== null)) bundlesChanged(ctx)
   }
   const loop = async () => {
     await once().catch((error: unknown) => console.error(`Mnema Desktop: update round failed: ${String(error)}`))
@@ -134,7 +129,7 @@ if (!app.requestSingleInstanceLock()) {
   app.quit()
 } else {
   app.on('second-instance', () => {
-    const win = BrowserWindow.getAllWindows().find((w) => w.isVisible())
+    const win = BaseWindow.getAllWindows().find((w) => w.isVisible())
     win?.show()
     win?.focus()
   })

@@ -36,3 +36,35 @@ export class ToastGate {
     return true
   }
 }
+
+export const MAX_SERVER_NAME = 60
+
+/** The title with the name of the server behind it, once there is more than one: a toast says which server it is from. */
+export function taggedTitle(title: string, name: string, several: boolean): string {
+  const clean = cleanText(title, MAX_TITLE)
+  return several ? `${clean} \u00b7 ${cleanText(name, MAX_SERVER_NAME)}` : clean
+}
+
+/** One gate per server: a server that floods does not hold up the others. */
+export class ToastGates {
+  private readonly gates = new Map<string, ToastGate>()
+
+  allow(server: string, now: number): boolean {
+    let gate = this.gates.get(server)
+    if (!gate) { gate = new ToastGate(); this.gates.set(server, gate) }
+    return gate.allow(now)
+  }
+
+  forget(server: string): void {
+    this.gates.delete(server)
+  }
+}
+
+/** What a menu entry of the Servers menu does. */
+export type ServerMenuAction = { kind: 'nth', number: number } | { kind: 'add' }
+
+export function serverMenuAction(id: string): ServerMenuAction | null {
+  if (id === 'server-add') return { kind: 'add' }
+  const match = /^server-([1-9])$/.exec(id)
+  return match ? { kind: 'nth', number: Number(match[1]) } : null
+}

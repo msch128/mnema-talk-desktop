@@ -8,6 +8,7 @@
  */
 import { type Resp, forward, payloadTooLarge, plain, serveBundle } from '../core/proxy.ts'
 import { refusalText } from '../core/store.ts'
+import type { Session } from '../core/instances.ts'
 import type { Trusted } from '../core/trusted.ts'
 import { APP_HOST, APP_SCHEME } from '../core/origin.ts'
 
@@ -66,10 +67,20 @@ function bundlePage(trusted: Trusted, method: string, path: string): Resp {
   return serveBundle(held.bundle, method, path)
 }
 
-/** The proxy: `/api/...` of the selected instance. */
-async function proxy(trusted: Trusted, request: Request, url: URL): Promise<Resp> {
-  const session = trusted.session()
-  if (!session) return plain(503, 'No instance is selected.')
+/**
+ * Why a server's page shows nothing but a sentence: it is still being checked,
+ * or it was refused (too old or too new for any verified bundle, unreachable,
+ * its bundle withdrawn). Shown in that server's tab only.
+ */
+function unavailable(trusted: Trusted, server: string): Resp {
+  const phase = trusted.registry.slot(server)?.phase
+  if (phase?.kind === 'starting') return plain(503, 'Connecting to the server.')
+  if (phase?.kind === 'refused') return plain(503, phase.why)
+  return plain(503, 'No instance is selected.')
+}
+
+/** The proxy: `/api/...` of the server this page belongs to, with that server's cookies. */
+async function proxy(session: Session, request: Request, url: URL): Promise<Resp> {
   const headers: [string, string][] = [...request.headers.entries()]
   const method = request.method
   let body: Uint8Array = new Uint8Array()
@@ -84,17 +95,26 @@ async function proxy(trusted: Trusted, request: Request, url: URL): Promise<Resp
 
 export type WindowKind = 'selector' | 'instance' | 'attachment'
 
-export function appHandler(kind: WindowKind, trusted: Trusted, debug = false): RequestHandler {
+/**
+ * The handler of one kind of page. `server` binds the handler of a server's
+ * page (or attachment window) to that server: the session it uses is looked up
+ * by this id on every request, so a removed or restarted server is never
+ * reached through an old page.
+ */
+export function appHandler(kind: WindowKind, trusted: Trusted, debug = false, server = ''): RequestHandler {
   return async (request) => {
     let resp: Resp
     try {
       const url = new URL(request.url)
+      const session = kind === 'selector' ? null : trusted.session(server)
       if (!ours(url)) {
         resp = plain(403, 'Forbidden.')
       } else if (kind === 'attachment') {
-        resp = isApi(url.pathname) ? await proxy(trusted, request, url) : plain(403, 'Forbidden.')
+        resp = !isApi(url.pathname) ? plain(403, 'Forbidden.') : session ? await proxy(session, request, url) : unavailable(trusted, server)
       } else if (isApi(url.pathname)) {
-        resp = kind === 'instance' ? await proxy(trusted, request, url) : plain(404, 'Not found.')
+        resp = kind === 'instance' ? (session ? await proxy(session, request, url) : unavailable(trusted, server)) : plain(404, 'Not found.')
+      } else if (kind === 'instance') {
+        resp = session ? serveBundle(session.held.bundle, request.method, url.pathname) : unavailable(trusted, server)
       } else {
         resp = bundlePage(trusted, request.method, url.pathname)
       }

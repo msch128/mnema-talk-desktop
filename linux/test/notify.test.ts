@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
-import { MAX_BADGE, MIN_GAP_MS, ToastGate, badgeCount, cleanText, validId } from '../src/core/notify.ts'
+import { MAX_BADGE, MAX_SERVER_NAME, MAX_TITLE, MIN_GAP_MS, ToastGate, ToastGates, badgeCount, cleanText, serverMenuAction, taggedTitle, validId } from '../src/core/notify.ts'
 
 test('toast text is flattened to plain, bounded text', () => {
   assert.equal(cleanText('a\nb\tc\u0000d‮e', 50), 'a b c d e')
@@ -35,10 +35,36 @@ test('toasts are rate limited', () => {
 
 test('the notification commands are allowed in the instance window only, and the capability is announced there only', () => {
   const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
-  for (const command of ['desktop_notify_open', 'desktop_notify', 'desktop_notify_permission', 'desktop_notify_request_permission', 'desktop_set_badge']) {
+  for (const command of ['desktop_notify_open', 'desktop_notify', 'desktop_notify_permission', 'desktop_notify_request_permission', 'desktop_set_badge', 'desktop_report_unread']) {
     const at = ipc.indexOf(`case '${command}':`)
     assert.ok(at > 0, command)
     assert.match(ipc.slice(at, at + 140), /only\('instance'\)/, command)
   }
-  assert.match(ipc, /capabilities: from\.role === 'instance' \? \['notify'\] : \[\]/)
+  assert.match(ipc, /capabilities: from\.role === 'instance' \? \['notify', 'unread', 'ws_query'\] : \[\]/)
+})
+
+test('a toast names its server once there are several, and a server that floods does not hold up another', () => {
+  assert.equal(taggedTitle('Ann in #general', 'chat.example', false), 'Ann in #general')
+  assert.equal(taggedTitle('Ann in #general', 'chat.example', true), 'Ann in #general \u00b7 chat.example')
+  const long = taggedTitle('t'.repeat(500), 'n\n'.repeat(200), true)
+  assert.ok(Array.from(long).length <= MAX_TITLE + MAX_SERVER_NAME + 3)
+  assert.ok(!long.includes('\n'))
+  const gates = new ToastGates()
+  assert.equal(gates.allow('a', 1000), true)
+  assert.equal(gates.allow('a', 1100), false)
+  assert.equal(gates.allow('b', 1100), true)
+  gates.forget('a')
+  assert.equal(gates.allow('a', 1101), true)
+})
+
+test('the server menu names what its entries do', () => {
+  assert.deepEqual(serverMenuAction('server-3'), { kind: 'nth', number: 3 })
+  assert.deepEqual(serverMenuAction('server-add'), { kind: 'add' })
+  for (const other of ['server-0', 'server-10', 'server-', 'native-update', 'server-1x', '']) assert.equal(serverMenuAction(other), null, other)
+})
+
+test('only the instance page may report unread, and it never takes the server from an argument', () => {
+  const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
+  assert.doesNotMatch(ipc, /text\(args, 'server'\)|args\.server|args\.serverId/)
+  assert.match(ipc, /registry\.report\(own\(\)\.id,/)
 })
