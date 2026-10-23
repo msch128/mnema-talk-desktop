@@ -2,7 +2,7 @@
   "schema": "mnema-desktop-license-bundle-v1",
   "scope": "Conservative locked Rust graph and production npm closure; not a claim that all packages are linked.",
   "cargo_lock_sha256": "8cd968438159814507ac6d260606ab1a1fbe8547b1b956af916e8c49de9d3fd1",
-  "npm_lock_sha256": "f96548f9500bd7c11360660f9cb7883f79ae0b95bb9a3189f09a726d9bf8a696",
+  "npm_lock_sha256": "4e3b0be5da460b75843a432b3f29844156088b9da6a4399717e68bb1e1d588dc",
   "supplemental": {
     "rust_standard_library": {
       "version": "1.99.0",
@@ -8596,26 +8596,26 @@
     {
       "ecosystem": "npm",
       "name": "@tauri-apps/api",
-      "version": "2.12.1",
+      "version": "2.12.4",
       "license": "Apache-2.0 OR MIT",
-      "source": "https://www.npmjs.com/package/@tauri-apps/api/v/2.12.1",
+      "source": "https://www.npmjs.com/package/@tauri-apps/api/v/2.12.4",
       "texts": [
         {
           "name": "LICENSE-APACHE-2.0",
           "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594",
-          "source": "https://www.npmjs.com/package/@tauri-apps/api/v/2.12.1",
+          "source": "https://www.npmjs.com/package/@tauri-apps/api/v/2.12.4",
           "provenance": "npm-archive"
         },
         {
           "name": "LICENSE-MIT",
           "sha256": "9dd42ea92cff2ede5cd477cbfcce051b2d0115c0ac7f368ee88cb545055dff1d",
-          "source": "https://www.npmjs.com/package/@tauri-apps/api/v/2.12.1",
+          "source": "https://www.npmjs.com/package/@tauri-apps/api/v/2.12.4",
           "provenance": "npm-archive"
         },
         {
           "name": "LICENSE.spdx",
           "sha256": "5e834fe9788c524210deda859c46a550ffa5aa0cba9ea0572f0d81120e97c008",
-          "source": "https://www.npmjs.com/package/@tauri-apps/api/v/2.12.1",
+          "source": "https://www.npmjs.com/package/@tauri-apps/api/v/2.12.4",
           "provenance": "npm-archive"
         }
       ]
@@ -8623,14 +8623,14 @@
     {
       "ecosystem": "npm",
       "name": "@vue/compiler-core",
-      "version": "3.5.43",
+      "version": "3.5.44",
       "license": "MIT",
-      "source": "https://www.npmjs.com/package/@vue/compiler-core/v/3.5.43",
+      "source": "https://www.npmjs.com/package/@vue/compiler-core/v/3.5.44",
       "texts": [
         {
           "name": "LICENSE",
           "sha256": "1bb85cc9b13b81ef41c81c51866172fc345e0503c86726a6755b796590b70175",
-          "source": "https://www.npmjs.com/package/@vue/compiler-core/v/3.5.43",
+          "source": "https://www.npmjs.com/package/@vue/compiler-core/v/3.5.44",
           "provenance": "npm-archive"
         }
       ]
@@ -8638,14 +8638,14 @@
     {
       "ecosystem": "npm",
       "name": "@vue/compiler-dom",
-      "version": "3.5.43",
+      "version": "3.5.44",
       "license": "MIT",
-      "source": "https://www.npmjs.com/package/@vue/compiler-dom/v/3.5.43",
+      "source": "https://www.npmjs.com/package/@vue/compiler-dom/v/3.5.44",
       "texts": [
         {
           "name": "LICENSE",
           "sha256": "1bb85cc9b13b81ef41c81c51866172fc345e0503c86726a6755b796590b70175",
-          "source": "https://www.npmjs.com/package/@vue/compiler-dom/v/3.5.43",
+          "source": "https://www.npmjs.com/package/@vue/compiler-dom/v/3.5.44",
           "provenance": "npm-archive"
         }
       ]
@@ -8653,14 +8653,14 @@
     {
       "ecosystem": "npm",
       "name": "@vue/compiler-sfc",
-      "version": "3.5.43",
+      "version": "3.5.44",
       "license": "MIT",
-      "source": "https://www.npmjs.com/package/@vue/compiler-sfc/v/3.5.43",
+      "source": "https://www.npmjs.com/package/@vue/compiler-sfc/v/3.5.44",
       "texts": [
         {
           "name": "LICENSE",
           "sha256": "1bb85cc9b13b81ef41c81c51866172fc345e0503c86726a6755b796590b70175",
-          "source": "https://www.npmjs.com/package/@vue/compiler-sfc/v/3.5.43",
+          "source": "https://www.npmjs.com/package/@vue/compiler-sfc/v/3.5.44",
           "provenance": "npm-archive"
         }
       ]
@@ -8668,14 +8668,14 @@
     {
       "ecosystem": "npm",
       "name": "@vue/compiler-ssr",
-      "version": "3.5.43",
+      "version": "3.5.44",
       "license": "MIT",
-      "source": "https://www.npmjs.com/package/@vue/compiler-ssr/v/3.5.43",
+      "source": "https://www.npmjs.com/package/@vue/compiler-ssr/v/3.5.44",
       "texts": [
         {
           "name": "LICENSE",
           "sha256": "1bb85cc9b13b81ef41c81c51866172fc345e0503c86726a6755b796590b70175",
-          "source": "https://www.npmjs.com/package/@vue/compiler-ssr/v/3.5.43",
+          "source": "https://www.npmjs.com/package/@vue/compiler-ssr/v/3.5.44",
           "provenance": "npm-archive"
         }
       ]
@@ -8683,14 +8683,14 @@
     {
       "ecosystem": "npm",
       "name": "@vue/reactivity",
-      "version": "3.5.43",
+      "version": "3.5.44",
       "license": "MIT",
-      "source": "https://www.npmjs.com/package/@vue/reactivity/v/3.5.43",
+      "source": "https://www.npmjs.com/package/@vue/reactivity/v/3.5.44",
       "texts": [
         {
           "name": "LICENSE",
           "sha256": "1bb85cc9b13b81ef41c81c51866172fc345e0503c86726a6755b796590b70175",
-          "source": "https://www.npmjs.com/package/@vue/reactivity/v/3.5.43",
+          "source": "https://www.npmjs.com/package/@vue/reactivity/v/3.5.44",
           "provenance": "npm-archive"
         }
       ]
@@ -8698,14 +8698,14 @@
     {
       "ecosystem": "npm",
       "name": "@vue/runtime-core",
-      "version": "3.5.43",
+      "version": "3.5.44",
       "license": "MIT",
-      "source": "https://www.npmjs.com/package/@vue/runtime-core/v/3.5.43",
+      "source": "https://www.npmjs.com/package/@vue/runtime-core/v/3.5.44",
       "texts": [
         {
           "name": "LICENSE",
           "sha256": "1bb85cc9b13b81ef41c81c51866172fc345e0503c86726a6755b796590b70175",
-          "source": "https://www.npmjs.com/package/@vue/runtime-core/v/3.5.43",
+          "source": "https://www.npmjs.com/package/@vue/runtime-core/v/3.5.44",
           "provenance": "npm-archive"
         }
       ]
@@ -8713,14 +8713,14 @@
     {
       "ecosystem": "npm",
       "name": "@vue/runtime-dom",
-      "version": "3.5.43",
+      "version": "3.5.44",
       "license": "MIT",
-      "source": "https://www.npmjs.com/package/@vue/runtime-dom/v/3.5.43",
+      "source": "https://www.npmjs.com/package/@vue/runtime-dom/v/3.5.44",
       "texts": [
         {
           "name": "LICENSE",
           "sha256": "1bb85cc9b13b81ef41c81c51866172fc345e0503c86726a6755b796590b70175",
-          "source": "https://www.npmjs.com/package/@vue/runtime-dom/v/3.5.43",
+          "source": "https://www.npmjs.com/package/@vue/runtime-dom/v/3.5.44",
           "provenance": "npm-archive"
         }
       ]
@@ -8728,14 +8728,14 @@
     {
       "ecosystem": "npm",
       "name": "@vue/server-renderer",
-      "version": "3.5.43",
+      "version": "3.5.44",
       "license": "MIT",
-      "source": "https://www.npmjs.com/package/@vue/server-renderer/v/3.5.43",
+      "source": "https://www.npmjs.com/package/@vue/server-renderer/v/3.5.44",
       "texts": [
         {
           "name": "LICENSE",
           "sha256": "1bb85cc9b13b81ef41c81c51866172fc345e0503c86726a6755b796590b70175",
-          "source": "https://www.npmjs.com/package/@vue/server-renderer/v/3.5.43",
+          "source": "https://www.npmjs.com/package/@vue/server-renderer/v/3.5.44",
           "provenance": "npm-archive"
         }
       ]
@@ -8743,14 +8743,14 @@
     {
       "ecosystem": "npm",
       "name": "@vue/shared",
-      "version": "3.5.43",
+      "version": "3.5.44",
       "license": "MIT",
-      "source": "https://www.npmjs.com/package/@vue/shared/v/3.5.43",
+      "source": "https://www.npmjs.com/package/@vue/shared/v/3.5.44",
       "texts": [
         {
           "name": "LICENSE",
           "sha256": "1bb85cc9b13b81ef41c81c51866172fc345e0503c86726a6755b796590b70175",
-          "source": "https://www.npmjs.com/package/@vue/shared/v/3.5.43",
+          "source": "https://www.npmjs.com/package/@vue/shared/v/3.5.44",
           "provenance": "npm-archive"
         }
       ]
@@ -8893,14 +8893,14 @@
     {
       "ecosystem": "npm",
       "name": "vue",
-      "version": "3.5.43",
+      "version": "3.5.44",
       "license": "MIT",
-      "source": "https://www.npmjs.com/package/vue/v/3.5.43",
+      "source": "https://www.npmjs.com/package/vue/v/3.5.44",
       "texts": [
         {
           "name": "LICENSE",
           "sha256": "1bb85cc9b13b81ef41c81c51866172fc345e0503c86726a6755b796590b70175",
-          "source": "https://www.npmjs.com/package/vue/v/3.5.43",
+          "source": "https://www.npmjs.com/package/vue/v/3.5.44",
           "provenance": "npm-archive"
         }
       ]
