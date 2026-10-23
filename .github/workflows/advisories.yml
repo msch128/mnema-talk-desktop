@@ -51,10 +51,10 @@ jobs:
         with:
           node-version: '26'
       - name: Install pinned Rust toolchain
-        run: rustup toolchain install 1.99.0 --profile minimal
+        run: rustup toolchain install 1.99.1 --profile minimal
       - name: Rust advisory scan (pinned tool; no advisory ignores)
         run: |
           set -euo pipefail
-          cargo +1.99.0 install cargo-audit --version "$CARGO_AUDIT_VERSION" --locked
+          cargo +1.99.1 install cargo-audit --version "$CARGO_AUDIT_VERSION" --locked
           node scripts/checked-glib.mjs --audit
           cargo audit --file Cargo.lock

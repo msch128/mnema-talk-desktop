@@ -32,7 +32,7 @@ files must be made available under MPL-2.0 before distributing a modified build.
 Do not remove existing copyright, license, or patent notices from that source.
 
 `RUST-COPYRIGHT-library.html` is the complete notice file supplied with the pinned
-Rust 1.99.0 toolchain for its standard library and built-in dependencies. Its
+Rust 1.99.1 toolchain for its standard library and built-in dependencies. Its
 provenance and digest are in `supplemental.json`. Refresh and review this file when
 the pinned toolchain changes; Cargo's dependency inventory alone does not cover
 the standard library.

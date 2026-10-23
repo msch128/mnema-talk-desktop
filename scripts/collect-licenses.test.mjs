@@ -21,11 +21,11 @@ function fixture() {
   copyFileSync(join(dirname(original), 'checked-glib.mjs'), join(desktop, 'scripts', 'checked-glib.mjs'));
   const put = (path, value) => writeFileSync(join(desktop, path), typeof value === 'string' ? value : JSON.stringify(value));
   put('Cargo.lock', `version = 4\n[[package]]\nname = "example"\nversion = "1.0.0"\nsource = "${source}"\n`);
-  put('rust-toolchain.toml', 'channel = "1.99.0"\n');
+  put('rust-toolchain.toml', 'channel = "1.99.1"\n');
   put('licenses/upstream-overrides.json', {});
   put('licenses/RUST-COPYRIGHT-library.html', 'fixture runtime notice');
   put('licenses/supplemental.json', { rust_standard_library: {
-    version: '1.99.0', file: 'RUST-COPYRIGHT-library.html',
+    version: '1.99.1', file: 'RUST-COPYRIGHT-library.html',
     sha256: createHash('sha256').update('fixture runtime notice').digest('hex'),
   } });
   put('crate/LICENSE', 'Fixture crate permission and copyright notice.');

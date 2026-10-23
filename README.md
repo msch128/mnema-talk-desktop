@@ -307,7 +307,7 @@ The probe reports Web API presence separately from actual media qualification.
 
 ## Build on Windows
 
-Requires Node 26, Rust 1.99.0, the Visual Studio C++ build tools/Windows SDK and
+Requires Node 26, Rust 1.99.1, the Visual Studio C++ build tools/Windows SDK and
 WebView2. From the repository root:
 
 ```powershell
