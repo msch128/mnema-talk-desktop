@@ -6,6 +6,11 @@
 # actions stay pinned by commit SHA (Dependabot rewrites the SHA and comment).
 version: 2
 updates:
+  # TypeScript 7 is deferred (checked 2026-10-23): typescript 7.0.2 is latest, but
+  # typescript-eslint 8.72.0 (and @typescript-eslint/typescript-estree) declare the
+  # peer range typescript ">=4.8.4 <6.1.0", so npm ci fails with TypeScript 7, and
+  # vue-tsc 3.3.13 drives the TypeScript JS API that the native 7.x compiler does not
+  # provide. Remove the ignore once both support 7; tracked for the 1.2 desktop review.
   - package-ecosystem: cargo
     directory: /
     schedule: { interval: monthly }
@@ -30,6 +35,9 @@ updates:
 
   - package-ecosystem: npm
     directory: /ui
+    ignore:
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
     schedule: { interval: monthly }
     cooldown: { default-days: 5 }
     open-pull-requests-limit: 3
@@ -41,6 +49,9 @@ updates:
 
   - package-ecosystem: npm
     directory: /linux
+    ignore:
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
     schedule: { interval: monthly }
     cooldown: { default-days: 5 }
     open-pull-requests-limit: 3
@@ -52,6 +63,9 @@ updates:
 
   - package-ecosystem: npm
     directory: /experimental/ui
+    ignore:
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
     schedule: { interval: monthly }
     cooldown: { default-days: 5 }
     open-pull-requests-limit: 3
