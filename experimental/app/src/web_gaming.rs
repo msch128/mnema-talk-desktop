@@ -22,6 +22,18 @@ mod foreground_macos;
 #[cfg(windows)]
 #[path = "../../../src/foreground_windows.rs"]
 mod foreground_windows;
+#[allow(dead_code)]
+#[path = "../../../src/game_identify.rs"]
+mod game_identify;
+#[allow(dead_code)]
+#[path = "../../../src/game_library.rs"]
+mod game_library;
+#[allow(dead_code)]
+#[path = "../../../src/game_library_scan.rs"]
+mod game_library_scan;
+#[allow(dead_code)]
+#[path = "../../../src/game_list.rs"]
+mod game_list;
 #[allow(dead_code)] // the one-shot probe is kept for the fixtures; the app listens to events
 #[path = "../../../src/windows.rs"]
 mod games;
@@ -173,6 +185,8 @@ pub struct Snapshot {
     active: bool,
     /// Why game detection is off on this system; absent when it works.
     detection_note: Option<&'static str>,
+    /// The game in front, when one is detected; never a path or a title.
+    game: Option<String>,
 }
 pub struct Gaming {
     /// The app origin the sessions are bound to (`local_origin` of their pages).
@@ -196,6 +210,11 @@ pub struct Gaming {
     foreground: Option<foreground::Foreground>,
     /// Why game detection is off on this system, when it is.
     detection_note: Option<&'static str>,
+    /// Install folders of the launcher libraries, scanned off the hot path.
+    library: std::sync::Arc<game_library_scan::Library>,
+    /// The game in front, by the name the user, a launcher or our list gives it.
+    #[cfg_attr(not(windows), allow(dead_code))]
+    game_name: Option<String>,
     #[cfg(windows)]
     game: Option<GameLease>,
 }
@@ -216,6 +235,8 @@ impl Default for Gaming {
             last_tick: Instant::now(),
             foreground: None,
             detection_note: None,
+            library: Default::default(),
+            game_name: None,
             #[cfg(windows)]
             game: None,
         }
@@ -306,6 +327,7 @@ pub fn desktop_gaming_snapshot(
         overlay: g.overlay && active,
         active,
         detection_note: g.detection_note,
+        game: g.game_name.clone().filter(|_| active),
     })
 }
 struct Command {
@@ -452,6 +474,7 @@ pub fn desktop_gaming_settings(
         g.overlay = false;
     }
     g.settings = settings;
+    g.library.rescan_now();
     drop(g);
     command.dispatch(window.app_handle());
     Ok(())
@@ -478,6 +501,7 @@ impl Gaming {
             tokens: keep.1,
             foreground: self.foreground.take(),
             detection_note: self.detection_note,
+            library: self.library.clone(),
             ..Gaming::default()
         };
     }
@@ -675,14 +699,17 @@ fn native_sample(
         .is_some_and(|h| h.0 == hwnd);
     // The foreground source announced this window; a newer foreground that has
     // not been announced yet simply does not match, so a stale game is never shown.
-    let announced = announced_game(
+    let library = g.library.current();
+    let identified = announced_game(
         g.foreground.as_ref(),
         hwnd as usize,
         &g.settings.games,
+        &library,
         || window_title(hwnd),
     );
-    let detected = announced.is_some();
-    if let Some(f) = announced.filter(|_| detected) {
+    let detected = identified.is_some();
+    g.game_name = identified.map(|found| found.name);
+    if let Some(f) = g.foreground.clone().filter(|_| detected) {
         let mut pid = 0;
         unsafe {
             GetWindowThreadProcessId(hwnd, &mut pid);
@@ -735,22 +762,29 @@ fn native_sample(
     )
 }
 /// The announced foreground when it is the window in front now and a game the
-/// user's list or the bundled reference names. `title` is asked only for Java
-/// runtimes, which are a Minecraft candidate by their title alone.
+/// user's list, a launcher library or the bundled list names. `title` is asked
+/// only for Java runtimes, which are a Minecraft candidate by their title alone.
 #[cfg(any(windows, test))]
 fn announced_game(
     front: Option<&foreground::Foreground>,
     window: usize,
     names: &[String],
+    library: &game_library::InstallIndex,
     title: impl FnOnce() -> String,
-) -> Option<foreground::Foreground> {
+) -> Option<game_identify::Identified> {
     let front = front.filter(|f| window != 0 && f.window == window)?;
     let title = if front.basename().to_ascii_lowercase().starts_with("java") {
         title()
     } else {
         String::new()
     };
-    games::approved_image(names, &front.image, &title).map(|_| front.clone())
+    game_identify::identify(
+        names,
+        library,
+        game_list::GameList::bundled(),
+        &front.image,
+        &title,
+    )
 }
 /// The title of a window, read only for Java runtimes (a shared runtime is a
 /// Minecraft candidate only by its title).
@@ -905,6 +939,22 @@ fn start_detection(app: &tauri::AppHandle) {
     }
     app.manage(Detection(Mutex::new(started.is_ok().then_some(source))));
 }
+/// How often the launcher libraries are read again; saving the gaming settings
+/// also triggers a scan, so a game installed a moment ago is known soon.
+const LIBRARY_REFRESH: Duration = Duration::from_secs(15 * 60);
+
+/// Reads the launcher manifests on their own thread, never on the foreground path.
+fn start_library_scan(app: &tauri::AppHandle) {
+    let state = app.state::<Mutex<Gaming>>();
+    let library = state.lock().map(|g| g.library.clone());
+    if let Ok(library) = library {
+        let _ = game_library_scan::start_refresher(
+            library,
+            game_library_scan::default_launchers(),
+            LIBRARY_REFRESH,
+        );
+    }
+}
 #[cfg(not(any(windows, target_os = "macos")))]
 fn wayland() -> bool {
     std::env::var_os("WAYLAND_DISPLAY").is_some_and(|v| !v.is_empty())
@@ -921,6 +971,7 @@ pub fn setup(app: &tauri::AppHandle) {
         g.settings = settings;
     }
     start_detection(app);
+    start_library_scan(app);
     let app = app.clone();
     std::thread::spawn(move || {
         let queued = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
@@ -972,32 +1023,48 @@ mod tests {
     fn only_the_announced_window_in_front_can_be_a_game() {
         let mine = vec!["Custom.exe".to_string()];
         let none = || String::new();
+        let empty = game_library::InstallIndex::default();
         let game = front(5, r"D:\Games\Custom.exe");
-        assert!(announced_game(Some(&game), 5, &mine, none).is_some());
+        assert!(announced_game(Some(&game), 5, &mine, &empty, none).is_some());
         // A different window is in front now: the announcement is stale.
-        assert!(announced_game(Some(&game), 6, &mine, none).is_none());
-        assert!(announced_game(Some(&game), 0, &mine, none).is_none());
-        assert!(announced_game(None, 5, &mine, none).is_none());
+        assert!(announced_game(Some(&game), 6, &mine, &empty, none).is_none());
+        assert!(announced_game(Some(&game), 0, &mine, &empty, none).is_none());
+        assert!(announced_game(None, 5, &mine, &empty, none).is_none());
         // The system refused the image path: never a game.
-        assert!(announced_game(Some(&front(5, "")), 5, &mine, none).is_none());
-        assert!(
-            announced_game(Some(&front(5, r"C:\Windows\notepad.exe")), 5, &mine, none).is_none()
-        );
+        assert!(announced_game(Some(&front(5, "")), 5, &mine, &empty, none).is_none());
+        let notepad = front(5, r"C:\Windows\notepad.exe");
+        assert!(announced_game(Some(&notepad), 5, &mine, &empty, none).is_none());
+    }
+    #[test]
+    fn launcher_library_games_are_named_by_their_launcher() {
+        let library = game_library::InstallIndex::new(vec![
+            game_library::InstalledGame::new(
+                "Example Quest",
+                r"D:\SteamLibrary\steamapps\common\Example Quest",
+            )
+            .unwrap(),
+        ]);
+        let inside = front(3, r"D:\SteamLibrary\steamapps\common\Example Quest\eq.exe");
+        let found = announced_game(Some(&inside), 3, &[], &library, String::new).unwrap();
+        assert_eq!(found.name, "Example Quest");
+        let outside = front(3, r"D:\Other\eq.exe");
+        assert!(announced_game(Some(&outside), 3, &[], &library, String::new).is_none());
     }
     #[test]
     fn java_needs_a_minecraft_title_and_other_apps_never_ask_for_one() {
+        let empty = game_library::InstallIndex::default();
         let java = front(1, r"C:\Java\bin\javaw.exe");
         let asked = std::cell::Cell::new(0);
         let minecraft = || {
             asked.set(asked.get() + 1);
             "Minecraft 1.21".to_string()
         };
-        assert!(announced_game(Some(&java), 1, &[], minecraft).is_some());
+        assert!(announced_game(Some(&java), 1, &[], &empty, minecraft).is_some());
         assert_eq!(asked.get(), 1);
-        assert!(announced_game(Some(&java), 1, &[], || "Editor".into()).is_none());
+        assert!(announced_game(Some(&java), 1, &[], &empty, || "Editor".into()).is_none());
         let other = front(2, r"D:\Games\Custom.exe");
         let never = || panic!("title read for a non-Java process");
-        assert!(announced_game(Some(&other), 2, &["Custom.exe".into()], never).is_some());
+        assert!(announced_game(Some(&other), 2, &["Custom.exe".into()], &empty, never).is_some());
     }
     #[test]
     fn global_disable_hides_surfaces_and_releases_ptt_without_reopening_held_key() {

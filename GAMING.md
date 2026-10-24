@@ -54,3 +54,47 @@ The foreground source sits behind the `ForegroundSource` trait
 A window counts as a game only when it was announced by the source and is still
 the foreground window when the sidepeek or shortcuts act, so an announcement
 that has been overtaken by a newer focus change never shows a game.
+
+## Which game is it?
+
+Three sources, checked in this order. The first match wins and decides the name.
+
+1. **Names you added** in the gaming settings (an executable file name such as
+   `MyGame.exe`).
+2. **Launcher libraries.** The install folders of the games your launchers
+   report. A program that lives under one of those folders is that game, and the
+   game is named as the launcher names it. Read-only, from files and registry
+   keys the launchers keep for themselves:
+
+   | Launcher | Read | Notes |
+   | --- | --- | --- |
+   | Steam (Windows, macOS) | `steamapps/libraryfolders.vdf` and `steamapps/appmanifest_*.acf` of every library | Steam tools and runtimes (Steamworks Shared, SteamVR, Proton, Linux runtimes, Wallpaper Engine) are skipped |
+   | Epic Games Store (Windows) | `%ProgramData%\Epic\EpicGamesLauncher\Data\Manifests\*.item` | add-ons and unfinished installs are skipped |
+   | GOG Galaxy (Windows) | `HKLM\SOFTWARE\WOW6432Node\GOG.com\Games\*` (`gameName`, `path`) | |
+   | EA app (Windows) | `HKLM\SOFTWARE\WOW6432Node\EA Games\*` and `HKLM\SOFTWARE\EA Games\*` (`Install Dir`) | |
+   | Battle.net | not read | its install list is a binary database without a public format; Battle.net games are found by the bundled list or a name you add |
+
+   A manifest folder that is a drive root, a system folder or a broad folder such
+   as `Program Files` itself is ignored, so one bad manifest cannot make every
+   program a game. Manifests larger than 256 KiB are ignored.
+3. **The bundled list** (`src/game-list.json`): executable file names of widely
+   played PC games. Matching is by file name only.
+
+The launcher scan runs on its own thread: once at start, every 15 minutes, and
+whenever the gaming settings are saved. The foreground path only reads the last
+finished result. Java is never matched by name: `javaw.exe` counts as Minecraft
+only when its window title says so, and a Java program inside a launcher's game
+folder is that game. Crash handlers, uninstallers and redistributables inside a
+game folder are not the game.
+
+### The bundled list and Discord's list
+
+The list is our own work. Discord publishes a list of detectable games, but its
+Developer Policy forbids copying it, so nothing from it is used or derived: the
+file names were written by hand by the maintainers from their own knowledge of
+what games ship, and no third-party list, database or website was copied. The
+header of `src/game-list.json` states this. The list is smaller than a crowd
+sourced one (a few hundred titles) and has not been checked against installed
+copies; a missing or wrong name only means that game is found through its
+launcher library or a name you add instead. Contributions of verified names are
+welcome under the repository licence.
