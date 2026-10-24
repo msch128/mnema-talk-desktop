@@ -5,14 +5,14 @@
 //! only ever reads the finished index, so a slow disk or a huge library never
 //! delays game detection.
 //!
-//! Supported: Steam (Windows, macOS), Epic Games Store (Windows), GOG Galaxy
-//! and the EA app (Windows registry). Battle.net is not read: its install list
+//! Supported (Windows only for now): Steam, Epic Games Store, GOG Galaxy and the
+//! EA app (Windows registry). Battle.net is not read: its install list
 //! lives in a binary database (`product.db`) that has no public format, and
 //! reading it would mean depending on private details. Games from Battle.net
 //! are still recognised by the bundled list or a user-added name.
 
 use super::game_library::{
-    InstallIndex, InstalledGame, epic_game, steam_app, steam_game, steam_libraries,
+    InstallIndex, InstalledGame, epic_game, safe_disk_path, steam_app, steam_game, steam_libraries,
 };
 use std::{
     fs,
@@ -69,12 +69,17 @@ impl Launcher for Steam {
         let mut libraries: Vec<String> = Vec::new();
         for root in &self.roots {
             let root_text = root.to_string_lossy().into_owned();
+            // Nothing from a manifest or the registry is opened before it is
+            // known to be a local path (no UNC or device path, no `..`).
+            if !safe_disk_path(&root_text) {
+                continue;
+            }
             if !libraries.contains(&root_text) {
                 libraries.push(root_text);
             }
             if let Some(text) = read_small(&root.join("steamapps").join("libraryfolders.vdf")) {
                 for library in steam_libraries(&text) {
-                    if !libraries.contains(&library) {
+                    if safe_disk_path(&library) && !libraries.contains(&library) {
                         libraries.push(library);
                     }
                 }
@@ -108,6 +113,9 @@ impl Launcher for Epic {
     }
 
     fn scan(&self) -> Vec<InstalledGame> {
+        if !safe_disk_path(&self.manifests.to_string_lossy()) {
+            return Vec::new();
+        }
         files_in(&self.manifests, |n| n.ends_with(".item"))
             .iter()
             .filter_map(|p| read_small(p))
@@ -287,6 +295,7 @@ impl Launcher for Ea {
 
 /// The launchers this system can have.
 pub fn default_launchers() -> Vec<Box<dyn Launcher>> {
+    #[cfg_attr(not(windows), allow(unused_mut))]
     let mut launchers: Vec<Box<dyn Launcher>> = Vec::new();
     #[cfg(windows)]
     {
@@ -308,12 +317,6 @@ pub fn default_launchers() -> Vec<Box<dyn Launcher>> {
         }
         launchers.push(Box::new(Gog));
         launchers.push(Box::new(Ea));
-    }
-    #[cfg(target_os = "macos")]
-    if let Some(home) = std::env::var_os("HOME") {
-        launchers.push(Box::new(Steam {
-            roots: vec![Path::new(&home).join("Library/Application Support/Steam")],
-        }));
     }
     launchers
 }

@@ -58,7 +58,8 @@ const BROAD: &[&str] = &[
 /// is not an absolute path deeper than a drive root or a known broad folder.
 pub fn normalize_dir(dir: &str) -> Option<String> {
     let flat = dir.trim().replace('\\', "/").to_lowercase();
-    if flat.chars().any(char::is_control) {
+    // UNC (\\host\share) and device (\\?\, \\.\) paths are not game folders.
+    if flat.chars().any(char::is_control) || flat.starts_with("//") {
         return None;
     }
     let (prefix, rest) = if let Some(rest) = flat.strip_prefix('/') {
@@ -92,7 +93,7 @@ pub fn normalize_dir(dir: &str) -> Option<String> {
 /// Normalizes an image path like [`normalize_dir`] but without the depth rules.
 fn normalize_image(path: &str) -> Option<String> {
     let flat = path.trim().replace('\\', "/").to_lowercase();
-    if flat.is_empty() || flat.chars().any(char::is_control) {
+    if flat.is_empty() || flat.chars().any(char::is_control) || flat.starts_with("//") {
         return None;
     }
     let (prefix, rest) = if let Some(rest) = flat.strip_prefix('/') {
@@ -116,6 +117,40 @@ fn normalize_image(path: &str) -> Option<String> {
         return None;
     }
     Some(format!("{prefix}/{}", parts.join("/")))
+}
+
+/// A path read from a launcher manifest or the registry that is safe to open:
+/// absolute and local, with no `..`, no control characters and no alternate
+/// data stream. UNC (`\\host\share`) and device (`\\?\`, `\\.\`, `\??\`) paths
+/// are refused, because opening one makes Windows contact another machine and
+/// can leak the user's credentials. `windows` selects the Windows rule (a drive
+/// letter is required); otherwise a rooted `/` path is accepted.
+pub fn safe_disk_path_for(path: &str, windows: bool) -> bool {
+    let flat = path.trim().replace('\\', "/");
+    if flat.is_empty()
+        || flat.chars().any(char::is_control)
+        || flat.starts_with("//")
+        || flat.split('/').any(|part| part == "..")
+    {
+        return false;
+    }
+    let bytes = flat.as_bytes();
+    let drive =
+        bytes.len() >= 3 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':' && bytes[2] == b'/';
+    let rest = if drive { &flat[2..] } else { &flat[..] };
+    if rest.contains(':') {
+        return false;
+    }
+    if windows {
+        drive
+    } else {
+        drive || flat.starts_with('/')
+    }
+}
+
+/// [`safe_disk_path_for`] for the system this runs on.
+pub fn safe_disk_path(path: &str) -> bool {
+    safe_disk_path_for(path, cfg!(windows))
 }
 
 /// All installed games found by the launchers, searchable by image path.
@@ -513,6 +548,50 @@ mod tests {
                 .is_some()
         );
         assert!(normalize_dir(r"D:\Program Files\Foo\Game").is_some());
+    }
+
+    #[test]
+    fn unc_device_relative_and_dotdot_paths_are_never_opened() {
+        for bad in [
+            r"\\attacker\share",
+            r"\\attacker\share\steam",
+            "//attacker/share",
+            r"\\?\C:\Steam",
+            r"\\.\pipe\x",
+            r"\??\C:\Steam",
+            r"\\?\UNC\attacker\share",
+            "steam",
+            r"Steam\lib",
+            r"C:",
+            r"C:Steam",
+            r"C:\Steam\..\..\Windows",
+            r"C:\Steam:stream",
+            "C:\\Steam\u{0}x",
+            "",
+            "  ",
+        ] {
+            assert!(!safe_disk_path_for(bad, true), "{bad:?}");
+            assert!(!safe_disk_path_for(bad, false), "{bad:?}");
+        }
+        assert!(safe_disk_path_for(r"D:\SteamLibrary", true));
+        assert!(safe_disk_path_for("d:/SteamLibrary", true));
+        assert!(!safe_disk_path_for("/home/me/steam", true), "no drive");
+        assert!(safe_disk_path_for("/home/me/steam", false));
+        assert!(!safe_disk_path_for("/home/../etc", false));
+        // The folder normalizer refuses the same network and device roots.
+        for bad in [
+            r"\\host\share\Games\Foo",
+            "//host/share/games/foo",
+            r"\\?\C:\Games\Foo",
+        ] {
+            assert!(normalize_dir(bad).is_none(), "{bad}");
+        }
+        assert!(InstalledGame::new("X", r"\\host\share\Games\Foo").is_none());
+        assert!(
+            InstallIndex::new(vec![])
+                .find(r"\\host\share\a\b.exe")
+                .is_none()
+        );
     }
 
     #[test]

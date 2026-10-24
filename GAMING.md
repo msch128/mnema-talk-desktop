@@ -43,13 +43,11 @@ window.
 | System | Source | Looks up |
 | --- | --- | --- |
 | Windows | `SetWinEventHook(EVENT_SYSTEM_FOREGROUND, WINEVENT_OUTOFCONTEXT)` on a dedicated thread with its own message loop (out of context: nothing is loaded into other processes) | `QueryFullProcessImageNameW` on the foreground window's single PID, opened with `PROCESS_QUERY_LIMITED_INFORMATION` |
-| macOS | `NSWorkspaceDidActivateApplicationNotification` | pid and executable path of the activated application; no permission prompt |
-| Linux (Electron client) | none: the Linux client has no gaming integration | - |
-| Wayland | none: the protocol gives applications no way to see which window is focused, by design. Detection is off and the settings say so. | - |
+| macOS, Linux | none: the macOS and Linux desktop clients are paused, and the gaming integration is Windows only for now. Detection is off and the settings say so. | - |
 
 The foreground source sits behind the `ForegroundSource` trait
 (`src/foreground.rs`) with a fake for tests. The operating-system code is in
-`src/foreground_windows.rs` and `src/foreground_macos.rs`.
+`src/foreground_windows.rs`.
 
 A window counts as a game only when it was announced by the source and is still
 the foreground window when the sidepeek or shortcuts act, so an announcement
@@ -68,13 +66,17 @@ Three sources, checked in this order. The first match wins and decides the name.
 
    | Launcher | Read | Notes |
    | --- | --- | --- |
-   | Steam (Windows, macOS) | `steamapps/libraryfolders.vdf` and `steamapps/appmanifest_*.acf` of every library | Steam tools and runtimes (Steamworks Shared, SteamVR, Proton, Linux runtimes, Wallpaper Engine) are skipped |
-   | Epic Games Store (Windows) | `%ProgramData%\Epic\EpicGamesLauncher\Data\Manifests\*.item` | add-ons and unfinished installs are skipped |
-   | GOG Galaxy (Windows) | `HKLM\SOFTWARE\WOW6432Node\GOG.com\Games\*` (`gameName`, `path`) | |
-   | EA app (Windows) | `HKLM\SOFTWARE\WOW6432Node\EA Games\*` and `HKLM\SOFTWARE\EA Games\*` (`Install Dir`) | |
+   | Steam | `steamapps/libraryfolders.vdf` and `steamapps/appmanifest_*.acf` of every library | Steam tools and runtimes (Steamworks Shared, SteamVR, Proton, Linux runtimes, Wallpaper Engine) are skipped |
+   | Epic Games Store | `%ProgramData%\Epic\EpicGamesLauncher\Data\Manifests\*.item` | add-ons and unfinished installs are skipped |
+   | GOG Galaxy | `HKLM\SOFTWARE\WOW6432Node\GOG.com\Games\*` (`gameName`, `path`) | |
+   | EA app | `HKLM\SOFTWARE\WOW6432Node\EA Games\*` and `HKLM\SOFTWARE\EA Games\*` (`Install Dir`) | |
    | Battle.net | not read | its install list is a binary database without a public format; Battle.net games are found by the bundled list or a name you add |
 
-   A manifest folder that is a drive root, a system folder or a broad folder such
+   Every path read from a manifest or the registry is checked before the disk
+   is touched: only absolute local drive paths are opened. UNC (`\\host\share`),
+   device (`\\?\`, `\\.\`) and relative paths, `..` segments and alternate
+   data streams are skipped silently, so a crafted manifest cannot make Windows
+   contact another machine. A manifest folder that is a drive root, a system folder or a broad folder such
    as `Program Files` itself is ignored, so one bad manifest cannot make every
    program a game. Manifests larger than 256 KiB are ignored.
 3. **The bundled list** (`src/game-list.json`): executable file names of widely
