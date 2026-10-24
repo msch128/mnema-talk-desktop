@@ -1,0 +1,39 @@
+src/input.rs
+  s_06fcde5dbef956::t_47cb3621dc2330 1-615
+  s_06fcde5dbef956::t_682835ec509ffc 616-686
+src/input_windows.rs
+  s_06fcde5dbef956::t_5e6e882fc89ded 1-314
+  s_06fcde5dbef956::t_89bebdebd1d58e 315-337
+Cargo.toml
+  s_06fcde5dbef956::t_f77498283487f7 28
+GAMING.md
+  s_06fcde5dbef956::t_3a0854b03662ad 101-154
+README.md
+  s_06fcde5dbef956::t_7b7da7752f01bf 71-75
+experimental/app/Cargo.lock
+  s_06fcde5dbef956::t_37e3ea8aa52e74 3334-3335,3726
+experimental/app/Cargo.toml
+  s_06fcde5dbef956::t_d9562ff07db850 10,63-66,98
+experimental/app/src/web_gaming.rs
+  s_06fcde5dbef956::t_afb6a527be8027 41-49,120-129,207-208,234-237,263-264,326-331,361,509,528-533,544,723,728-729,755,768-769,783,825-846,850-851,853-856,862-864,915-919,922-930,935,937-946,950-953,972-1111,1149,1189-1197,1200-1201,1275-1396
+src/input_macos.rs
+  s_06fcde5dbef956::t_e3ae39ccdbe96b 1-230
+src/lib.rs
+  s_06fcde5dbef956::t_0f17a6895177a6 11-13
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "69abc2d0bbca4f6c8e95b520f9749ee5865ecb16",
+  "prompts": {},
+  "sessions": {
+    "s_06fcde5dbef956": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "94b73314-95fe-4e96-8c43-d20b0f28358d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}
