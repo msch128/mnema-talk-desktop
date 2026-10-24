@@ -1251,7 +1251,7 @@ export function useWebRTC() {
 
   async function joinVoiceChannel(channelId: string) {
     // Protected media is unavailable until the native Core grant is qualified.
-    if (!nativeProtectedMediaAvailable()) throw new Error('Chat und Talk sind in dieser Testversion noch gesperrt.')
+    if (!nativeProtectedMediaAvailable()) throw new Error('Chat and Talk are still locked in this test version.')
     // If already in this channel, don't re-create audio graphs
     if (channelId === voiceStore.currentChannelId && localAudioStream.value) {
       return
@@ -1674,7 +1674,7 @@ export function useWebRTC() {
   // the new screen then replaces the running one (see replaceScreenShare).
   async function startScreenShare(quality?: StreamQuality): Promise<void> {
     // Protected media is unavailable until the native Core grant is qualified.
-    if (!nativeProtectedMediaAvailable()) throw new Error('Chat und Talk sind in dieser Testversion noch gesperrt.')
+    if (!nativeProtectedMediaAvailable()) throw new Error('Chat and Talk are still locked in this test version.')
     if (screenCapturePending) return
     if (localScreenStream.value) {
       const ok = await confirm({
@@ -1808,7 +1808,7 @@ export function useWebRTC() {
 
   async function startCamera() {
     // Protected media is unavailable until the native Core grant is qualified.
-    if (!nativeProtectedMediaAvailable()) throw new Error('Chat und Talk sind in dieser Testversion noch gesperrt.')
+    if (!nativeProtectedMediaAvailable()) throw new Error('Chat and Talk are still locked in this test version.')
     if (!voiceStore.currentChannelId || localCameraStream.value) return
     const gen = joinGeneration
     let stream

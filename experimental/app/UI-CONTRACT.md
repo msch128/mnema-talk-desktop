@@ -1,5 +1,7 @@
 # Native operational preview IPC contract (candidate, not yet frozen)
 
+This contract belongs to the preserved native-crypto research mode (see `experimental/README.md`). The shipped `web-client` build does not use these commands.
+
 All commands receive an actual injected Tauri WebviewWindow. Native registry validates its OS window identity, local bundled main URL and current incarnation; renderer `context` is a nonsecret replay fence, never identity authority. Only the native-created main window has these ACLs. No remote webview, remote script, arbitrary native HTTP URL/header/cookie, renderer WebSocket or global fetch patch.
 
 Native context command: `native_context()` → `{context:canonicalUUID,profile_intent:canonicalUUID|null,content_authorization:"unavailable",remembered_login:false}`. Bootstrap obtains once per local main-page incarnation; never persist it. Context changes on native page reload/recreation. Reject every queued reply/event whose context differs.

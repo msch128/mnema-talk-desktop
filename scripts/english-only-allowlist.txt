@@ -1,0 +1,48 @@
+# Where German is allowed. Every entry needs a reason after " | ".
+# See scripts/english-only-allowlist.txt format in scripts/check-english-only.mjs.
+
+# German UI strings and the de/en tables of static pages.
+path: experimental/ui/src/i18n/de.json | German UI strings (i18n resource)
+path: linux/assets/rail-ui/rail.js | de/en locale table of the server rail page
+path: experimental/app/rail-ui/rail.js | de/en locale table of the server rail page
+path: linux/assets/update-ui/update.js | de/en locale table of the update page
+path: experimental/app/update-ui/update.js | de/en locale table of the update page
+path: linux/assets/picker-ui/picker.js | de/en locale table of the screen picker page
+
+# Third-party and legal text.
+path: experimental/vendor/** | vendored third-party sources
+path: licenses/** | third-party license data (author names)
+path: experimental/licenses/** | third-party license data (author names)
+path: experimental/ui/src/third_party/** | vendored code and licenses
+text: Schr(ö|oe)der|Schr(ö|oe)ter | surnames of the author and of a third-party model author
+text: God of War Ragnarök | an official game title in the executable reference
+path: test-vectors/bundle.json | generated Unicode path test vector (see linux/scripts/gen-vectors.ts)
+
+# The guard names the words it looks for.
+path: scripts/check-english-only.mjs | lists the German words and characters it detects
+path: scripts/check-english-only.test.mjs | feeds the guard German samples
+path: scripts/english-only-allowlist.txt | quotes the names it allows
+
+# Tests that assert the German UI text.
+path: experimental/ui/src/components/AudioSettingsModal.test.ts | asserts German UI output
+path: experimental/ui/src/components/ChatArea.test.ts | asserts German UI output
+path: experimental/ui/src/components/ConfirmDialog.test.ts | asserts German UI output
+path: experimental/ui/src/components/ConnectionBanner.test.ts | asserts German UI output
+path: experimental/ui/src/components/EditNameDialog.test.ts | asserts German UI output
+path: experimental/ui/src/components/NativeTrustSetup.test.ts | asserts German UI output
+path: experimental/ui/src/components/Sidebar.test.ts | asserts German UI output
+path: experimental/ui/src/components/StreamQualityMenu.integration.test.ts | asserts German UI output
+path: experimental/ui/src/components/UpdateBanner.test.ts | asserts German UI output
+path: experimental/ui/src/components/UserBar.test.ts | asserts German UI output
+path: experimental/ui/src/components/UserProfileModal.test.ts | asserts German UI output
+path: experimental/ui/src/components/VoiceChatPanel.test.ts | asserts German UI output
+path: experimental/ui/src/composables/useChannelLayout.test.ts | asserts German UI output
+path: experimental/ui/src/composables/useWebRTC.test.ts | asserts German UI output
+path: experimental/ui/src/i18n/i18n.test.ts | asserts German UI output
+path: experimental/ui/src/i18n/noHardcodedText.test.ts | asserts German UI output
+path: experimental/ui/src/lib/api.test.ts | asserts German UI output
+path: experimental/ui/src/lib/rtcStats.test.ts | asserts German UI output
+path: experimental/ui/src/stores/stores.test.ts | asserts German UI output
+path: experimental/ui/src/stores/toast.test.ts | asserts German UI output
+path: ui/src/nativeUpdatePage.test.ts | asserts German UI output
+path: ui/src/railPage.test.ts | asserts German UI output

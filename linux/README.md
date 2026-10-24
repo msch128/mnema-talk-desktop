@@ -223,7 +223,9 @@ relay behave as specified, permissions and navigation are locked, the fuses are
 set, the unsandboxed start is refused. The AppImage and the installed `.deb` start
 and show the selector.
 
-The two-server end-to-end run (`test/e2e/multi.e2e.ts`) signs in to two stand-in\ninstances and checks storage, cookies, sockets, counters, switching, reordering and\nremoval against the real app.
+The two-server end-to-end run (`test/e2e/multi.e2e.ts`) signs in to two stand-in
+instances and checks storage, cookies, sockets, counters, switching, reordering and
+removal against the real app.
 
 **Not checked** (no such machine or device in CI): the Ctrl+1 to Ctrl+9 menu accelerators on a real desktop (the action behind them is unit-tested), a real Wayland session and
 the PipeWire/portal screen picker, X11 screen sharing with real windows,

@@ -3,7 +3,7 @@
 
 use glib::prelude::*;
 
-const WORDS: [&str; 6] = ["", "alpha", "Grüße", "日本語", "🎙️", "omega"];
+const WORDS: [&str; 6] = ["", "alpha", "Gr\u{fc}\u{df}e", "日本語", "🎙️", "omega"];
 
 #[test]
 fn next_and_exhaustion_preserve_borrowed_utf8() {

@@ -1,0 +1,32 @@
+name: English only
+
+# Code, comments, docs and fixtures are English only. German lives in the
+# locale resources and in tests that assert it; see
+# scripts/english-only-allowlist.txt.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: english-only-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  english-only:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '26'
+      - run: |
+          node --test scripts/check-english-only.test.mjs
+          node scripts/check-english-only.mjs

@@ -24,13 +24,13 @@ onUnmounted(() => { void session?.stop() })
 </script>
 <template>
   <main>
-    <header><span class="mark">M</span><h1>Mnema Talk</h1><span>Nativer authentifizierter SFU-Test</span></header>
-    <p>Zwei native Testkonten im WebView, echter authentifizierter Go/Pion-SFU-Pfad auf Loopback. Nur synthetisches Video und 440-Hz-Audio; lokale zufällige Fixture-Schlüssel. Keine Community-Zugangsdaten, keine physische Aufnahme oder Speicherung.</p>
-    <div class="buttons"><button :disabled="running" @click="start('forward')">SFU-Datenfluss</button><button :disabled="running" @click="start('tamper')">Manipulation prüfen</button><button :disabled="running" @click="start('close')">Publisher-Transport schließen</button><button :disabled="!running" @click="stop">Stoppen</button></div>
-    <p class="status">Lauf {{ report.run }} · {{ report.fixtureMode }} · {{ report.phase }} · {{ report.seconds }} s · Datenfluss {{ report.passedSyntheticFlow ? 'nachgewiesen' : 'nicht nachgewiesen' }} · Fehlerfall {{ report.passedFaultScenario ? 'nachgewiesen' : 'nicht nachgewiesen' }}</p>
-    <div class="previews"><div><label>Synthetische Quelle</label><canvas ref="canvas"></canvas></div><div><label>Über SFU empfangen</label><video ref="video" autoplay muted playsinline></video></div></div>
-    <section><h2>Messwerte</h2><pre>{{ JSON.stringify(report, null, 2) }}</pre></section>
-    <details v-if="previous.length"><summary>Vorherige Läufe</summary><pre>{{ JSON.stringify(previous, null, 2) }}</pre></details>
-    <footer>Entwickler-Fixture mit nativen Testkonten und sitzungsgebundener Signalisierung. Die native Integration wird separat qualifiziert; lokale Fixture-Schlüssel sind keine MLS-Mitgliedsschlüssel. Ein manipulierter Frame wird nach Verschlüsselung verändert und muss authentifiziert abgewiesen werden; diese Messung bleibt als Fehler erhalten. Entfernung prüft ausschließlich Transport-/SFU-Mitgliedschaft, keine MLS-Schlüsselwiderrufung. Keine Produktions-E2EE-, Gerätevertrauens-, Persistenz-, Plattform- oder Gaming-Zusage. SDP, ICE-Kandidaten, Frames und Schlüssel werden nicht angezeigt oder aufgezeichnet. Audioausgabe bleibt stumm.</footer>
+    <header><span class="mark">M</span><h1>Mnema Talk</h1><span>Native authenticated SFU test</span></header>
+    <p>Two native test accounts in the WebView, a real authenticated Go/Pion SFU path on loopback. Synthetic video and 440 Hz audio only; random local fixture keys. No community credentials, no physical capture or storage.</p>
+    <div class="buttons"><button :disabled="running" @click="start('forward')">SFU data flow</button><button :disabled="running" @click="start('tamper')">Check tampering</button><button :disabled="running" @click="start('close')">Close publisher transport</button><button :disabled="!running" @click="stop">Stop</button></div>
+    <p class="status">Run {{ report.run }} · {{ report.fixtureMode }} · {{ report.phase }} · {{ report.seconds }} s · Data flow {{ report.passedSyntheticFlow ? 'proven' : 'not proven' }} · Fault case {{ report.passedFaultScenario ? 'proven' : 'not proven' }}</p>
+    <div class="previews"><div><label>Synthetic source</label><canvas ref="canvas"></canvas></div><div><label>Received through the SFU</label><video ref="video" autoplay muted playsinline></video></div></div>
+    <section><h2>Measurements</h2><pre>{{ JSON.stringify(report, null, 2) }}</pre></section>
+    <details v-if="previous.length"><summary>Previous runs</summary><pre>{{ JSON.stringify(previous, null, 2) }}</pre></details>
+    <footer>Developer fixture with native test accounts and session-bound signaling. The native integration is qualified separately; local fixture keys are not MLS member keys. A tampered frame is changed after encryption and must be rejected as unauthenticated; this measurement is kept as an error. Removal checks transport and SFU membership only, not MLS key revocation. No production E2EE, device trust, persistence, platform or gaming promise. SDP, ICE candidates, frames and keys are neither shown nor recorded. Audio output stays muted.</footer>
   </main>
 </template>

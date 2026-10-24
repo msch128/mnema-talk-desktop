@@ -122,7 +122,7 @@ describe('native socket ownership', () => {
   })
   it('blocks plaintext-content and voice events in both directions', async () => {
     const socket = new NativeSocket(); await tick(); notice(1, 'opened'); invoke.mockClear()
-    expect(() => socket.send(JSON.stringify({ type: 'voice_join', payload: { channel_id: OTHER } }))).toThrow('noch nicht verfügbar'); expect(invoke).not.toHaveBeenCalled()
+    expect(() => socket.send(JSON.stringify({ type: 'voice_join', payload: { channel_id: OTHER } }))).toThrow('not available in this test version yet'); expect(invoke).not.toHaveBeenCalled()
     socket.send(JSON.stringify({ type: 'ping', payload: { t: 5 } })); expect(invoke).toHaveBeenCalledWith('native_socket_send', expect.objectContaining({ handle: HANDLE, action: { type: 'ping', payload: { t: 5 } } }))
     const message = vi.fn(); socket.onmessage = message; notice(2, 'message', { type: 'message_created', payload: { content: 'synthetic-private-content' } })
     expect(message).not.toHaveBeenCalled(); expect(socket.readyState).toBe(3)

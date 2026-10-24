@@ -32,7 +32,7 @@ test('versions parse strictly and order numerically', () => {
 })
 
 test('path rules match the signing tool', () => {
-  for (const ok of ['index.html', 'assets/a-b.js', 'ünï/x.js']) assert.ok(validPath(ok), ok)
+  for (const ok of ['index.html', 'assets/a-b.js', '\u00fcn\u00ef/x.js']) assert.ok(validPath(ok), ok)
   for (const bad of ['', '/abs', 'a//b', 'a/./b', 'a/../b', '..', '.', 'a/', 'a\\b', 'a\0b', 'a\u007f', 'a\nb', 'a'.repeat(MAX_PATH + 1)]) {
     assert.ok(!validPath(bad), JSON.stringify(bad))
   }
