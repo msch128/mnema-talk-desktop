@@ -59,8 +59,8 @@ pub trait ForegroundSource {
     fn stop(&mut self);
 }
 
-/// Wayland has no portable way to ask which window is focused (by design), so
-/// detection stays off there and says so.
+/// A system without a source. Game detection exists for Windows only; the
+/// Linux and macOS desktop clients are paused.
 pub struct UnsupportedSource(pub &'static str);
 
 impl ForegroundSource for UnsupportedSource {
@@ -70,8 +70,7 @@ impl ForegroundSource for UnsupportedSource {
     fn stop(&mut self) {}
 }
 
-/// The shortest honest statement for a session without a usable source.
-pub const WAYLAND_NOTE: &str = "Game detection is not available on Wayland: the protocol gives applications no way to see which window is focused.";
+pub const WINDOWS_ONLY_NOTE: &str = "Game detection is available on Windows only.";
 
 /// Test double: hands out whatever the test pushes, from the test's thread.
 #[cfg(test)]
@@ -177,8 +176,8 @@ mod tests {
 
     #[test]
     fn unsupported_source_says_why_and_never_starts() {
-        let mut source = UnsupportedSource(WAYLAND_NOTE);
+        let mut source = UnsupportedSource(WINDOWS_ONLY_NOTE);
         let err = source.start(Box::new(|_| {})).unwrap_err();
-        assert!(err.note().contains("Wayland"));
+        assert!(err.note().contains("Windows"));
     }
 }

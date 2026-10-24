@@ -70,9 +70,8 @@ There is no external security audit.
   for setup and its limits (topmost windows, not exclusive fullscreen).
   Game detection and push-to-talk are event driven (no polling, no process
   enumeration, no injection, no keyboard hook); [GAMING.md](GAMING.md) is the
-  reference, including the anti-cheat safety statement. On macOS the shortcuts
-  and push-to-talk during a detected game need the Input Monitoring permission,
-  which is requested only when you turn push-to-talk on; nothing else needs it.
+  reference, including the anti-cheat safety statement. The gaming integration is Windows
+  only for now; the macOS and Linux desktop clients are paused.
 
 ## Get it
 

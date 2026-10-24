@@ -16,9 +16,6 @@ use tauri::{Manager, Webview, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 #[allow(dead_code)]
 #[path = "../../../src/foreground.rs"]
 mod foreground;
-#[cfg(target_os = "macos")]
-#[path = "../../../src/foreground_macos.rs"]
-mod foreground_macos;
 #[cfg(windows)]
 #[path = "../../../src/foreground_windows.rs"]
 mod foreground_windows;
@@ -43,9 +40,6 @@ mod games;
 #[allow(dead_code)]
 #[path = "../../../src/input.rs"]
 mod input;
-#[cfg(target_os = "macos")]
-#[path = "../../../src/input_macos.rs"]
-mod input_macos;
 #[cfg(windows)]
 #[path = "../../../src/input_windows.rs"]
 mod input_windows;
@@ -835,28 +829,7 @@ fn window_title(hwnd: *mut std::ffi::c_void) -> String {
     };
     String::from_utf16_lossy(&text[..len.max(0) as usize])
 }
-/// macOS: the workspace announces the frontmost application, so the last
-/// announcement is the current one. There is no overlay window on macOS; a
-/// detected game lets the shortcuts and push-to-talk work while it is in front.
-#[cfg(target_os = "macos")]
-fn native_sample(
-    g: &mut Gaming,
-    _app: &tauri::AppHandle,
-) -> (bool, Option<tauri::PhysicalPosition<i32>>) {
-    let library = g.library.current();
-    g.game_name = g.foreground.as_ref().and_then(|front| {
-        game_identify::identify(
-            &g.settings.games,
-            &library,
-            game_list::GameList::bundled(),
-            &front.image,
-            "",
-        )
-        .map(|found| found.name)
-    });
-    (g.game_name.is_some(), None)
-}
-#[cfg(not(any(windows, target_os = "macos")))]
+#[cfg(not(windows))]
 fn native_sample(
     _g: &mut Gaming,
     _app: &tauri::AppHandle,
@@ -925,9 +898,8 @@ fn tick(app: &tauri::AppHandle) {
     let now = Instant::now();
     let fresh =
         g.settings.enabled && g.voice.connected && g.updated.elapsed() < Duration::from_secs(2);
-    // Windows listens for the shortcuts in any Talk; macOS only once the person
-    // has turned push-to-talk on (that is when it may ask for permission).
-    let want_input = fresh && (cfg!(windows) || g.voice.ptt_mode);
+    // The shortcuts are listened for in any Talk with gaming on.
+    let want_input = fresh;
     let tracker = g.keys.clone();
     let (game, position) = if fresh {
         native_sample(&mut g, app)
@@ -1084,15 +1056,12 @@ impl Heartbeat {
 struct InputHost {
     source: Mutex<Option<Box<dyn input::InputSource + Send>>>,
     running: std::sync::atomic::AtomicBool,
-    asked: std::sync::atomic::AtomicBool,
     retry_after: Mutex<Option<Instant>>,
 }
 fn new_input_source() -> Option<Box<dyn input::InputSource + Send>> {
     #[cfg(windows)]
     return Some(Box::new(input_windows::RawInputSource::default()));
-    #[cfg(target_os = "macos")]
-    return Some(Box::new(input_macos::EventTapSource::default()));
-    #[cfg(not(any(windows, target_os = "macos")))]
+    #[cfg(not(windows))]
     None
 }
 fn manage_input(
@@ -1126,13 +1095,6 @@ fn manage_input(
         }));
         match started {
             Ok(()) => host.running.store(true, Ordering::Release),
-            Err(input::InputError::NeedsPermission) => {
-                note = Some(input::NEEDS_PERMISSION_NOTE);
-                // The one question per run, and only now that the person wants push-to-talk.
-                if !host.asked.swap(true, Ordering::AcqRel) {
-                    source.request_access();
-                }
-            }
             Err(error) => {
                 note = Some(error.note());
                 if let Ok(mut retry) = host.retry_after.lock() {
@@ -1179,15 +1141,9 @@ fn start_detection(app: &tauri::AppHandle) {
     #[cfg(windows)]
     let mut source: Box<dyn ForegroundSource + Send> =
         Box::new(foreground_windows::WinEventSource::default());
-    #[cfg(target_os = "macos")]
-    let mut source: Box<dyn ForegroundSource + Send> = Box::new(foreground_macos::WorkspaceSource);
-    #[cfg(not(any(windows, target_os = "macos")))]
+    #[cfg(not(windows))]
     let mut source: Box<dyn ForegroundSource + Send> =
-        Box::new(foreground::UnsupportedSource(if wayland() {
-            foreground::WAYLAND_NOTE
-        } else {
-            "Game detection is not available on this system."
-        }));
+        Box::new(foreground::UnsupportedSource(foreground::WINDOWS_ONLY_NOTE));
     let handle = app.clone();
     let started = source.start(Box::new(move |front| {
         if let Ok(mut g) = handle.state::<Mutex<Gaming>>().lock() {
@@ -1217,10 +1173,6 @@ fn start_library_scan(app: &tauri::AppHandle) {
             LIBRARY_REFRESH,
         );
     }
-}
-#[cfg(not(any(windows, target_os = "macos")))]
-fn wayland() -> bool {
-    std::env::var_os("WAYLAND_DISPLAY").is_some_and(|v| !v.is_empty())
 }
 
 pub fn setup(app: &tauri::AppHandle) {
