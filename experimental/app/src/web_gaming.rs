@@ -13,7 +13,13 @@ use std::{
     time::{Duration, Instant},
 };
 use tauri::{Manager, Webview, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
-#[cfg_attr(not(windows), allow(dead_code))]
+#[allow(dead_code)]
+#[path = "../../../src/foreground.rs"]
+mod foreground;
+#[cfg(windows)]
+#[path = "../../../src/foreground_windows.rs"]
+mod foreground_windows;
+#[allow(dead_code)] // the one-shot probe is kept for the fixtures; the app listens to events
 #[path = "../../../src/windows.rs"]
 mod games;
 #[allow(dead_code)]
@@ -162,6 +168,8 @@ pub struct Snapshot {
     settings: Settings,
     overlay: bool,
     active: bool,
+    /// Why game detection is off on this system; absent when it works.
+    detection_note: Option<&'static str>,
 }
 pub struct Gaming {
     /// The app origin the sessions are bound to (`local_origin` of their pages).
@@ -179,6 +187,12 @@ pub struct Gaming {
     ptt_down: bool,
     ptt_armed: bool,
     last_tick: Instant,
+    /// The application in front, as the operating system last announced it.
+    /// Updated by the foreground source's events, never by polling.
+    #[cfg_attr(not(windows), allow(dead_code))]
+    foreground: Option<foreground::Foreground>,
+    /// Why game detection is off on this system, when it is.
+    detection_note: Option<&'static str>,
     #[cfg(windows)]
     game: Option<GameLease>,
 }
@@ -197,6 +211,8 @@ impl Default for Gaming {
             ptt_down: false,
             ptt_armed: false,
             last_tick: Instant::now(),
+            foreground: None,
+            detection_note: None,
             #[cfg(windows)]
             game: None,
         }
@@ -286,6 +302,7 @@ pub fn desktop_gaming_snapshot(
         settings: g.settings.clone(),
         overlay: g.overlay && active,
         active,
+        detection_note: g.detection_note,
     })
 }
 struct Command {
@@ -456,6 +473,8 @@ impl Gaming {
             settings: self.settings.clone(),
             origin: keep.0,
             tokens: keep.1,
+            foreground: self.foreground.take(),
+            detection_note: self.detection_note,
             ..Gaming::default()
         };
     }
@@ -651,17 +670,21 @@ fn native_sample(
         .get_webview_window("gaming-overlay")
         .and_then(|w| w.hwnd().ok())
         .is_some_and(|h| h.0 == hwnd);
-    let probe = games::inspect_foreground(&g.settings.games);
-    let detected = probe.game.is_some()
-        && probe
-            .native_identity
-            .is_some_and(|(window, _)| window == hwnd as usize);
-    if detected {
+    // The foreground source announced this window; a newer foreground that has
+    // not been announced yet simply does not match, so a stale game is never shown.
+    let announced = announced_game(
+        g.foreground.as_ref(),
+        hwnd as usize,
+        &g.settings.games,
+        || window_title(hwnd),
+    );
+    let detected = announced.is_some();
+    if let Some(f) = announced.filter(|_| detected) {
         let mut pid = 0;
         unsafe {
             GetWindowThreadProcessId(hwnd, &mut pid);
         }
-        if probe.native_identity != Some((hwnd as usize, pid)) {
+        if pid != f.pid {
             return (false, [false; 4], None);
         }
         if !g
@@ -707,6 +730,39 @@ fn native_sample(
         keys,
         position,
     )
+}
+/// The announced foreground when it is the window in front now and a game the
+/// user's list or the bundled reference names. `title` is asked only for Java
+/// runtimes, which are a Minecraft candidate by their title alone.
+#[cfg(any(windows, test))]
+fn announced_game(
+    front: Option<&foreground::Foreground>,
+    window: usize,
+    names: &[String],
+    title: impl FnOnce() -> String,
+) -> Option<foreground::Foreground> {
+    let front = front.filter(|f| window != 0 && f.window == window)?;
+    let title = if front.basename().to_ascii_lowercase().starts_with("java") {
+        title()
+    } else {
+        String::new()
+    };
+    games::approved_image(names, &front.image, &title).map(|_| front.clone())
+}
+/// The title of a window, read only for Java runtimes (a shared runtime is a
+/// Minecraft candidate only by its title).
+#[cfg(windows)]
+fn window_title(hwnd: *mut std::ffi::c_void) -> String {
+    let mut text = [0u16; 512];
+    // SAFETY: a sized buffer that lives across the call.
+    let len = unsafe {
+        windows_sys::Win32::UI::WindowsAndMessaging::GetWindowTextW(
+            hwnd,
+            text.as_mut_ptr(),
+            text.len() as i32,
+        )
+    };
+    String::from_utf16_lossy(&text[..len.max(0) as usize])
 }
 #[cfg(not(windows))]
 fn native_sample(
@@ -813,6 +869,34 @@ pub fn open_probe_surfaces(app: &tauri::AppHandle) {
     }
 }
 
+/// The running foreground source, kept so it lives as long as the app.
+#[allow(dead_code)] // held, never read: dropping it would stop the hook
+struct Detection(Mutex<Option<Box<dyn foreground::ForegroundSource + Send>>>);
+
+/// Starts event-driven game detection. Where the system offers no way to learn
+/// the focused window the note says so and detection stays off.
+fn start_detection(app: &tauri::AppHandle) {
+    use foreground::ForegroundSource;
+    #[cfg(windows)]
+    let mut source: Box<dyn ForegroundSource + Send> =
+        Box::new(foreground_windows::WinEventSource::default());
+    #[cfg(not(windows))]
+    let mut source: Box<dyn ForegroundSource + Send> =
+        Box::new(foreground::UnsupportedSource(foreground::WINDOWS_ONLY_NOTE));
+    let handle = app.clone();
+    let started = source.start(Box::new(move |front| {
+        if let Ok(mut g) = handle.state::<Mutex<Gaming>>().lock() {
+            g.foreground = Some(front);
+        }
+    }));
+    if let Err(error) = &started
+        && let Ok(mut g) = app.state::<Mutex<Gaming>>().lock()
+    {
+        g.detection_note = Some(error.note());
+    }
+    app.manage(Detection(Mutex::new(started.is_ok().then_some(source))));
+}
+
 pub fn setup(app: &tauri::AppHandle) {
     if let Ok(dir) = app.path().app_config_dir()
         && let Ok(bytes) = std::fs::read(dir.join("gaming.json"))
@@ -823,6 +907,7 @@ pub fn setup(app: &tauri::AppHandle) {
     {
         g.settings = settings;
     }
+    start_detection(app);
     let app = app.clone();
     std::thread::spawn(move || {
         let queued = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
@@ -862,6 +947,44 @@ mod tests {
         let mut invalid = restored;
         invalid.sidepeek_opacity = 101;
         assert!(invalid.validate().is_err());
+    }
+    fn front(window: usize, image: &str) -> foreground::Foreground {
+        foreground::Foreground {
+            window,
+            pid: 4,
+            image: image.into(),
+        }
+    }
+    #[test]
+    fn only_the_announced_window_in_front_can_be_a_game() {
+        let mine = vec!["Custom.exe".to_string()];
+        let none = || String::new();
+        let game = front(5, r"D:\Games\Custom.exe");
+        assert!(announced_game(Some(&game), 5, &mine, none).is_some());
+        // A different window is in front now: the announcement is stale.
+        assert!(announced_game(Some(&game), 6, &mine, none).is_none());
+        assert!(announced_game(Some(&game), 0, &mine, none).is_none());
+        assert!(announced_game(None, 5, &mine, none).is_none());
+        // The system refused the image path: never a game.
+        assert!(announced_game(Some(&front(5, "")), 5, &mine, none).is_none());
+        assert!(
+            announced_game(Some(&front(5, r"C:\Windows\notepad.exe")), 5, &mine, none).is_none()
+        );
+    }
+    #[test]
+    fn java_needs_a_minecraft_title_and_other_apps_never_ask_for_one() {
+        let java = front(1, r"C:\Java\bin\javaw.exe");
+        let asked = std::cell::Cell::new(0);
+        let minecraft = || {
+            asked.set(asked.get() + 1);
+            "Minecraft 1.21".to_string()
+        };
+        assert!(announced_game(Some(&java), 1, &[], minecraft).is_some());
+        assert_eq!(asked.get(), 1);
+        assert!(announced_game(Some(&java), 1, &[], || "Editor".into()).is_none());
+        let other = front(2, r"D:\Games\Custom.exe");
+        let never = || panic!("title read for a non-Java process");
+        assert!(announced_game(Some(&other), 2, &["Custom.exe".into()], never).is_some());
     }
     #[test]
     fn global_disable_hides_surfaces_and_releases_ptt_without_reopening_held_key() {
