@@ -57,6 +57,27 @@ jobs:
       - name: Verify reviewed backport against optimized real Linux GLib
         run: bash scripts/test-glib-linux.sh
 
+  # The platform-neutral gaming logic (foreground tracking, game matching, input
+  # state machines) runs on every system the clients ship for, not only Windows.
+  gaming-logic:
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install pinned Rust toolchain
+        run: rustup toolchain install 1.99.1 --profile minimal --component clippy
+      - name: Test and lint the neutral gaming logic
+        run: |
+          set -euo pipefail
+          cargo +1.99.1 test --locked --manifest-path Cargo.toml --lib
+          cargo +1.99.1 clippy --locked --manifest-path Cargo.toml --lib --tests -- -D warnings
+
   desktop-probe:
     runs-on: windows-latest
     timeout-minutes: 30

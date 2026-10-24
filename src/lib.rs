@@ -1,4 +1,7 @@
 pub mod discovery;
+pub mod foreground;
+#[cfg(windows)]
+pub mod foreground_windows;
 pub mod game_owner;
 pub mod gaming;
 pub mod profiles;
