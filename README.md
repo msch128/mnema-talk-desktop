@@ -68,6 +68,10 @@ There is no external security audit.
   configurable. See the
   [gaming guide](https://github.com/msch128/mnema-talk/blob/main/doc/desktop-app.md#windows-gaming-dev)
   for setup and its limits (topmost windows, not exclusive fullscreen).
+  Game detection and push-to-talk are event driven (no polling, no process
+  enumeration, no injection, no keyboard hook); [GAMING.md](GAMING.md) is the
+  reference, including the anti-cheat safety statement. The gaming integration is Windows
+  only for now; the macOS and Linux desktop clients are paused.
 
 ## Get it
 

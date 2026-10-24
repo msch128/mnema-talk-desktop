@@ -1,0 +1,15 @@
+"AppState"
+{
+	"appid"		"220"
+	"universe"		"1"
+	"name"		"Example Quest"
+	"StateFlags"		"4"
+	"installdir"		"Example Quest"
+	"LastUpdated"		"1700000000"
+	"SizeOnDisk"		"123456789"
+	"buildid"		"1"
+	"UserConfig"
+	{
+		"language"		"english"
+	}
+}
