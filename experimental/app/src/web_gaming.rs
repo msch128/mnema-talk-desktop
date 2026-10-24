@@ -16,9 +16,6 @@ use tauri::{Manager, Webview, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 #[allow(dead_code)]
 #[path = "../../../src/foreground.rs"]
 mod foreground;
-#[cfg(target_os = "macos")]
-#[path = "../../../src/foreground_macos.rs"]
-mod foreground_macos;
 #[cfg(windows)]
 #[path = "../../../src/foreground_windows.rs"]
 mod foreground_windows;
@@ -883,15 +880,9 @@ fn start_detection(app: &tauri::AppHandle) {
     #[cfg(windows)]
     let mut source: Box<dyn ForegroundSource + Send> =
         Box::new(foreground_windows::WinEventSource::default());
-    #[cfg(target_os = "macos")]
-    let mut source: Box<dyn ForegroundSource + Send> = Box::new(foreground_macos::WorkspaceSource);
-    #[cfg(not(any(windows, target_os = "macos")))]
+    #[cfg(not(windows))]
     let mut source: Box<dyn ForegroundSource + Send> =
-        Box::new(foreground::UnsupportedSource(if wayland() {
-            foreground::WAYLAND_NOTE
-        } else {
-            "Game detection is not available on this system."
-        }));
+        Box::new(foreground::UnsupportedSource(foreground::WINDOWS_ONLY_NOTE));
     let handle = app.clone();
     let started = source.start(Box::new(move |front| {
         if let Ok(mut g) = handle.state::<Mutex<Gaming>>().lock() {
@@ -904,10 +895,6 @@ fn start_detection(app: &tauri::AppHandle) {
         g.detection_note = Some(error.note());
     }
     app.manage(Detection(Mutex::new(started.is_ok().then_some(source))));
-}
-#[cfg(not(any(windows, target_os = "macos")))]
-fn wayland() -> bool {
-    std::env::var_os("WAYLAND_DISPLAY").is_some_and(|v| !v.is_empty())
 }
 
 pub fn setup(app: &tauri::AppHandle) {

@@ -43,13 +43,11 @@ window.
 | System | Source | Looks up |
 | --- | --- | --- |
 | Windows | `SetWinEventHook(EVENT_SYSTEM_FOREGROUND, WINEVENT_OUTOFCONTEXT)` on a dedicated thread with its own message loop (out of context: nothing is loaded into other processes) | `QueryFullProcessImageNameW` on the foreground window's single PID, opened with `PROCESS_QUERY_LIMITED_INFORMATION` |
-| macOS | `NSWorkspaceDidActivateApplicationNotification` | pid and executable path of the activated application; no permission prompt |
-| Linux (Electron client) | none: the Linux client has no gaming integration | - |
-| Wayland | none: the protocol gives applications no way to see which window is focused, by design. Detection is off and the settings say so. | - |
+| macOS, Linux | none: the macOS and Linux desktop clients are paused, and the gaming integration is Windows only for now. Detection is off and the settings say so. | - |
 
 The foreground source sits behind the `ForegroundSource` trait
 (`src/foreground.rs`) with a fake for tests. The operating-system code is in
-`src/foreground_windows.rs` and `src/foreground_macos.rs`.
+`src/foreground_windows.rs`.
 
 A window counts as a game only when it was announced by the source and is still
 the foreground window when the sidepeek or shortcuts act, so an announcement
