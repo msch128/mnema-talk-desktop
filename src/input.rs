@@ -2,14 +2,13 @@
 //! shortcuts. The operating system tells us when a key goes down or up; nothing
 //! here polls key state, hooks another process or injects input.
 //!
-//! The platform sources (raw input on Windows, a listen-only event tap on macOS)
-//! sit behind [`InputSource`] and only ever report *which* key changed. They
+//! The platform source (raw input on Windows; the other systems are paused) sits behind [`InputSource`] and only ever report *which* key changed. They
 //! never see text, and [`ChordTracker`] keeps no history: it holds the set of
 //! keys currently down and compares it with the four configured chords, so a
 //! session's keystrokes are neither stored nor logged.
 //!
 //! Key identity is the Windows virtual-key code on every system (the shortcut
-//! settings already store VK codes); macOS key codes are translated here.
+//! settings already store VK codes).
 
 /// Windows virtual-key codes used by chords and modifiers.
 pub const VK_XBUTTON1: u16 = 0x05;
@@ -45,8 +44,6 @@ pub type Sink = Box<dyn Fn(InputEvent) + Send + Sync + 'static>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InputError {
-    /// The system asks the user to allow it (macOS Input Monitoring).
-    NeedsPermission,
     /// This system has no way to see keys outside the app. Say why.
     Unsupported(&'static str),
     /// Another part of the app already owns the system registration.
@@ -58,32 +55,25 @@ impl InputError {
     /// A short, plain reason the user can be shown.
     pub fn note(&self) -> &'static str {
         match self {
-            Self::NeedsPermission => NEEDS_PERMISSION_NOTE,
             Self::Unsupported(note) | Self::Conflict(note) | Self::Failed(note) => note,
         }
     }
 }
 
-pub const NEEDS_PERMISSION_NOTE: &str = "Push-to-talk and shortcuts outside Mnema need Input Monitoring. Allow Mnema in System Settings > Privacy & Security > Input Monitoring. Everything else works without it.";
-
-/// A source of key events. `start` must not show any system prompt: asking the
-/// user is [`InputSource::request_access`], called once when the user turns
-/// push-to-talk on.
+/// A source of key events.
 pub trait InputSource {
     fn start(&mut self, sink: Sink) -> Result<(), InputError>;
     fn stop(&mut self);
-    fn request_access(&mut self) {}
 }
 
-/// Where no system source exists. Linux has no gaming host: the Electron client
-/// has no overlay or global shortcuts, and on Wayland the only portable route
-/// (the GlobalShortcuts portal) delivers presses without a guaranteed release.
+/// Where no system source exists. The Linux and macOS desktop clients are paused,
+/// so only Windows has a source.
 pub struct UnavailableSource;
 
 impl InputSource for UnavailableSource {
     fn start(&mut self, _sink: Sink) -> Result<(), InputError> {
         Err(InputError::Unsupported(
-            "Shortcuts and push-to-talk work only while Mnema is in front on this system.",
+            "Shortcuts and push-to-talk outside Mnema are available on Windows only.",
         ))
     }
     fn stop(&mut self) {}
@@ -246,113 +236,12 @@ pub fn side_specific(vkey: u16, make_code: u16, extended: bool) -> u16 {
     }
 }
 
-/// macOS virtual key code (`kVK_*`) to the Windows virtual-key code the chords
-/// use. Only the keys a chord can contain, plus the modifiers.
-pub fn vk_from_mac_key(code: u16) -> Option<u16> {
-    const LETTERS: [(u16, u8); 26] = [
-        (0x00, b'A'),
-        (0x0b, b'B'),
-        (0x08, b'C'),
-        (0x02, b'D'),
-        (0x0e, b'E'),
-        (0x03, b'F'),
-        (0x05, b'G'),
-        (0x04, b'H'),
-        (0x22, b'I'),
-        (0x26, b'J'),
-        (0x28, b'K'),
-        (0x25, b'L'),
-        (0x2e, b'M'),
-        (0x2d, b'N'),
-        (0x1f, b'O'),
-        (0x23, b'P'),
-        (0x0c, b'Q'),
-        (0x0f, b'R'),
-        (0x01, b'S'),
-        (0x11, b'T'),
-        (0x20, b'U'),
-        (0x09, b'V'),
-        (0x0d, b'W'),
-        (0x07, b'X'),
-        (0x10, b'Y'),
-        (0x06, b'Z'),
-    ];
-    // ANSI digit row: 1 2 3 4 5 6 7 8 9 0.
-    const DIGITS: [(u16, u8); 10] = [
-        (0x12, b'1'),
-        (0x13, b'2'),
-        (0x14, b'3'),
-        (0x15, b'4'),
-        (0x17, b'5'),
-        (0x16, b'6'),
-        (0x1a, b'7'),
-        (0x1c, b'8'),
-        (0x19, b'9'),
-        (0x1d, b'0'),
-    ];
-    // F1..F20 in order.
-    const FUNCTION: [u16; 20] = [
-        0x7a, 0x78, 0x63, 0x76, 0x60, 0x61, 0x62, 0x64, 0x65, 0x6d, 0x67, 0x6f, 0x69, 0x6b, 0x71,
-        0x6a, 0x40, 0x4f, 0x50, 0x5a,
-    ];
-    if code == 0x31 {
-        return Some(0x20);
-    }
-    if let Some((_, ascii)) = LETTERS
-        .iter()
-        .chain(DIGITS.iter())
-        .find(|(c, _)| *c == code)
-    {
-        return Some(u16::from(*ascii));
-    }
-    if let Some(index) = FUNCTION.iter().position(|c| *c == code) {
-        return Some(0x70 + index as u16);
-    }
-    mac_modifier(code).map(|(vk, _)| vk)
-}
-
-/// A modifier key code with the device-dependent flag bit that says whether
-/// that very key (not just its kind) is held.
-fn mac_modifier(code: u16) -> Option<(u16, u64)> {
-    Some(match code {
-        0x38 => (VK_LSHIFT, 0x2),
-        0x3c => (VK_RSHIFT, 0x4),
-        0x3b => (VK_LCONTROL, 0x1),
-        0x3e => (VK_RCONTROL, 0x2000),
-        0x3a => (VK_LMENU, 0x20),
-        0x3d => (VK_RMENU, 0x40),
-        0x37 => (VK_LWIN, 0x8),
-        0x36 => (VK_RWIN, 0x10),
-        _ => return None,
-    })
-}
-
-/// A macOS `flagsChanged` event: which modifier key moved and whether it is
-/// down, from the event's device-dependent flag bits.
-pub fn mac_modifier_event(code: u16, flags: u64) -> Option<KeyEvent> {
-    let (key, bit) = mac_modifier(code)?;
-    Some(KeyEvent {
-        key,
-        down: flags & bit != 0,
-    })
-}
-
-/// macOS "other" mouse button number (3 = back, 4 = forward) to the chord code.
-pub fn vk_from_mac_button(button: i64) -> Option<u16> {
-    match button {
-        3 => Some(VK_XBUTTON1),
-        4 => Some(VK_XBUTTON2),
-        _ => None,
-    }
-}
-
 /// Test double: pushes whatever the test emits.
 #[cfg(test)]
 #[derive(Default)]
 pub struct FakeInput {
     sink: Option<Sink>,
     pub running: bool,
-    pub access_requests: u32,
     pub deny: Option<InputError>,
 }
 
@@ -378,9 +267,6 @@ impl InputSource for FakeInput {
     fn stop(&mut self) {
         self.running = false;
         self.sink = None;
-    }
-    fn request_access(&mut self) {
-        self.access_requests += 1;
     }
 }
 
@@ -584,70 +470,6 @@ mod tests {
     }
 
     #[test]
-    fn mac_key_codes_map_to_the_chord_keys() {
-        // Every letter, digit and function key a chord may use is reachable once.
-        let mut seen = std::collections::HashSet::new();
-        for code in 0u16..0x80 {
-            if let Some(vk) = vk_from_mac_key(code) {
-                assert!(seen.insert(vk), "two mac keys map to {vk:#x}");
-            }
-        }
-        for vk in (b'A'..=b'Z').chain(b'0'..=b'9') {
-            assert!(seen.contains(&u16::from(vk)), "{}", vk as char);
-        }
-        for vk in 0x70..=0x83 {
-            assert!(seen.contains(&vk), "F{}", vk - 0x6f);
-        }
-        assert_eq!(vk_from_mac_key(0x31), Some(0x20), "space");
-        assert_eq!(vk_from_mac_key(0x2e), Some(u16::from(b'M')));
-        assert_eq!(vk_from_mac_key(0x7a), Some(0x70), "F1");
-        assert_eq!(vk_from_mac_key(0x24), None, "return is not a chord key");
-        assert_eq!(vk_from_mac_key(0x35), None, "escape is not a chord key");
-    }
-
-    #[test]
-    fn mac_modifier_events_follow_the_device_flags_of_the_very_key() {
-        // Left and right Shift: releasing one while the other is held.
-        let both = 0x2 | 0x4;
-        assert_eq!(
-            mac_modifier_event(0x38, both),
-            Some(KeyEvent {
-                key: VK_LSHIFT,
-                down: true
-            })
-        );
-        assert_eq!(
-            mac_modifier_event(0x38, 0x4),
-            Some(KeyEvent {
-                key: VK_LSHIFT,
-                down: false
-            })
-        );
-        assert_eq!(
-            mac_modifier_event(0x3a, 0x20),
-            Some(KeyEvent {
-                key: VK_LMENU,
-                down: true
-            })
-        );
-        assert_eq!(
-            mac_modifier_event(0x37, 0x8),
-            Some(KeyEvent {
-                key: VK_LWIN,
-                down: true
-            })
-        );
-        assert_eq!(mac_modifier_event(0x00, 0xffff), None);
-    }
-
-    #[test]
-    fn mac_buttons_four_and_five_are_the_side_buttons() {
-        assert_eq!(vk_from_mac_button(3), Some(VK_XBUTTON1));
-        assert_eq!(vk_from_mac_button(4), Some(VK_XBUTTON2));
-        assert_eq!(vk_from_mac_button(2), None);
-    }
-
-    #[test]
     fn fake_source_feeds_a_tracker_through_the_sink_and_stops_cleanly() {
         let shared = Arc::new(Mutex::new(tracker()));
         let woke = Arc::new(Mutex::new(0));
@@ -668,19 +490,5 @@ mod tests {
         source.emit(key(SPACE, true));
         assert_eq!(*woke.lock().unwrap(), 2);
         assert!(!source.running);
-    }
-
-    #[test]
-    fn permission_errors_explain_themselves_and_start_never_prompts() {
-        let mut source = FakeInput {
-            deny: Some(InputError::NeedsPermission),
-            ..FakeInput::default()
-        };
-        let error = source.start(Box::new(|_| {})).unwrap_err();
-        assert!(error.note().contains("Input Monitoring"));
-        assert_eq!(source.access_requests, 0);
-        source.request_access();
-        assert_eq!(source.access_requests, 1);
-        assert!(InputError::Unsupported("x").note() == "x");
     }
 }

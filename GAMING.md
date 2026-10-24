@@ -43,13 +43,11 @@ window.
 | System | Source | Looks up |
 | --- | --- | --- |
 | Windows | `SetWinEventHook(EVENT_SYSTEM_FOREGROUND, WINEVENT_OUTOFCONTEXT)` on a dedicated thread with its own message loop (out of context: nothing is loaded into other processes) | `QueryFullProcessImageNameW` on the foreground window's single PID, opened with `PROCESS_QUERY_LIMITED_INFORMATION` |
-| macOS | `NSWorkspaceDidActivateApplicationNotification` | pid and executable path of the activated application; no permission prompt |
-| Linux (Electron client) | none: the Linux client has no gaming integration | - |
-| Wayland | none: the protocol gives applications no way to see which window is focused, by design. Detection is off and the settings say so. | - |
+| macOS, Linux | none: the macOS and Linux desktop clients are paused, and the gaming integration is Windows only for now. Detection is off and the settings say so. | - |
 
 The foreground source sits behind the `ForegroundSource` trait
 (`src/foreground.rs`) with a fake for tests. The operating-system code is in
-`src/foreground_windows.rs` and `src/foreground_macos.rs`.
+`src/foreground_windows.rs`.
 
 A window counts as a game only when it was announced by the source and is still
 the foreground window when the sidepeek or shortcuts act, so an announcement
@@ -68,13 +66,17 @@ Three sources, checked in this order. The first match wins and decides the name.
 
    | Launcher | Read | Notes |
    | --- | --- | --- |
-   | Steam (Windows, macOS) | `steamapps/libraryfolders.vdf` and `steamapps/appmanifest_*.acf` of every library | Steam tools and runtimes (Steamworks Shared, SteamVR, Proton, Linux runtimes, Wallpaper Engine) are skipped |
-   | Epic Games Store (Windows) | `%ProgramData%\Epic\EpicGamesLauncher\Data\Manifests\*.item` | add-ons and unfinished installs are skipped |
-   | GOG Galaxy (Windows) | `HKLM\SOFTWARE\WOW6432Node\GOG.com\Games\*` (`gameName`, `path`) | |
-   | EA app (Windows) | `HKLM\SOFTWARE\WOW6432Node\EA Games\*` and `HKLM\SOFTWARE\EA Games\*` (`Install Dir`) | |
+   | Steam | `steamapps/libraryfolders.vdf` and `steamapps/appmanifest_*.acf` of every library | Steam tools and runtimes (Steamworks Shared, SteamVR, Proton, Linux runtimes, Wallpaper Engine) are skipped |
+   | Epic Games Store | `%ProgramData%\Epic\EpicGamesLauncher\Data\Manifests\*.item` | add-ons and unfinished installs are skipped |
+   | GOG Galaxy | `HKLM\SOFTWARE\WOW6432Node\GOG.com\Games\*` (`gameName`, `path`) | |
+   | EA app | `HKLM\SOFTWARE\WOW6432Node\EA Games\*` and `HKLM\SOFTWARE\EA Games\*` (`Install Dir`) | |
    | Battle.net | not read | its install list is a binary database without a public format; Battle.net games are found by the bundled list or a name you add |
 
-   A manifest folder that is a drive root, a system folder or a broad folder such
+   Every path read from a manifest or the registry is checked before the disk
+   is touched: only absolute local drive paths are opened. UNC (`\\host\share`),
+   device (`\\?\`, `\\.\`) and relative paths, `..` segments and alternate
+   data streams are skipped silently, so a crafted manifest cannot make Windows
+   contact another machine. A manifest folder that is a drive root, a system folder or a broad folder such
    as `Program Files` itself is ignored, so one bad manifest cannot make every
    program a game. Manifests larger than 256 KiB are ignored.
 3. **The bundled list** (`src/game-list.json`): executable file names of widely
@@ -101,15 +103,13 @@ welcome under the repository licence.
 
 ## Push-to-talk and shortcuts
 
-Keys are event driven on every system. Nothing asks "is this key down?" in a
+Keys are event driven. Nothing asks "is this key down?" in a
 loop.
 
 | System | Source | Notes |
 | --- | --- | --- |
 | Windows | Raw Input (`RegisterRawInputDevices` with `RIDEV_INPUTSINK`, keyboard and mouse) on its own thread with a hidden window | No keyboard hook, no `GetAsyncKeyState`. Works while a game has the focus. A session lock clears all keys, so a key cannot stay stuck down across the lock screen. |
-| macOS | A listen-only `CGEventTap` | Needs Input Monitoring; see below. Listen-only: it can observe, never change or delay an event. |
-| Linux | none | The Linux client has no gaming integration; its shortcuts work while the window is in front. |
-| Wayland | none | The compositor does not let applications see keys outside their window. The GlobalShortcuts portal is not used because it reports presses without a dependable release, which push-to-talk cannot work with; push-to-talk works while Mnema is in front. |
+| macOS, Linux | none | The desktop clients for these systems are paused; the gaming integration is Windows only for now. |
 
 What is read: for each change only the key (or the mouse side button 4 or 5)
 and whether it went down or up. Text is never looked at, no key history is kept
@@ -118,8 +118,7 @@ currently down and compares it with your four chords (overlay, mute, deafen,
 push-to-talk); only a change in whether a chord is down wakes the rest of the
 app. A press that begins and ends between two looks is still delivered once.
 
-The source runs only while you are in a Talk with gaming on (on macOS: with
-push-to-talk on), and stops when you leave. On Windows the host asks the
+The source runs only while you are in a Talk with gaming on, and stops when you leave. On Windows the host asks the
 windowing library to release the process's own raw input registration first,
 because Windows allows one registration per process; if something else still
 holds it, the settings say so and push-to-talk works while Mnema is in front.
@@ -130,18 +129,6 @@ the press 300 ms after the last one (a safeguard against a stuck microphone), so
 while the key is held the host repeats the press every 100 ms. That is a
 keepalive of a state known from the key event, not input polling. Leaving the
 game, leaving the Talk, a session lock or a stalled host releases push-to-talk.
-
-### macOS Input Monitoring
-
-The permission is requested only when you turn push-to-talk on in a Talk, never
-at start. Mnema then shows its own explanation with an "Open System Settings"
-button (and macOS shows its one-time prompt); "Not now" leaves everything else
-working and asks nothing further until the next start. Once you allow Mnema in
-System Settings > Privacy & Security > Input Monitoring the host starts the tap
-on its next beat; if macOS still refuses it, restart Mnema. Without the
-permission the app works as before and push-to-talk works while Mnema is in
-front. macOS draws no overlay or sidepeek: it only gets shortcuts and
-push-to-talk during a detected game.
 
 ### Known limits
 
