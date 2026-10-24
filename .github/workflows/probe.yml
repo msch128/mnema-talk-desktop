@@ -72,6 +72,10 @@ jobs:
           persist-credentials: false
       - name: Install pinned Rust toolchain
         run: rustup toolchain install 1.99.1 --profile minimal --component clippy
+      # The probe's Linux-only dev-dependency (GLib test) links the system GLib.
+      - name: Install GLib development files
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libglib2.0-dev
       - name: Test and lint the neutral gaming logic
         run: |
           set -euo pipefail
