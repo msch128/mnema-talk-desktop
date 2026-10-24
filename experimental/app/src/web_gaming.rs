@@ -23,6 +23,9 @@ mod foreground_macos;
 #[path = "../../../src/foreground_windows.rs"]
 mod foreground_windows;
 #[allow(dead_code)]
+#[path = "../../../src/fullscreen.rs"]
+mod fullscreen;
+#[allow(dead_code)]
 #[path = "../../../src/game_identify.rs"]
 mod game_identify;
 #[allow(dead_code)]
@@ -206,6 +209,8 @@ pub struct Snapshot {
     detection_note: Option<&'static str>,
     /// Why shortcuts and push-to-talk work only inside Mnema, when that is so.
     input_note: Option<&'static str>,
+    /// A game in exclusive fullscreen hides the sidepeek and overlay; suggest borderless windowed.
+    exclusive_fullscreen_hint: bool,
     /// The game in front, when one is detected; never a path or a title.
     game: Option<String>,
 }
@@ -235,6 +240,10 @@ pub struct Gaming {
     keys: std::sync::Arc<Mutex<input::ChordTracker>>,
     /// Why shortcuts and push-to-talk do not work outside Mnema, when they do not.
     input_note: Option<&'static str>,
+    /// When to tell the person, once, that a game in exclusive fullscreen hides our windows.
+    hint: fullscreen::HintGate,
+    /// The hint was given during this run.
+    exclusive_hint: bool,
     /// Install folders of the launcher libraries, scanned off the hot path.
     library: std::sync::Arc<game_library_scan::Library>,
     /// The game in front, by the name the user, a launcher or our list gives it.
@@ -262,6 +271,8 @@ impl Default for Gaming {
             detection_note: None,
             keys: Default::default(),
             input_note: None,
+            hint: Default::default(),
+            exclusive_hint: false,
             library: Default::default(),
             game_name: None,
             #[cfg(windows)]
@@ -359,6 +370,7 @@ pub fn desktop_gaming_snapshot(
         active,
         detection_note: g.detection_note,
         input_note: g.input_note,
+        exclusive_fullscreen_hint: g.exclusive_hint,
         game: g.game_name.clone().filter(|_| active),
     })
 }
@@ -542,6 +554,7 @@ impl Gaming {
             detection_note: self.detection_note,
             library: self.library.clone(),
             keys: self.keys.clone(),
+            hint: std::mem::take(&mut self.hint),
             ..Gaming::default()
         };
     }
@@ -933,7 +946,15 @@ fn tick(app: &tauri::AppHandle) {
     let active = g.active;
     let overlay = g.overlay;
     let holding = g.ptt_down;
+    // One cheap shell query, and only while a game is in front and the hint is still due.
+    let hint = cfg!(windows) && active && !g.hint.done() && g.hint.look(true, screen_state());
+    if hint {
+        g.exclusive_hint = true;
+    }
     drop(g);
+    if hint {
+        announce_exclusive_fullscreen(app);
+    }
     app.state::<Heartbeat>().set(match (fresh, holding) {
         (false, _) => None,
         (true, false) => Some(Duration::from_millis(500)),
@@ -967,6 +988,32 @@ fn tick(app: &tauri::AppHandle) {
         } else if let Some(w) = app.get_webview_window(label) {
             let _ = w.hide();
         }
+    }
+}
+/// Windows' own answer to "is a Direct3D app running in exclusive fullscreen?".
+#[cfg(windows)]
+fn screen_state() -> fullscreen::ScreenState {
+    use windows_sys::Win32::UI::Shell::SHQueryUserNotificationState;
+    let mut code = 0;
+    // SAFETY: one out-parameter that lives across the call.
+    let status = unsafe { SHQueryUserNotificationState(&mut code) };
+    if status == 0 {
+        fullscreen::from_quns(code)
+    } else {
+        fullscreen::ScreenState::Normal
+    }
+}
+#[cfg(not(windows))]
+fn screen_state() -> fullscreen::ScreenState {
+    fullscreen::ScreenState::Normal
+}
+/// Tells the person once. The toast waits in the notification centre while the
+/// game owns the display, and the snapshot carries the same hint for the
+/// surfaces and the settings.
+fn announce_exclusive_fullscreen(app: &tauri::AppHandle) {
+    super::web_notify::host_toast(app, fullscreen::HINT_TITLE, fullscreen::HINT_BODY);
+    if let Ok(dir) = app.path().app_config_dir() {
+        fullscreen::remember_shown(&dir);
     }
 }
 /// Evaluate the gaming state on the main thread soon. Many wake-ups collapse
@@ -1186,8 +1233,11 @@ pub fn setup(app: &tauri::AppHandle) {
     {
         g.settings = settings;
     }
-    if let Ok(g) = app.state::<Mutex<Gaming>>().lock() {
+    if let Ok(mut g) = app.state::<Mutex<Gaming>>().lock() {
         g.sync_chords();
+        if let Ok(dir) = app.path().app_config_dir() {
+            g.hint = fullscreen::HintGate::new(fullscreen::was_shown(&dir));
+        }
     }
     // tao registers the process's raw input for its own device events. Our
     // input source needs that registration for itself, so tao releases it.

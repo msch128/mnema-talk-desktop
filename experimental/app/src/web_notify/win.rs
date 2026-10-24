@@ -105,6 +105,15 @@ pub async fn show(
         .map_err(|_| "The notification could not be shown.".to_owned())
 }
 
+/// A toast without a page or a click target.
+pub fn host_toast(app: &tauri::AppHandle, title: &str, body: &str) {
+    let id = APP_ID.get_or_init(|| app.config().identifier.clone());
+    if setting(id) == Permission::Denied {
+        return;
+    }
+    let _ = Toast::new(id).title(title).text1(body).show();
+}
+
 /// Removes this app's toasts from the notification centre.
 pub fn clear(app: &tauri::AppHandle) {
     let id = HSTRING::from(app.config().identifier.as_str());

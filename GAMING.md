@@ -152,3 +152,21 @@ push-to-talk during a detected game.
   modes) do not change what Raw Input delivers, but we cannot test every title.
 - Not verified on real hardware or against any anti-cheat; see the safety
   statement above for what the client does and never does.
+
+## Games in exclusive fullscreen
+
+The sidepeek and the overlay are ordinary topmost windows, so they cannot be
+drawn over a game that owns the display in exclusive fullscreen. Borderless
+windowed ("windowed fullscreen") works. The client does not try to get around
+this: no graphics hook, no injection.
+
+While a detected game is in front and the hint has never been given, the host
+asks the shell one cheap question per beat, `SHQueryUserNotificationState`
+(Windows). `QUNS_RUNNING_D3D_FULL_SCREEN` means exclusive fullscreen; every other
+answer, including a borderless full-screen window, can be drawn over. After two
+looks in a row the host shows one toast (it waits in the notification centre
+while the game owns the display) that suggests borderless windowed mode and says
+that push-to-talk and shortcuts keep working. It is given once per installation
+(`gaming-hints.json` in the app's config folder) and never repeated. The same
+hint is in the gaming snapshot as `exclusive_fullscreen_hint` for the settings and
+the surfaces. Nothing about it leaves the device.
