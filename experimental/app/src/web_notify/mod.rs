@@ -111,6 +111,12 @@ impl Notifier {
     }
 }
 
+/// A plain toast from the host itself, for a hint the person should see once.
+/// It has no page and no click target, and a user who turned toasts off sees nothing.
+pub fn host_toast(app: &tauri::AppHandle, title: &str, body: &str) {
+    platform::host_toast(app, &clean(title, MAX_TITLE), &clean(body, MAX_BODY));
+}
+
 /// The server whose page made the call.
 fn server_page(webview: &Webview) -> Result<std::sync::Arc<crate::instances::Session>, String> {
     super::web_client::instance_page(webview)
