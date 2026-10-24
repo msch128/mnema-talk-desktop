@@ -8,6 +8,9 @@ pub mod game_library_scan;
 pub mod game_list;
 pub mod game_owner;
 pub mod gaming;
+pub mod input;
+#[cfg(windows)]
+pub mod input_windows;
 pub mod profiles;
 pub mod shortcuts;
 pub mod windows;

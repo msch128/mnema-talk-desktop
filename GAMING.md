@@ -98,3 +98,57 @@ sourced one (a few hundred titles) and has not been checked against installed
 copies; a missing or wrong name only means that game is found through its
 launcher library or a name you add instead. Contributions of verified names are
 welcome under the repository licence.
+
+## Push-to-talk and shortcuts
+
+Keys are event driven on every system. Nothing asks "is this key down?" in a
+loop.
+
+| System | Source | Notes |
+| --- | --- | --- |
+| Windows | Raw Input (`RegisterRawInputDevices` with `RIDEV_INPUTSINK`, keyboard and mouse) on its own thread with a hidden window | No keyboard hook, no `GetAsyncKeyState`. Works while a game has the focus. A session lock clears all keys, so a key cannot stay stuck down across the lock screen. |
+| macOS | A listen-only `CGEventTap` | Needs Input Monitoring; see below. Listen-only: it can observe, never change or delay an event. |
+| Linux | none | The Linux client has no gaming integration; its shortcuts work while the window is in front. |
+| Wayland | none | The compositor does not let applications see keys outside their window. The GlobalShortcuts portal is not used because it reports presses without a dependable release, which push-to-talk cannot work with; push-to-talk works while Mnema is in front. |
+
+What is read: for each change only the key (or the mouse side button 4 or 5)
+and whether it went down or up. Text is never looked at, no key history is kept
+and nothing about keystrokes is logged or sent. The host keeps the set of keys
+currently down and compares it with your four chords (overlay, mute, deafen,
+push-to-talk); only a change in whether a chord is down wakes the rest of the
+app. A press that begins and ends between two looks is still delivered once.
+
+The source runs only while you are in a Talk with gaming on (on macOS: with
+push-to-talk on), and stops when you leave. On Windows the host asks the
+windowing library to release the process's own raw input registration first,
+because Windows allows one registration per process; if something else still
+holds it, the settings say so and push-to-talk works while Mnema is in front.
+
+Push-to-talk and the other shortcuts act only while a detected game is in the
+foreground, as before. The web page accepts a `ptt-press` for 150 ms and drops
+the press 300 ms after the last one (a safeguard against a stuck microphone), so
+while the key is held the host repeats the press every 100 ms. That is a
+keepalive of a state known from the key event, not input polling. Leaving the
+game, leaving the Talk, a session lock or a stalled host releases push-to-talk.
+
+### macOS Input Monitoring
+
+The permission is requested only when you turn push-to-talk on in a Talk, never
+at start. Mnema then shows its own explanation with an "Open System Settings"
+button (and macOS shows its one-time prompt); "Not now" leaves everything else
+working and asks nothing further until the next start. Once you allow Mnema in
+System Settings > Privacy & Security > Input Monitoring the host starts the tap
+on its next beat; if macOS still refuses it, restart Mnema. Without the
+permission the app works as before and push-to-talk works while Mnema is in
+front. macOS draws no overlay or sidepeek: it only gets shortcuts and
+push-to-talk during a detected game.
+
+### Known limits
+
+- Raw Input does not see the secure desktop (UAC prompts, Ctrl+Alt+Del). A key
+  released there is not reported; the session-lock reset and the page's
+  300 ms safeguard bound the damage.
+- Games that read the keyboard exclusively (some old DirectInput exclusive
+  modes) do not change what Raw Input delivers, but we cannot test every title.
+- Not verified on real hardware or against any anti-cheat; see the safety
+  statement above for what the client does and never does.

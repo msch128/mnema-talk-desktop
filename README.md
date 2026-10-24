@@ -68,9 +68,11 @@ There is no external security audit.
   configurable. See the
   [gaming guide](https://github.com/msch128/mnema-talk/blob/main/doc/desktop-app.md#windows-gaming-dev)
   for setup and its limits (topmost windows, not exclusive fullscreen).
-  Game detection is event driven (no polling, no process enumeration, no
-  injection); [GAMING.md](GAMING.md) is the reference, including the anti-cheat
-  safety statement.
+  Game detection and push-to-talk are event driven (no polling, no process
+  enumeration, no injection, no keyboard hook); [GAMING.md](GAMING.md) is the
+  reference, including the anti-cheat safety statement. On macOS the shortcuts
+  and push-to-talk during a detected game need the Input Monitoring permission,
+  which is requested only when you turn push-to-talk on; nothing else needs it.
 
 ## Get it
 
