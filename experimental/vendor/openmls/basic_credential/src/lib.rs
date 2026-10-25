@@ -69,12 +69,19 @@ impl Signer for SignatureKeyPair {
     fn sign(&self, payload: &[u8]) -> Result<Vec<u8>, SignerError> {
         match self.signature_scheme {
             SignatureScheme::ECDSA_SECP256R1_SHA256 => {
+                // from_slice left-pads short input; upstream required the exact width.
+                if self.private.as_slice().len() != 32 {
+                    return Err(SignerError::SigningError);
+                }
                 let k = SigningKey::from_slice(self.private.as_slice())
                     .map_err(|_| SignerError::SigningError)?;
                 let signature: Signature = k.sign(payload);
                 Ok(signature.to_der().to_bytes().into())
             }
             SignatureScheme::ECDSA_SECP384R1_SHA384 => {
+                if self.private.as_slice().len() != 48 {
+                    return Err(SignerError::SigningError);
+                }
                 let k = p384::ecdsa::SigningKey::from_slice(self.private.as_slice())
                     .map_err(|_| SignerError::SigningError)?;
                 let signature: p384::ecdsa::Signature = k.sign(payload);
@@ -388,5 +395,47 @@ mod tests {
         assert_eq!(kp.private.as_slice(), private_bytes.as_slice());
         assert_eq!(kp.public(), public_bytes.as_slice());
         assert_eq!(kp.signature_scheme(), SignatureScheme::ED25519);
+    }
+}
+
+#[cfg(test)]
+mod ecdsa_tests {
+    use super::*;
+
+    #[test]
+    fn ecdsa_keypairs_sign_der_and_reject_wrong_width_keys() {
+        for (scheme, width, pk_len) in [
+            (SignatureScheme::ECDSA_SECP256R1_SHA256, 32, 65),
+            (SignatureScheme::ECDSA_SECP384R1_SHA384, 48, 97),
+        ] {
+            let kp = SignatureKeyPair::new(scheme).unwrap();
+            assert_eq!(kp.public().len(), pk_len);
+            assert_eq!(kp.public()[0], 0x04);
+            assert_eq!(kp.private.as_slice().len(), width);
+            let sig = kp.sign(b"payload").unwrap();
+            assert_eq!(sig[0], 0x30);
+            assert_eq!(
+                kp.sign(b"payload").unwrap(),
+                sig,
+                "RFC 6979 is deterministic"
+            );
+            let other = SignatureKeyPair::new(scheme).unwrap();
+            assert_ne!(other.public(), kp.public());
+
+            let short = SignatureKeyPair::from_raw(
+                scheme,
+                kp.private.as_slice()[1..].to_vec(),
+                kp.public().to_vec(),
+            );
+            assert!(short.sign(b"payload").is_err());
+            let long = SignatureKeyPair::from_raw(
+                scheme,
+                [kp.private.as_slice(), &[1]].concat(),
+                kp.public().to_vec(),
+            );
+            assert!(long.sign(b"payload").is_err());
+            let zero = SignatureKeyPair::from_raw(scheme, vec![0; width], kp.public().to_vec());
+            assert!(zero.sign(b"payload").is_err());
+        }
     }
 }
