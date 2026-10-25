@@ -35,6 +35,12 @@ mod game_list;
 #[path = "../../../src/windows.rs"]
 mod games;
 #[allow(dead_code)]
+#[path = "../../../src/input.rs"]
+mod input;
+#[cfg(windows)]
+#[path = "../../../src/input_windows.rs"]
+mod input_windows;
+#[allow(dead_code)]
 #[path = "../../../src/shortcuts.rs"]
 mod shortcuts;
 
@@ -105,6 +111,16 @@ impl Default for Settings {
     }
 }
 impl Settings {
+    /// The four chords in the order the gaming state machine uses them:
+    /// overlay, mute, deafen, push-to-talk.
+    fn chords(&self) -> [input::Chord; 4] {
+        [&self.overlay, &self.mute, &self.deafen, &self.ptt].map(|c| input::Chord {
+            key: c.key,
+            alt: c.alt,
+            control: c.control,
+            shift: c.shift,
+        })
+    }
     fn validate(&self) -> Result<(), String> {
         if self.sidepeek_opacity > 100 {
             return Err("Opacity must be between 0 and 100.".into());
@@ -182,6 +198,8 @@ pub struct Snapshot {
     active: bool,
     /// Why game detection is off on this system; absent when it works.
     detection_note: Option<&'static str>,
+    /// Why shortcuts and push-to-talk work only inside Mnema, when that is so.
+    input_note: Option<&'static str>,
     /// The game in front, when one is detected; never a path or a title.
     game: Option<String>,
 }
@@ -207,6 +225,10 @@ pub struct Gaming {
     foreground: Option<foreground::Foreground>,
     /// Why game detection is off on this system, when it is.
     detection_note: Option<&'static str>,
+    /// Keys that are down, matched against the chords; fed by the input source.
+    keys: std::sync::Arc<Mutex<input::ChordTracker>>,
+    /// Why shortcuts and push-to-talk do not work outside Mnema, when they do not.
+    input_note: Option<&'static str>,
     /// Install folders of the launcher libraries, scanned off the hot path.
     library: std::sync::Arc<game_library_scan::Library>,
     /// The game in front, by the name the user, a launcher or our list gives it.
@@ -232,6 +254,8 @@ impl Default for Gaming {
             last_tick: Instant::now(),
             foreground: None,
             detection_note: None,
+            keys: Default::default(),
+            input_note: None,
             library: Default::default(),
             game_name: None,
             #[cfg(windows)]
@@ -293,8 +317,12 @@ pub fn desktop_gaming_sync(
     let Some(server) = super::instances::id_of_instance_label(webview.label()) else {
         return Err("Wrong gaming session.".into());
     };
-    let mut g = state.lock().map_err(|_| "Gaming unavailable.")?;
-    g.accept_sync(server, &token, origin.as_deref(), voice)
+    let result = {
+        let mut g = state.lock().map_err(|_| "Gaming unavailable.")?;
+        g.accept_sync(server, &token, origin.as_deref(), voice)
+    };
+    wake(webview.app_handle());
+    result
 }
 #[tauri::command]
 pub fn desktop_gaming_snapshot(
@@ -324,6 +352,7 @@ pub fn desktop_gaming_snapshot(
         overlay: g.overlay && active,
         active,
         detection_note: g.detection_note,
+        input_note: g.input_note,
         game: g.game_name.clone().filter(|_| active),
     })
 }
@@ -471,6 +500,7 @@ pub fn desktop_gaming_settings(
         g.overlay = false;
     }
     g.settings = settings;
+    g.sync_chords();
     g.library.rescan_now();
     drop(g);
     command.dispatch(window.app_handle());
@@ -489,6 +519,12 @@ pub fn bind(app: &tauri::AppHandle, server: &str) -> String {
     token
 }
 impl Gaming {
+    /// Tells the key tracker the chords the settings now hold.
+    fn sync_chords(&self) {
+        if let Ok(mut keys) = self.keys.lock() {
+            keys.set_chords(self.settings.chords());
+        }
+    }
     /// Nobody owns the Talk: no overlay, nothing held.
     fn release(&mut self) {
         let keep = (self.origin.clone(), std::mem::take(&mut self.tokens));
@@ -499,6 +535,7 @@ impl Gaming {
             foreground: self.foreground.take(),
             detection_note: self.detection_note,
             library: self.library.clone(),
+            keys: self.keys.clone(),
             ..Gaming::default()
         };
     }
@@ -657,16 +694,13 @@ impl GameLease {
 fn native_sample(
     g: &mut Gaming,
     app: &tauri::AppHandle,
-) -> (bool, [bool; 4], Option<tauri::PhysicalPosition<i32>>) {
+) -> (bool, Option<tauri::PhysicalPosition<i32>>) {
     use windows_sys::Win32::{
         Graphics::Gdi::{
             GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromWindow,
         },
-        UI::{
-            Input::KeyboardAndMouse::GetAsyncKeyState,
-            WindowsAndMessaging::{
-                GetForegroundWindow, GetWindowThreadProcessId, IsIconic, IsWindowVisible,
-            },
+        UI::WindowsAndMessaging::{
+            GetForegroundWindow, GetWindowThreadProcessId, IsIconic, IsWindowVisible,
         },
     };
     let hwnd = unsafe { GetForegroundWindow() };
@@ -692,7 +726,7 @@ fn native_sample(
             GetWindowThreadProcessId(hwnd, &mut pid);
         }
         if pid != f.pid {
-            return (false, [false; 4], None);
+            return (false, None);
         }
         if !g
             .game
@@ -705,20 +739,8 @@ fn native_sample(
     let game_live = g.game.as_ref().is_some_and(GameLease::live);
     let active = game_live && (detected || (g.overlay && g.active && own_overlay));
     if hwnd.is_null() || unsafe { IsWindowVisible(hwnd) } == 0 || unsafe { IsIconic(hwnd) } != 0 {
-        return (false, [false; 4], None);
+        return (false, None);
     }
-    let down = |key: u16| unsafe { GetAsyncKeyState(i32::from(key)) } < 0;
-    let alt = down(0x12);
-    let control = down(0x11);
-    let shift = down(0x10);
-    let win = down(0x5b) || down(0x5c);
-    let keys = [
-        &g.settings.overlay,
-        &g.settings.mute,
-        &g.settings.deafen,
-        &g.settings.ptt,
-    ]
-    .map(|c| !win && c.alt == alt && c.control == control && c.shift == shift && down(c.key));
     let monitor = unsafe { MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST) };
     let mut info = MONITORINFO {
         cbSize: std::mem::size_of::<MONITORINFO>() as u32,
@@ -732,11 +754,7 @@ fn native_sample(
     } else {
         None
     };
-    (
-        active && hwnd == unsafe { GetForegroundWindow() },
-        keys,
-        position,
-    )
+    (active && hwnd == unsafe { GetForegroundWindow() }, position)
 }
 /// The announced foreground when it is the window in front now and a game the
 /// user's list, a launcher library or the bundled list names. `title` is asked
@@ -782,15 +800,21 @@ fn window_title(hwnd: *mut std::ffi::c_void) -> String {
 fn native_sample(
     _g: &mut Gaming,
     _app: &tauri::AppHandle,
-) -> (bool, [bool; 4], Option<tauri::PhysicalPosition<i32>>) {
-    (false, [false; 4], None)
+) -> (bool, Option<tauri::PhysicalPosition<i32>>) {
+    (false, None)
 }
+/// How long without an evaluation counts as a stall. The heartbeat runs every
+/// half second while a Talk is live, so this is only ever exceeded after sleep,
+/// a frozen host or an idle period.
+const STALL: Duration = Duration::from_secs(5);
 impl Gaming {
     // Pure state transition: native UI effects and command dispatch happen only
     // after the caller releases the shared state lock.
     fn advance(&mut self, now: Instant, game: bool, keys: [bool; 4]) -> Vec<Command> {
         let mut commands = Vec::new();
-        if now.duration_since(self.last_tick) > Duration::from_millis(250) {
+        // Nothing looked at the keys for a long while (sleep, a stalled window
+        // thread, an idle period): a held key says nothing about a new press.
+        if now.duration_since(self.last_tick) > STALL {
             self.previous = keys;
             self.ptt_armed = false;
         }
@@ -841,17 +865,43 @@ fn tick(app: &tauri::AppHandle) {
     let now = Instant::now();
     let fresh =
         g.settings.enabled && g.voice.connected && g.updated.elapsed() < Duration::from_secs(2);
-    let (game, keys, position) = if fresh {
+    // The shortcuts are listened for in any Talk with gaming on.
+    let want_input = fresh;
+    let tracker = g.keys.clone();
+    let (game, position) = if fresh {
         native_sample(&mut g, app)
     } else {
-        (false, [false; 4], None)
+        (false, None)
+    };
+    let (keys, again) = if fresh {
+        tracker
+            .lock()
+            .map(|mut t| t.sample())
+            .unwrap_or(([false; 4], false))
+    } else {
+        ([false; 4], false)
     };
     let commands = g.advance(now, game, keys);
     let active = g.active;
     let overlay = g.overlay;
+    let holding = g.ptt_down;
     drop(g);
+    app.state::<Heartbeat>().set(match (fresh, holding) {
+        (false, _) => None,
+        (true, false) => Some(Duration::from_millis(500)),
+        (true, true) => Some(Duration::from_millis(100)),
+    });
+    manage_input(app, &tracker, want_input);
+    if again {
+        // A press that began and ended between two looks is still to be released.
+        wake(app);
+    }
     for command in commands {
         command.dispatch(app);
+    }
+    // Only Windows draws the sidepeek and the overlay.
+    if !cfg!(windows) {
+        return;
     }
     for (label, visible) in [("sidepeek", active), ("gaming-overlay", active && overlay)] {
         if visible {
@@ -869,6 +919,136 @@ fn tick(app: &tauri::AppHandle) {
         } else if let Some(w) = app.get_webview_window(label) {
             let _ = w.hide();
         }
+    }
+}
+/// Evaluate the gaming state on the main thread soon. Many wake-ups collapse
+/// into one evaluation; one that arrives while an evaluation runs queues another.
+static WAKE_QUEUED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+fn wake(app: &tauri::AppHandle) {
+    use std::sync::atomic::Ordering;
+    if WAKE_QUEUED.swap(true, Ordering::AcqRel) {
+        return;
+    }
+    let next = app.clone();
+    if app
+        .run_on_main_thread(move || {
+            WAKE_QUEUED.store(false, Ordering::Release);
+            tick(&next);
+        })
+        .is_err()
+    {
+        WAKE_QUEUED.store(false, Ordering::Release);
+    }
+}
+/// A watchdog for the things that expire without any event: a Talk page that
+/// stopped reporting, a game process that exited, a permission granted in the
+/// system settings. It does not look at keys or at the foreground. It sleeps
+/// until a Talk is live, then wakes twice a second.
+///
+/// While push-to-talk is held it wakes every 100 ms for one reason only: the
+/// page honours a `ptt-press` for 150 ms and drops the press 300 ms after the
+/// last one (a dead-man switch against a stuck microphone), so the host repeats
+/// the press it already knows about from the key event.
+#[derive(Default)]
+struct Heartbeat {
+    period: Mutex<Option<Duration>>,
+    changed: std::sync::Condvar,
+}
+impl Heartbeat {
+    fn set(&self, period: Option<Duration>) {
+        if let Ok(mut now) = self.period.lock()
+            && *now != period
+        {
+            *now = period;
+            self.changed.notify_all();
+        }
+    }
+    fn run(&self, app: &tauri::AppHandle) {
+        loop {
+            let Ok(mut period) = self.period.lock() else {
+                return;
+            };
+            let every = loop {
+                match *period {
+                    Some(every) => break every,
+                    None => {
+                        period = match self.changed.wait(period) {
+                            Ok(guard) => guard,
+                            Err(_) => return,
+                        };
+                    }
+                }
+            };
+            drop(self.changed.wait_timeout(period, every));
+            wake(app);
+        }
+    }
+}
+/// The key source, started only while a Talk is live and gaming is on.
+#[derive(Default)]
+struct InputHost {
+    source: Mutex<Option<Box<dyn input::InputSource + Send>>>,
+    running: std::sync::atomic::AtomicBool,
+    retry_after: Mutex<Option<Instant>>,
+}
+fn new_input_source() -> Option<Box<dyn input::InputSource + Send>> {
+    #[cfg(windows)]
+    return Some(Box::new(input_windows::RawInputSource::default()));
+    #[cfg(not(windows))]
+    None
+}
+fn manage_input(
+    app: &tauri::AppHandle,
+    tracker: &std::sync::Arc<Mutex<input::ChordTracker>>,
+    want: bool,
+) {
+    use std::sync::atomic::Ordering;
+    let host = app.state::<InputHost>();
+    let Ok(mut slot) = host.source.lock() else {
+        return;
+    };
+    let running = host.running.load(Ordering::Acquire);
+    let mut note = None;
+    if want && !running {
+        if host
+            .retry_after
+            .lock()
+            .is_ok_and(|t| t.is_some_and(|t| t > Instant::now()))
+        {
+            return;
+        }
+        let source = slot.get_or_insert_with(|| {
+            new_input_source().unwrap_or_else(|| Box::new(input::UnavailableSource))
+        });
+        let (keys, waker) = (tracker.clone(), app.clone());
+        let started = source.start(Box::new(move |event| {
+            if keys.lock().is_ok_and(|mut keys| keys.apply(event)) {
+                wake(&waker);
+            }
+        }));
+        match started {
+            Ok(()) => host.running.store(true, Ordering::Release),
+            Err(error) => {
+                note = Some(error.note());
+                if let Ok(mut retry) = host.retry_after.lock() {
+                    *retry = Some(Instant::now() + Duration::from_secs(30));
+                }
+            }
+        }
+    } else if !want && running {
+        if let Some(source) = slot.as_mut() {
+            source.stop();
+        }
+        host.running.store(false, Ordering::Release);
+        if let Ok(mut keys) = tracker.lock() {
+            keys.clear();
+        }
+    } else if running {
+        return;
+    }
+    drop(slot);
+    if let Ok(mut g) = app.state::<Mutex<Gaming>>().lock() {
+        g.input_note = if want { note } else { None };
     }
 }
 /// Opens the three gaming windows so the WebView2 probe can see their origin
@@ -902,6 +1082,7 @@ fn start_detection(app: &tauri::AppHandle) {
         if let Ok(mut g) = handle.state::<Mutex<Gaming>>().lock() {
             g.foreground = Some(front);
         }
+        wake(&handle);
     }));
     if let Err(error) = &started
         && let Ok(mut g) = app.state::<Mutex<Gaming>>().lock()
@@ -937,29 +1118,19 @@ pub fn setup(app: &tauri::AppHandle) {
     {
         g.settings = settings;
     }
+    if let Ok(g) = app.state::<Mutex<Gaming>>().lock() {
+        g.sync_chords();
+    }
+    // tao registers the process's raw input for its own device events. Our
+    // input source needs that registration for itself, so tao releases it.
+    #[cfg(windows)]
+    app.set_device_event_filter(tauri::DeviceEventFilter::Always);
+    app.manage(InputHost::default());
+    app.manage(Heartbeat::default());
     start_detection(app);
     start_library_scan(app);
-    let app = app.clone();
-    std::thread::spawn(move || {
-        let queued = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-        loop {
-            std::thread::sleep(Duration::from_millis(40));
-            if queued.swap(true, std::sync::atomic::Ordering::AcqRel) {
-                continue;
-            }
-            let next = app.clone();
-            let flag = queued.clone();
-            if app
-                .run_on_main_thread(move || {
-                    tick(&next);
-                    flag.store(false, std::sync::atomic::Ordering::Release);
-                })
-                .is_err()
-            {
-                break;
-            }
-        }
-    });
+    let beat = app.clone();
+    std::thread::spawn(move || beat.state::<Heartbeat>().run(&beat));
 }
 #[cfg(test)]
 mod tests {
@@ -1032,6 +1203,128 @@ mod tests {
         let other = front(2, r"D:\Games\Custom.exe");
         let never = || panic!("title read for a non-Java process");
         assert!(announced_game(Some(&other), 2, &["Custom.exe".into()], &empty, never).is_some());
+    }
+    fn ptt_talk() -> Gaming {
+        let mut g = Gaming {
+            origin: Some("https://example.invalid".into()),
+            ..Gaming::default()
+        };
+        g.voice.connected = true;
+        g.voice.ptt_mode = true;
+        g.sync_chords();
+        g
+    }
+    fn look(g: &mut Gaming, now: Instant, game: bool) -> (Vec<&'static str>, bool) {
+        let (keys, again) = g.keys.lock().unwrap().sample();
+        let actions = g.advance(now, game, keys);
+        (
+            actions
+                .iter()
+                .map(|c| c.action.as_str())
+                .map(leak)
+                .collect(),
+            again,
+        )
+    }
+    fn leak(text: &str) -> &'static str {
+        match text {
+            "ptt-press" => "ptt-press",
+            "ptt-release" => "ptt-release",
+            "mute" => "mute",
+            "deafen" => "deafen",
+            other => panic!("unexpected action {other}"),
+        }
+    }
+    fn press(g: &Gaming, key: u16, down: bool) {
+        g.keys
+            .lock()
+            .unwrap()
+            .apply(input::InputEvent::Key(input::KeyEvent { key, down }));
+    }
+    #[test]
+    fn settings_hand_the_tracker_the_chords_in_state_machine_order() {
+        let chords = Settings::default().chords();
+        assert_eq!((chords[0].key, chords[0].alt), (0x4d, true));
+        assert_eq!((chords[1].key, chords[1].alt), (0x4e, true));
+        assert_eq!((chords[2].key, chords[2].alt), (0x44, true));
+        assert_eq!((chords[3].key, chords[3].alt), (0x20, false));
+    }
+    #[test]
+    fn held_push_to_talk_key_presses_then_releases_from_key_events_alone() {
+        let mut g = ptt_talk();
+        let now = Instant::now();
+        assert_eq!(look(&mut g, now, true), (vec![], false));
+        press(&g, 0x20, true);
+        assert_eq!(look(&mut g, now, true).0, vec!["ptt-press"]);
+        // The page lets a press lapse after 150 ms, so a held key is re-sent.
+        assert_eq!(look(&mut g, now, true).0, vec!["ptt-press"], "keepalive");
+        press(&g, 0x20, false);
+        assert_eq!(look(&mut g, now, true).0, vec!["ptt-release"]);
+    }
+    #[test]
+    fn a_tap_between_two_looks_still_presses_and_then_releases() {
+        let mut g = ptt_talk();
+        let now = Instant::now();
+        look(&mut g, now, true);
+        press(&g, 0x20, true);
+        press(&g, 0x20, false);
+        let (first, again) = look(&mut g, now, true);
+        assert_eq!(first, vec!["ptt-press"]);
+        assert!(again, "the release must still be looked at");
+        assert_eq!(look(&mut g, now, true), (vec!["ptt-release"], false));
+    }
+    #[test]
+    fn keys_outside_a_game_do_nothing_and_a_key_held_into_a_game_waits_for_a_release() {
+        let mut g = ptt_talk();
+        let now = Instant::now();
+        look(&mut g, now, false);
+        press(&g, 0x20, true);
+        assert_eq!(look(&mut g, now, false).0, Vec::<&str>::new());
+        // The game comes to the front while the key is still down.
+        assert_eq!(look(&mut g, now, true).0, Vec::<&str>::new());
+        press(&g, 0x20, false);
+        look(&mut g, now, true);
+        press(&g, 0x20, true);
+        assert_eq!(look(&mut g, now, true).0, vec!["ptt-press"]);
+    }
+    #[test]
+    fn leaving_the_game_or_a_lost_key_up_releases_push_to_talk() {
+        let mut g = ptt_talk();
+        let now = Instant::now();
+        look(&mut g, now, true);
+        press(&g, 0x20, true);
+        look(&mut g, now, true);
+        // Focus leaves the game while the key is down.
+        assert_eq!(look(&mut g, now, false).0, vec!["ptt-release"]);
+        // The session locked: Raw Input could not report the key-up, the source resets.
+        let mut g = ptt_talk();
+        look(&mut g, now, true);
+        press(&g, 0x20, true);
+        look(&mut g, now, true);
+        g.keys.lock().unwrap().apply(input::InputEvent::Reset);
+        assert_eq!(look(&mut g, now, true).0, vec!["ptt-release"]);
+    }
+    #[test]
+    fn a_long_gap_between_looks_rearms_instead_of_pressing() {
+        let mut g = ptt_talk();
+        let start = Instant::now();
+        look(&mut g, start, true);
+        press(&g, 0x20, true);
+        let later = start + STALL + Duration::from_millis(1);
+        assert_eq!(look(&mut g, later, true).0, Vec::<&str>::new());
+    }
+    #[test]
+    fn mute_and_deafen_chords_fire_once_per_press() {
+        let mut g = ptt_talk();
+        let now = Instant::now();
+        look(&mut g, now, true);
+        press(&g, 0x12, true);
+        press(&g, 0x4e, true);
+        assert_eq!(look(&mut g, now, true).0, vec!["mute"]);
+        assert_eq!(look(&mut g, now, true).0, Vec::<&str>::new());
+        press(&g, 0x4e, false);
+        press(&g, 0x44, true);
+        assert_eq!(look(&mut g, now, true).0, vec!["deafen"]);
     }
     #[test]
     fn global_disable_hides_surfaces_and_releases_ptt_without_reopening_held_key() {

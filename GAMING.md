@@ -113,3 +113,42 @@ such a list was deleted; the Git history still contains that old file (names and
 executable names only), and it is kept as is because rewriting public history
 would break signed release tags and forks. No file in the current tree carries
 data derived from it. The header of `src/game-list.json` states the provenance.
+
+## Push-to-talk and shortcuts
+
+Keys are event driven. Nothing asks "is this key down?" in a
+loop.
+
+| System | Source | Notes |
+| --- | --- | --- |
+| Windows | Raw Input (`RegisterRawInputDevices` with `RIDEV_INPUTSINK`, keyboard and mouse) on its own thread with a hidden window | No keyboard hook, no `GetAsyncKeyState`. Works while a game has the focus. A session lock clears all keys, so a key cannot stay stuck down across the lock screen. |
+| macOS, Linux | none | The desktop clients for these systems are paused; the gaming integration is Windows only for now. |
+
+What is read: for each change only the key (or the mouse side button 4 or 5)
+and whether it went down or up. Text is never looked at, no key history is kept
+and nothing about keystrokes is logged or sent. The host keeps the set of keys
+currently down and compares it with your four chords (overlay, mute, deafen,
+push-to-talk); only a change in whether a chord is down wakes the rest of the
+app. A press that begins and ends between two looks is still delivered once.
+
+The source runs only while you are in a Talk with gaming on, and stops when you leave. On Windows the host asks the
+windowing library to release the process's own raw input registration first,
+because Windows allows one registration per process; if something else still
+holds it, the settings say so and push-to-talk works while Mnema is in front.
+
+Push-to-talk and the other shortcuts act only while a detected game is in the
+foreground, as before. The web page accepts a `ptt-press` for 150 ms and drops
+the press 300 ms after the last one (a safeguard against a stuck microphone), so
+while the key is held the host repeats the press every 100 ms. That is a
+keepalive of a state known from the key event, not input polling. Leaving the
+game, leaving the Talk, a session lock or a stalled host releases push-to-talk.
+
+### Known limits
+
+- Raw Input does not see the secure desktop (UAC prompts, Ctrl+Alt+Del). A key
+  released there is not reported; the session-lock reset and the page's
+  300 ms safeguard bound the damage.
+- Games that read the keyboard exclusively (some old DirectInput exclusive
+  modes) do not change what Raw Input delivers, but we cannot test every title.
+- Not verified on real hardware or against any anti-cheat; see the safety
+  statement above for what the client does and never does.
