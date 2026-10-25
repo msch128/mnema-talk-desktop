@@ -65,7 +65,8 @@ permissions:
 
 concurrency:
   group: shared-desktop-${{ inputs.acceptance_release && format('{0}-{1}', inputs.acceptance_release, github.sha) || inputs.tag || github.ref }}
-  cancel-in-progress: false
+  # Superseded pull request runs are cancelled; tag, push and acceptance runs never are.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   windows-client:
@@ -200,6 +201,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Protected chat-owner tests failed' }
           cargo build --locked --release --manifest-path experimental/app/Cargo.toml --features shell,native-crypto,custom-protocol
           if ($LASTEXITCODE -ne 0) { throw 'Protected native host link failed' }
+          cargo test --locked --manifest-path experimental/vendor/openmls/Cargo.toml -p openmls_rust_crypto -p openmls_basic_credential
+          if ($LASTEXITCODE -ne 0) { throw 'OpenMLS ECDSA provider tests failed' }
+          cargo test --locked --manifest-path experimental/vendor/openmls/Cargo.toml -p openmls --test mnema_ecdsa_roundtrip
+          if ($LASTEXITCODE -ne 0) { throw 'OpenMLS group round trip tests failed' }
       # A real package from a published release, signed by the release pipeline:
       # the host's signature check runs on it, not only on packages the tests sign.
       - name: Fetch a signed release package for the signature tests
@@ -475,8 +480,10 @@ jobs:
   # release the Apple silicon (arm64) executable that desktop-release.yml
   # turns into the app bundle. The macOS build has no gaming overlay (the
   # Windows-only parts are compiled out) and is ad-hoc signed, not notarized.
+  # PAUSED: the macOS client is paused for capacity (1.2), only Windows is built.
+  # The job is kept as it was; remove `false &&` to resume it.
   macos-client:
-    if: inputs.acceptance_release == ''
+    if: ${{ false && inputs.acceptance_release == '' }}
     runs-on: macos-15
     timeout-minutes: 60
     outputs:

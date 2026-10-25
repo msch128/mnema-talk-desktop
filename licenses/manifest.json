@@ -1,7 +1,7 @@
 {
   "schema": "mnema-desktop-license-bundle-v1",
   "scope": "Conservative locked Rust graph and production npm closure; not a claim that all packages are linked.",
-  "cargo_lock_sha256": "858f9533d0618c8fd2390a9dd30ae0a821a3e18d7759734f9baa255beb521ae6",
+  "cargo_lock_sha256": "4d2ab62bbaecf233679d1d48b480a32e2bcd6e0c445e5167aa022498c0aa4b5c",
   "npm_lock_sha256": "79aa4deb85bdcc23fc643a46b1b7f5cf3990eacd9d2e0efccd9b9ae8c07b9808",
   "supplemental": {
     "rust_standard_library": {
@@ -1549,20 +1549,20 @@
     {
       "ecosystem": "cargo",
       "name": "erased-serde",
-      "version": "0.4.10",
+      "version": "0.4.11",
       "license": "MIT OR Apache-2.0",
-      "source": "https://crates.io/crates/erased-serde/0.4.10",
+      "source": "https://crates.io/crates/erased-serde/0.4.11",
       "texts": [
         {
           "name": "LICENSE-APACHE",
           "sha256": "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a",
-          "source": "https://crates.io/crates/erased-serde/0.4.10",
+          "source": "https://crates.io/crates/erased-serde/0.4.11",
           "provenance": "crate-archive"
         },
         {
           "name": "LICENSE-MIT",
           "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3",
-          "source": "https://crates.io/crates/erased-serde/0.4.10",
+          "source": "https://crates.io/crates/erased-serde/0.4.11",
           "provenance": "crate-archive"
         }
       ]
@@ -5782,20 +5782,20 @@
     {
       "ecosystem": "cargo",
       "name": "smallvec",
-      "version": "1.16.3",
+      "version": "1.16.4",
       "license": "MIT OR Apache-2.0",
-      "source": "https://crates.io/crates/smallvec/1.16.3",
+      "source": "https://crates.io/crates/smallvec/1.16.4",
       "texts": [
         {
           "name": "LICENSE-APACHE",
           "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
-          "source": "https://crates.io/crates/smallvec/1.16.3",
+          "source": "https://crates.io/crates/smallvec/1.16.4",
           "provenance": "crate-archive"
         },
         {
           "name": "LICENSE-MIT",
           "sha256": "0b28172679e0009b655da42797c03fd163a3379d5cfa67ba1f1655e974a2a1a9",
-          "source": "https://crates.io/crates/smallvec/1.16.3",
+          "source": "https://crates.io/crates/smallvec/1.16.4",
           "provenance": "crate-archive"
         }
       ]
