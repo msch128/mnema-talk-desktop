@@ -87,7 +87,7 @@ blanket.
   `hax-lib` 0.3.7. It is in the experimental native-crypto crates only, which
   are not part of the shipped installer. `hax-lib-macros` 0.4.2 already drops it
   but `core-models` still requires `hax-lib` ^0.3.7, so it cannot be replaced
-  from here; re-check when `hpke-rs` or `core-models` releases.
+  from here; accepted as a scoped exception on 2026-10-25; re-check by 2027-01-25 and drop the ignore once `hpke-rs` / `core-models` move to `hax-lib` >= 0.4.
 - `rusqlite` stays at 0.39 on purpose (0.40 bundles a SQLCipher that overflows
   the stack on Windows, see the note in `qualified-sdk/Cargo.toml`); `refinery`
   0.10.0 also caps `rusqlite` at 0.40.
