@@ -168,6 +168,83 @@ describe('server rail', () => {
     expect(calls('rail_reconnect')).toEqual([{ id: 'b' }])
   })
 
+  describe('notification level of a server', () => {
+    const rightClick = (el: Element) => el.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }))
+    const answer = (info: unknown, ...set: unknown[]) => invoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'rail_state') return state
+      if (cmd === 'rail_notify_get') return info
+      if (cmd === 'rail_notify_set') return set.length ? set[0] : null
+      return undefined
+    })
+
+    it('offers all, mentions only and mute with the current level checked', async () => {
+      await open(three)
+      answer({ supported: true, level: 'mentions', suppress_everyone: false })
+      rightClick(tiles()[0]!)
+      await vi.advanceTimersByTimeAsync(0)
+      expect(calls('rail_notify_get')).toEqual([{ id: 'a' }])
+      expect(menuButtons().map((b) => b.textContent)).toEqual(['All messages', 'Only mentions', 'Mute', 'Move up', 'Move down', 'Remove…'])
+      expect(menuButtons().slice(0, 3).map((b) => b.getAttribute('aria-checked'))).toEqual(['false', 'true', 'false'])
+      expect(menuButtons()[1]!.getAttribute('role')).toBe('menuitemradio')
+    })
+
+    it('sets the chosen level on that server, closes the menu and announces it', async () => {
+      await open(three)
+      answer({ supported: true, level: 'all', suppress_everyone: true })
+      rightClick(tiles()[2]!)
+      await vi.advanceTimersByTimeAsync(0)
+      menuButtons()[2]!.click()
+      expect(calls('rail_notify_set')).toEqual([{ id: 'c', level: 'mute' }])
+      expect(document.getElementById('menu')!.hidden).toBe(true)
+      await vi.advanceTimersByTimeAsync(0)
+      expect(document.getElementById('live')!.textContent).toBe('c.example: Mute')
+    })
+
+    it('says so when the server refuses the change', async () => {
+      await open(three)
+      answer({ supported: true, level: 'all', suppress_everyone: false }, undefined)
+      rightClick(tiles()[0]!)
+      await vi.advanceTimersByTimeAsync(0)
+      menuButtons()[1]!.click()
+      await vi.advanceTimersByTimeAsync(0)
+      expect(document.getElementById('live')!.textContent).toBe('a.example: the setting could not be changed')
+    })
+
+    it('leaves the entries out for an older server, an unknown answer and a server that is not ready', async () => {
+      await open({ ...three, instances: [server('a'), server('b'), server('c', { status: 'refused', message: 'x' })] })
+      for (const info of [{ supported: false, level: 'all' }, undefined, { supported: true, level: 'bogus' }]) {
+        answer(info)
+        rightClick(tiles()[0]!)
+        await vi.advanceTimersByTimeAsync(0)
+        expect(menuButtons().map((b) => b.textContent)).toEqual(['Move up', 'Move down', 'Remove…'])
+      }
+      answer({ supported: true, level: 'all' })
+      rightClick(tiles()[2]!)
+      await vi.advanceTimersByTimeAsync(0)
+      expect(calls('rail_notify_get').every((a) => (a as { id: string }).id === 'a')).toBe(true)
+      expect(menuButtons().map((b) => b.textContent)).toEqual(['Reconnect', 'Move up', 'Move down', 'Remove…'])
+    })
+
+    it('does not add the entries to a menu that has meanwhile changed to the removal question', async () => {
+      await open(three)
+      let release: (v: unknown) => void = () => {}
+      invoke.mockImplementation((cmd: string) => (cmd === 'rail_state' ? Promise.resolve(state) : cmd === 'rail_notify_get' ? new Promise((r) => { release = r }) : Promise.resolve(undefined)))
+      rightClick(tiles()[0]!)
+      menuButtons()[2]!.click()
+      release({ supported: true, level: 'all', suppress_everyone: false })
+      await vi.advanceTimersByTimeAsync(0)
+      expect(menuButtons().map((b) => b.textContent)).toEqual(['Remove server', 'Cancel'])
+    })
+
+    it('answers in German', async () => {
+      await open(three, 'de-DE')
+      answer({ supported: true, level: 'all', suppress_everyone: false })
+      rightClick(tiles()[0]!)
+      await vi.advanceTimersByTimeAsync(0)
+      expect(menuButtons().slice(0, 3).map((b) => b.textContent)).toEqual(['Alle Nachrichten', 'Nur Erwähnungen', 'Stummschalten'])
+    })
+  })
+
   it('asks before it removes, and says what removing means', async () => {
     await open(three)
     key(tiles()[0]!, 'Delete')

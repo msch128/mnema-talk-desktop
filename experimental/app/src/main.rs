@@ -9,6 +9,8 @@ mod instances;
 mod local_route;
 #[cfg(feature = "web-client")]
 mod native_updates;
+#[cfg(feature = "web-client")]
+mod rail_notify;
 #[cfg(feature = "multi-selftest")]
 mod selftest_multi;
 #[cfg(feature = "web-client")]

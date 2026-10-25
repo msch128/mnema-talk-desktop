@@ -49,7 +49,9 @@ There is no external security audit.
 - **Several servers side by side (1.1).** A rail on the left lists your servers
   with an unread dot and a mention count each. Add as many as nine, switch with
   Ctrl+1 to Ctrl+9 (Cmd on macOS), drag or Alt+arrow to reorder, and remove one
-  from its menu (right-click or Delete). One account per server, no federation:
+  from its menu (right-click or Delete). The same menu sets your notification
+  level for that server (all messages, only mentions, mute) on servers that
+  support it (Mnema Talk 1.2 and newer). One account per server, no federation:
   every server has its own session in the keychain, its own browser storage
   (a WebView2 profile per server on Windows, a data store per server on macOS
   14 and newer, a session partition on Linux) and its own connection. Removing a

@@ -55,6 +55,8 @@ fn main() {
             "rail_move",
             "rail_remove",
             "rail_reconnect",
+            "rail_notify_get",
+            "rail_notify_set",
             "desktop_gaming_sync",
             "desktop_gaming_snapshot",
             "desktop_gaming_control",

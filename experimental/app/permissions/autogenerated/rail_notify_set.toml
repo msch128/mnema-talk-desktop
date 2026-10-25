@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-rail-notify-set"
+description = "Enables the rail_notify_set command without any pre-configured scope."
+commands.allow = ["rail_notify_set"]
+
+[[permission]]
+identifier = "deny-rail-notify-set"
+description = "Denies the rail_notify_set command without any pre-configured scope."
+commands.deny = ["rail_notify_set"]
