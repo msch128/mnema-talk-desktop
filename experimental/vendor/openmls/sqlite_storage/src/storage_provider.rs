@@ -26,7 +26,61 @@ use crate::{
 #[cfg(feature = "virtual-clients-draft")]
 use crate::vc_secrets::StorableEntityRef as StorableVcSecretRef;
 
-refinery::embed_migrations!("migrations");
+/// The embedded schema migrations, in order. Version numbers and names are the
+/// ones the former `refinery` runner recorded, so a database it migrated is
+/// recognised as up to date.
+const MIGRATIONS: &[(i64, &str, &str)] = &[
+    (1, "initial", include_str!("../migrations/V1__initial.sql")),
+    (2, "constraint_addition", include_str!("../migrations/V2__constraint_addition.sql")),
+    (3, "virtual_clients", include_str!("../migrations/V3__virtual_clients.sql")),
+    (4, "vc_emulation_bindings", include_str!("../migrations/V4__vc_emulation_bindings.sql")),
+    (5, "vc_operation_secrets", include_str!("../migrations/V5__vc_operation_secrets.sql")),
+    (
+        6,
+        "registered_vc_emulation_epoch",
+        include_str!("../migrations/V6__registered_vc_emulation_epoch.sql"),
+    ),
+];
+
+const MIGRATION_TABLE: &str = "openmls_sqlite_storage_migrations";
+
+fn migration_error(message: &str) -> rusqlite::Error {
+    rusqlite::Error::ToSqlConversionFailure(message.into())
+}
+
+/// Applies the migrations that are not yet recorded in the migration table,
+/// each in its own immediate transaction. The recorded versions must be the
+/// leading, correctly named run of [`MIGRATIONS`]: a database from a newer
+/// build, or one with a gap or a renamed step, is refused instead of guessed at.
+fn migrate(connection: &mut Connection) -> Result<(), rusqlite::Error> {
+    connection.execute_batch(&format!(
+        "CREATE TABLE IF NOT EXISTS {MIGRATION_TABLE}(version INT4 PRIMARY KEY, name VARCHAR(255), applied_on VARCHAR(255), checksum VARCHAR(255))"
+    ))?;
+    let recorded: Vec<(i64, String)> = {
+        let mut statement = connection
+            .prepare(&format!("SELECT version, name FROM {MIGRATION_TABLE} ORDER BY version"))?;
+        let rows = statement.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?;
+        rows.collect::<Result<_, _>>()?
+    };
+    if recorded.len() > MIGRATIONS.len() {
+        return Err(migration_error("the database is newer than this build"));
+    }
+    for (known, (version, name)) in MIGRATIONS.iter().zip(&recorded) {
+        if known.0 != *version || known.1 != name {
+            return Err(migration_error("the recorded migrations do not match this build"));
+        }
+    }
+    for (version, name, sql) in &MIGRATIONS[recorded.len()..] {
+        let tx = connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        tx.execute_batch(sql)?;
+        tx.execute(
+            &format!("INSERT INTO {MIGRATION_TABLE}(version, name, applied_on, checksum) VALUES (?1, ?2, datetime('now'), '')"),
+            rusqlite::params![version, name],
+        )?;
+        tx.commit()?;
+    }
+    Ok(())
+}
 
 /// Storage provider for OpenMLS using Sqlite through the `rusqlite` crate.
 /// Implements the [`StorageProvider`] trait. The codec used by the storage
@@ -48,22 +102,8 @@ impl<C: Codec, ConnectionRef: Borrow<Connection>> SqliteStorageProvider<C, Conne
 
 impl<C: Codec, ConnectionRef: BorrowMut<Connection>> SqliteStorageProvider<C, ConnectionRef> {
     /// Initialize the database with the necessary tables.
-    ///
-    /// This method is deprecated and replaced by `run_migrations`, which
-    /// specifies a unique name for the refinery migration table.
-    #[deprecated(since = "0.2.0", note = "use `run_migrations()` instead")]
-    pub fn initialize(&mut self) -> Result<(), refinery::Error> {
-        migrations::runner().run(self.connection.borrow_mut())?;
-        Ok(())
-    }
-
-    /// Initialize the database with the necessary tables.
-    pub fn run_migrations(&mut self) -> Result<(), refinery::Error> {
-        let mut runner = migrations::runner();
-        runner.set_migration_table_name("openmls_sqlite_storage_migrations");
-
-        runner.run(self.connection.borrow_mut())?;
-        Ok(())
+    pub fn run_migrations(&mut self) -> Result<(), rusqlite::Error> {
+        migrate(self.connection.borrow_mut())
     }
 }
 
@@ -943,5 +983,62 @@ impl<C: Codec, ConnectionRef: Borrow<Connection>> StorageProvider<STORAGE_PROVID
         hash_ref: &KeyPackageRef,
     ) -> Result<(), Self::Error> {
         StorableKeyRef(hash_ref).delete_retained_key_package_material::<C>(self.connection.borrow())
+    }
+}
+
+#[cfg(test)]
+mod migration_tests {
+    use super::{migrate, MIGRATIONS, MIGRATION_TABLE};
+    use rusqlite::Connection;
+
+    fn recorded(connection: &Connection) -> i64 {
+        connection
+            .query_row(&format!("SELECT count(*) FROM {MIGRATION_TABLE}"), [], |row| row.get(0))
+            .unwrap()
+    }
+
+    #[test]
+    fn applies_every_migration_once() {
+        let mut connection = Connection::open_in_memory().unwrap();
+        migrate(&mut connection).unwrap();
+        migrate(&mut connection).unwrap();
+        assert_eq!(recorded(&connection), MIGRATIONS.len() as i64);
+        connection
+            .execute_batch("SELECT 1 FROM openmls_group_data LIMIT 1")
+            .unwrap();
+    }
+
+    #[test]
+    fn recognises_a_database_the_previous_runner_migrated() {
+        let mut connection = Connection::open_in_memory().unwrap();
+        migrate(&mut connection).unwrap();
+        connection
+            .execute_batch(&format!("UPDATE {MIGRATION_TABLE} SET checksum = '123456789', applied_on = '2026-01-01T00:00:00Z'"))
+            .unwrap();
+        migrate(&mut connection).unwrap();
+        assert_eq!(recorded(&connection), MIGRATIONS.len() as i64);
+    }
+
+    #[test]
+    fn refuses_a_newer_or_inconsistent_database() {
+        let mut newer = Connection::open_in_memory().unwrap();
+        migrate(&mut newer).unwrap();
+        newer
+            .execute_batch(&format!("INSERT INTO {MIGRATION_TABLE}(version, name) VALUES (99, 'future')"))
+            .unwrap();
+        assert!(migrate(&mut newer).is_err());
+
+        let mut renamed = Connection::open_in_memory().unwrap();
+        migrate(&mut renamed).unwrap();
+        renamed
+            .execute_batch(&format!("UPDATE {MIGRATION_TABLE} SET name = 'other' WHERE version = 2"))
+            .unwrap();
+        assert!(migrate(&mut renamed).is_err());
+
+        let mut gap = Connection::open_in_memory().unwrap();
+        migrate(&mut gap).unwrap();
+        gap.execute_batch(&format!("DELETE FROM {MIGRATION_TABLE} WHERE version = 1"))
+            .unwrap();
+        assert!(migrate(&mut gap).is_err());
     }
 }
