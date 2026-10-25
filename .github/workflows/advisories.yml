@@ -1,7 +1,7 @@
 name: Advisories
 
 # The same advisory checks the push and pull request workflows run (npm audit
-# for the three UI/Electron trees, cargo audit for the Rust lockfiles), on a
+# for the three UI/Electron trees, cargo deny for the Rust lockfiles), on a
 # schedule: an advisory published after the last push to the shipped client
 # would otherwise go unnoticed until someone pushes again.
 on:
@@ -11,12 +11,14 @@ on:
   pull_request:
     paths:
       - .github/workflows/advisories.yml
+      - deny.toml
+      - scripts/deny-all.sh
 
 permissions:
   contents: read
 
 env:
-  CARGO_AUDIT_VERSION: 0.22.2
+  CARGO_DENY_VERSION: 0.20.2
 
 jobs:
   npm:
@@ -52,9 +54,12 @@ jobs:
           node-version: '26'
       - name: Install pinned Rust toolchain
         run: rustup toolchain install 1.99.1 --profile minimal
-      - name: Rust advisory scan (pinned tool; no advisory ignores)
+      # Scoped to the Windows target (deny.toml): Linux is paused, and the
+      # Linux-only GTK3 crates are not in the Windows build. One documented
+      # exception, see doc/security-review-1.2.md.
+      - name: Rust advisory scan (pinned tool, Windows graph)
         run: |
           set -euo pipefail
-          cargo +1.99.1 install cargo-audit --version "$CARGO_AUDIT_VERSION" --locked
-          node scripts/checked-glib.mjs --audit
-          cargo audit --file Cargo.lock
+          cargo +1.99.1 install cargo-deny --version "$CARGO_DENY_VERSION" --locked
+          node scripts/checked-glib.mjs
+          bash scripts/deny-all.sh
