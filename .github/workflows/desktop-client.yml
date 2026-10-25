@@ -65,7 +65,8 @@ permissions:
 
 concurrency:
   group: shared-desktop-${{ inputs.acceptance_release && format('{0}-{1}', inputs.acceptance_release, github.sha) || inputs.tag || github.ref }}
-  cancel-in-progress: false
+  # Superseded pull request runs are cancelled; tag, push and acceptance runs never are.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   windows-client:
