@@ -88,9 +88,17 @@ blanket.
   are not part of the shipped installer. `hax-lib-macros` 0.4.2 already drops it
   but `core-models` still requires `hax-lib` ^0.3.7, so it cannot be replaced
   from here; accepted as a scoped exception on 2026-10-25; re-check by 2027-01-25 and drop the ignore once `hpke-rs` / `core-models` move to `hax-lib` >= 0.4.
-- `rusqlite` stays at 0.39 on purpose (0.40 bundles a SQLCipher that overflows
-  the stack on Windows, see the note in `qualified-sdk/Cargo.toml`); `refinery`
-  0.10.0 also caps `rusqlite` at 0.40.
+- `rusqlite` is 0.41 (SQLCipher 4.19.0). 0.40 bundled SQLCipher 4.14.0, whose
+  allocator-with-`VirtualLock` recursed until the stack overflowed on Windows
+  when `VirtualLock` failed with memory security on (sqlcipher/sqlcipher#619,
+  fixed upstream in 4.18 and later). It was not a stack-size or migration
+  problem, so the fix is the dependency, not a bigger thread stack.
+  `refinery` (latest 0.10.0) caps `rusqlite` at 0.40, so it was dropped: the
+  six SQL migrations run through a small in-house runner that keeps the same
+  migration table and versions, so a database `refinery` migrated is recognised.
+  `tests/sqlcipher_memory_security.rs` in the protected SDK runs the path that
+  overflowed (encrypted database, memory security on, heavy allocation) and
+  fails if the bundled SQLCipher is older than 4.18.
 - Test-only crates (e.g. `atomic-polyfill` in the vendored OpenMLS workspace's
   dev-dependencies) are excluded (`exclude-dev`).
 

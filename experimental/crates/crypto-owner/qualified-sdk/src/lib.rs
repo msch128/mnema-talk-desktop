@@ -998,10 +998,12 @@ fn open_encrypted(path: &Path, keys: &impl NativeKeyProvider, create: bool) -> R
         write!(&mut *raw, "{byte:02x}").map_err(|_| Error::Invalid)?;
     }
     raw.push('\'');
-    conn.pragma_update(None, "key", raw.as_str())
+    // Raw SQL: rusqlite 0.41 no longer sends this pragma value as SQLCipher expects.
+    let key_sql = Zeroizing::new(format!("PRAGMA key = \"{}\"", raw.as_str()));
+    conn.execute_batch(key_sql.as_str())
         .map_err(|_| Error::Database)?;
     let version: String = conn
-        .pragma_query_value(None, "cipher_version", |r| r.get(0))
+        .query_row("PRAGMA cipher_version", [], |r| r.get(0))
         .map_err(|_| Error::Database)?;
     if !version.starts_with("4.") {
         return Err(Error::Database);
@@ -1029,7 +1031,7 @@ fn open_encrypted(path: &Path, keys: &impl NativeKeyProvider, create: bool) -> R
 }
 fn pragma_number(conn: &Connection, name: &str) -> Result<i64> {
     let value: rusqlite::types::Value = conn
-        .pragma_query_value(None, name, |r| r.get(0))
+        .query_row(&format!("PRAGMA {name}"), [], |r| r.get(0))
         .map_err(|_| Error::Database)?;
     match value {
         rusqlite::types::Value::Integer(number) => Ok(number),
