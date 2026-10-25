@@ -11,3 +11,4 @@ ui/src/assets/fonts/Inter-LICENSE.txt -text
 icons/** -text
 # Preserve the original MIT notice, including its final blank line.
 experimental/vendor/glib/LICENSE whitespace=-blank-at-eof
+*.db binary

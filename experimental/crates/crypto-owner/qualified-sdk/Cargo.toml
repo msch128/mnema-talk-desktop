@@ -33,4 +33,5 @@ security-framework-sys = "=2.17.0"
 core-foundation = "=0.10.1"
 
 [dev-dependencies]
+openmls_vendored_sqlite_storage = { package = "openmls_sqlite_storage", path = "../../../vendor/openmls/sqlite_storage" }
 tempfile = "=3.27.0"
