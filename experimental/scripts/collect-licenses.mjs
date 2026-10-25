@@ -87,8 +87,18 @@ for (const [path, pkg] of Object.entries(npmLock.packages)) {
   const source = `https://www.npmjs.com/package/${actual.name}/v/${pkg.version}`;
   // Traverse only this package's own contents, not its nested dependencies.
   const files = findNotices(root).filter((file) => !file.name.startsWith('node_modules/'));
-  if (!files.length) throw new Error(`Missing npm license text for ${actual.name}`);
-  const texts = files.map((file) => storeNotice(readFileSync(file.path), file.name, source, 'npm-archive'));
+  let texts = files.map((file) => storeNotice(readFileSync(file.path), file.name, source, 'npm-archive'));
+  if (texts.length === 0) {
+    // A package that ships no license file: an explicitly pinned text, keyed `npm:name@version`.
+    texts = overrides[`npm:${actual.name}@${pkg.version}`];
+    if (!texts?.length) throw new Error(`Missing npm license text for ${actual.name}`);
+    for (const text of texts) {
+      if (!/^[a-f0-9]{64}$/.test(text.sha256)) throw new Error('Invalid override hash');
+      const bytes = readFileSync(join(output, 'texts', `${text.sha256}.txt`));
+      if (hash(bytes) !== text.sha256) throw new Error(`Changed license text for ${actual.name}`);
+      textFiles.set(text.sha256, bytes);
+    }
+  }
   packages.push({ ecosystem: 'npm', name: actual.name, version: pkg.version, license: pkg.license,
     source, texts });
 }
