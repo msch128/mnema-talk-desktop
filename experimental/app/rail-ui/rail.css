@@ -91,6 +91,8 @@ body {
   font: inherit; text-align: left; padding: 6px 8px; border: 0; border-radius: 6px; background: transparent; color: var(--text); cursor: pointer;
 }
 .menu button:hover:not(:disabled), .menu button:focus-visible { background: var(--raised); }
+.menu button[aria-checked="true"] { font-weight: 600; }
+.menu button[aria-checked="true"]::before { content: "\2713\00a0"; color: var(--accent); }
 .menu button.danger { color: var(--danger); }
 .menu button:disabled { opacity: .45; cursor: default; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }

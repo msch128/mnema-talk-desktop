@@ -729,6 +729,8 @@ pub(super) fn run() {
             super::web_shell::rail_move,
             super::web_shell::rail_remove,
             super::web_shell::rail_reconnect,
+            super::web_shell::rail_notify_get,
+            super::web_shell::rail_notify_set,
             super::web_gaming::desktop_gaming_sync,
             super::web_gaming::desktop_gaming_snapshot,
             super::web_gaming::desktop_gaming_control,

@@ -11,6 +11,8 @@
     "allow-rail-cancel-add",
     "allow-rail-move",
     "allow-rail-remove",
-    "allow-rail-reconnect"
+    "allow-rail-reconnect",
+    "allow-rail-notify-get",
+    "allow-rail-notify-set"
   ]
 }

@@ -13,6 +13,8 @@ const T = de
       reconnect: 'Erneut verbinden', up: 'Nach oben', down: 'Nach unten', remove: 'Entfernen …',
       confirm: 'Server entfernen', confirmNote: 'Entfernt die Anmeldung und alle lokalen Daten dieses Servers von diesem Gerät.', cancel: 'Abbrechen',
       moved: (name, n) => `${name} an Position ${n}`, removed: (name) => `${name} entfernt`,
+      notifications: 'Benachrichtigungen', levels: { all: 'Alle Nachrichten', mentions: 'Nur Erwähnungen', mute: 'Stummschalten' },
+      notifySet: (name, level) => `${name}: ${level}`, notifyFailed: (name) => `${name}: Die Einstellung konnte nicht geändert werden`,
     }
   : {
       list: 'Servers', add: 'Add server', addClose: 'Back', addDisabled: 'No further server can be added.',
@@ -21,12 +23,15 @@ const T = de
       reconnect: 'Reconnect', up: 'Move up', down: 'Move down', remove: 'Remove…',
       confirm: 'Remove server', confirmNote: 'Removes the sign-in and all local data of this server from this device.', cancel: 'Cancel',
       moved: (name, n) => `${name} moved to position ${n}`, removed: (name) => `${name} removed`,
+      notifications: 'Notifications', levels: { all: 'All messages', mentions: 'Only mentions', mute: 'Mute' },
+      notifySet: (name, level) => `${name}: ${level}`, notifyFailed: (name) => `${name}: the setting could not be changed`,
     };
 
 const $ = (id) => document.getElementById(id);
 let state = { active: null, adding: true, can_add: false, instances: [] };
 let dragging = null;
 let menuFor = null;
+let menuLoad = 0;
 
 function call(cmd, args) {
   try {
@@ -116,6 +121,8 @@ function move(server, to) {
 function closeMenu() {
   const menu = $('menu');
   menu.hidden = true;
+  menu.dataset.mode = '';
+  menuLoad += 1;
   menu.replaceChildren();
   const owner = menuFor;
   menuFor = null;
@@ -141,6 +148,7 @@ function openMenu(server, anchor, confirm) {
   title.className = 'title';
   title.textContent = server.name;
   menu.append(title);
+  menu.dataset.mode = confirm ? 'confirm' : 'main';
   if (confirm) {
     const note = document.createElement('div');
     note.className = 'note';
@@ -153,6 +161,7 @@ function openMenu(server, anchor, confirm) {
     const down = entry(T.down, () => { closeMenu(); move(server, index + 1); });
     down.disabled = index >= state.instances.length - 1;
     menu.append(up, down, entry(T.remove, () => openMenu(server, anchor, true), 'danger'));
+    if (server.status === 'ready') loadNotify(server, anchor);
   }
   menu.hidden = false;
   const box = anchor.getBoundingClientRect();
@@ -160,6 +169,34 @@ function openMenu(server, anchor, confirm) {
   menu.style.top = `${Math.max(4, Math.min(box.top, window.innerHeight - menu.offsetHeight - 4))}px`;
   const first = menu.querySelector('button:not(:disabled)');
   if (first) first.focus();
+}
+
+// The member's server-wide notification level, from the server itself (through
+// the host). A server that cannot answer (older, still connecting, or this
+// host has no such command) simply gets no entries.
+function loadNotify(server, anchor) {
+  const load = ++menuLoad;
+  call('rail_notify_get', { id: server.id }).then((info) => {
+    const menu = $('menu');
+    if (load !== menuLoad || menuFor !== anchor || menu.hidden || menu.dataset.mode !== 'main') return;
+    if (!info || info.supported !== true || !(info.level in T.levels)) return;
+    const head = document.createElement('div');
+    head.className = 'note';
+    head.textContent = T.notifications;
+    head.setAttribute('role', 'presentation');
+    const choices = Object.keys(T.levels).map((level) => {
+      const choice = entry(T.levels[level], () => {
+        closeMenu();
+        call('rail_notify_set', { id: server.id, level }).then((done) => {
+          $('live').textContent = done === null ? T.notifySet(server.name, T.levels[level]) : T.notifyFailed(server.name);
+        });
+      });
+      choice.setAttribute('role', 'menuitemradio');
+      choice.setAttribute('aria-checked', level === info.level ? 'true' : 'false');
+      return choice;
+    });
+    menu.querySelector('.title').after(head, ...choices);
+  });
 }
 
 function remove(server) {

@@ -13,7 +13,7 @@ use crate::instances::{
 };
 use crate::web_bundle::Held;
 use crate::web_client::{Trusted, app_api, app_url, bundled, choose, discover};
-use crate::web_proxy::{Instance, Jar, Limits, Resp, client, now};
+use crate::web_proxy::{Instance, Jar, Limits, Resp, client, forward, now};
 use crate::web_vault::{Os, Vault};
 use crate::web_ws::Sockets;
 #[cfg(not(target_os = "macos"))]
@@ -1041,6 +1041,69 @@ pub async fn rail_reconnect(webview: Webview, id: String) -> Result<(), String> 
     Ok(())
 }
 
+/// The signed-in member's server-wide notification level on one server, for the
+/// rail's menu. Unsupported (an older server, or one not ready) is an answer,
+/// not an error, so the menu simply leaves the entries out.
+#[tauri::command]
+pub async fn rail_notify_get(
+    webview: Webview,
+    id: String,
+) -> Result<super::rail_notify::NotifyState, String> {
+    use super::rail_notify::{HEALTH_PATH, NotifyState, SETTINGS_PATH, parse_settings, supports};
+    let app = from_rail(&webview)?;
+    let session = app
+        .state::<Trusted>()
+        .registry
+        .lock()
+        .map_err(|_| "busy")?
+        .session(&id);
+    let Some(session) = session else {
+        return Ok(NotifyState::unsupported());
+    };
+    let ask = |path: &'static str| {
+        let session = session.clone();
+        async move {
+            let resp = forward(&session.instance, "GET", path, &[], Vec::new()).await;
+            (resp.status == 200).then_some(resp.body)
+        }
+    };
+    let supported = ask(HEALTH_PATH).await.is_some_and(|body| supports(&body));
+    if !supported {
+        return Ok(NotifyState::unsupported());
+    }
+    Ok(ask(SETTINGS_PATH)
+        .await
+        .and_then(|body| parse_settings(&body))
+        .unwrap_or_else(NotifyState::unsupported))
+}
+
+/// Sets that level. `suppress_everyone` is read from the server first and kept,
+/// so the rail never changes more than the level.
+#[tauri::command]
+pub async fn rail_notify_set(webview: Webview, id: String, level: String) -> Result<(), String> {
+    use super::rail_notify::{SERVER_PATH, put_body};
+    let app = from_rail(&webview)?;
+    let current = rail_notify_get(webview, id.clone()).await?;
+    if !current.supported {
+        return Err("This server cannot set a notification level.".into());
+    }
+    let body = put_body(&level, current.suppress_everyone).ok_or("Unknown notification level.")?;
+    let session = app
+        .state::<Trusted>()
+        .registry
+        .lock()
+        .map_err(|_| "busy")?
+        .session(&id)
+        .ok_or("This server is not connected.")?;
+    let headers = [("content-type".to_owned(), "application/json".to_owned())];
+    let resp = forward(&session.instance, "PUT", SERVER_PATH, &headers, body).await;
+    if resp.status == 204 || resp.status == 200 {
+        Ok(())
+    } else {
+        Err("The server did not accept the change.".into())
+    }
+}
+
 /// Takes a server out of the list and wipes everything this device holds of
 /// it: its stored session (keychain entry and fallback file), its browser
 /// storage, its sockets, its toasts and its gaming token.
@@ -1168,7 +1231,7 @@ mod tests {
                 assert_eq!(json["webviews"], serde_json::json!(["rail"]));
                 assert!(json.get("windows").is_none());
                 assert!(permissions.iter().all(|p| p.starts_with("allow-rail-")));
-                assert_eq!(permissions.len(), 7);
+                assert_eq!(permissions.len(), 9);
             } else {
                 assert!(!names("allow-rail-"), "{id} may drive the list");
             }
