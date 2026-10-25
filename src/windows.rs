@@ -2,23 +2,19 @@
 //! executable paths, inject into games, or equate monitor coverage with exclusivity.
 //! A matching basename is a user-selected candidate, not authenticated executable identity.
 use serde::Serialize;
-#[cfg(any(windows, test))]
-#[path = "game_catalog.rs"]
-mod game_catalog;
-
+/// The probe's one-shot check by file name: the user's names and the bundled list.
+/// (The shared client resolves games with `game_identify` on foreground events.)
 #[cfg(any(windows, test))]
 fn approved_game(names: &[String], name: &str, title: &str) -> Option<String> {
-    // Java is a shared runtime: it is only a Minecraft candidate with its title.
-    if matches!(name.to_ascii_lowercase().as_str(), "javaw.exe" | "java.exe")
-        && !title.to_ascii_lowercase().contains("minecraft")
-    {
-        return None;
-    }
-    names
-        .iter()
-        .chain(game_catalog::executables())
-        .find(|n| n.eq_ignore_ascii_case(name))
-        .cloned()
+    use super::{game_identify, game_library::InstallIndex, game_list::GameList};
+    game_identify::identify(
+        names,
+        &InstallIndex::default(),
+        GameList::bundled(),
+        name,
+        title,
+    )
+    .map(|found| found.name)
 }
 
 /// The user-approved game name for a foreground image path, if any. Only the
@@ -214,52 +210,22 @@ pub fn inspect_foreground(names: &[String]) -> GameProbe {
 mod tests {
     use super::*;
     #[test]
-    fn catalog_covers_requested_games_without_generic_java_false_positives() {
-        let catalog: serde_json::Value =
-            serde_json::from_str(include_str!("game-catalog.json")).unwrap();
-        assert_eq!(catalog["games"].as_array().unwrap().len(), 300);
-        for name in game_catalog::executables() {
-            assert!(valid_game_names(std::slice::from_ref(name)));
-        }
-        for name in [
-            "sweaw.exe",
-            "payday2_win32_release.exe",
-            "actofaggression.exe",
-            "WardogsClient-Win64-Shipping.exe",
-            "spring.exe",
-            "league of legends.exe",
-            "eso64.exe",
-            "blackdesert64.exe",
-            "cod.exe",
-        ] {
-            assert!(approved_game(&[], name, "").is_some(), "{name}");
-        }
-        for helper in [
-            "isaacanimationeditor.exe",
-            "roomeditor.exe",
-            "itempooleditor.exe",
-            "gmad.exe",
-            "acservermanager.exe",
-            "kseditor.exe",
-            "shootergameserver.exe",
-            "supporttool.exe",
-            "ddnet-server.exe",
-            "dayzuninstaller.exe",
-            "ss_setup.exe",
-        ] {
-            assert!(approved_game(&[], helper, "").is_none(), "{helper}");
-        }
+    fn probe_matches_user_names_and_the_bundled_list_but_not_java_or_tools() {
+        let own = ["Custom.exe".to_string()];
+        assert!(approved_game(&own, "CUSTOM.EXE", "").is_some());
+        assert!(approved_game(&[], "cs2.exe", "").is_some());
         assert!(approved_game(&[], "javaw.exe", "Minecraft 1.21").is_some());
         assert!(approved_game(&[], "javaw.exe", "Java editor").is_none());
         assert!(approved_game(&[], "chrome.exe", "Minecraft website").is_none());
-        assert!(approved_game(&["Custom.exe".into()], "CUSTOM.EXE", "").is_some());
+        assert!(approved_game(&[], "roomeditor.exe", "").is_none());
     }
+
     #[test]
     fn image_paths_match_by_basename_only() {
         let own = ["Custom.exe".to_string()];
         assert_eq!(
             approved_image(&own, r"D:\Games\X\custom.exe", "").as_deref(),
-            Some("Custom.exe")
+            Some("custom.exe")
         );
         assert!(approved_image(&own, r"D:\Games\X\other.exe", "").is_none());
         assert!(approved_image(&own, "", "").is_none());

@@ -52,3 +52,64 @@ The foreground source sits behind the `ForegroundSource` trait
 A window counts as a game only when it was announced by the source and is still
 the foreground window when the sidepeek or shortcuts act, so an announcement
 that has been overtaken by a newer focus change never shows a game.
+
+## Which game is it?
+
+Three sources, checked in this order. The first match wins and decides the name.
+
+1. **Names you added** in the gaming settings (an executable file name such as
+   `MyGame.exe`).
+2. **Launcher libraries.** The install folders of the games your launchers
+   report. A program that lives under one of those folders is that game, and the
+   game is named as the launcher names it. Read-only, from files and registry
+   keys the launchers keep for themselves:
+
+   | Launcher | Read | Notes |
+   | --- | --- | --- |
+   | Steam | `steamapps/libraryfolders.vdf` and `steamapps/appmanifest_*.acf` of every library | Steam tools and runtimes (Steamworks Shared, SteamVR, Proton, Linux runtimes, Wallpaper Engine) are skipped |
+   | Epic Games Store | `%ProgramData%\Epic\EpicGamesLauncher\Data\Manifests\*.item` | add-ons and unfinished installs are skipped |
+   | GOG Galaxy | `HKLM\SOFTWARE\WOW6432Node\GOG.com\Games\*` (`gameName`, `path`) | |
+   | EA app | `HKLM\SOFTWARE\WOW6432Node\EA Games\*` and `HKLM\SOFTWARE\EA Games\*` (`Install Dir`) | |
+   | Battle.net | not read | its install list is a binary database without a public format; Battle.net games are found by the bundled list or a name you add |
+
+   Every path read from a manifest or the registry is checked before the disk
+   is touched: only absolute local drive paths are opened. UNC (`\\host\share`),
+   device (`\\?\`, `\\.\`) and relative paths, `..` segments and alternate
+   data streams are skipped silently, so a crafted manifest cannot make Windows
+   contact another machine. A manifest folder that is a drive root, a system folder or a broad folder such
+   as `Program Files` itself is ignored, so one bad manifest cannot make every
+   program a game. Manifests larger than 256 KiB are ignored.
+3. **The bundled list** (`src/game-list.json`): executable file names of widely
+   played PC games. Matching is by file name only.
+
+The launcher scan runs on its own thread: once at start, every 15 minutes, and
+whenever the gaming settings are saved. The foreground path only reads the last
+finished result. Java is never matched by name: `javaw.exe` counts as Minecraft
+only when its window title says so, and a Java program inside a launcher's game
+folder is that game. Crash handlers, uninstallers and redistributables inside a
+game folder are not the game.
+
+### The bundled list
+
+`src/game-list.json` is maintained by hand. It holds about 600 well-known PC
+games from the last quarter century (shooters, battle royales, MOBAs, MMOs,
+survival, sports, racing, simulators, strategy and indie hits): a display name,
+one or more executable file names and, for some, a Steam app id kept for
+reference. It is deliberately not complete and has not been checked against
+installed copies. The launcher libraries (above) cover the rest: any game your
+Steam, Epic, GOG or EA app reports is found there without being in the list,
+and you can add a name yourself in the gaming settings. A missing or wrong name
+only means that game is found through its launcher or a name you add instead.
+A unit test keeps names, executables and ids unique and well formed. Corrections
+and verified names are welcome under the repository licence.
+
+### Sources
+
+The list is our own work, written from public knowledge of the executable names
+games ship. No third-party list, database, API response or website was copied,
+scraped or derived, and nothing from Discord's detectable-applications list
+(its Developer Policy forbids reuse) is used. An earlier catalog that came from
+such a list was deleted; the Git history still contains that old file (names and
+executable names only), and it is kept as is because rewriting public history
+would break signed release tags and forks. No file in the current tree carries
+data derived from it. The header of `src/game-list.json` states the provenance.

@@ -1,0 +1,13 @@
+{
+	"FormatVersion": 0,
+	"bIsIncompleteInstall": false,
+	"AppVersionString": "1.0.0",
+	"LaunchExecutable": "ExampleRacer.exe",
+	"ManifestLocation": "C:/ProgramData/Epic/EpicGamesLauncher/Data/Manifests",
+	"DisplayName": "Example Racer",
+	"InstallLocation": "C:\\Games\\Epic\\ExampleRacer",
+	"AppName": "ExampleRacerApp",
+	"MainGameAppName": "ExampleRacerApp",
+	"CatalogNamespace": "example",
+	"InstallSize": 123456789
+}
