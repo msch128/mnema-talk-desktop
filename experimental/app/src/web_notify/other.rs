@@ -21,4 +21,6 @@ pub async fn show(
     Err("Notifications are not available on this system.".into())
 }
 
+pub fn host_toast(_app: &tauri::AppHandle, _title: &str, _body: &str) {}
+
 pub fn clear(_app: &tauri::AppHandle) {}

@@ -113,6 +113,9 @@ fn parse_identifier(id: &str) -> Option<(Click, String)> {
 }
 
 /// Removes this app's delivered and waiting toasts.
+/// The hints are Windows-only (exclusive fullscreen); macOS has nothing to say.
+pub fn host_toast(_app: &tauri::AppHandle, _title: &str, _body: &str) {}
+
 pub fn clear(_app: &tauri::AppHandle) {
     if let Some(center) = center() {
         center.removeAllDeliveredNotifications();
