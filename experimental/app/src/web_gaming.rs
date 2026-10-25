@@ -23,6 +23,9 @@ mod foreground_windows;
 #[path = "../../../src/fullscreen.rs"]
 mod fullscreen;
 #[allow(dead_code)]
+#[path = "../../../src/game_candidate.rs"]
+mod game_candidate;
+#[allow(dead_code)]
 #[path = "../../../src/game_identify.rs"]
 mod game_identify;
 #[allow(dead_code)]
@@ -228,6 +231,10 @@ pub struct Gaming {
     /// Updated by the foreground source's events, never by polling.
     #[cfg_attr(not(windows), allow(dead_code))]
     foreground: Option<foreground::Foreground>,
+    /// File name of the last other application that was in front, offered only
+    /// when the person asks to add it as a game. Never a path.
+    #[cfg_attr(not(windows), allow(dead_code))]
+    candidate: Option<String>,
     /// Why game detection is off on this system, when it is.
     detection_note: Option<&'static str>,
     /// Keys that are down, matched against the chords; fed by the input source.
@@ -262,6 +269,7 @@ impl Default for Gaming {
             ptt_armed: false,
             last_tick: Instant::now(),
             foreground: None,
+            candidate: None,
             detection_note: None,
             keys: Default::default(),
             input_note: None,
@@ -484,26 +492,22 @@ pub fn desktop_gaming_control(
     command.dispatch(window.app_handle());
     Ok(())
 }
-#[tauri::command]
-pub fn desktop_gaming_settings(
-    window: WebviewWindow,
-    state: tauri::State<'_, Mutex<Gaming>>,
+/// Saves `settings` and makes them current. The command to release push-to-talk
+/// is returned for the caller to send after it lets go of the lock.
+fn apply_settings(
+    app: &tauri::AppHandle,
+    g: &mut Gaming,
     settings: Settings,
-) -> Result<(), String> {
-    if !matches!(window.label(), "gaming-overlay" | "gaming-settings") || !local(&window) {
-        return Err("Wrong gaming surface.".into());
-    }
+) -> Result<Command, String> {
     settings.validate()?;
-    let mut g = state.lock().map_err(|_| "Gaming unavailable.")?;
-    let dir = window
-        .app_handle()
+    let dir = app
         .path()
         .app_config_dir()
         .map_err(|_| "Settings unavailable.")?;
     std::fs::create_dir_all(&dir).map_err(|_| "Cannot save settings.")?;
     let data = serde_json::to_vec(&settings).map_err(|_| "Invalid settings.")?;
     std::fs::write(dir.join("gaming.json"), data).map_err(|_| "Cannot save settings.")?;
-    let command = Command::new(&g, "ptt-release");
+    let command = Command::new(g, "ptt-release");
     g.ptt_down = false;
     g.ptt_armed = false;
     g.previous = [true; 4];
@@ -514,9 +518,74 @@ pub fn desktop_gaming_settings(
     g.settings = settings;
     g.sync_chords();
     g.library.rescan_now();
+    Ok(command)
+}
+#[tauri::command]
+pub fn desktop_gaming_settings(
+    window: WebviewWindow,
+    state: tauri::State<'_, Mutex<Gaming>>,
+    settings: Settings,
+) -> Result<(), String> {
+    if !matches!(window.label(), "gaming-overlay" | "gaming-settings") || !local(&window) {
+        return Err("Wrong gaming surface.".into());
+    }
+    let mut g = state.lock().map_err(|_| "Gaming unavailable.")?;
+    let command = apply_settings(window.app_handle(), &mut g, settings)?;
     drop(g);
     command.dispatch(window.app_handle());
     Ok(())
+}
+/// The file name of the last other application that was in front, for the
+/// person to confirm as a game. Asked for only by the settings or overlay on a
+/// button press; it is the bare name, never a path, and it stays on the device.
+#[tauri::command]
+pub fn desktop_gaming_candidate(
+    window: WebviewWindow,
+    state: tauri::State<'_, Mutex<Gaming>>,
+) -> Result<Option<String>, String> {
+    if !matches!(window.label(), "gaming-overlay" | "gaming-settings") || !local(&window) {
+        return Err("Wrong gaming surface.".into());
+    }
+    let g = state.lock().map_err(|_| "Gaming unavailable.")?;
+    Ok(g.candidate.clone())
+}
+fn change_games(
+    window: &WebviewWindow,
+    state: &Mutex<Gaming>,
+    change: impl FnOnce(&[String]) -> Result<Vec<String>, String>,
+) -> Result<Vec<String>, String> {
+    if !matches!(window.label(), "gaming-overlay" | "gaming-settings") || !local(window) {
+        return Err("Wrong gaming surface.".into());
+    }
+    let mut g = state.lock().map_err(|_| "Gaming unavailable.")?;
+    let mut settings = g.settings.clone();
+    settings.games = change(&settings.games)?;
+    let games = settings.games.clone();
+    let command = apply_settings(window.app_handle(), &mut g, settings)?;
+    drop(g);
+    command.dispatch(window.app_handle());
+    Ok(games)
+}
+/// Adds one game by executable file name (the confirmed candidate, or a typed
+/// name) to the list kept on this device; returns the new list.
+#[tauri::command]
+pub fn desktop_gaming_add_game(
+    window: WebviewWindow,
+    state: tauri::State<'_, Mutex<Gaming>>,
+    name: String,
+) -> Result<Vec<String>, String> {
+    change_games(&window, &state, |games| game_candidate::add_game(games, &name))
+}
+/// Takes one game off the list; returns the new list.
+#[tauri::command]
+pub fn desktop_gaming_remove_game(
+    window: WebviewWindow,
+    state: tauri::State<'_, Mutex<Gaming>>,
+    name: String,
+) -> Result<Vec<String>, String> {
+    change_games(&window, &state, |games| {
+        Ok(game_candidate::remove_game(games, &name))
+    })
 }
 /// Hands a server's page the token that lets it feed gaming.
 pub fn bind(app: &tauri::AppHandle, server: &str) -> String {
@@ -545,6 +614,7 @@ impl Gaming {
             origin: keep.0,
             tokens: keep.1,
             foreground: self.foreground.take(),
+            candidate: self.candidate.take(),
             detection_note: self.detection_note,
             library: self.library.clone(),
             keys: self.keys.clone(),
@@ -1127,6 +1197,9 @@ fn start_detection(app: &tauri::AppHandle) {
     let handle = app.clone();
     let started = source.start(Box::new(move |front| {
         if let Ok(mut g) = handle.state::<Mutex<Gaming>>().lock() {
+            if let Some(name) = game_candidate::candidate(&front, std::process::id()) {
+                g.candidate = Some(name);
+            }
             g.foreground = Some(front);
         }
         wake(&handle);

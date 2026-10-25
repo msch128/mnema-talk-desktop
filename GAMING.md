@@ -57,8 +57,14 @@ that has been overtaken by a newer focus change never shows a game.
 
 Three sources, checked in this order. The first match wins and decides the name.
 
-1. **Names you added** in the gaming settings (an executable file name such as
-   `MyGame.exe`).
+1. **Games you added** in the gaming settings: type an executable file name such
+   as `MyGame.exe`, or press "Add the app I was just in" and confirm the file
+   name you are shown. That name is the last other application the foreground
+   event announced before you opened Mnema (never Mnema itself, Java, or a
+   helper such as a crash handler). Only the bare file name is handed to the
+   settings page, only when you press the button; the path stays in the host and
+   nothing leaves the device. The list is kept locally (up to 32 names) and each
+   entry can be removed again.
 2. **Launcher libraries.** The install folders of the games your launchers
    report. A program that lives under one of those folders is that game, and the
    game is named as the launcher names it. Read-only, from files and registry

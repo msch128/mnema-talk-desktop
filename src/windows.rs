@@ -51,7 +51,7 @@ pub fn valid_game_names(names: &[String]) -> bool {
                 && name.as_bytes()[0].is_ascii_alphanumeric()
                 && name
                     .bytes()
-                    .all(|c| c.is_ascii_alphanumeric() || b"-_. ".contains(&c))
+                    .all(|c| c.is_ascii_alphanumeric() || b"-_. !".contains(&c))
                 && !name.contains("..")
         })
 }

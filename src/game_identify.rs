@@ -43,6 +43,16 @@ const HELPERS: &[&str] = &[
     "vc_redist.x86.exe",
 ];
 
+/// A shared runtime that must never be matched by name alone (Java).
+pub fn is_shared_runtime(file: &str) -> bool {
+    is_java(file)
+}
+
+/// A program that lives in game folders but is not the game.
+pub fn is_helper(file: &str) -> bool {
+    HELPERS.iter().any(|h| h.eq_ignore_ascii_case(file))
+}
+
 fn is_java(file: &str) -> bool {
     matches!(file.to_ascii_lowercase().as_str(), "javaw.exe" | "java.exe")
 }
@@ -55,7 +65,7 @@ pub fn identify(
     title: &str,
 ) -> Option<Identified> {
     let file = image.rsplit(['\\', '/']).next().filter(|f| !f.is_empty())?;
-    if HELPERS.iter().any(|h| h.eq_ignore_ascii_case(file)) {
+    if is_helper(file) {
         return None;
     }
     // Java is a shared runtime: by name it is only a Minecraft candidate, with
