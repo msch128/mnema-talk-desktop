@@ -57,6 +57,8 @@ before(async () => {
     const json = (status: number, body: unknown) => { res.writeHead(status, { 'content-type': 'application/json' }); res.end(JSON.stringify(body)) }
     if (url === '/api/health') return json(200, { status: 'ok', version: '0.8.2', web_client_api: 1 })
     if (url === '/api/auth/me') return json(200, user)
+    // Since 1.1 the web app shows the message text in a toast only once the server says it may.
+    if (url === '/api/push/config') return json(200, { enabled: false, max_devices: 5, preview: true, preview_allowed: true, public_key: '' })
     if (url.startsWith('/api/channels') && !url.includes('/messages')) return json(200, { categories: [], uncategorized: [channel, second] })
     if (url.includes('/messages')) return json(200, [])
     return json(404, { error: { code: 'NOT_FOUND', message: 'no' } })

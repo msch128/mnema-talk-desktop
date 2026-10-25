@@ -60,12 +60,12 @@ openmls_0_7_1 = { package = "openmls", version = "=0.7.1", optional = true }
 
 # dependencies for 0.8.1 migration bridge
 openmls_0_8_1 = { git = "https://github.com/openmls/openmls.git", branch = "openmls-v0.8.1-migration-helpers", package = "openmls", optional = true }
-openmls_basic_credential_0_8 = { git = "https://github.com/openmls/openmls.git", branch = "openmls-v0.8.1-migration-helpers", package = "openmls_basic_credential", optional = true }
+openmls_basic_credential_0_8 = { path = "compat_credentials/basic_credential_0_8", package = "openmls_basic_credential", optional = true }
 openmls_traits_0_5_0 = { git = "https://github.com/openmls/openmls.git", branch = "openmls-v0.8.1-migration-helpers", package = "openmls_traits", optional = true }
 
 # dependencies for 0.7.4 migration bridge
 openmls_0_7_4 = { git = "https://github.com/openmls/openmls.git", branch = "openmls-v0.7.4-migration-helpers", package = "openmls", optional = true }
-openmls_basic_credential_0_7 = { git = "https://github.com/openmls/openmls.git", branch = "openmls-v0.7.4-migration-helpers", package = "openmls_basic_credential", optional = true }
+openmls_basic_credential_0_7 = { path = "compat_credentials/basic_credential_0_7", package = "openmls_basic_credential", optional = true }
 openmls_traits_0_4_1 = { git = "https://github.com/openmls/openmls.git", branch = "openmls-v0.7.4-migration-helpers", package = "openmls_traits", optional = true }
 
 ciborium = "0.2"
