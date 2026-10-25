@@ -225,7 +225,7 @@ mod tests {
         let own = ["Custom.exe".to_string()];
         assert_eq!(
             approved_image(&own, r"D:\Games\X\custom.exe", "").as_deref(),
-            Some("Custom.exe")
+            Some("custom.exe")
         );
         assert!(approved_image(&own, r"D:\Games\X\other.exe", "").is_none());
         assert!(approved_image(&own, "", "").is_none());
