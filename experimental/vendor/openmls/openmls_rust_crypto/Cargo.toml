@@ -28,8 +28,8 @@ hmac = { version = "0.13" }
 ed25519-dalek = { version = "2.0", features = ["rand_core"] }
 rand_core = { version = "0.6", features = ["getrandom"] }
 rand_core_0_10 = { package = "rand_core", version = "0.10" }
-p256 = { version = "0.13" }
-p384 = { version = "0.13" }
+p256 = { version = "0.14" }
+p384 = { version = "0.14" }
 hkdf = { version = "0.13" }
 rand_chacha = { version = "0.3" }
 hpke-rs-crypto = { version = "0.8" }

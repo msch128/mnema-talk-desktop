@@ -625,34 +625,24 @@ fn surface(
     }
     Ok(w)
 }
+/// The game window being tracked. It holds no handle to the game's process: the
+/// window handle alone says whether it is still the same window of the same
+/// process, so nothing is ever opened on a game for this (anti-cheat safety).
 #[cfg(windows)]
 struct GameLease {
     hwnd: usize,
     pid: u32,
-    process: usize,
 }
 #[cfg(windows)]
 impl GameLease {
-    fn new(hwnd: usize, pid: u32) -> Option<Self> {
-        use windows_sys::Win32::System::Threading::{
-            OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
-        };
-        let process = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) };
-        (!process.is_null()).then_some(Self {
-            hwnd,
-            pid,
-            process: process as usize,
-        })
+    fn new(hwnd: usize, pid: u32) -> Self {
+        Self { hwnd, pid }
     }
     fn live(&self) -> bool {
-        use windows_sys::Win32::{
-            System::Threading::GetExitCodeProcess,
-            UI::WindowsAndMessaging::{
-                GetWindowThreadProcessId, IsIconic, IsWindow, IsWindowVisible,
-            },
+        use windows_sys::Win32::UI::WindowsAndMessaging::{
+            GetWindowThreadProcessId, IsIconic, IsWindow, IsWindowVisible,
         };
         let mut pid = 0;
-        let mut code = 0;
         let hwnd = self.hwnd as *mut std::ffi::c_void;
         unsafe {
             IsWindow(hwnd) != 0
@@ -660,16 +650,6 @@ impl GameLease {
                 && IsIconic(hwnd) == 0
                 && GetWindowThreadProcessId(hwnd, &mut pid) != 0
                 && pid == self.pid
-                && GetExitCodeProcess(self.process as *mut std::ffi::c_void, &mut code) != 0
-                && code == 259
-        }
-    }
-}
-#[cfg(windows)]
-impl Drop for GameLease {
-    fn drop(&mut self) {
-        unsafe {
-            windows_sys::Win32::Foundation::CloseHandle(self.process as *mut std::ffi::c_void);
         }
     }
 }
@@ -719,7 +699,7 @@ fn native_sample(
             .as_ref()
             .is_some_and(|game| game.hwnd == hwnd as usize && game.pid == pid && game.live())
         {
-            g.game = GameLease::new(hwnd as usize, pid);
+            g.game = Some(GameLease::new(hwnd as usize, pid));
         }
     }
     let game_live = g.game.as_ref().is_some_and(GameLease::live);

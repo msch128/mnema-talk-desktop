@@ -21,8 +21,8 @@ use openmls_traits::{
     },
 };
 use p256::{
-    ecdsa::{signature::Verifier, Signature, SigningKey, VerifyingKey},
-    EncodedPoint,
+    ecdsa::{signature::Signer as _, signature::Verifier, Signature, SigningKey, VerifyingKey},
+    elliptic_curve::Generate,
 };
 use rand_core::{RngCore as _, SeedableRng as _};
 use sha2::{Digest, Sha256, Sha384, Sha512};
@@ -283,8 +283,8 @@ impl OpenMlsCrypto for RustCrypto {
                     .rng
                     .write()
                     .map_err(|_| CryptoError::InsufficientRandomness)?;
-                let k = SigningKey::random(&mut *rng);
-                let pk = k.verifying_key().to_encoded_point(false).as_bytes().into();
+                let k = SigningKey::generate_from_rng(&mut crate::rand_shim::RandCore0_10(&mut *rng));
+                let pk = k.verifying_key().to_sec1_point(false).as_bytes().into();
                 #[allow(deprecated)]
                 Ok((k.to_bytes().as_slice().into(), pk))
             }
@@ -302,8 +302,8 @@ impl OpenMlsCrypto for RustCrypto {
                     .rng
                     .write()
                     .map_err(|_| CryptoError::InsufficientRandomness)?;
-                let k = p384::ecdsa::SigningKey::random(&mut *rng);
-                let pk = k.verifying_key().to_encoded_point(false).as_bytes().into();
+                let k = p384::ecdsa::SigningKey::generate_from_rng(&mut crate::rand_shim::RandCore0_10(&mut *rng));
+                let pk = k.verifying_key().to_sec1_point(false).as_bytes().into();
                 Ok((k.to_bytes().as_slice().into(), pk))
             }
             #[cfg(feature = "draft-ietf-mls-pq-ciphersuites")]
@@ -370,10 +370,8 @@ impl OpenMlsCrypto for RustCrypto {
     ) -> Result<(), openmls_traits::types::CryptoError> {
         match alg {
             SignatureScheme::ECDSA_SECP256R1_SHA256 => {
-                let k = VerifyingKey::from_encoded_point(
-                    &EncodedPoint::from_bytes(pk).map_err(|_| CryptoError::CryptoLibraryError)?,
-                )
-                .map_err(|_| CryptoError::CryptoLibraryError)?;
+                let k = VerifyingKey::from_sec1_bytes(pk)
+                    .map_err(|_| CryptoError::CryptoLibraryError)?;
                 k.verify(
                     data,
                     &Signature::from_der(signature).map_err(|_| CryptoError::InvalidSignature)?,
@@ -392,11 +390,8 @@ impl OpenMlsCrypto for RustCrypto {
                     .map_err(|_| CryptoError::InvalidSignature)
             }
             SignatureScheme::ECDSA_SECP384R1_SHA384 => {
-                let k = p384::ecdsa::VerifyingKey::from_encoded_point(
-                    &p384::EncodedPoint::from_bytes(pk)
-                        .map_err(|_| CryptoError::CryptoLibraryError)?,
-                )
-                .map_err(|_| CryptoError::CryptoLibraryError)?;
+                let k = p384::ecdsa::VerifyingKey::from_sec1_bytes(pk)
+                    .map_err(|_| CryptoError::CryptoLibraryError)?;
                 k.verify(
                     data,
                     &p384::ecdsa::Signature::from_der(signature)
@@ -458,13 +453,13 @@ impl OpenMlsCrypto for RustCrypto {
     ) -> Result<Vec<u8>, openmls_traits::types::CryptoError> {
         match alg {
             SignatureScheme::ECDSA_SECP256R1_SHA256 => {
-                let k = SigningKey::from_bytes(key.into())
+                let k = SigningKey::from_slice(key)
                     .map_err(|_| CryptoError::CryptoLibraryError)?;
                 let signature: Signature = k.sign(data);
                 Ok(signature.to_der().to_bytes().into())
             }
             SignatureScheme::ECDSA_SECP384R1_SHA384 => {
-                let k = p384::ecdsa::SigningKey::from_bytes(key.into())
+                let k = p384::ecdsa::SigningKey::from_slice(key)
                     .map_err(|_| CryptoError::CryptoLibraryError)?;
                 let signature: p384::ecdsa::Signature = k.sign(data);
                 Ok(signature.to_der().to_bytes().into())
