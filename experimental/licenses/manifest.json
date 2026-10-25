@@ -1,7 +1,7 @@
 {
   "schema": "mnema-desktop-license-bundle-v1",
   "scope": "Conservative locked Rust graph and production npm closure; not a claim that all packages are linked.",
-  "cargo_lock_sha256": "7047df8a9752eb2fe6223ef9a62e3752aedf09465114c154c978ba79b55e4ad2",
+  "cargo_lock_sha256": "3d7a4b480a4b3bb2e10ccf01f0cc76f54abf5881bc623242b6b72162527566ca",
   "npm_lock_sha256": "003ab0cd56a24c72ce519ef01616d6bdb9784f737939e50467eb619eafd99968",
   "supplemental": {
     "rust_standard_library": {
@@ -1759,20 +1759,20 @@
     {
       "ecosystem": "cargo",
       "name": "crypto-bigint",
-      "version": "0.7.8",
+      "version": "0.7.9",
       "license": "Apache-2.0 OR MIT",
-      "source": "https://crates.io/crates/crypto-bigint/0.7.8",
+      "source": "https://crates.io/crates/crypto-bigint/0.7.9",
       "texts": [
         {
           "name": "LICENSE-APACHE",
           "sha256": "a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5",
-          "source": "https://crates.io/crates/crypto-bigint/0.7.8",
+          "source": "https://crates.io/crates/crypto-bigint/0.7.9",
           "provenance": "crate-archive"
         },
         {
           "name": "LICENSE-MIT",
           "sha256": "57a4d75c1d095bb94754a478f3cd15e60ac66a5c5627d844be01a918eea5fe88",
-          "source": "https://crates.io/crates/crypto-bigint/0.7.8",
+          "source": "https://crates.io/crates/crypto-bigint/0.7.9",
           "provenance": "crate-archive"
         }
       ]
