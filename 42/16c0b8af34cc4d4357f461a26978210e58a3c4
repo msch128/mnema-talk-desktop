@@ -1,0 +1,19 @@
+experimental/app/src/web_gaming.rs
+  s_06fcde5dbef956::t_e944565ae6a428 604-606,614-615,618-619,675
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4216c0b8af34cc4d4357f461a26978210e58a3c4",
+  "prompts": {},
+  "sessions": {
+    "s_06fcde5dbef956": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "94b73314-95fe-4e96-8c43-d20b0f28358d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}
