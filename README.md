@@ -4,10 +4,12 @@ The desktop client for [Mnema Talk](https://github.com/msch128/mnema-talk), a
 lightweight, self-hosted, single-server Discord alternative. It wraps the same
 Vue web app as the browser, with two additions: it removes server-served
 JavaScript from the trust equation, and it helps you stay in a Talk while you
-play. Windows and macOS run it in a Tauri host; Linux runs it in Electron
-(Chromium), because the WebKitGTK that Tauri uses on Linux has no WebRTC.
+play. Windows runs it in a Tauri host. The macOS (Tauri) and Linux (Electron,
+because the WebKitGTK that Tauri uses on Linux has no WebRTC) clients are
+paused for now: no new builds are made, the code is kept.
 
-**Status: Beta, unsigned. Windows first, macOS and Linux as DEV builds.** The
+**Status: Beta, unsigned. Windows only for now; the macOS and Linux clients are
+paused.** The
 browser app is the primary, fully supported client. This client is Beta: usable
 and maintained, but not signed with a platform certificate, so Windows
 SmartScreen and macOS Gatekeeper warn on first start (steps below), and it has
@@ -87,7 +89,11 @@ Windows DEV ZIP attached to
 [mnema-talk releases through v0.7.3](https://github.com/msch128/mnema-talk/releases)
 still loads the server's JavaScript and predates the signed bundle.
 
-### macOS
+### macOS (paused)
+
+> **Paused (1.2).** No new macOS builds are made or published; the section
+> describes the last release that shipped one. The code and the CI job are
+> kept and can be resumed.
 
 Download `Mnema-Desktop-DEV_<version>_aarch64.dmg` from the
 [latest release](https://github.com/msch128/mnema-talk-desktop/releases/latest)
@@ -115,7 +121,14 @@ Because every version is a new ad-hoc signature, macOS may also ask once after
 an update whether the app may use its keychain entry; if you decline, you sign
 in again. There is no gaming overlay on macOS.
 
-### Linux
+### Linux (paused)
+
+> **Paused (1.2).** No new Linux builds are made or published; the section
+> describes the last release that shipped them. The code and the CI job are
+> kept. Resuming the Tauri host on Linux also needs Tauri's move to GTK4 (the
+> GTK3 crates are unmaintained, see
+> [doc/security-review-1.2.md](doc/security-review-1.2.md)); the Electron client
+> does not use them.
 
 Download from the [latest release](https://github.com/msch128/mnema-talk-desktop/releases/latest)
 the file for your machine, x86_64 (also called amd64) or arm64:
@@ -211,15 +224,10 @@ offline backup.
    `main`.
 2. Push the tag `vX.Y.Z` on that commit. `desktop-release.yml` re-tests, builds
    the tested executable into an NSIS installer, signs it in the protected
-   environment, smoke-installs it per user on a Windows runner, wraps the
-   tested Apple silicon macOS executable into an ad-hoc signed `.app` (with the
-   signed `.app.tar.gz` for the updater and a `.dmg`), starts it on a macOS
-   runner, builds and tests the Linux client on x86_64 and arm64 runners,
-   signs the two AppImages in the protected environment with the same updater
-   key, checks that every platform of `latest.json` verifies against the
-   pinned key and publishes the installer, the macOS files, the AppImages and
-   `.deb` packages, their `.sig` files, `latest.json`, a portable ZIP and
-   `SHA256SUMS`.
+   environment, smoke-installs it per user on a Windows runner, checks that
+   `latest.json` verifies against the pinned key and publishes the installer,
+   its `.sig` file, `latest.json`, a portable ZIP and `SHA256SUMS`. The macOS
+   and Linux jobs are paused (disabled in the workflow with a comment).
    The release is public only after everything is attached.
 
 ### Rotating or revoking the updater key
@@ -405,13 +413,12 @@ Distribute the complete `licenses/` directory, this notice file and the root
 `LICENSE` beside a development binary. Checksums are not publisher signatures;
 receipts explicitly remain ineligible for the updater.
 
-The Rust advisory scan currently reports no vulnerability-class advisories, but
-retains `RUSTSEC-2024-0370` (unmaintained proc-macro-error) and
-`RUSTSEC-2024-0429` (glib VariantStrIter unsoundness in the Linux shell dependency
-graph). The latter blocks Linux distribution qualification pending a compatible
-fix or reviewed reachability assessment. Neither package appears in the inspected
-Windows or macOS graphs; this is not a clean cross-platform dependency claim.
-No advisory is ignored.
+The Rust advisory scan (`cargo deny`, `deny.toml`) is scoped to the Windows
+target, the only platform shipped while macOS and Linux are paused. It reports
+nothing for the Windows graphs apart from one documented exception; the Linux-only
+GTK3 crates (`gtk`, `glib` 0.18, `proc-macro-error`) are not in them. Details,
+the exception and what resuming Linux needs:
+[doc/security-review-1.2.md](doc/security-review-1.2.md).
 
 
 ## Explicit synthetic gaming fixture (Windows only)

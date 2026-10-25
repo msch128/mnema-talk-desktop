@@ -47,6 +47,10 @@ impl Signer for SignatureKeyPair {
     fn sign(&self, payload: &[u8]) -> Result<Vec<u8>, SignerError> {
         match self.signature_scheme {
             SignatureScheme::ECDSA_SECP256R1_SHA256 => {
+                // from_slice left-pads short input; upstream required the exact width.
+                if self.private.as_slice().len() != 32 {
+                    return Err(SignerError::SigningError);
+                }
                 let k = SigningKey::from_slice(self.private.as_slice())
                     .map_err(|_| SignerError::SigningError)?;
                 let signature: Signature = k.sign(payload);

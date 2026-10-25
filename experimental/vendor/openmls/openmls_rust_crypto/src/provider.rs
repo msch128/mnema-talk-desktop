@@ -453,12 +453,19 @@ impl OpenMlsCrypto for RustCrypto {
     ) -> Result<Vec<u8>, openmls_traits::types::CryptoError> {
         match alg {
             SignatureScheme::ECDSA_SECP256R1_SHA256 => {
+                // from_slice left-pads short input; upstream required the exact width.
+                if key.len() != 32 {
+                    return Err(CryptoError::CryptoLibraryError);
+                }
                 let k = SigningKey::from_slice(key)
                     .map_err(|_| CryptoError::CryptoLibraryError)?;
                 let signature: Signature = k.sign(data);
                 Ok(signature.to_der().to_bytes().into())
             }
             SignatureScheme::ECDSA_SECP384R1_SHA384 => {
+                if key.len() != 48 {
+                    return Err(CryptoError::CryptoLibraryError);
+                }
                 let k = p384::ecdsa::SigningKey::from_slice(key)
                     .map_err(|_| CryptoError::CryptoLibraryError)?;
                 let signature: p384::ecdsa::Signature = k.sign(data);
