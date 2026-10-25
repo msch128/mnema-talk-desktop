@@ -162,13 +162,13 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Rust installation failed' }
           rustup default $env:RUST_VERSION
           if ($LASTEXITCODE -ne 0) { throw 'Rust selection failed' }
-      # Restored on pull requests, saved only on main (and the ci/speed proof branch).
+      # Restored on pull requests, saved only on main.
       - if: inputs.acceptance_release == ''
         uses: Swatinem/rust-cache@2201cc584a476d1b508be977bbe4b7d1c7a52e9c # v2.9.3
         with:
           workspaces: experimental/app -> target
           key: ${{ hashFiles('**/Cargo.lock') }}
-          save-if: ${{ github.ref == 'refs/heads/main' || github.head_ref == 'ci/speed' }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Check and build the canonical Vue client
         if: inputs.acceptance_release == ''
         working-directory: mnema-talk/web
@@ -401,12 +401,12 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Rust installation failed' }
           rustup default $env:RUST_VERSION
           if ($LASTEXITCODE -ne 0) { throw 'Rust selection failed' }
-      # Restored on pull requests, saved only on main (and the ci/speed proof branch).
+      # Restored on pull requests, saved only on main.
       - uses: Swatinem/rust-cache@2201cc584a476d1b508be977bbe4b7d1c7a52e9c # v2.9.3
         with:
           workspaces: experimental/app -> target
           key: ${{ hashFiles('**/Cargo.lock') }}
-          save-if: ${{ github.ref == 'refs/heads/main' || github.head_ref == 'ci/speed' }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Install the pinned Tauri CLI
         working-directory: ui
         shell: pwsh
@@ -471,12 +471,12 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Rust installation failed' }
           rustup default $env:RUST_VERSION
           if ($LASTEXITCODE -ne 0) { throw 'Rust selection failed' }
-      # Restored on pull requests, saved only on main (and the ci/speed proof branch).
+      # Restored on pull requests, saved only on main.
       - uses: Swatinem/rust-cache@2201cc584a476d1b508be977bbe4b7d1c7a52e9c # v2.9.3
         with:
           workspaces: experimental/app -> target
           key: ${{ hashFiles('**/Cargo.lock') }}
-          save-if: ${{ github.ref == 'refs/heads/main' || github.head_ref == 'ci/speed' }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Stage the signed web bundle
         shell: bash
         env:

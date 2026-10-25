@@ -109,11 +109,11 @@ jobs:
           persist-credentials: false
       - name: Install pinned Rust toolchain
         run: rustup toolchain install 1.99.1 --profile minimal --component clippy
-      # Restored on pull requests, saved only on main (and the ci/speed proof branch).
+      # Restored on pull requests, saved only on main.
       - uses: Swatinem/rust-cache@2201cc584a476d1b508be977bbe4b7d1c7a52e9c # v2.9.3
         with:
           key: ${{ hashFiles('Cargo.lock') }}
-          save-if: ${{ github.ref == 'refs/heads/main' || github.head_ref == 'ci/speed' }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       # The probe's Linux-only dev-dependency (GLib test) links the system GLib.
       - name: Install GLib development files
         if: runner.os == 'Linux'
@@ -146,11 +146,11 @@ jobs:
           cache-dependency-path: ui/package-lock.json
       - name: Install pinned Rust toolchain
         run: rustup toolchain install 1.99.1 --profile minimal --component rustfmt --component clippy
-      # Restored on pull requests, saved only on main (and the ci/speed proof branch).
+      # Restored on pull requests, saved only on main.
       - uses: Swatinem/rust-cache@2201cc584a476d1b508be977bbe4b7d1c7a52e9c # v2.9.3
         with:
           key: ${{ hashFiles('Cargo.lock') }}
-          save-if: ${{ github.ref == 'refs/heads/main' || github.head_ref == 'ci/speed' }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Frontend dependencies, tests and local-asset build
         shell: bash
         run: |
