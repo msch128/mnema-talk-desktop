@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-desktop-gaming-remove-game"
+description = "Enables the desktop_gaming_remove_game command without any pre-configured scope."
+commands.allow = ["desktop_gaming_remove_game"]
+
+[[permission]]
+identifier = "deny-desktop-gaming-remove-game"
+description = "Denies the desktop_gaming_remove_game command without any pre-configured scope."
+commands.deny = ["desktop_gaming_remove_game"]

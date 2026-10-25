@@ -3,6 +3,7 @@ pub mod foreground;
 #[cfg(windows)]
 pub mod foreground_windows;
 pub mod fullscreen;
+pub mod game_candidate;
 pub mod game_identify;
 pub mod game_library;
 pub mod game_library_scan;

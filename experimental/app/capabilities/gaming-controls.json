@@ -6,6 +6,9 @@
   ],
   "permissions": [
     "allow-desktop-gaming-control",
-    "allow-desktop-gaming-settings"
+    "allow-desktop-gaming-settings",
+    "allow-desktop-gaming-candidate",
+    "allow-desktop-gaming-add-game",
+    "allow-desktop-gaming-remove-game"
   ]
 }
