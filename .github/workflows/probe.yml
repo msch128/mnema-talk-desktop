@@ -8,6 +8,11 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: desktop-probe-${{ github.ref }}
+  # Superseded pull request runs are cancelled; push, tag and manual runs never are.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 env:
   CARGO_DENY_VERSION: 0.20.2
   GITLEAKS_VERSION: 8.30.1
@@ -15,6 +20,33 @@ env:
   GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
 
 jobs:
+  # Pull requests that touch only documentation skip the native builds below.
+  # Nothing here is a required status check, and the secret scan always runs.
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      native: ${{ steps.filter.outputs.native }}
+    steps:
+      - id: filter
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" != pull_request ]; then echo native=true >> "$GITHUB_OUTPUT"; exit 0; fi
+          files=$(gh api "repos/$REPO/pulls/$PR/files" --paginate --jq '.[].filename')
+          if printf '%s\n' "$files" | grep -qvE '(\.md$|^doc/|^docs/|^LICENSE)'; then
+            echo native=true >> "$GITHUB_OUTPUT"
+          else
+            echo native=false >> "$GITHUB_OUTPUT"
+          fi
+
   secret-scan:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -63,6 +95,8 @@ jobs:
   # The platform-neutral gaming logic (foreground tracking, game matching, input
   # state machines) runs on every system the clients ship for, not only Windows.
   gaming-logic:
+    needs: changes
+    if: needs.changes.outputs.native == 'true'
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 20
     strategy:
@@ -75,6 +109,11 @@ jobs:
           persist-credentials: false
       - name: Install pinned Rust toolchain
         run: rustup toolchain install 1.99.1 --profile minimal --component clippy
+      # Restored on pull requests, saved only on main (and the ci/speed proof branch).
+      - uses: Swatinem/rust-cache@2201cc584a476d1b508be977bbe4b7d1c7a52e9c # v2.9.3
+        with:
+          key: ${{ hashFiles('Cargo.lock') }}
+          save-if: ${{ github.ref == 'refs/heads/main' || github.head_ref == 'ci/speed' }}
       # The probe's Linux-only dev-dependency (GLib test) links the system GLib.
       - name: Install GLib development files
         if: runner.os == 'Linux'
@@ -86,6 +125,8 @@ jobs:
           cargo +1.99.1 clippy --locked --manifest-path Cargo.toml --lib --tests -- -D warnings
 
   desktop-probe:
+    needs: changes
+    if: needs.changes.outputs.native == 'true'
     runs-on: windows-latest
     timeout-minutes: 30
     steps:
@@ -101,8 +142,15 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '26'
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
       - name: Install pinned Rust toolchain
         run: rustup toolchain install 1.99.1 --profile minimal --component rustfmt --component clippy
+      # Restored on pull requests, saved only on main (and the ci/speed proof branch).
+      - uses: Swatinem/rust-cache@2201cc584a476d1b508be977bbe4b7d1c7a52e9c # v2.9.3
+        with:
+          key: ${{ hashFiles('Cargo.lock') }}
+          save-if: ${{ github.ref == 'refs/heads/main' || github.head_ref == 'ci/speed' }}
       - name: Frontend dependencies, tests and local-asset build
         shell: bash
         run: |

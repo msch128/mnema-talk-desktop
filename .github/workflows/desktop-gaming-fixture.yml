@@ -17,7 +17,7 @@ permissions:
 
 concurrency:
   group: windows-gaming-fixture-${{ github.event_name }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   windows-fixture:
@@ -51,6 +51,11 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Unable to select pinned Rust' }
           rustc --version
           if ($LASTEXITCODE -ne 0) { throw 'Unable to verify Rust' }
+      # Restored on pull requests, saved only on main (and the ci/speed proof branch).
+      - uses: Swatinem/rust-cache@2201cc584a476d1b508be977bbe4b7d1c7a52e9c # v2.9.3
+        with:
+          key: ${{ hashFiles('Cargo.lock') }}
+          save-if: ${{ github.ref == 'refs/heads/main' || github.head_ref == 'ci/speed' }}
       - name: Build the existing Mnema Vue UI and local fixture assets
         working-directory: ui
         shell: pwsh
