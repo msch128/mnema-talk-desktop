@@ -13,6 +13,7 @@ use openmls_traits::{
 };
 
 use p256::ecdsa::{signature::Signer as P256Signer, Signature, SigningKey};
+use p256::elliptic_curve::Generate;
 
 use rand_core::OsRng;
 use serde::{Deserialize, Serialize};
@@ -68,18 +69,19 @@ impl Signer for SignatureKeyPair {
     fn sign(&self, payload: &[u8]) -> Result<Vec<u8>, SignerError> {
         match self.signature_scheme {
             SignatureScheme::ECDSA_SECP256R1_SHA256 => {
-                let k = SigningKey::from_bytes(self.private.as_slice().into())
+                let k = SigningKey::from_slice(self.private.as_slice())
                     .map_err(|_| SignerError::SigningError)?;
                 let signature: Signature = k.sign(payload);
                 Ok(signature.to_der().to_bytes().into())
             }
             SignatureScheme::ECDSA_SECP384R1_SHA384 => {
-                let k = p384::ecdsa::SigningKey::from_bytes(self.private.as_slice().into())
+                let k = p384::ecdsa::SigningKey::from_slice(self.private.as_slice())
                     .map_err(|_| SignerError::SigningError)?;
                 let signature: p384::ecdsa::Signature = k.sign(payload);
                 Ok(signature.to_der().to_bytes().into())
             }
             SignatureScheme::ED25519 => {
+                use ed25519_dalek::Signer as _;
                 let k = ed25519_dalek::SigningKey::try_from(self.private.as_slice())
                     .map_err(|_| SignerError::SigningError)?;
                 let signature = k.sign(payload);
@@ -145,8 +147,8 @@ impl SignatureKeyPair {
     pub fn new(signature_scheme: SignatureScheme) -> Result<Self, CryptoError> {
         let (private, public) = match signature_scheme {
             SignatureScheme::ECDSA_SECP256R1_SHA256 => {
-                let k = SigningKey::random(&mut OsRng);
-                let pk = k.verifying_key().to_encoded_point(false).as_bytes().into();
+                let k = SigningKey::generate();
+                let pk = k.verifying_key().to_sec1_point(false).as_bytes().into();
                 #[allow(deprecated)]
                 let mut key_bytes = k.to_bytes();
                 let private: SecretVLBytes = key_bytes.as_slice().into();
@@ -154,8 +156,8 @@ impl SignatureKeyPair {
                 (private, pk)
             }
             SignatureScheme::ECDSA_SECP384R1_SHA384 => {
-                let k = p384::ecdsa::SigningKey::random(&mut OsRng);
-                let pk = k.verifying_key().to_encoded_point(false).as_bytes().into();
+                let k = p384::ecdsa::SigningKey::generate();
+                let pk = k.verifying_key().to_sec1_point(false).as_bytes().into();
                 (k.to_bytes().as_slice().into(), pk)
             }
             SignatureScheme::ED25519 => {
