@@ -226,13 +226,13 @@ fn actual_sqlcipher_encryption_hmac_wrong_key_locked_key_and_pin() {
     let version: String = f
         .core
         .connection
-        .pragma_query_value(None, "cipher_version", |r| r.get(0))
+        .query_row("PRAGMA cipher_version", [], |r| r.get(0))
         .unwrap();
     assert!(version.starts_with("4."));
     assert_eq!(
         f.core
             .connection
-            .pragma_query_value(None, "synchronous", |r| r.get::<_, i64>(0))
+            .query_row("PRAGMA synchronous", [], |r| r.get::<_, i64>(0))
             .unwrap(),
         3
     );

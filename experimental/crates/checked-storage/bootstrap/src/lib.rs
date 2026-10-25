@@ -530,14 +530,16 @@ fn open(path: &Path, secrets: &impl NativeSecrets) -> Result<Connection> {
         write!(&mut *raw, "{b:02x}").map_err(|_| Error::Invalid)?;
     }
     raw.push('\'');
-    conn.pragma_update(None, "key", raw.as_str())
+    // Raw SQL: rusqlite 0.41 no longer sends this pragma value as SQLCipher expects.
+    let key_sql = Zeroizing::new(format!("PRAGMA key = \"{}\"", raw.as_str()));
+    conn.execute_batch(key_sql.as_str())
         .map_err(|_| Error::Database)?;
     conn.query_row("SELECT COUNT(*) FROM sqlite_master", [], |r| {
         r.get::<_, i64>(0)
     })
     .map_err(|_| Error::Database)?;
     let version: String = conn
-        .pragma_query_value(None, "cipher_version", |r| r.get(0))
+        .query_row("PRAGMA cipher_version", [], |r| r.get(0))
         .map_err(|_| Error::Database)?;
     if !version.starts_with("4.") {
         return Err(Error::Database);
@@ -553,7 +555,7 @@ fn open(path: &Path, secrets: &impl NativeSecrets) -> Result<Connection> {
         ("cipher_plaintext_header_size", 0),
     ] {
         let value: rusqlite::types::Value = conn
-            .pragma_query_value(None, name, |r| r.get(0))
+            .query_row(&format!("PRAGMA {name}"), [], |r| r.get(0))
             .map_err(|_| Error::Database)?;
         let n = match value {
             rusqlite::types::Value::Integer(n) => n,
