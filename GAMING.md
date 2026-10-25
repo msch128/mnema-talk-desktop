@@ -89,14 +89,27 @@ only when its window title says so, and a Java program inside a launcher's game
 folder is that game. Crash handlers, uninstallers and redistributables inside a
 game folder are not the game.
 
-### The bundled list and Discord's list
+### The bundled list
 
-The list is our own work. Discord publishes a list of detectable games, but its
-Developer Policy forbids copying it, so nothing from it is used or derived: the
-file names were written by hand by the maintainers from their own knowledge of
-what games ship, and no third-party list, database or website was copied. The
-header of `src/game-list.json` states this. The list is smaller than a crowd
-sourced one (a few hundred titles) and has not been checked against installed
-copies; a missing or wrong name only means that game is found through its
-launcher library or a name you add instead. Contributions of verified names are
-welcome under the repository licence.
+`src/game-list.json` is maintained by hand. It holds about 600 well-known PC
+games from the last quarter century (shooters, battle royales, MOBAs, MMOs,
+survival, sports, racing, simulators, strategy and indie hits): a display name,
+one or more executable file names and, for some, a Steam app id kept for
+reference. It is deliberately not complete and has not been checked against
+installed copies. The launcher libraries (above) cover the rest: any game your
+Steam, Epic, GOG or EA app reports is found there without being in the list,
+and you can add a name yourself in the gaming settings. A missing or wrong name
+only means that game is found through its launcher or a name you add instead.
+A unit test keeps names, executables and ids unique and well formed. Corrections
+and verified names are welcome under the repository licence.
+
+### Sources
+
+The list is our own work, written from public knowledge of the executable names
+games ship. No third-party list, database, API response or website was copied,
+scraped or derived, and nothing from Discord's detectable-applications list
+(its Developer Policy forbids reuse) is used. An earlier catalog that came from
+such a list was deleted; the Git history still contains that old file (names and
+executable names only), and it is kept as is because rewriting public history
+would break signed release tags and forks. No file in the current tree carries
+data derived from it. The header of `src/game-list.json` states the provenance.
