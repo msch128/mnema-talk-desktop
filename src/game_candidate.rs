@@ -18,8 +18,10 @@ pub fn candidate(front: &Foreground, own_pid: u32) -> Option<String> {
         return None;
     }
     let name = front.basename();
-    (valid_executable(name) && !game_identify::is_shared_runtime(name) && !game_identify::is_helper(name))
-        .then(|| name.to_owned())
+    (valid_executable(name)
+        && !game_identify::is_shared_runtime(name)
+        && !game_identify::is_helper(name))
+    .then(|| name.to_owned())
 }
 
 /// The user's list with `name` added. A name already there (any case) is kept
@@ -78,11 +80,18 @@ mod tests {
     fn mnema_itself_unknown_programs_runtimes_and_helpers_are_not_offered() {
         assert_eq!(candidate(&front(1, r"C:\Mnema\mnema.exe"), 1), None);
         assert_eq!(candidate(&front(0, r"C:\x\a.exe"), 1), None);
-        assert_eq!(candidate(&front(7, ""), 1), None, "image refused by the system");
+        assert_eq!(
+            candidate(&front(7, ""), 1),
+            None,
+            "image refused by the system"
+        );
         assert_eq!(candidate(&front(7, r"C:\x\readme.txt"), 1), None);
         assert_eq!(candidate(&front(7, r"C:\Java\bin\javaw.exe"), 1), None);
         assert_eq!(candidate(&front(7, r"C:\g\crashpad_handler.exe"), 1), None);
-        assert_eq!(candidate(&front(7, r"C:\g\a b\..\x.exe"), 1).as_deref(), Some("x.exe"));
+        assert_eq!(
+            candidate(&front(7, r"C:\g\a b\..\x.exe"), 1).as_deref(),
+            Some("x.exe")
+        );
     }
 
     #[test]
@@ -90,8 +99,20 @@ mod tests {
         let list = vec!["Wow.exe".to_string()];
         let added = add_game(&list, "MyGame.exe").unwrap();
         assert_eq!(added, ["Wow.exe", "MyGame.exe"]);
-        assert_eq!(add_game(&added, "mygame.EXE").unwrap(), added, "no duplicate");
-        for bad in ["", "MyGame", "..\\a.exe", "a/b.exe", "javaw.exe", "JAVA.EXE", ".exe"] {
+        assert_eq!(
+            add_game(&added, "mygame.EXE").unwrap(),
+            added,
+            "no duplicate"
+        );
+        for bad in [
+            "",
+            "MyGame",
+            "..\\a.exe",
+            "a/b.exe",
+            "javaw.exe",
+            "JAVA.EXE",
+            ".exe",
+        ] {
             assert!(add_game(&list, bad).is_err(), "{bad}");
         }
     }
@@ -100,7 +121,11 @@ mod tests {
     fn the_list_is_bounded() {
         let full: Vec<String> = (0..MAX_GAMES).map(|i| format!("g{i}.exe")).collect();
         assert!(add_game(&full, "extra.exe").is_err());
-        assert_eq!(add_game(&full, "G1.exe").unwrap(), full, "a known name still succeeds");
+        assert_eq!(
+            add_game(&full, "G1.exe").unwrap(),
+            full,
+            "a known name still succeeds"
+        );
     }
 
     #[test]
