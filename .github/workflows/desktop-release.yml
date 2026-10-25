@@ -1,10 +1,17 @@
 name: Desktop release
 
 # Tag vX.Y.Z (a commit on main whose app version is X.Y.Z) builds, tests and
-# signs the Windows installer, the macOS app for Apple silicon (ad-hoc signed, not
-# notarized) and the Linux AppImages (x86_64, arm64; plus a .deb each, which the
-# package manager installs after the update was verified) and publishes them with
-# the updater feed (latest.json). Installed clients find it at
+# signs the Windows installer and publishes it with the updater feed
+# (latest.json).
+#
+# PAUSED: macOS and Linux. The owner paused both clients for capacity (1.2): only
+# Windows is built, signed and published. The macos-app, linux, linux-sign and
+# linux-failed jobs below are kept as they were, disabled with `if: false`, and
+# `publish` no longer needs them. To resume a platform: remove its `if: false`,
+# add the job back to the `needs` of `publish`, and restore its download step and
+# its arguments in the publish script (scripts/update-manifest.mjs and
+# scripts/verify-updater-signatures.mjs already accept every platform). Resuming
+# Linux also needs the Tauri GTK4 move, see doc/security-review-1.2.md. Installed clients find it at
 # https://github.com/msch128/mnema-talk-desktop/releases/latest/download/latest.json
 # and verify it against the public key pinned in tauri.conf.json.
 on:
@@ -149,6 +156,8 @@ jobs:
           retention-days: 1
 
   macos-app:
+    # Paused, see the header.
+    if: ${{ false }}
     needs: build
     runs-on: macos-15
     timeout-minutes: 40
@@ -258,6 +267,8 @@ jobs:
   # The Linux client (Electron, linux/): built and tested on x86_64 and arm64
   # runners without any secret, then signed for the updater below.
   linux:
+    # Paused, see the header.
+    if: ${{ false }}
     needs: verify-tag
     uses: ./.github/workflows/desktop-linux.yml
     with:
@@ -265,6 +276,8 @@ jobs:
       tag: ${{ github.ref_name }}
 
   linux-sign:
+    # Paused, see the header.
+    if: ${{ false }}
     needs: linux
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -324,7 +337,9 @@ jobs:
   # `publish` is then skipped and the release stays unpublished.
   linux-failed:
     needs: [linux, linux-sign]
-    if: ${{ always() && (needs.linux.result != 'success' || needs.linux-sign.result != 'success') }}
+    # Paused with the Linux jobs, see the header. When Linux resumes, restore:
+    # if: ${{ always() && (needs.linux.result != 'success' || needs.linux-sign.result != 'success') }}
+    if: ${{ false }}
     runs-on: ubuntu-latest
     steps:
       - name: Say what failed
@@ -336,7 +351,7 @@ jobs:
           exit 1
 
   publish:
-    needs: [build, installer, macos-app, linux-sign]
+    needs: [build, installer]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -353,14 +368,6 @@ jobs:
           path: release
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: mnema-desktop-macos
-          path: release
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: mnema-desktop-linux-signed
-          path: release
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
           name: mnema-desktop-windows-DEV-UNSIGNED-${{ needs.build.outputs.revision }}
           path: portable
       - name: Publish the release (draft until complete)
@@ -368,25 +375,15 @@ jobs:
           set -euo pipefail
           version="${TAG#v}"
           installer="$(ls release/*-setup.exe)"
-          macos="$(ls release/*.app.tar.gz)"
-          linux_x64="$(ls release/*_x86_64.AppImage)"
-          linux_arm64="$(ls release/*_arm64.AppImage)"
-          deb_x64="$(ls release/*.deb | grep -E '_(amd64|x86_64|x64)\.deb$')"
-          deb_arm64="$(ls release/*.deb | grep -E '_(arm64|aarch64)\.deb$')"
           node scripts/update-manifest.mjs --version "$version" --repo "$GITHUB_REPOSITORY" \
-            --installer "$installer" --sig "$installer.sig" --mac "$macos" --mac-sig "$macos.sig" \
-            --linux-x86_64 "$linux_x64" --linux-x86_64-sig "$linux_x64.sig" \
-            --linux-aarch64 "$linux_arm64" --linux-aarch64-sig "$linux_arm64.sig" \
-            --linux-x86_64-deb "$deb_x64" --linux-x86_64-deb-sig "$deb_x64.sig" \
-            --linux-aarch64-deb "$deb_arm64" --linux-aarch64-deb-sig "$deb_arm64.sig" --out release/latest.json
+            --installer "$installer" --sig "$installer.sig" --out release/latest.json
           # Every platform of the feed must verify against the key pinned in the app.
-          node scripts/verify-updater-signatures.mjs release/latest.json release windows-x86_64 darwin-aarch64 linux-x86_64 linux-aarch64 linux-x86_64-deb linux-aarch64-deb
+          node scripts/verify-updater-signatures.mjs release/latest.json release windows-x86_64
           (cd portable && zip -qr "../release/Mnema-Desktop-DEV-${TAG}-windows-x64-portable.zip" .)
-          (cd release && sha256sum -- *.exe *.zip *.dmg *.app.tar.gz *.AppImage *.deb > SHA256SUMS)
+          (cd release && sha256sum -- *.exe *.zip > SHA256SUMS)
           gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --draft \
             --title "Mnema Desktop $TAG" \
-            --notes "Windows installer, macOS app for Apple silicon (M1 or newer) and Linux AppImages (x86_64, arm64) with automatic updates, and a .deb for Debian and Ubuntu that updates itself through the package manager (asks for your password). Installed clients update themselves; the signature is checked against a key built into the app. The macOS app is not notarized: see the README for the first start. The portable ZIP is unsigned and does not update itself." \
-            release/*.exe release/*.exe.sig release/*.zip release/*.dmg release/*.app.tar.gz release/*.app.tar.gz.sig \
-            release/*.AppImage release/*.AppImage.sig release/*.deb release/*.deb.sig release/latest.json release/SHA256SUMS
+            --notes "Mnema Desktop for Windows (Beta, unsigned): the installer updates itself, the signature is checked against a key built into the app. The portable ZIP is unsigned and does not update itself. The macOS and Linux clients are paused for now." \
+            release/*.exe release/*.exe.sig release/*.zip release/latest.json release/SHA256SUMS
           # Clients look at latest/download/latest.json: published last.
           gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false --latest
