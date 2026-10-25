@@ -10,7 +10,8 @@
       "name": "Counter-Strike 2",
       "executables": [
         "cs2.exe"
-      ]
+      ],
+      "steam_app_id": 730
     },
     {
       "name": "Counter-Strike: Global Offensive",
@@ -22,19 +23,22 @@
       "name": "Team Fortress 2",
       "executables": [
         "tf_win64.exe"
-      ]
+      ],
+      "steam_app_id": 440
     },
     {
       "name": "Dota 2",
       "executables": [
         "dota2.exe"
-      ]
+      ],
+      "steam_app_id": 570
     },
     {
       "name": "Left 4 Dead 2",
       "executables": [
         "left4dead2.exe"
-      ]
+      ],
+      "steam_app_id": 550
     },
     {
       "name": "Left 4 Dead",
@@ -46,19 +50,22 @@
       "name": "Portal 2",
       "executables": [
         "portal2.exe"
-      ]
+      ],
+      "steam_app_id": 620
     },
     {
       "name": "Garry's Mod",
       "executables": [
         "gmod.exe"
-      ]
+      ],
+      "steam_app_id": 4000
     },
     {
       "name": "Half-Life 2",
       "executables": [
         "hl2.exe"
-      ]
+      ],
+      "steam_app_id": 220
     },
     {
       "name": "Half-Life: Alyx",
@@ -101,7 +108,8 @@
       "executables": [
         "r5apex.exe",
         "r5apex_dx12.exe"
-      ]
+      ],
+      "steam_app_id": 1172470
     },
     {
       "name": "Fortnite",
@@ -113,7 +121,8 @@
       "name": "PUBG: Battlegrounds",
       "executables": [
         "TslGame.exe"
-      ]
+      ],
+      "steam_app_id": 578080
     },
     {
       "name": "Overwatch 2",
@@ -188,7 +197,8 @@
       "name": "Rust",
       "executables": [
         "RustClient.exe"
-      ]
+      ],
+      "steam_app_id": 252490
     },
     {
       "name": "Escape from Tarkov",
@@ -284,7 +294,8 @@
       "name": "Warframe",
       "executables": [
         "Warframe.x64.exe"
-      ]
+      ],
+      "steam_app_id": 230410
     },
     {
       "name": "Back 4 Blood",
@@ -370,7 +381,8 @@
       "name": "Helldivers 2",
       "executables": [
         "helldivers2.exe"
-      ]
+      ],
+      "steam_app_id": 553850
     },
     {
       "name": "Warhammer 40,000: Darktide",
@@ -389,13 +401,15 @@
       "name": "Deep Rock Galactic",
       "executables": [
         "FSD-Win64-Shipping.exe"
-      ]
+      ],
+      "steam_app_id": 548430
     },
     {
       "name": "Lethal Company",
       "executables": [
         "Lethal Company.exe"
-      ]
+      ],
+      "steam_app_id": 1966720
     },
     {
       "name": "Phasmophobia",
@@ -407,7 +421,8 @@
       "name": "Among Us",
       "executables": [
         "Among Us.exe"
-      ]
+      ],
+      "steam_app_id": 945360
     },
     {
       "name": "Fall Guys",
@@ -419,7 +434,8 @@
       "name": "Rocket League",
       "executables": [
         "RocketLeague.exe"
-      ]
+      ],
+      "steam_app_id": 252950
     },
     {
       "name": "Brawlhalla",
@@ -431,7 +447,8 @@
       "name": "Valheim",
       "executables": [
         "valheim.exe"
-      ]
+      ],
+      "steam_app_id": 892970
     },
     {
       "name": "7 Days to Die",
@@ -456,19 +473,22 @@
       "executables": [
         "Palworld-Win64-Shipping.exe",
         "Palworld.exe"
-      ]
+      ],
+      "steam_app_id": 1623730
     },
     {
       "name": "Satisfactory",
       "executables": [
         "FactoryGame-Win64-Shipping.exe"
-      ]
+      ],
+      "steam_app_id": 526870
     },
     {
       "name": "Factorio",
       "executables": [
         "factorio.exe"
-      ]
+      ],
+      "steam_app_id": 427520
     },
     {
       "name": "Minecraft (Bedrock)",
@@ -480,13 +500,15 @@
       "name": "Terraria",
       "executables": [
         "Terraria.exe"
-      ]
+      ],
+      "steam_app_id": 105600
     },
     {
       "name": "Stardew Valley",
       "executables": [
         "Stardew Valley.exe"
-      ]
+      ],
+      "steam_app_id": 413150
     },
     {
       "name": "No Man's Sky",
@@ -498,7 +520,8 @@
       "name": "Elden Ring",
       "executables": [
         "eldenring.exe"
-      ]
+      ],
+      "steam_app_id": 1245620
     },
     {
       "name": "Elden Ring Nightreign",
@@ -541,26 +564,30 @@
       "executables": [
         "bg3.exe",
         "bg3_dx11.exe"
-      ]
+      ],
+      "steam_app_id": 1086940
     },
     {
       "name": "Cyberpunk 2077",
       "executables": [
         "Cyberpunk2077.exe"
-      ]
+      ],
+      "steam_app_id": 1091500
     },
     {
       "name": "The Witcher 3",
       "executables": [
         "witcher3.exe"
-      ]
+      ],
+      "steam_app_id": 292030
     },
     {
       "name": "Grand Theft Auto V",
       "executables": [
         "GTA5.exe",
         "GTA5_Enhanced.exe"
-      ]
+      ],
+      "steam_app_id": 271590
     },
     {
       "name": "FiveM",
@@ -578,7 +605,8 @@
       "name": "The Elder Scrolls V: Skyrim Special Edition",
       "executables": [
         "SkyrimSE.exe"
-      ]
+      ],
+      "steam_app_id": 489830
     },
     {
       "name": "The Elder Scrolls V: Skyrim",
@@ -984,7 +1012,8 @@
       "name": "Hades",
       "executables": [
         "Hades.exe"
-      ]
+      ],
+      "steam_app_id": 1145360
     },
     {
       "name": "Hades II",
@@ -996,7 +1025,8 @@
       "name": "Hollow Knight",
       "executables": [
         "hollow_knight.exe"
-      ]
+      ],
+      "steam_app_id": 367520
     },
     {
       "name": "Hollow Knight: Silksong",
@@ -1008,13 +1038,15 @@
       "name": "Celeste",
       "executables": [
         "Celeste.exe"
-      ]
+      ],
+      "steam_app_id": 504230
     },
     {
       "name": "Cuphead",
       "executables": [
         "Cuphead.exe"
-      ]
+      ],
+      "steam_app_id": 268910
     },
     {
       "name": "Vampire Survivors",
@@ -1056,25 +1088,29 @@
       "name": "RimWorld",
       "executables": [
         "RimWorldWin64.exe"
-      ]
+      ],
+      "steam_app_id": 294100
     },
     {
       "name": "Project Zomboid",
       "executables": [
         "ProjectZomboid64.exe"
-      ]
+      ],
+      "steam_app_id": 108600
     },
     {
       "name": "Kerbal Space Program",
       "executables": [
         "KSP_x64.exe"
-      ]
+      ],
+      "steam_app_id": 220200
     },
     {
       "name": "Subnautica",
       "executables": [
         "Subnautica.exe"
-      ]
+      ],
+      "steam_app_id": 264710
     },
     {
       "name": "Subnautica: Below Zero",
@@ -2045,6 +2081,1580 @@
       "name": "Age of Empires II (HD)",
       "executables": [
         "AoK HD.exe"
+      ]
+    },
+    {
+      "name": "Age of Empires: Definitive Edition",
+      "executables": [
+        "AoEDE_s.exe"
+      ]
+    },
+    {
+      "name": "Age of Empires II (2.0)",
+      "executables": [
+        "empires2.exe"
+      ]
+    },
+    {
+      "name": "Age of Empires III",
+      "executables": [
+        "age3.exe",
+        "age3x.exe",
+        "age3y.exe"
+      ]
+    },
+    {
+      "name": "Age of Mythology",
+      "executables": [
+        "aom.exe"
+      ]
+    },
+    {
+      "name": "Half-Life / Counter-Strike 1.6",
+      "executables": [
+        "hl.exe"
+      ]
+    },
+    {
+      "name": "Black Mesa",
+      "executables": [
+        "bms.exe"
+      ]
+    },
+    {
+      "name": "Insurgency",
+      "executables": [
+        "insurgency.exe"
+      ]
+    },
+    {
+      "name": "Killing Floor 2",
+      "executables": [
+        "KFGame.exe"
+      ]
+    },
+    {
+      "name": "Killing Floor",
+      "executables": [
+        "KillingFloor.exe"
+      ]
+    },
+    {
+      "name": "Natural Selection 2",
+      "executables": [
+        "ns2.exe"
+      ]
+    },
+    {
+      "name": "Unreal Tournament 2004",
+      "executables": [
+        "UT2004.exe"
+      ]
+    },
+    {
+      "name": "Unreal Tournament 3",
+      "executables": [
+        "UT3.exe"
+      ]
+    },
+    {
+      "name": "Quake III Arena",
+      "executables": [
+        "quake3.exe"
+      ]
+    },
+    {
+      "name": "Quake Live",
+      "executables": [
+        "quakelive_steam.exe"
+      ]
+    },
+    {
+      "name": "Quake 4",
+      "executables": [
+        "quake4.exe"
+      ]
+    },
+    {
+      "name": "DOOM 3",
+      "executables": [
+        "Doom3.exe"
+      ]
+    },
+    {
+      "name": "DOOM 3: BFG Edition",
+      "executables": [
+        "Doom3BFG.exe"
+      ]
+    },
+    {
+      "name": "Max Payne 2",
+      "executables": [
+        "MaxPayne2.exe"
+      ]
+    },
+    {
+      "name": "Max Payne 3",
+      "executables": [
+        "MaxPayne3.exe"
+      ]
+    },
+    {
+      "name": "Grand Theft Auto: San Andreas",
+      "executables": [
+        "gta_sa.exe"
+      ]
+    },
+    {
+      "name": "Grand Theft Auto: Vice City",
+      "executables": [
+        "gta-vc.exe"
+      ]
+    },
+    {
+      "name": "Grand Theft Auto III",
+      "executables": [
+        "gta3.exe"
+      ]
+    },
+    {
+      "name": "Grand Theft Auto IV",
+      "executables": [
+        "GTAIV.exe"
+      ]
+    },
+    {
+      "name": "San Andreas Multiplayer",
+      "executables": [
+        "samp.exe"
+      ]
+    },
+    {
+      "name": "Multi Theft Auto",
+      "executables": [
+        "Multi Theft Auto.exe"
+      ]
+    },
+    {
+      "name": "Need for Speed: Most Wanted (2005)",
+      "executables": [
+        "speed.exe"
+      ]
+    },
+    {
+      "name": "Need for Speed: Underground 2",
+      "executables": [
+        "speed2.exe"
+      ]
+    },
+    {
+      "name": "Need for Speed: Hot Pursuit (2010)",
+      "executables": [
+        "NFS11.exe"
+      ]
+    },
+    {
+      "name": "Need for Speed Payback",
+      "executables": [
+        "NeedForSpeedPayback.exe"
+      ]
+    },
+    {
+      "name": "Call of Duty 2",
+      "executables": [
+        "CoD2MP_s.exe",
+        "CoD2SP_s.exe"
+      ]
+    },
+    {
+      "name": "Call of Duty: World at War",
+      "executables": [
+        "CoDWaWmp.exe",
+        "CoDWaW.exe"
+      ]
+    },
+    {
+      "name": "Call of Duty: Modern Warfare 2 (2009)",
+      "executables": [
+        "iw4mp.exe",
+        "iw4sp.exe"
+      ]
+    },
+    {
+      "name": "Call of Duty: Black Ops",
+      "executables": [
+        "BlackOps.exe",
+        "BlackOpsMP.exe"
+      ]
+    },
+    {
+      "name": "Call of Duty: Ghosts",
+      "executables": [
+        "iw6mp64_ship.exe",
+        "iw6sp64_ship.exe"
+      ]
+    },
+    {
+      "name": "Call of Duty: Advanced Warfare",
+      "executables": [
+        "s1_mp64_ship.exe",
+        "s1_sp64_ship.exe"
+      ]
+    },
+    {
+      "name": "Call of Duty: Black Ops 4",
+      "executables": [
+        "BlackOps4.exe"
+      ]
+    },
+    {
+      "name": "Call of Duty: Infinite Warfare",
+      "executables": [
+        "iw7_ship.exe"
+      ]
+    },
+    {
+      "name": "Call of Duty: Modern Warfare III (2023)",
+      "executables": [
+        "cod23-cod.exe"
+      ]
+    },
+    {
+      "name": "Call of Duty: Black Ops 6",
+      "executables": [
+        "BlackOps6.exe"
+      ]
+    },
+    {
+      "name": "Battlefield 1942",
+      "executables": [
+        "BF1942.exe"
+      ]
+    },
+    {
+      "name": "Battlefield Vietnam",
+      "executables": [
+        "BfVietnam.exe"
+      ]
+    },
+    {
+      "name": "Battlefield 2",
+      "executables": [
+        "BF2.exe"
+      ]
+    },
+    {
+      "name": "Battlefield: Bad Company 2",
+      "executables": [
+        "BFBC2Game.exe"
+      ]
+    },
+    {
+      "name": "Battlefield Hardline",
+      "executables": [
+        "bfh.exe"
+      ]
+    },
+    {
+      "name": "Battlefield 6",
+      "executables": [
+        "BF6.exe"
+      ]
+    },
+    {
+      "name": "Star Wars Battlefront (2015)",
+      "executables": [
+        "starwarsbattlefront.exe"
+      ]
+    },
+    {
+      "name": "Star Wars Jedi: Fallen Order",
+      "executables": [
+        "SwGame-Win64-Shipping.exe"
+      ]
+    },
+    {
+      "name": "Star Wars: Knights of the Old Republic",
+      "executables": [
+        "swkotor.exe"
+      ]
+    },
+    {
+      "name": "Star Wars: Knights of the Old Republic II",
+      "executables": [
+        "swkotor2.exe"
+      ]
+    },
+    {
+      "name": "Star Wars: Squadrons",
+      "executables": [
+        "starwarssquadrons.exe"
+      ]
+    },
+    {
+      "name": "Delta Force",
+      "executables": [
+        "DeltaForceClient-Win64-Shipping.exe"
+      ]
+    },
+    {
+      "name": "Heroes of Newerth",
+      "executables": [
+        "hon_x64.exe"
+      ]
+    },
+    {
+      "name": "Dota Underlords",
+      "executables": [
+        "underlords.exe"
+      ]
+    },
+    {
+      "name": "RuneScape",
+      "executables": [
+        "rs2client.exe"
+      ]
+    },
+    {
+      "name": "RuneLite",
+      "executables": [
+        "RuneLite.exe"
+      ]
+    },
+    {
+      "name": "The Lord of the Rings Online",
+      "executables": [
+        "lotroclient64.exe",
+        "lotroclient.exe"
+      ]
+    },
+    {
+      "name": "Neverwinter",
+      "executables": [
+        "Neverwinter.exe"
+      ]
+    },
+    {
+      "name": "Lineage II",
+      "executables": [
+        "l2.exe"
+      ]
+    },
+    {
+      "name": "TERA",
+      "executables": [
+        "TERA.exe"
+      ]
+    },
+    {
+      "name": "Dungeons & Dragons Online",
+      "executables": [
+        "dndclient64.exe"
+      ]
+    },
+    {
+      "name": "RIFT",
+      "executables": [
+        "rift_x64.exe"
+      ]
+    },
+    {
+      "name": "Guild Wars",
+      "executables": [
+        "Gw.exe"
+      ]
+    },
+    {
+      "name": "Silkroad Online",
+      "executables": [
+        "sro_client.exe"
+      ]
+    },
+    {
+      "name": "Anthem",
+      "executables": [
+        "Anthem.exe"
+      ]
+    },
+    {
+      "name": "The Long Dark",
+      "executables": [
+        "tld.exe"
+      ]
+    },
+    {
+      "name": "Green Hell",
+      "executables": [
+        "GH.exe"
+      ]
+    },
+    {
+      "name": "Stranded Deep",
+      "executables": [
+        "Stranded_Deep.exe"
+      ]
+    },
+    {
+      "name": "Astroneer",
+      "executables": [
+        "Astro-Win64-Shipping.exe"
+      ]
+    },
+    {
+      "name": "Abiotic Factor",
+      "executables": [
+        "AbioticFactor-Win64-Shipping.exe"
+      ]
+    },
+    {
+      "name": "The Planet Crafter",
+      "executables": [
+        "Planet Crafter.exe"
+      ]
+    },
+    {
+      "name": "Minecraft Dungeons",
+      "executables": [
+        "Dungeons.exe"
+      ]
+    },
+    {
+      "name": "Madden NFL 24",
+      "executables": [
+        "Madden24.exe"
+      ]
+    },
+    {
+      "name": "Madden NFL 25",
+      "executables": [
+        "Madden25.exe"
+      ]
+    },
+    {
+      "name": "NHL 24",
+      "executables": [
+        "NHL24.exe"
+      ]
+    },
+    {
+      "name": "NHL 25",
+      "executables": [
+        "NHL25.exe"
+      ]
+    },
+    {
+      "name": "FIFA 22",
+      "executables": [
+        "FIFA22.exe"
+      ]
+    },
+    {
+      "name": "FIFA 21",
+      "executables": [
+        "FIFA21.exe"
+      ]
+    },
+    {
+      "name": "FIFA 19",
+      "executables": [
+        "FIFA19.exe"
+      ]
+    },
+    {
+      "name": "EA SPORTS FC 26",
+      "executables": [
+        "FC26.exe"
+      ]
+    },
+    {
+      "name": "eFootball",
+      "executables": [
+        "eFootball.exe"
+      ]
+    },
+    {
+      "name": "Pro Evolution Soccer 2021",
+      "executables": [
+        "PES2021.exe"
+      ]
+    },
+    {
+      "name": "Football Manager",
+      "executables": [
+        "fm.exe"
+      ]
+    },
+    {
+      "name": "NBA 2K23",
+      "executables": [
+        "NBA2K23.exe"
+      ]
+    },
+    {
+      "name": "NBA 2K22",
+      "executables": [
+        "NBA2K22.exe"
+      ]
+    },
+    {
+      "name": "WWE 2K24",
+      "executables": [
+        "WWE2K24.exe"
+      ]
+    },
+    {
+      "name": "EA SPORTS UFC 4",
+      "executables": [
+        "UFC4.exe"
+      ]
+    },
+    {
+      "name": "Golf With Your Friends",
+      "executables": [
+        "Golf With Your Friends.exe"
+      ]
+    },
+    {
+      "name": "Riders Republic",
+      "executables": [
+        "RidersRepublic.exe"
+      ]
+    },
+    {
+      "name": "Forza Horizon 3",
+      "executables": [
+        "ForzaHorizon3.exe"
+      ]
+    },
+    {
+      "name": "F1 25",
+      "executables": [
+        "F1_25.exe"
+      ]
+    },
+    {
+      "name": "F1 22",
+      "executables": [
+        "F1_22.exe"
+      ]
+    },
+    {
+      "name": "F1 2021",
+      "executables": [
+        "F1_2021.exe"
+      ]
+    },
+    {
+      "name": "DiRT Rally",
+      "executables": [
+        "dirtrally.exe"
+      ]
+    },
+    {
+      "name": "DiRT 4",
+      "executables": [
+        "dirt4.exe"
+      ]
+    },
+    {
+      "name": "EA SPORTS WRC",
+      "executables": [
+        "WRC.exe"
+      ]
+    },
+    {
+      "name": "Project CARS 2",
+      "executables": [
+        "pCARS2.exe"
+      ]
+    },
+    {
+      "name": "The Crew 2",
+      "executables": [
+        "TheCrew2.exe"
+      ]
+    },
+    {
+      "name": "Burnout Paradise",
+      "executables": [
+        "BurnoutParadise.exe"
+      ]
+    },
+    {
+      "name": "rFactor 2",
+      "executables": [
+        "rFactor2.exe"
+      ]
+    },
+    {
+      "name": "RaceRoom Racing Experience",
+      "executables": [
+        "RRRE64.exe"
+      ]
+    },
+    {
+      "name": "art of rally",
+      "executables": [
+        "artofrally.exe"
+      ]
+    },
+    {
+      "name": "GRID Legends",
+      "executables": [
+        "GRIDLegends.exe"
+      ]
+    },
+    {
+      "name": "SnowRunner",
+      "executables": [
+        "SnowRunner.exe"
+      ]
+    },
+    {
+      "name": "MudRunner",
+      "executables": [
+        "MudRunner.exe"
+      ]
+    },
+    {
+      "name": "Richard Burns Rally",
+      "executables": [
+        "RBR.exe"
+      ]
+    },
+    {
+      "name": "TrackMania Nations Forever",
+      "executables": [
+        "TmForever.exe"
+      ]
+    },
+    {
+      "name": "Microsoft Flight Simulator X",
+      "executables": [
+        "fsx.exe"
+      ]
+    },
+    {
+      "name": "Prepar3D",
+      "executables": [
+        "Prepar3D.exe"
+      ]
+    },
+    {
+      "name": "Train Simulator",
+      "executables": [
+        "RailWorks64.exe",
+        "RailWorks.exe"
+      ]
+    },
+    {
+      "name": "House Flipper",
+      "executables": [
+        "HouseFlipper.exe"
+      ]
+    },
+    {
+      "name": "Car Mechanic Simulator 2021",
+      "executables": [
+        "Car Mechanic Simulator 2021.exe"
+      ]
+    },
+    {
+      "name": "Stormworks: Build and Rescue",
+      "executables": [
+        "stormworks64.exe"
+      ]
+    },
+    {
+      "name": "Jurassic World Evolution 2",
+      "executables": [
+        "JurassicWorldEvolution2.exe"
+      ]
+    },
+    {
+      "name": "Two Point Hospital",
+      "executables": [
+        "TwoPointHospital.exe"
+      ]
+    },
+    {
+      "name": "Two Point Campus",
+      "executables": [
+        "TwoPointCampus.exe"
+      ]
+    },
+    {
+      "name": "SimCity 4",
+      "executables": [
+        "SimCity 4.exe"
+      ]
+    },
+    {
+      "name": "The Sims 3",
+      "executables": [
+        "TS3W.exe"
+      ]
+    },
+    {
+      "name": "War Thunder",
+      "executables": [
+        "aces.exe"
+      ]
+    },
+    {
+      "name": "World of Tanks",
+      "executables": [
+        "WorldOfTanks.exe"
+      ]
+    },
+    {
+      "name": "World of Warships",
+      "executables": [
+        "WorldOfWarships64.exe",
+        "WorldOfWarships.exe"
+      ]
+    },
+    {
+      "name": "Arma 2: Operation Arrowhead",
+      "executables": [
+        "arma2oa.exe"
+      ]
+    },
+    {
+      "name": "Civilization IV",
+      "executables": [
+        "Civ4BeyondSword.exe",
+        "Civ4Warlords.exe"
+      ]
+    },
+    {
+      "name": "Civilization III",
+      "executables": [
+        "Civ3Conquests.exe"
+      ]
+    },
+    {
+      "name": "Total War: ROME II",
+      "executables": [
+        "Rome2.exe"
+      ]
+    },
+    {
+      "name": "Total War: ATTILA",
+      "executables": [
+        "Attila.exe"
+      ]
+    },
+    {
+      "name": "Total War: MEDIEVAL II",
+      "executables": [
+        "medieval2.exe"
+      ]
+    },
+    {
+      "name": "Total War: SHOGUN 2",
+      "executables": [
+        "Shogun2.exe"
+      ]
+    },
+    {
+      "name": "Command & Conquer: Red Alert 2",
+      "executables": [
+        "ra2.exe"
+      ]
+    },
+    {
+      "name": "Command & Conquer: Generals",
+      "executables": [
+        "generals.exe"
+      ]
+    },
+    {
+      "name": "Command & Conquer 3: Tiberium Wars",
+      "executables": [
+        "CNC3.exe"
+      ]
+    },
+    {
+      "name": "Warhammer 40,000: Dawn of War",
+      "executables": [
+        "W40k.exe",
+        "W40kWA.exe"
+      ]
+    },
+    {
+      "name": "Warhammer 40,000: Dawn of War II",
+      "executables": [
+        "DOW2.exe"
+      ]
+    },
+    {
+      "name": "Supreme Commander",
+      "executables": [
+        "SupremeCommander.exe"
+      ]
+    },
+    {
+      "name": "Battle Brothers",
+      "executables": [
+        "BattleBrothers.exe"
+      ]
+    },
+    {
+      "name": "Northgard",
+      "executables": [
+        "Northgard.exe"
+      ]
+    },
+    {
+      "name": "They Are Billions",
+      "executables": [
+        "TheyAreBillions.exe"
+      ]
+    },
+    {
+      "name": "Imperator: Rome",
+      "executables": [
+        "imperator.exe"
+      ]
+    },
+    {
+      "name": "Crusader Kings II",
+      "executables": [
+        "CK2game.exe"
+      ]
+    },
+    {
+      "name": "Victoria II",
+      "executables": [
+        "v2game.exe"
+      ]
+    },
+    {
+      "name": "Humankind",
+      "executables": [
+        "Humankind.exe"
+      ]
+    },
+    {
+      "name": "Old World",
+      "executables": [
+        "OldWorld.exe"
+      ]
+    },
+    {
+      "name": "The Battle for Wesnoth",
+      "executables": [
+        "wesnoth.exe"
+      ]
+    },
+    {
+      "name": "OpenTTD",
+      "executables": [
+        "openttd.exe"
+      ]
+    },
+    {
+      "name": "Against the Storm",
+      "executables": [
+        "Against the Storm.exe"
+      ]
+    },
+    {
+      "name": "Dwarf Fortress",
+      "executables": [
+        "Dwarf Fortress.exe"
+      ]
+    },
+    {
+      "name": "Timberborn",
+      "executables": [
+        "Timberborn.exe"
+      ]
+    },
+    {
+      "name": "Surviving Mars",
+      "executables": [
+        "MarsSteam.exe"
+      ]
+    },
+    {
+      "name": "Banished",
+      "executables": [
+        "Banished.exe"
+      ]
+    },
+    {
+      "name": "Bloons TD 6",
+      "executables": [
+        "BloonsTD6.exe"
+      ]
+    },
+    {
+      "name": "The Witcher 2",
+      "executables": [
+        "witcher2.exe"
+      ]
+    },
+    {
+      "name": "Mass Effect: Andromeda",
+      "executables": [
+        "MassEffectAndromeda.exe"
+      ]
+    },
+    {
+      "name": "Dragon Age: Origins",
+      "executables": [
+        "DAOrigins.exe"
+      ]
+    },
+    {
+      "name": "Dragon Age II",
+      "executables": [
+        "DragonAge2.exe"
+      ]
+    },
+    {
+      "name": "Deus Ex: Human Revolution",
+      "executables": [
+        "DXHRDC.exe"
+      ]
+    },
+    {
+      "name": "Deus Ex: Mankind Divided",
+      "executables": [
+        "DXMD.exe"
+      ]
+    },
+    {
+      "name": "BioShock Infinite",
+      "executables": [
+        "BioShockInfinite.exe"
+      ]
+    },
+    {
+      "name": "BioShock Remastered",
+      "executables": [
+        "BioshockHD.exe"
+      ]
+    },
+    {
+      "name": "BioShock 2",
+      "executables": [
+        "Bioshock2.exe"
+      ]
+    },
+    {
+      "name": "Borderlands 2",
+      "executables": [
+        "Borderlands2.exe"
+      ]
+    },
+    {
+      "name": "Borderlands 3",
+      "executables": [
+        "Borderlands3.exe"
+      ]
+    },
+    {
+      "name": "Tiny Tina's Wonderlands",
+      "executables": [
+        "Wonderlands.exe"
+      ]
+    },
+    {
+      "name": "The Outer Worlds",
+      "executables": [
+        "TheOuterWorlds-Win64-Shipping.exe"
+      ]
+    },
+    {
+      "name": "Pathfinder: Wrath of the Righteous",
+      "executables": [
+        "Wrath.exe"
+      ]
+    },
+    {
+      "name": "Pathfinder: Kingmaker",
+      "executables": [
+        "Kingmaker.exe"
+      ]
+    },
+    {
+      "name": "The Elder Scrolls IV: Oblivion",
+      "executables": [
+        "Oblivion.exe"
+      ]
+    },
+    {
+      "name": "NieR:Automata",
+      "executables": [
+        "NieRAutomata.exe"
+      ]
+    },
+    {
+      "name": "Yakuza 0",
+      "executables": [
+        "Yakuza0.exe"
+      ]
+    },
+    {
+      "name": "Yakuza: Like a Dragon",
+      "executables": [
+        "YakuzaLikeADragon.exe"
+      ]
+    },
+    {
+      "name": "Ghost of Tsushima",
+      "executables": [
+        "GhostOfTsushima.exe"
+      ]
+    },
+    {
+      "name": "Death Stranding",
+      "executables": [
+        "ds.exe"
+      ]
+    },
+    {
+      "name": "Horizon Forbidden West",
+      "executables": [
+        "HorizonForbiddenWest.exe"
+      ]
+    },
+    {
+      "name": "Returnal",
+      "executables": [
+        "Returnal.exe"
+      ]
+    },
+    {
+      "name": "Uncharted: Legacy of Thieves Collection",
+      "executables": [
+        "u4.exe",
+        "tll.exe"
+      ]
+    },
+    {
+      "name": "Tomb Raider (2013)",
+      "executables": [
+        "TombRaider.exe"
+      ]
+    },
+    {
+      "name": "Rise of the Tomb Raider",
+      "executables": [
+        "ROTTR.exe"
+      ]
+    },
+    {
+      "name": "Metal Gear Solid V: The Phantom Pain",
+      "executables": [
+        "mgsvtpp.exe"
+      ]
+    },
+    {
+      "name": "Resident Evil 7",
+      "executables": [
+        "re7.exe"
+      ]
+    },
+    {
+      "name": "Silent Hill 2",
+      "executables": [
+        "SHProto-Win64-Shipping.exe"
+      ]
+    },
+    {
+      "name": "HITMAN 2",
+      "executables": [
+        "HITMAN2.exe"
+      ]
+    },
+    {
+      "name": "HITMAN (2016)",
+      "executables": [
+        "HITMAN.exe"
+      ]
+    },
+    {
+      "name": "Prey (2017)",
+      "executables": [
+        "Prey.exe"
+      ]
+    },
+    {
+      "name": "Dishonored 2",
+      "executables": [
+        "Dishonored2.exe"
+      ]
+    },
+    {
+      "name": "Dishonored",
+      "executables": [
+        "Dishonored.exe"
+      ]
+    },
+    {
+      "name": "Indiana Jones and the Great Circle",
+      "executables": [
+        "TheGreatCircle.exe"
+      ]
+    },
+    {
+      "name": "Mafia III",
+      "executables": [
+        "mafia3.exe"
+      ]
+    },
+    {
+      "name": "Saints Row IV",
+      "executables": [
+        "SaintsRowIV.exe"
+      ]
+    },
+    {
+      "name": "Saints Row (2022)",
+      "executables": [
+        "SaintsRow.exe"
+      ]
+    },
+    {
+      "name": "Just Cause 3",
+      "executables": [
+        "JustCause3.exe"
+      ]
+    },
+    {
+      "name": "Just Cause 4",
+      "executables": [
+        "JustCause4.exe"
+      ]
+    },
+    {
+      "name": "Batman: Arkham Knight",
+      "executables": [
+        "BatmanAK.exe"
+      ]
+    },
+    {
+      "name": "Batman: Arkham City",
+      "executables": [
+        "BatmanAC.exe"
+      ]
+    },
+    {
+      "name": "Batman: Arkham Asylum",
+      "executables": [
+        "ShippingPC-BmGame.exe"
+      ]
+    },
+    {
+      "name": "Mortal Kombat 11",
+      "executables": [
+        "MK11.exe"
+      ]
+    },
+    {
+      "name": "TEKKEN 7",
+      "executables": [
+        "TekkenGame-Win64-Shipping.exe"
+      ]
+    },
+    {
+      "name": "Dragon Ball FighterZ",
+      "executables": [
+        "RED-Win64-Shipping.exe"
+      ]
+    },
+    {
+      "name": "Guilty Gear -Strive-",
+      "executables": [
+        "GGST-Win64-Shipping.exe"
+      ]
+    },
+    {
+      "name": "Street Fighter V",
+      "executables": [
+        "StreetFighterV.exe"
+      ]
+    },
+    {
+      "name": "SOULCALIBUR VI",
+      "executables": [
+        "SoulcaliburVI.exe"
+      ]
+    },
+    {
+      "name": "Undertale",
+      "executables": [
+        "UNDERTALE.exe"
+      ]
+    },
+    {
+      "name": "Deltarune",
+      "executables": [
+        "DELTARUNE.exe"
+      ]
+    },
+    {
+      "name": "Shovel Knight",
+      "executables": [
+        "ShovelKnight.exe"
+      ]
+    },
+    {
+      "name": "Return of the Obra Dinn",
+      "executables": [
+        "ObraDinn.exe"
+      ]
+    },
+    {
+      "name": "Papers, Please",
+      "executables": [
+        "PapersPlease.exe"
+      ]
+    },
+    {
+      "name": "Stray",
+      "executables": [
+        "Stray-Win64-Shipping.exe"
+      ]
+    },
+    {
+      "name": "LIMBO",
+      "executables": [
+        "limbo.exe"
+      ]
+    },
+    {
+      "name": "Firewatch",
+      "executables": [
+        "Firewatch.exe"
+      ]
+    },
+    {
+      "name": "Super Meat Boy",
+      "executables": [
+        "SuperMeatBoy.exe"
+      ]
+    },
+    {
+      "name": "Spelunky",
+      "executables": [
+        "Spelunky.exe"
+      ]
+    },
+    {
+      "name": "Enter the Gungeon",
+      "executables": [
+        "EtG.exe"
+      ]
+    },
+    {
+      "name": "Katana ZERO",
+      "executables": [
+        "Katana ZERO.exe"
+      ]
+    },
+    {
+      "name": "Ori and the Blind Forest",
+      "executables": [
+        "Ori.exe"
+      ]
+    },
+    {
+      "name": "GRIS",
+      "executables": [
+        "GRIS.exe"
+      ]
+    },
+    {
+      "name": "A Hat in Time",
+      "executables": [
+        "HatinTimeGame.exe"
+      ]
+    },
+    {
+      "name": "Goose Goose Duck",
+      "executables": [
+        "Goose Goose Duck.exe"
+      ]
+    },
+    {
+      "name": "Brotato",
+      "executables": [
+        "Brotato.exe"
+      ]
+    },
+    {
+      "name": "Animal Well",
+      "executables": [
+        "Animal Well.exe"
+      ]
+    },
+    {
+      "name": "Buckshot Roulette",
+      "executables": [
+        "Buckshot Roulette.exe"
+      ]
+    },
+    {
+      "name": "PICO PARK",
+      "executables": [
+        "PICO PARK.exe"
+      ]
+    },
+    {
+      "name": "Human: Fall Flat",
+      "executables": [
+        "Human.exe"
+      ]
+    },
+    {
+      "name": "Overcooked!",
+      "executables": [
+        "Overcooked.exe"
+      ]
+    },
+    {
+      "name": "A Way Out",
+      "executables": [
+        "AWayOut.exe"
+      ]
+    },
+    {
+      "name": "Split Fiction",
+      "executables": [
+        "SplitFiction.exe"
+      ]
+    },
+    {
+      "name": "Keep Talking and Nobody Explodes",
+      "executables": [
+        "ktane.exe"
+      ]
+    },
+    {
+      "name": "Golf It!",
+      "executables": [
+        "Golf It.exe"
+      ]
+    },
+    {
+      "name": "Tabletop Simulator",
+      "executables": [
+        "Tabletop Simulator.exe"
+      ]
+    },
+    {
+      "name": "Besiege",
+      "executables": [
+        "Besiege.exe"
+      ]
+    },
+    {
+      "name": "Scrap Mechanic",
+      "executables": [
+        "ScrapMechanic.exe"
+      ]
+    },
+    {
+      "name": "Trailmakers",
+      "executables": [
+        "Trailmakers.exe"
+      ]
+    },
+    {
+      "name": "Geometry Dash",
+      "executables": [
+        "GeometryDash.exe"
+      ]
+    },
+    {
+      "name": "osu!",
+      "executables": [
+        "osu!.exe"
+      ]
+    },
+    {
+      "name": "Clone Hero",
+      "executables": [
+        "Clone Hero.exe"
+      ]
+    },
+    {
+      "name": "Five Nights at Freddy's",
+      "executables": [
+        "FiveNightsatFreddys.exe"
+      ]
+    },
+    {
+      "name": "Honkai Impact 3rd",
+      "executables": [
+        "BH3.exe"
+      ]
+    },
+    {
+      "name": "Final Fantasy XV",
+      "executables": [
+        "ffxv_s.exe"
+      ]
+    },
+    {
+      "name": "Final Fantasy VII",
+      "executables": [
+        "ff7_en.exe"
+      ]
+    },
+    {
+      "name": "Final Fantasy VIII Remastered",
+      "executables": [
+        "FFVIII_EN.exe"
+      ]
+    },
+    {
+      "name": "Tales of Arise",
+      "executables": [
+        "Tales of ARISE.exe"
+      ]
+    },
+    {
+      "name": "Persona 4 Golden",
+      "executables": [
+        "P4G.exe"
+      ]
+    },
+    {
+      "name": "Devil May Cry 5",
+      "executables": [
+        "DevilMayCry5.exe"
+      ]
+    },
+    {
+      "name": "Sonic Mania",
+      "executables": [
+        "SonicMania.exe"
+      ]
+    },
+    {
+      "name": "Ratchet & Clank: Rift Apart",
+      "executables": [
+        "RiftApart.exe"
+      ]
+    },
+    {
+      "name": "Code Vein",
+      "executables": [
+        "CodeVein-Win64-Shipping.exe"
+      ]
+    },
+    {
+      "name": "Remnant: From the Ashes",
+      "executables": [
+        "Remnant-Win64-Shipping.exe"
+      ]
+    },
+    {
+      "name": "Hellblade: Senua's Sacrifice",
+      "executables": [
+        "HellbladeGame-Win64-Shipping.exe"
+      ]
+    },
+    {
+      "name": "Days Gone",
+      "executables": [
+        "BendGame-Win64-Shipping.exe"
+      ]
+    },
+    {
+      "name": "Ghostrunner",
+      "executables": [
+        "Ghostrunner-Win64-Shipping.exe"
+      ]
+    },
+    {
+      "name": "Chivalry 2",
+      "executables": [
+        "Chivalry2-Win64-Shipping.exe"
+      ]
+    },
+    {
+      "name": "Kenshi",
+      "executables": [
+        "kenshi_x64.exe"
+      ]
+    },
+    {
+      "name": "Sniper Elite 5",
+      "executables": [
+        "SniperElite5.exe"
+      ]
+    },
+    {
+      "name": "Sniper Elite 4",
+      "executables": [
+        "SniperElite4.exe"
+      ]
+    },
+    {
+      "name": "Foxhole",
+      "executables": [
+        "War-Win64-Shipping.exe"
+      ]
+    },
+    {
+      "name": "Pavlov VR",
+      "executables": [
+        "Pavlov-Win64-Shipping.exe"
+      ]
+    },
+    {
+      "name": "Blade & Sorcery",
+      "executables": [
+        "BladeAndSorcery.exe"
+      ]
+    },
+    {
+      "name": "Skyrim VR",
+      "executables": [
+        "SkyrimVR.exe"
+      ]
+    },
+    {
+      "name": "Fallout 4 VR",
+      "executables": [
+        "Fallout4VR.exe"
+      ]
+    },
+    {
+      "name": "Clair Obscur: Expedition 33",
+      "executables": [
+        "SandFall-Win64-Shipping.exe"
+      ]
+    },
+    {
+      "name": "Avowed",
+      "executables": [
+        "Avowed-Win64-Shipping.exe"
+      ]
+    },
+    {
+      "name": "DOOM: The Dark Ages",
+      "executables": [
+        "DOOMTheDarkAges.exe"
+      ]
+    },
+    {
+      "name": "ARC Raiders",
+      "executables": [
+        "PioneerGame.exe"
+      ]
+    },
+    {
+      "name": "Hi-Fi RUSH",
+      "executables": [
+        "Hi-Fi-RUSH.exe"
       ]
     }
   ]
