@@ -3,7 +3,10 @@
 //! by file name only, never by path or window title, and never leave the device.
 
 use serde::Deserialize;
-use std::{collections::HashMap, sync::OnceLock};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::OnceLock,
+};
 
 #[derive(Deserialize)]
 struct File {
@@ -15,6 +18,9 @@ struct File {
 struct Entry {
     name: String,
     executables: Vec<String>,
+    /// Optional Steam app id, for reference; matching never uses it.
+    #[serde(default)]
+    steam_app_id: Option<u32>,
 }
 
 /// A usable executable file name: bounded, no path parts, `.exe`.
@@ -45,9 +51,19 @@ impl GameList {
             return Err(format!("unsupported list schema {}", file.schema));
         }
         let mut by_executable = HashMap::new();
+        let mut names = HashSet::new();
+        let mut steam_ids = HashSet::new();
         for game in &file.games {
             if game.name.trim().is_empty() || game.executables.is_empty() {
                 return Err(format!("incomplete entry {:?}", game.name));
+            }
+            if game.name != game.name.trim() || !names.insert(game.name.to_lowercase()) {
+                return Err(format!("duplicate or untrimmed name {:?}", game.name));
+            }
+            if let Some(id) = game.steam_app_id
+                && (id == 0 || !steam_ids.insert(id))
+            {
+                return Err(format!("invalid or duplicate Steam app id {id}"));
             }
             for exe in &game.executables {
                 if !valid_executable(exe) {
@@ -92,7 +108,7 @@ mod tests {
     #[test]
     fn bundled_list_is_valid_and_carries_its_provenance_header() {
         let list = GameList::bundled();
-        assert!(list.games() >= 300, "{}", list.games());
+        assert!(list.games() >= 500, "{}", list.games());
         let raw: serde_json::Value = serde_json::from_str(include_str!("game-list.json")).unwrap();
         for key in ["provenance", "licence", "verification", "rules"] {
             assert!(raw[key].as_str().is_some_and(|s| s.len() > 20), "{key}");
@@ -117,6 +133,11 @@ mod tests {
             ("cod.exe", "Call of Duty"),
             ("Wow.exe", "World of Warcraft"),
             ("GenshinImpact.exe", "Genshin Impact"),
+            ("cod23-cod.exe", "Call of Duty: Modern Warfare III (2023)"),
+            ("BlackOps6.exe", "Call of Duty: Black Ops 6"),
+            ("AoEDE_s.exe", "Age of Empires: Definitive Edition"),
+            ("BF6.exe", "Battlefield 6"),
+            ("SandFall-Win64-Shipping.exe", "Clair Obscur: Expedition 33"),
         ] {
             assert_eq!(list.find(exe), Some(game), "{exe}");
         }
@@ -175,6 +196,36 @@ mod tests {
     }
 
     #[test]
+    fn names_executables_and_launcher_ids_are_unique_and_well_formed() {
+        let raw: serde_json::Value = serde_json::from_str(include_str!("game-list.json")).unwrap();
+        let (mut names, mut exes, mut ids) = (HashSet::new(), HashSet::new(), HashSet::new());
+        for game in raw["games"].as_array().unwrap() {
+            let name = game["name"].as_str().unwrap();
+            assert!(name == name.trim() && name.len() >= 2, "{name:?}");
+            assert!(names.insert(name.to_lowercase()), "duplicate name {name}");
+            let list = game["executables"].as_array().unwrap();
+            assert!(!list.is_empty() && list.len() <= 8, "{name}");
+            for exe in list {
+                let exe = exe.as_str().unwrap();
+                assert!(valid_executable(exe), "{exe}");
+                assert!(exes.insert(exe.to_ascii_lowercase()), "duplicate {exe}");
+            }
+            if let Some(id) = game.get("steam_app_id") {
+                let id = id.as_u64().unwrap();
+                assert!(id > 0 && ids.insert(id), "{name}: Steam app id {id}");
+            }
+            // Only the documented keys; a stray "source" or "url" would hint at a copied list.
+            for key in game.as_object().unwrap().keys() {
+                assert!(
+                    ["name", "executables", "steam_app_id"].contains(&key.as_str()),
+                    "{name}: {key}"
+                );
+            }
+        }
+        assert_eq!(names.len(), GameList::bundled().games());
+    }
+
+    #[test]
     fn parser_rejects_bad_schema_names_duplicates_and_incomplete_entries() {
         let ok = r#"{"schema":2,"games":[{"name":"A","executables":["a.exe"]}]}"#;
         assert_eq!(GameList::parse(ok).unwrap().find("A.EXE"), Some("A"));
@@ -185,6 +236,9 @@ mod tests {
             r#"{"schema":2,"games":[{"name":"A","executables":["a.exe"]},{"name":"B","executables":["A.exe"]}]}"#,
             r#"{"schema":2,"games":[{"name":" ","executables":["a.exe"]}]}"#,
             r#"{"schema":2,"games":[{"name":"A","executables":[]}]}"#,
+            r#"{"schema":2,"games":[{"name":"A","executables":["a.exe"]},{"name":"a","executables":["b.exe"]}]}"#,
+            r#"{"schema":2,"games":[{"name":"A","executables":["a.exe"],"steam_app_id":0}]}"#,
+            r#"{"schema":2,"games":[{"name":"A","executables":["a.exe"],"steam_app_id":5},{"name":"B","executables":["b.exe"],"steam_app_id":5}]}"#,
             "{",
         ] {
             assert!(GameList::parse(bad).is_err(), "{bad}");
