@@ -1,0 +1,67 @@
+GAMING.md
+  s_06fcde5dbef956::t_6ba706f93b1728 92-115
+experimental/app/Cargo.lock
+  s_06fcde5dbef956::t_68cd8c9a145e39 798,1033,1210,1212,1214-1216,1218-1220,1282-1283,1286-1288,1290-1291,1293,1831,2100-2101,2105-2106,2612-2613,3239,3836-3837,3862,3870-3871,3988-3991,4000-4001,4004-4005,4074,4076,4303,4305,4317-4318,4320,4662,4664,4666-4667,4860,5071-5080,5123,6913-6914
+experimental/app/Cargo.toml
+  s_06fcde5dbef956::t_79013ae8f7af48 3
+experimental/app/src/web_gaming.rs
+  s_06fcde5dbef956::t_07a5493c0d5502 665-667,675-676,679-680,736
+experimental/app/tauri.conf.json
+  s_06fcde5dbef956::t_452d915f930348 5
+experimental/crates/crypto-owner/Cargo.lock
+  s_06fcde5dbef956::t_2842b9044e6c57 480,604,652,654,656-658,660-662,724-725,728-730,732-733,735,959,1084,1149-1150,1154-1155,1470-1471,2141-2142,2167-2168,2175-2176,2273-2276,2285-2286,2289-2290,2301,2303,2430,2432,2444-2445,2447,2672,2674,2676-2677,2772,2871-2880,2892,3645-3646
+experimental/crates/crypto-owner/qualified-sdk/Cargo.lock
+  s_06fcde5dbef956::t_10670909c59486 441,559,607,609,611-613,615-617,679-680,683-685,687-688,690,862,987,1052-1053,1057-1058,1245-1246,1810-1811,1836-1837,1844-1845,1911-1914,1923-1924,1927-1928,1939,1941,2068,2070,2082-2083,2085,2275,2277,2279-2280,2357,2456-2465,2477,2965-2966
+experimental/vendor/openmls/Cargo.lock
+  s_06fcde5dbef956::t_46be88e132512e 843,845,849,899,901,966,1032,1034,1036-1038,1040-1042,1082-1083,1086-1088,1090-1091,1093,1228-1233,1386,1436-1445,1456,1458,1460,1577,1642-1643,1647-1648,2084-2085,2539,2541,2887-2888,2941-2942,2949-2950,3017-3020,3029-3030,3033-3034,3078,3080,3295,3297,3309-3310,3312,3590,3592,3600,3602,3619,3621,3704,3706,3708-3709,3726-3735,3738,3740,3748,3902,4024-4033,4213-4224,5160-5161
+experimental/vendor/openmls/basic_credential/Cargo.toml
+  s_06fcde5dbef956::t_7360c4a559795c 20-21
+experimental/vendor/openmls/basic_credential/src/lib.rs
+  s_06fcde5dbef956::t_33e3a6697dc65b 16,72,78,84,150-151,159-160
+experimental/vendor/openmls/compat_tests/Cargo.lock
+  s_06fcde5dbef956::t_84ddd2e66c15a4 492,494,498,548,550,615,660,662,664-666,668-670,710-711,714-716,718-719,721,901,1058,1123-1124,1128-1129,1324-1325,2025,2037,2050-2051,2137-2138,2145-2146,2231-2234,2243-2244,2247-2248,2259,2261,2401,2403,2415-2416,2418,2620,2622,2624-2625,2690,2766-2775,3347-3348
+experimental/vendor/openmls/compat_tests/Cargo.toml
+  s_06fcde5dbef956::t_7ccfa82edbf9fd 63,68
+experimental/vendor/openmls/compat_tests/compat_credentials/basic_credential_0_7/Cargo.toml
+  s_06fcde5dbef956::t_4873d0e2511629 1-22
+experimental/vendor/openmls/compat_tests/compat_credentials/basic_credential_0_7/LICENSE
+  s_06fcde5dbef956::t_dbcf3cb92ed974 1-19
+experimental/vendor/openmls/compat_tests/compat_credentials/basic_credential_0_7/src/lib.rs
+  s_06fcde5dbef956::t_879997673b4a16 1-194
+experimental/vendor/openmls/compat_tests/compat_credentials/basic_credential_0_8/Cargo.toml
+  s_06fcde5dbef956::t_2848060c644867 1-22
+experimental/vendor/openmls/compat_tests/compat_credentials/basic_credential_0_8/LICENSE
+  s_06fcde5dbef956::t_83b61678f4dade 1-19
+experimental/vendor/openmls/compat_tests/compat_credentials/basic_credential_0_8/src/lib.rs
+  s_06fcde5dbef956::t_36d3689209c777 1-195
+experimental/vendor/openmls/openmls_rust_crypto/Cargo.toml
+  s_06fcde5dbef956::t_285b211e742f35 31-32
+experimental/vendor/openmls/openmls_rust_crypto/src/provider.rs
+  s_06fcde5dbef956::t_88e968d6bfef4b 24-25,286-287,305-306,373-374,393-394,456,462
+linux/package-lock.json
+  s_06fcde5dbef956::t_220561294cf9b5 3,9
+linux/package.json
+  s_06fcde5dbef956::t_ea20db7e312dfb 5
+linux/test/e2e/notify-page.e2e.ts
+  s_06fcde5dbef956::t_c4343316d42550 60-61
+src/game-list.json
+  s_06fcde5dbef956::t_b8c3b65bc5a396 13-14,26-27,33-34,40-41,53-54,60-61,67-68,111-112,124-125,200-201,297-298,384-385,404-405,411-412,424-425,437-438,450-451,476-477,483-484,490-491,503-504,510-511,523-524,567-568,574-575,581-582,589-590,608-609,1015-1016,1028-1029,1041-1042,1048-1049,1091-1092,1098-1099,1105-1106,1112-1113,2085-3658
+src/game_list.rs
+  s_06fcde5dbef956::t_bc93f7eab4b28b 6-9,21-23,54-55,60-67,111,136-140,198-227,239-241
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "88bdfcbc82d4f8ce87adb5191752353530b4aafe",
+  "prompts": {},
+  "sessions": {
+    "s_06fcde5dbef956": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "94b73314-95fe-4e96-8c43-d20b0f28358d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}
