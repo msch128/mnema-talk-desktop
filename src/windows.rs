@@ -21,6 +21,18 @@ fn approved_game(names: &[String], name: &str, title: &str) -> Option<String> {
         .cloned()
 }
 
+/// The user-approved game name for a foreground image path, if any. Only the
+/// basename is looked at; the path itself never leaves the caller. Java
+/// runtimes additionally need `title`, see [`approved_game`].
+#[cfg(any(windows, test))]
+pub fn approved_image(names: &[String], image: &str, title: &str) -> Option<String> {
+    if !names.is_empty() && !valid_game_names(names) {
+        return None;
+    }
+    let name = image.rsplit(['\\', '/']).next().filter(|n| !n.is_empty())?;
+    approved_game(names, name, title)
+}
+
 #[derive(Debug, Serialize)]
 pub struct GameProbe {
     /// Local identity of the exact validated foreground observation; never IPC data.
@@ -242,6 +254,21 @@ mod tests {
         assert!(approved_game(&[], "chrome.exe", "Minecraft website").is_none());
         assert!(approved_game(&["Custom.exe".into()], "CUSTOM.EXE", "").is_some());
     }
+    #[test]
+    fn image_paths_match_by_basename_only() {
+        let own = ["Custom.exe".to_string()];
+        assert_eq!(
+            approved_image(&own, r"D:\Games\X\custom.exe", "").as_deref(),
+            Some("Custom.exe")
+        );
+        assert!(approved_image(&own, r"D:\Games\X\other.exe", "").is_none());
+        assert!(approved_image(&own, "", "").is_none());
+        assert!(approved_image(&own, r"D:\Games\custom.exe\", "").is_none());
+        // A game-looking directory is not a game.
+        assert!(approved_image(&[], r"C:\wow.exe\tool.exe", "").is_none());
+        assert!(approved_image(&["../x.exe".into()], r"C:\x.exe", "").is_none());
+    }
+
     #[test]
     fn allowlist_only_accepts_bounded_executable_names() {
         assert!(valid_game_names(&[

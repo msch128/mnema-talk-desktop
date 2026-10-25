@@ -70,6 +70,9 @@ There is no external security audit.
   configurable. See the
   [gaming guide](https://github.com/msch128/mnema-talk/blob/main/doc/desktop-app.md#windows-gaming-dev)
   for setup and its limits (topmost windows, not exclusive fullscreen).
+  Game detection is event driven (no polling, no process enumeration, no
+  injection); [GAMING.md](GAMING.md) is the reference, including the anti-cheat
+  safety statement.
 
 ## Get it
 
