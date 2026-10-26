@@ -25,6 +25,7 @@ fn only_strictly_newer_plain_versions_are_offered() {
     assert_eq!(offerable("0.1.0", "0.1.1"), Version::parse("0.1.1"));
     assert_eq!(offerable("0.1.9", "0.2.0"), Version::parse("0.2.0"));
     assert_eq!(offerable("0.9.0", "0.10.0"), Version::parse("0.10.0"));
+    assert_eq!(offerable("0.3.9", "1.2.0"), Version::parse("1.2.0"));
     for same_or_older in ["0.1.0", "0.0.9", "0.0.99"] {
         assert_eq!(offerable("0.1.0", same_or_older), None);
     }
