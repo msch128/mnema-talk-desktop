@@ -29,14 +29,20 @@ function language(value: string) {
   Object.defineProperty(navigator, 'language', { value, configurable: true })
 }
 
+// Parse the page into an inert template and drop the stylesheet and script elements
+// the executable loads itself; they are not fetched in the test window.
+function pageMarkup(): string {
+  const template = document.createElement('template')
+  template.innerHTML = html
+  template.content.querySelectorAll('link, script').forEach((el) => el.remove())
+  return template.innerHTML
+}
+
 async function open(snapshot: Partial<Snapshot>, lang = 'en-US') {
   state = { ...base, ...snapshot }
   language(lang)
   // The stylesheet and script files are loaded by the executable, not fetched here.
-  document.documentElement.innerHTML = html
-    .replace(/^[\s\S]*<html[^>]*>/, '')
-    .replace(/<\/html>\s*$/, '')
-    .replace(/<(link|script)[^>]*>(<\/script>)?/g, '')
+  document.documentElement.innerHTML = pageMarkup()
   invoke = vi.fn(async (cmd: string) => (cmd === 'native_update_state' || cmd === 'native_update_action' ? state : undefined))
   Object.defineProperty(window, '__TAURI_INTERNALS__', { value: { invoke }, configurable: true })
   // The page script is plain browser code; run it in the test window.
@@ -154,7 +160,7 @@ describe('update page', () => {
   })
 
   it('ships no inline script or handler, and loads nothing remote', () => {
-    expect(html).not.toMatch(/<script>|\son\w+=|https?:\/\//)
+    expect(html).not.toMatch(/<script(?![^>]*\ssrc=)|\son\w+=|https?:\/\//i)
     expect(script).not.toMatch(/fetch\(|XMLHttpRequest|innerHTML|eval\(/)
   })
 })
