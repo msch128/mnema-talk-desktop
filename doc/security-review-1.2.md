@@ -81,13 +81,9 @@ blanket.
   either the root or the `experimental/app` graph. The Electron Linux client does
   not use them. **Re-enabling the Tauri host on Linux needs Tauri's move to
   GTK4;** add the Linux target to `deny.toml` then.
-- **One ignore, with reason (in `deny.toml`):** RUSTSEC-2026-0173,
-  `proc-macro-error2`, a compile-time macro helper reached through
-  `hpke-rs` 0.8.0 (latest) to `libcrux-sha3` to `core-models` 0.0.7 to
-  `hax-lib` 0.3.7. It is in the experimental native-crypto crates only, which
-  are not part of the shipped installer. `hax-lib-macros` 0.4.2 already drops it
-  but `core-models` still requires `hax-lib` ^0.3.7, so it cannot be replaced
-  from here; accepted as a scoped exception on 2026-10-25; re-check by 2027-01-25 and drop the ignore once `hpke-rs` / `core-models` move to `hax-lib` >= 0.4.
+- **No ignores:** `deny.toml` has an empty ignore list. RUSTSEC-2026-0173
+  (`proc-macro-error2`) was accepted as a scoped exception on 2026-10-25 and
+  removed once cargo-deny stopped reporting it (`advisory-not-detected`).
 - `rusqlite` is 0.41 (SQLCipher 4.19.0). 0.40 bundled SQLCipher 4.14.0, whose
   allocator-with-`VirtualLock` recursed until the stack overflowed on Windows
   when `VirtualLock` failed with memory security on (sqlcipher/sqlcipher#619,
