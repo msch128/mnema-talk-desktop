@@ -47,7 +47,7 @@ permissions:
 
 concurrency:
   group: linux-client-${{ inputs.tag || github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   # PAUSED: the Linux client is paused for capacity (1.2), only Windows is
