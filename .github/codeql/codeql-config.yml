@@ -1,0 +1,21 @@
+name: "CodeQL config"
+
+paths-ignore:
+  # Vendored third-party code
+  - 'experimental/vendor/**'
+  - '**/vendor/**'
+  - '**/openmls/**'
+  # Dependencies
+  - 'node_modules'
+  - '**/node_modules/**'
+  # Generated distribution and build output
+  - 'dist'
+  - '**/dist/**'
+  - 'build'
+  - '**/build/**'
+  - 'target'
+  - '**/target/**'
+  - 'linux/dist/**'
+  - 'linux/release/**'
+  - 'linux/bundle/**'
+  - 'experimental/app/bundle/**'
