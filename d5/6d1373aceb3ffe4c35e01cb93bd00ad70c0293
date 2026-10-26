@@ -1,0 +1,18 @@
+.github/codeql/codeql-config.yml
+  h_0ff4f4713441f4 1-21
+.github/workflows/codeql.yml
+  h_0ff4f4713441f4 1-51
+scripts/codeql-workflow.test.mjs
+  h_0ff4f4713441f4 1-49
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d56d1373aceb3ffe4c35e01cb93bd00ad70c0293",
+  "prompts": {},
+  "humans": {
+    "h_0ff4f4713441f4": {
+      "author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}
