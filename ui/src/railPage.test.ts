@@ -19,13 +19,19 @@ const three: State = { active: 'b', adding: false, can_add: true, instances: [se
 let invoke: ReturnType<typeof vi.fn>
 let state: State
 
+// Parse the page into an inert template and drop the stylesheet and script elements
+// the executable loads itself; they are not fetched in the test window.
+function pageMarkup(): string {
+  const template = document.createElement('template')
+  template.innerHTML = html
+  template.content.querySelectorAll('link, script').forEach((el) => el.remove())
+  return template.innerHTML
+}
+
 async function open(initial: State, lang = 'en-US') {
   state = initial
   Object.defineProperty(navigator, 'language', { value: lang, configurable: true })
-  document.documentElement.innerHTML = html
-    .replace(/^[\s\S]*<html[^>]*>/, '')
-    .replace(/<\/html>\s*$/, '')
-    .replace(/<(link|script)[^>]*>(<\/script>)?/g, '')
+  document.documentElement.innerHTML = pageMarkup()
   invoke = vi.fn(async (cmd: string) => (cmd === 'rail_state' ? state : undefined))
   Object.defineProperty(window, '__TAURI_INTERNALS__', { value: { invoke }, configurable: true })
   // The page script is plain browser code; run it in the test window.
@@ -296,7 +302,7 @@ describe('server rail', () => {
   it('still draws when the host does not answer', async () => {
     state = three
     Object.defineProperty(navigator, 'language', { value: 'en-US', configurable: true })
-    document.documentElement.innerHTML = html.replace(/^[\s\S]*<html[^>]*>/, '').replace(/<\/html>\s*$/, '').replace(/<(link|script)[^>]*>(<\/script>)?/g, '')
+    document.documentElement.innerHTML = pageMarkup()
     Object.defineProperty(window, '__TAURI_INTERNALS__', { value: { invoke: vi.fn(async () => { throw new Error('gone') }) }, configurable: true })
     // eslint-disable-next-line no-new-func
     new Function(script)()
