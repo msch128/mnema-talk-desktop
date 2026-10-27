@@ -18,7 +18,10 @@ use crate::web_vault::{Os, Vault};
 use crate::web_ws::Sockets;
 #[cfg(not(target_os = "macos"))]
 use std::path::PathBuf;
-use std::{sync::Arc, time::Duration};
+use std::{
+    sync::{Arc, Mutex},
+    time::{Duration, Instant},
+};
 use tauri::{
     LogicalPosition, LogicalSize, Manager, Position, Rect, Size, Webview, WebviewUrl,
     WebviewWindowBuilder,
@@ -361,6 +364,84 @@ fn rect(x: f64, width: f64, height: f64) -> Rect {
     }
 }
 
+/// How long one hand-off of focus owns the window.
+///
+/// On Windows the hand-off posts `MoveFocus`, and the webview answers by
+/// taking focus. That answer is another focus report. Handling it with a
+/// second hand-off is the caret blinking as fast as the message loop.
+const FOCUS_HOLD: Duration = Duration::from_millis(300);
+
+/// Size, scale, the page in front, and which pages exist.
+///
+/// Placing again when none of these changed calls `show`. On Windows `show`
+/// activates a webview that is already visible.
+#[derive(Clone, PartialEq)]
+struct Frame {
+    width: u32,
+    height: u32,
+    scale_bits: u64,
+    front: String,
+    pages: Vec<String>,
+}
+
+#[derive(Default)]
+struct ShellPlacement {
+    frame: Option<Frame>,
+    handed: Option<Instant>,
+}
+
+/// What a layout should do with the page in front.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Place {
+    /// Nothing moved. `show` would only activate the page again.
+    Same,
+    /// The front page is new, or it just became the front page.
+    ShowFront,
+    /// The front page is already up. Move bounds, and do not activate it.
+    KeepFront,
+}
+
+/// Whether this instant may hand focus to the page. A repeat inside the hold
+/// is the echo of the hand-off that just ran, including the deactivation
+/// WebView2 posts between the two reports, so losing focus does not re-arm it.
+fn handoff_due(handed: &mut Option<Instant>, now: Instant) -> bool {
+    let held = handed.is_some_and(|at| now.saturating_duration_since(at) < FOCUS_HOLD);
+    if held {
+        return false;
+    }
+    *handed = Some(now);
+    true
+}
+
+fn place(prev: &mut Option<Frame>, next: &Frame) -> Place {
+    let decision = match prev.as_ref() {
+        Some(current) if current == next => Place::Same,
+        Some(current)
+            if current.front == next.front
+                && current.pages.iter().any(|label| label == &next.front) =>
+        {
+            Place::KeepFront
+        }
+        _ => Place::ShowFront,
+    };
+    if decision != Place::Same {
+        *prev = Some(next.clone());
+    }
+    decision
+}
+
+fn placement(app: &tauri::AppHandle) -> Option<tauri::State<'_, Mutex<ShellPlacement>>> {
+    app.try_state::<Mutex<ShellPlacement>>()
+}
+
+/// Labels of the pages that already have a webview, in list order.
+fn present_pages(app: &tauri::AppHandle) -> Vec<String> {
+    content_labels(app)
+        .into_iter()
+        .filter(|label| app.get_webview(label).is_some())
+        .collect()
+}
+
 /// Puts the rail on the left, the page in front next to it and hides the
 /// others. Hidden pages keep running (their sockets and counters stay alive),
 /// the engine only stops painting them.
@@ -372,30 +453,77 @@ pub fn layout(app: &tauri::AppHandle) {
         return;
     };
     let scale = window.scale_factor().unwrap_or(1.0);
+    let frame = Frame {
+        width: size.width,
+        height: size.height,
+        scale_bits: scale.to_bits(),
+        front: front_label(app),
+        pages: present_pages(app),
+    };
+    let place = take_frame(app, &frame);
+    if place == Place::Same {
+        return;
+    }
     let (width, height) = (
-        f64::from(size.width) / scale,
-        f64::from(size.height) / scale,
+        f64::from(frame.width) / scale,
+        f64::from(frame.height) / scale,
     );
     if let Some(rail) = app.get_webview(RAIL) {
         let _ = rail.set_bounds(rect(0.0, RAIL_WIDTH, height));
     }
-    let front = front_label(app);
     for label in content_labels(app) {
         let Some(page) = app.get_webview(&label) else {
             continue;
         };
         let _ = page.set_bounds(rect(RAIL_WIDTH, (width - RAIL_WIDTH).max(1.0), height));
-        let _ = if label == front {
-            page.show()
+        if label == frame.front {
+            if place == Place::ShowFront {
+                let _ = page.show();
+            }
         } else {
-            page.hide()
-        };
+            let _ = page.hide();
+        }
     }
 }
 
+fn take_frame(app: &tauri::AppHandle, frame: &Frame) -> Place {
+    let Some(state) = placement(app) else {
+        return Place::ShowFront;
+    };
+    let Ok(mut slot) = state.lock() else {
+        return Place::ShowFront;
+    };
+    place(&mut slot.frame, frame)
+}
+
+/// Moves focus to the front page and starts the hold, so the focus report
+/// that follows does not move it again.
 fn focus_front(app: &tauri::AppHandle) {
+    if let Some(state) = placement(app)
+        && let Ok(mut slot) = state.lock()
+    {
+        slot.handed = Some(Instant::now());
+    }
+    move_focus(app);
+}
+
+fn move_focus(app: &tauri::AppHandle) {
     if let Some(page) = app.get_webview(&front_label(app)) {
         let _ = page.set_focus();
+    }
+}
+
+/// The window itself gained focus. One hand-off per hold; the echo is ignored.
+fn on_window_focused(app: &tauri::AppHandle) {
+    let due = match placement(app) {
+        Some(state) => state
+            .lock()
+            .map(|mut slot| handoff_due(&mut slot.handed, Instant::now()))
+            .unwrap_or(true),
+        None => true,
+    };
+    if due {
+        move_focus(app);
     }
 }
 
@@ -567,6 +695,7 @@ fn host_page(app: &tauri::AppHandle, label: &str, role: &str) -> WebviewBuilder<
 /// Opens the window with the rail and the page for adding a server, and starts
 /// the servers of the list.
 pub fn create(app: &tauri::AppHandle) -> tauri::Result<()> {
+    app.manage(Mutex::new(ShellPlacement::default()));
     let menu = menu(app)?;
     let window = WindowBuilder::new(app, SHELL)
         .title(TITLE)
@@ -607,7 +736,7 @@ pub fn create(app: &tauri::AppHandle) -> tauri::Result<()> {
         tauri::WindowEvent::Resized(_) | tauri::WindowEvent::ScaleFactorChanged { .. } => {
             layout(&events);
         }
-        tauri::WindowEvent::Focused(true) => focus_front(&events),
+        tauri::WindowEvent::Focused(true) => on_window_focused(&events),
         tauri::WindowEvent::Destroyed => shut_down(&events),
         _ => {}
     });
@@ -1146,6 +1275,56 @@ fn forget_stored_session(trusted: &Trusted, origin: &Url, id: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_window_hands_focus_to_the_page_once_per_burst() {
+        let start = Instant::now();
+        let mut handed = None;
+        assert!(handoff_due(&mut handed, start));
+        assert!(!handoff_due(&mut handed, start + Duration::from_millis(1)));
+        assert!(!handoff_due(
+            &mut handed,
+            start + FOCUS_HOLD - Duration::from_millis(1)
+        ));
+        assert!(handoff_due(&mut handed, start + FOCUS_HOLD));
+    }
+
+    fn frame(front: &str, pages: &[&str], width: u32) -> Frame {
+        Frame {
+            width,
+            height: 800,
+            scale_bits: 1.0f64.to_bits(),
+            front: front.to_owned(),
+            pages: pages.iter().map(|label| (*label).to_owned()).collect(),
+        }
+    }
+
+    #[test]
+    fn the_pages_are_placed_again_only_when_the_frame_changes() {
+        let mut prev = None;
+        let first = frame("main", &["main"], 1200);
+        assert_eq!(place(&mut prev, &first), Place::ShowFront);
+        assert_eq!(place(&mut prev, &first), Place::Same);
+        let behind = frame("main", &["main", "i-1"], 1200);
+        assert_eq!(place(&mut prev, &behind), Place::KeepFront);
+        let switched = frame("i-1", &["main", "i-1"], 1200);
+        assert_eq!(place(&mut prev, &switched), Place::ShowFront);
+        let mut scaled = switched.clone();
+        scaled.scale_bits = 1.25f64.to_bits();
+        assert_eq!(place(&mut prev, &scaled), Place::KeepFront);
+        scaled.width += 1;
+        assert_eq!(place(&mut prev, &scaled), Place::KeepFront);
+    }
+
+    #[test]
+    fn a_front_page_that_appears_after_the_first_layout_is_shown() {
+        let mut prev = None;
+        let waiting = frame("i-1", &["main"], 1200);
+        assert_eq!(place(&mut prev, &waiting), Place::ShowFront);
+        let arrived = frame("i-1", &["main", "i-1"], 1200);
+        assert_eq!(place(&mut prev, &arrived), Place::ShowFront);
+        assert_eq!(place(&mut prev, &arrived), Place::Same);
+    }
 
     #[test]
     fn the_rail_page_is_served_with_its_own_strict_policy_and_nothing_else() {
