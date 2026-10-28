@@ -15,7 +15,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { MAX_FILE, MAX_PATH, parseKey, validPath, verifyBundle } from '../src/core/bundle.ts'
-import { appPath, externalAllowed, parseAddress, parseHealth } from '../src/core/client.ts'
+import { appPath, externalAllowed, inviteCode, parseAddress, parseHealth } from '../src/core/client.ts'
 import { Jar } from '../src/core/cookies.ts'
 import { Limits, inlineSafe, mimeFor, serveBundle, target } from '../src/core/proxy.ts'
 import { Store } from '../src/core/store.ts'
@@ -508,7 +508,7 @@ function clientVectors(): Json {
     'http://LOCALHOST', '', 'http://community.example', 'http://127.0.0.1.example', 'http://192.168.1.10:8080', 'https://user@community.example', 'https://user:pw@community.example', 'https://community.example/path',
     'https://community.example:8443/?invite=code', 'http://community.example:8443/path?invite=code', 'http://localhost:8080/path?x=1',
     'https://community.example?token=x', 'https://community.example/#x', 'https://community.example\\other', 'https://community.example\n', 'https://community.example/?', 'https://a@b.example', 'ftp://community.example',
-    'https://', 'https://exa mple.com', 'http://0.0.0.0', 'http://[::]', 'https://community.example:99999']
+    'https://', 'https://exa mple.com', 'http://0.0.0.0', 'http://[::]', 'https://community.example:99999', '<https://community.example:8443/>', '"https://community.example"']
     .map((input) => {
       try { return { input, href: parseAddress(input).href } } catch (error) { return { input, error: (error as Error).message } }
     })
@@ -526,9 +526,18 @@ function clientVectors(): Json {
   const ID = '11111111-1111-1111-1111-111111111111'
   const paths = ['', '/', '/index.html', '/login', '/admin', '/admin/users', '/admin/channels', '/admin/invites', '/admin/media', '/admin/system', `/c/${ID}`, `/c/${ID}/m/${ID}`, `/c/${ID}/t/${ID}`, `/v/${ID}`, `/v/${ID}/chat`,
     `/v/${ID}/chat/m/${ID}`, '/other.html', '/native-media.html', '/admin/unknown', '/admin/users/extra', '/c/not-an-id', '/c/00000000-0000-0000-0000-000000000000', `/c/${ID}/`, `/c/${ID}/m`, `/v/${ID}/chat/t/${ID}`,
-    `/c/${ID}%2fm%2f${ID}`, `//c/${ID}`, '/index.html/extra', '/INDEX.HTML', '/c/AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA', '/c/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', `/${'a'.repeat(201)}`, '/admin/', '/login/']
+    `/c/${ID}%2fm%2f${ID}`, `//c/${ID}`, '/index.html/extra', '/INDEX.HTML', '/c/AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA', '/c/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', `/${'a'.repeat(201)}`, '/admin/', '/login/',
+    '/invite/abc234xyz789', '/invite/Team_Night-2026', '/invite/abc234xyz789/', '/invite', '/invite/', '/invite/abc', '/invite/abc234xyz789/extra', '/INVITE/abc234xyz789', `/invite/${'a'.repeat(65)}`]
     .map((path) => ({ path, ok: appPath(path) }))
-  return { addresses, healths, externals, app_paths: paths }
+  const invites = [
+    'https://community.example:8443/?invite=abc234xyz789', 'http://community.example:8443/path?invite=abc234xyz789',
+    'https://community.example/invite/abc234xyz789', 'https://community.example/invite/Team_Night-2026/',
+    'https://community.example/#/join?invite=abc234xyz789', 'https://community.example:8443/?invite=abc234xyz789.',
+    '<https://community.example:8443/?invite=abc234xyz789>', 'community.example:8443',
+    'https://community.example/?invite=short', 'https://community.example/invite/nope',
+    'https://user@community.example/?invite=abc234xyz789',
+  ].map((input) => ({ input, code: inviteCode(input) }))
+  return { addresses, healths, externals, app_paths: paths, invites }
 }
 
 // ---------------------------------------------------------------- minisign

@@ -129,6 +129,14 @@
   {
    "input": "https://community.example:99999",
    "error": "Invalid instance address."
+  },
+  {
+   "input": "<https://community.example:8443/>",
+   "href": "https://community.example:8443/"
+  },
+  {
+   "input": "\"https://community.example\"",
+   "href": "https://community.example/"
   }
  ],
  "healths": [
@@ -364,6 +372,88 @@
   {
    "path": "/login/",
    "ok": false
+  },
+  {
+   "path": "/invite/abc234xyz789",
+   "ok": true
+  },
+  {
+   "path": "/invite/Team_Night-2026",
+   "ok": true
+  },
+  {
+   "path": "/invite/abc234xyz789/",
+   "ok": true
+  },
+  {
+   "path": "/invite",
+   "ok": false
+  },
+  {
+   "path": "/invite/",
+   "ok": false
+  },
+  {
+   "path": "/invite/abc",
+   "ok": false
+  },
+  {
+   "path": "/invite/abc234xyz789/extra",
+   "ok": false
+  },
+  {
+   "path": "/INVITE/abc234xyz789",
+   "ok": false
+  },
+  {
+   "path": "/invite/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "ok": false
+  }
+ ],
+ "invites": [
+  {
+   "input": "https://community.example:8443/?invite=abc234xyz789",
+   "code": "abc234xyz789"
+  },
+  {
+   "input": "http://community.example:8443/path?invite=abc234xyz789",
+   "code": "abc234xyz789"
+  },
+  {
+   "input": "https://community.example/invite/abc234xyz789",
+   "code": "abc234xyz789"
+  },
+  {
+   "input": "https://community.example/invite/Team_Night-2026/",
+   "code": "Team_Night-2026"
+  },
+  {
+   "input": "https://community.example/#/join?invite=abc234xyz789",
+   "code": "abc234xyz789"
+  },
+  {
+   "input": "https://community.example:8443/?invite=abc234xyz789.",
+   "code": "abc234xyz789"
+  },
+  {
+   "input": "<https://community.example:8443/?invite=abc234xyz789>",
+   "code": "abc234xyz789"
+  },
+  {
+   "input": "community.example:8443",
+   "code": null
+  },
+  {
+   "input": "https://community.example/?invite=short",
+   "code": null
+  },
+  {
+   "input": "https://community.example/invite/nope",
+   "code": null
+  },
+  {
+   "input": "https://user@community.example/?invite=abc234xyz789",
+   "code": null
   }
  ]
 }

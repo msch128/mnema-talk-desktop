@@ -339,11 +339,28 @@ fn loopback(url: &Url) -> bool {
     }
 }
 
-pub(crate) fn address(input: &str) -> Result<Url, String> {
+/// One layer of quotes or angle brackets, as a link arrives from a chat message.
+fn unwrap_paste(input: &str) -> &str {
+    let input = input.trim();
+    let bytes = input.as_bytes();
+    if bytes.len() >= 2 {
+        let (open, close) = (bytes[0], bytes[bytes.len() - 1]);
+        let wrapped = (open == b'<' && close == b'>')
+            || (open == b'"' && close == b'"')
+            || (open == b'\'' && close == b'\'');
+        if wrapped {
+            return input[1..input.len() - 1].trim();
+        }
+    }
+    input
+}
+
+/// The pasted text as a URL, before the page (path, query, fragment) is removed.
+fn parsed(input: &str) -> Result<Url, String> {
     if input.len() > 2048 || input.chars().any(char::is_control) {
         return Err("Enter an HTTPS instance address.".into());
     }
-    let input = input.trim();
+    let input = unwrap_paste(input);
     let raw = if input.contains("://") {
         input.to_owned()
     } else {
@@ -352,10 +369,7 @@ pub(crate) fn address(input: &str) -> Result<Url, String> {
     if raw.contains('\\') || raw.chars().any(char::is_whitespace) {
         return Err("Invalid instance address.".into());
     }
-    let mut url = Url::parse(&raw).map_err(|_| "Invalid instance address.")?;
-    // A pasted invite link keeps the host and an explicit port. The path,
-    // query and fragment belong to the page. Plain http elsewhere becomes
-    // https; a server on this machine stays http.
+    let url = Url::parse(&raw).map_err(|_| "Invalid instance address.")?;
     let credentials = !url.username().is_empty()
         || url.password().is_some()
         || raw
@@ -367,6 +381,14 @@ pub(crate) fn address(input: &str) -> Result<Url, String> {
     if credentials || (url.scheme() != "https" && url.scheme() != "http") {
         return Err("Use an HTTPS origin without credentials, a path or query.".into());
     }
+    Ok(url)
+}
+
+pub(crate) fn address(input: &str) -> Result<Url, String> {
+    let mut url = parsed(input)?;
+    // A pasted invite link keeps the host and an explicit port. The path,
+    // query and fragment belong to the page. Plain http elsewhere becomes
+    // https; a server on this machine stays http.
     if url.scheme() == "http" && !loopback(&url) {
         url.set_scheme("https")
             .map_err(|_| "Invalid instance address.".to_string())?;
@@ -375,6 +397,52 @@ pub(crate) fn address(input: &str) -> Result<Url, String> {
     url.set_query(None);
     url.set_fragment(None);
     Ok(url)
+}
+
+fn invite_token(value: &str) -> Option<String> {
+    let value = value.trim().trim_end_matches(['.', ',', ';', ')']);
+    crate::local_route::invite_segment(value).then(|| value.to_owned())
+}
+
+fn path_invite(path: &str) -> Option<String> {
+    let rest = path.strip_prefix("/invite/")?;
+    let code = rest.strip_suffix('/').unwrap_or(rest);
+    if code.contains('/') {
+        return None;
+    }
+    invite_token(code)
+}
+
+fn query_invite(query: Option<&str>) -> Option<String> {
+    let query = query?;
+    url::form_urlencoded::parse(query.as_bytes())
+        .find(|(key, _)| key == "invite")
+        .and_then(|(_, value)| invite_token(&value))
+}
+
+fn fragment_invite(fragment: Option<&str>) -> Option<String> {
+    let query = fragment?.split_once('?')?.1;
+    query_invite(Some(query))
+}
+
+/// The invite code in a pasted link: `/invite/{code}`, `?invite=`, or the same
+/// pair in the fragment. Anything else is not an invite, and connecting still
+/// works. The code is the web app's, so the join screen can read it.
+pub(crate) fn invite_code(input: &str) -> Option<String> {
+    let url = parsed(input).ok()?;
+    path_invite(url.path())
+        .or_else(|| query_invite(url.query()))
+        .or_else(|| fragment_invite(url.fragment()))
+}
+
+/// Where a new server page opens. A recognised invite opens the join screen;
+/// a bare address opens the app. A code that is not an invite stays at the root.
+pub(crate) fn join_page(code: Option<&str>) -> Url {
+    let mut url = app_url();
+    if let Some(code) = code.and_then(invite_token) {
+        url.set_path(&format!("/invite/{code}"));
+    }
+    url
 }
 
 #[derive(Deserialize)]
@@ -965,6 +1033,12 @@ mod tests {
             address("http://localhost:8080/path?x=1").unwrap().as_str(),
             "http://localhost:8080/"
         );
+        assert_eq!(
+            address("<https://community.example:8443/>")
+                .unwrap()
+                .as_str(),
+            "https://community.example:8443/"
+        );
         for invalid in [
             "",
             "https://user@community.example",
@@ -975,6 +1049,48 @@ mod tests {
         }
     }
 
+    #[test]
+    fn a_pasted_invite_opens_the_join_screen_and_a_bare_address_does_not() {
+        assert_eq!(invite_code("community.example:8443"), None);
+        assert_eq!(
+            invite_code("https://community.example:8443/?invite=abc234xyz789").as_deref(),
+            Some("abc234xyz789")
+        );
+        assert_eq!(
+            invite_code("http://community.example:8443/invite/Team_Night-2026/").as_deref(),
+            Some("Team_Night-2026")
+        );
+        assert_eq!(
+            invite_code("https://community.example/#/join?invite=abc234xyz789").as_deref(),
+            Some("abc234xyz789")
+        );
+        assert_eq!(
+            invite_code("https://community.example:8443/?invite=abc234xyz789.").as_deref(),
+            Some("abc234xyz789")
+        );
+        assert_eq!(
+            invite_code("<https://community.example/?invite=abc234xyz789>").as_deref(),
+            Some("abc234xyz789")
+        );
+        assert_eq!(invite_code("https://community.example/?invite=short"), None);
+        assert_eq!(
+            invite_code("https://user@community.example/?invite=abc234xyz789"),
+            None
+        );
+        assert_eq!(
+            join_page(Some("abc234xyz789")).path(),
+            "/invite/abc234xyz789"
+        );
+        assert_eq!(join_page(None).path(), "/");
+        assert_eq!(join_page(Some("../x")).path(), "/");
+        assert_eq!(
+            address("https://community.example:8443/invite/abc234xyz789")
+                .unwrap()
+                .as_str(),
+            "https://community.example:8443/"
+        );
+    }
+
     fn app(path: &str) -> Url {
         app_url().join(path).unwrap()
     }
@@ -982,7 +1098,14 @@ mod tests {
     #[test]
     fn only_the_hosts_own_origin_and_its_routes_are_app_pages() {
         let id = "11111111-1111-1111-1111-111111111111";
-        for path in ["", "/", "/index.html", "/login", "/admin/users"] {
+        for path in [
+            "",
+            "/",
+            "/index.html",
+            "/login",
+            "/admin/users",
+            "/invite/abc234xyz789",
+        ] {
             assert!(bundled(&app(path)), "{path}");
         }
         assert!(bundled(&app(&format!("/c/{id}"))));
@@ -992,6 +1115,8 @@ mod tests {
             "/api/health",
             "/admin/unknown",
             "/c/not-an-id",
+            "/invite/abc",
+            "/invite/abc234xyz789/extra",
         ] {
             assert!(!bundled(&app(path)), "{path}");
         }
@@ -1465,6 +1590,14 @@ mod shared_vectors {
                 crate::local_route::app_path(path),
                 c["ok"].as_bool().unwrap(),
                 "{path:?}"
+            );
+        }
+        for c in v["invites"].as_array().unwrap() {
+            let input = c["input"].as_str().unwrap();
+            assert_eq!(
+                invite_code(input).as_deref(),
+                c["code"].as_str(),
+                "{input:?}"
             );
         }
     }

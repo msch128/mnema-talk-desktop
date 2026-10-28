@@ -4,6 +4,14 @@ fn id(value: &str) -> bool {
     uuid::Uuid::parse_str(value)
         .is_ok_and(|id| !id.is_nil() && id.hyphenated().to_string() == value)
 }
+/// An invite code as the web app accepts it: letters, digits, "_" and "-", 6 to 64.
+pub(super) fn invite_segment(value: &str) -> bool {
+    (6..=64).contains(&value.len())
+        && value
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+}
+
 pub(super) fn app_path(path: &str) -> bool {
     if ["", "/", "/index.html", "/login"].contains(&path) {
         return true;
@@ -15,6 +23,7 @@ pub(super) fn app_path(path: &str) -> bool {
     match parts.as_slice() {
         ["", "admin"] => true,
         ["", "admin", tab] => ["users", "channels", "invites", "media", "system"].contains(tab),
+        ["", "invite", code] | ["", "invite", code, ""] => invite_segment(code),
         ["", "c" | "v", channel] => id(channel),
         ["", "c", channel, "m" | "t", message] => id(channel) && id(message),
         ["", "v", channel, "chat"] => id(channel),
@@ -45,11 +54,20 @@ mod tests {
             format!("/v/{ID}"),
             format!("/v/{ID}/chat"),
             format!("/v/{ID}/chat/m/{ID}"),
+            "/invite/abc234xyz789".into(),
+            "/invite/Team_Night-2026".into(),
+            "/invite/abc234xyz789/".into(),
         ] {
             assert!(app_path(&path), "expected fixed bundled route");
         }
         for path in [
             "/other.html".to_owned(),
+            "/invite".into(),
+            "/invite/".into(),
+            "/invite/abc".into(),
+            "/invite/abc234xyz789/extra".into(),
+            "/INVITE/abc234xyz789".into(),
+            format!("/invite/{}", "a".repeat(65)),
             "/native-media.html".into(),
             "/admin/unknown".into(),
             "/admin/users/extra".into(),

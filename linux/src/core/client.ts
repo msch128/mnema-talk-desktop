@@ -13,15 +13,22 @@ function isLoopback(url: URL): boolean {
   return host.toLowerCase() === 'localhost' || /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host) || host === '[::1]'
 }
 
-/**
- * The address of an instance. A pasted invite link keeps the host and an
- * explicit port; the path, query and fragment are the page, not the server.
- * Plain http on another machine becomes https. This machine stays http.
- */
-export function parseAddress(input: string): URL {
-  if (Buffer.byteLength(input) > 2048 || [...input].some((c) => /\p{Cc}/u.test(c))) throw new Error('Enter an HTTPS instance address.')
+/** One layer of quotes or angle brackets, as a link arrives from a chat message. */
+function unwrapPaste(input: string): string {
   const trimmed = input.trim()
-  const raw = trimmed.includes('://') ? trimmed : `https://${trimmed}`
+  if (trimmed.length >= 2) {
+    const open = trimmed[0]
+    const close = trimmed[trimmed.length - 1]
+    if ((open === '<' && close === '>') || (open === '"' && close === '"') || (open === "'" && close === "'")) return trimmed.slice(1, -1).trim()
+  }
+  return trimmed
+}
+
+/** The pasted text as a URL, before the page (path, query, fragment) is removed. */
+function prepared(input: string): URL {
+  if (Buffer.byteLength(input) > 2048 || [...input].some((c) => /\p{Cc}/u.test(c))) throw new Error('Enter an HTTPS instance address.')
+  const pasted = unwrapPaste(input)
+  const raw = pasted.includes('://') ? pasted : `https://${pasted}`
   if (raw.includes('\\') || /\s/u.test(raw)) throw new Error('Invalid instance address.')
   let url: URL
   try {
@@ -34,11 +41,59 @@ export function parseAddress(input: string): URL {
   if (url.username !== '' || url.password !== '' || authority.includes('@') || (url.protocol !== 'https:' && url.protocol !== 'http:')) {
     throw new Error('Use an HTTPS origin without credentials, a path or query.')
   }
+  return url
+}
+
+/**
+ * The address of an instance. A pasted invite link keeps the host and an
+ * explicit port; the path, query and fragment are the page, not the server.
+ * Plain http on another machine becomes https. This machine stays http.
+ */
+export function parseAddress(input: string): URL {
+  const url = prepared(input)
   if (url.protocol === 'http:' && !isLoopback(url)) url.protocol = 'https:'
   url.pathname = '/'
   url.search = ''
   url.hash = ''
   return url
+}
+
+/** An invite code as the web app accepts it: letters, digits, "_" and "-", 6 to 64. */
+function inviteSegment(value: string | undefined): boolean {
+  return value !== undefined && /^[A-Za-z0-9_-]{6,64}$/.test(value)
+}
+
+function inviteToken(value: string | null): string | null {
+  if (value === null) return null
+  const code = value.trim().replace(/[.,;)]+$/u, '')
+  return inviteSegment(code) ? code : null
+}
+
+function pathInvite(pathname: string): string | null {
+  const match = /^\/invite\/([^/]+)\/?$/.exec(pathname)
+  return match?.[1] ? inviteToken(match[1]) : null
+}
+
+function queryInvite(params: URLSearchParams): string | null {
+  return inviteToken(params.get('invite'))
+}
+
+function fragmentInvite(hash: string): string | null {
+  const query = hash.split('?')[1]
+  return query === undefined ? null : inviteToken(new URLSearchParams(query).get('invite'))
+}
+
+/**
+ * The invite code in a pasted link: `/invite/{code}`, `?invite=`, or the same
+ * pair in the fragment. Anything else is not an invite. Connecting still works.
+ */
+export function inviteCode(input: string): string | null {
+  try {
+    const url = prepared(input)
+    return pathInvite(url.pathname) ?? queryInvite(url.searchParams) ?? fragmentInvite(url.hash)
+  } catch {
+    return null
+  }
 }
 
 const UPDATE_NEEDED = 'This instance needs an update for the desktop client.'
@@ -82,8 +137,8 @@ export function appPath(path: string): boolean {
   const id = (value: string | undefined) => value !== undefined && isId(value)
   switch (parts.length) {
     case 2: return first === 'admin'
-    case 3: return first === 'admin' ? ['users', 'channels', 'invites', 'media', 'system'].includes(second as string) : (first === 'c' || first === 'v') && id(second)
-    case 4: return first === 'v' && id(second) && third === 'chat'
+    case 3: return first === 'invite' ? inviteSegment(second) : first === 'admin' ? ['users', 'channels', 'invites', 'media', 'system'].includes(second as string) : (first === 'c' || first === 'v') && id(second)
+    case 4: return first === 'invite' ? third === '' && inviteSegment(second) : first === 'v' && id(second) && third === 'chat'
     case 5: return first === 'c' && id(second) && (third === 'm' || third === 't') && id(fourth)
     case 6: return first === 'v' && id(second) && third === 'chat' && fourth === 'm' && id(fifth)
     default: return false

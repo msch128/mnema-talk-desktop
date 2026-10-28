@@ -9,7 +9,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { type TrustedKey, parseKey, validPath, verifyBundle } from '../src/core/bundle.ts'
-import { appPath, externalAllowed, parseAddress, parseHealth } from '../src/core/client.ts'
+import { appPath, externalAllowed, inviteCode, parseAddress, parseHealth } from '../src/core/client.ts'
 import { Jar } from '../src/core/cookies.ts'
 import { verifyPackage } from '../src/core/minisign.ts'
 import { Limits, inlineSafe, mimeFor, serveBundle, target } from '../src/core/proxy.ts'
@@ -160,6 +160,7 @@ test('client vectors: addresses, health, external links and app routes', () => {
   }
   for (const c of v.externals) assert.equal(externalAllowed(new URL(c.url)), c.allowed, c.url.slice(0, 60))
   for (const c of v.app_paths) assert.equal(appPath(c.path), c.ok, JSON.stringify(c.path))
+  for (const c of v.invites) assert.equal(inviteCode(c.input), c.code, c.input)
 })
 
 test('minisign vectors', () => {

@@ -862,7 +862,7 @@ async fn start_server(app: &tauri::AppHandle, id: &str) {
         }
     };
     if let Some(session) = ready
-        && let Err(why) = open_page(app, id, &session).await
+        && let Err(why) = open_page(app, id, &session, None).await
         && let Ok(mut registry) = trusted.registry.lock()
         && let Some(slot) = registry.slot_mut(id)
     {
@@ -913,12 +913,17 @@ pub fn bundles_changed(app: &tauri::AppHandle) {
 }
 
 /// Creates the webview of a running server.
-async fn open_page(app: &tauri::AppHandle, id: &str, session: &Arc<Session>) -> Result<(), String> {
+async fn open_page(
+    app: &tauri::AppHandle,
+    id: &str,
+    session: &Arc<Session>,
+    invite: Option<&str>,
+) -> Result<(), String> {
     if app.get_webview(&instance_label(id)).is_some() {
         return Ok(());
     }
     let window = app.get_window(SHELL).ok_or("The window is gone.")?;
-    let builder = page_builder(app, id, session)?;
+    let builder = page_builder(app, id, session, invite)?;
     let page = window
         .add_child(
             builder,
@@ -935,12 +940,16 @@ fn page_builder(
     app: &tauri::AppHandle,
     id: &str,
     session: &Arc<Session>,
+    invite: Option<&str>,
 ) -> Result<WebviewBuilder<tauri::Wry>, String> {
     let label = instance_label(id);
     let gaming_token = super::web_gaming::bind(app, id);
     let popup_app = app.clone();
     let opener = id.to_owned();
-    let builder = WebviewBuilder::new(&label, WebviewUrl::CustomProtocol(app_url()))
+    let builder = WebviewBuilder::new(
+        &label,
+        WebviewUrl::CustomProtocol(crate::web_client::join_page(invite)),
+    )
         .use_https_scheme(true)
         .initialization_script(crate::web_client::identity_script(
             app,
@@ -1032,9 +1041,13 @@ pub async fn add_server(
 ) -> Result<(), String> {
     let app = app.clone();
     let origin = crate::web_client::address(address)?;
+    let invite = crate::web_client::invite_code(address);
     let id = id_for(&origin);
     let known = state.registry.lock().map_err(|_| "busy")?.contains(&id);
     if known {
+        // A second paste of the invite opens the join screen only while the
+        // page is still the door. A server already in use stays where it is.
+        offer_invite(&app, &id, invite.as_deref());
         bring_forward(&app, &id);
         return Ok(());
     }
@@ -1054,13 +1067,36 @@ pub async fn add_server(
         }
         registry.activate(&id);
     }
-    if let Err(why) = open_page(&app, &id, &session).await {
+    let existed = app.get_webview(&instance_label(&id)).is_some();
+    if let Err(why) = open_page(&app, &id, &session, invite.as_deref()).await {
         remove_server(&app, &id).await;
         return Err(why);
+    }
+    if existed {
+        offer_invite(&app, &id, invite.as_deref());
     }
     changed(&app);
     focus_front(&app);
     Ok(())
+}
+
+fn at_the_door(path: &str) -> bool {
+    matches!(path, "/" | "/login" | "/index.html") || path.starts_with("/invite/")
+}
+
+/// Opens the join screen of a server that is already in the list, when its
+/// page has not gone into the app yet.
+fn offer_invite(app: &tauri::AppHandle, id: &str, code: Option<&str>) {
+    let Some(code) = code else {
+        return;
+    };
+    let Some(page) = app.get_webview(&instance_label(id)) else {
+        return;
+    };
+    let inside = page.url().is_ok_and(|url| !at_the_door(url.path()));
+    if !inside {
+        let _ = page.navigate(crate::web_client::join_page(Some(code)));
+    }
 }
 
 fn check_room(state: &Trusted) -> Result<(), String> {

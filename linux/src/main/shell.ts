@@ -13,7 +13,7 @@
 import { existsSync, readdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { BaseWindow, WebContentsView, app, session } from 'electron'
-import { parseAddress } from '../core/client.ts'
+import { inviteCode, parseAddress } from '../core/client.ts'
 import { AddError, MAX_INSTANCES, idFor } from '../core/instances.ts'
 import { APP_URL } from '../core/origin.ts'
 import { LEGACY_PARTITION, PARTITIONS, attachmentPartition, serverPartition, type Context } from './context.ts'
@@ -163,8 +163,33 @@ function shutDown(ctx: Context): void {
   app.quit()
 }
 
+/** The page a server opens on. A recognised invite is the join screen; otherwise the app. */
+function pageUrl(code: string | null): string {
+  return code ? `${APP_URL}invite/${code}` : APP_URL
+}
+
+function atTheDoor(raw: string): boolean {
+  try {
+    const path = new URL(raw).pathname
+    return path === '/' || path === '/login' || path === '/index.html' || path.startsWith('/invite/')
+  } catch {
+    return true
+  }
+}
+
+/**
+ * Opens the join screen of a server that is already in the list, when its
+ * page has not gone into the app yet.
+ */
+function offerInvite(ctx: Context, id: string, code: string | null): void {
+  if (!code) return
+  const page = ctx.shell.pages.get(id)
+  if (!page || page.webContents.isDestroyed() || !atTheDoor(page.webContents.getURL())) return
+  void page.webContents.loadURL(pageUrl(code))
+}
+
 /** Creates the page of a running server, in a session of its own. */
-function openPage(ctx: Context, id: string): void {
+function openPage(ctx: Context, id: string, code: string | null = null): void {
   if (ctx.shell.pages.has(id) || !ctx.shell.window) return
   const partition = prepareServer(ctx, id)
   const view = hostView(ctx, partition, appPreload())
@@ -174,7 +199,7 @@ function openPage(ctx: Context, id: string): void {
   ctx.shell.pages.set(id, view)
   view.setVisible(false)
   ctx.shell.window.contentView.addChildView(view)
-  void view.webContents.loadURL(APP_URL)
+  void view.webContents.loadURL(pageUrl(code))
 }
 
 // ------------------------------------------------------------------- servers
@@ -216,22 +241,31 @@ export async function startServer(ctx: Context, id: string): Promise<void> {
 export async function addServer(ctx: Context, address: string): Promise<void> {
   const registry = ctx.trusted.registry
   const origin = parseAddress(address)
+  const code = inviteCode(address)
   const id = idFor(origin)
-  if (registry.contains(id)) { bringForward(ctx, id); return }
+  if (registry.contains(id)) {
+    offerInvite(ctx, id, code)
+    bringForward(ctx, id)
+    return
+  }
   if (registry.length >= MAX_INSTANCES) throw new AddError('full')
   const session = await ctx.trusted.connect(origin)
   try {
     registry.add(origin)
   } catch (error) {
     session.sockets.closeAll()
-    if (error instanceof AddError && error.kind === 'known') { bringForward(ctx, id); return }
+    if (error instanceof AddError && error.kind === 'known') {
+      offerInvite(ctx, id, code)
+      bringForward(ctx, id)
+      return
+    }
     throw error
   }
   const slot = registry.slot(id)
   if (slot) { registry.restart(id); slot.phase = { kind: 'ready', session } }
   registry.activate(id)
   try {
-    openPage(ctx, id)
+    openPage(ctx, id, code)
   } catch {
     await removeServer(ctx, id)
     throw new Error('Unable to open the server.')
