@@ -284,7 +284,7 @@ impl Registry {
         true
     }
 
-    /// Ctrl+1 is the first server. `false` if there is none at that place.
+    /// Ctrl+1 is the first server. `None` if there is none at that place.
     pub fn activate_nth(&mut self, number: usize) -> Option<String> {
         let id = self.slots.get(number.checked_sub(1)?)?.id.clone();
         self.activate(&id);
@@ -391,6 +391,7 @@ impl Registry {
     pub fn stored(&self) -> Stored {
         Stored {
             version: STORE_VERSION,
+            unreadable: false,
             servers: self.slots.iter().map(|s| s.origin.clone()).collect(),
             active: self
                 .active
@@ -407,6 +408,10 @@ pub struct Stored {
     version: u32,
     pub servers: Vec<Url>,
     pub active: Option<Url>,
+    /// A list file exists but could not be used (unreadable, damaged, too
+    /// large or written by another version). The list is then empty, but that
+    /// is not the person's choice: nothing may be cleaned up on its strength.
+    unreadable: bool,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -422,23 +427,43 @@ impl Stored {
             version: STORE_VERSION,
             servers: Vec::new(),
             active: None,
+            unreadable: false,
         }
     }
 
+    /// Whether the list is empty because its file could not be used, not
+    /// because there is no server or no file.
+    pub fn unreadable(&self) -> bool {
+        self.unreadable
+    }
+
     /// Reads the list. Anything that does not hold up (unknown version, a
-    /// bad address, a duplicate, too many) is dropped rather than trusted.
+    /// bad address, a duplicate, too many) is dropped rather than trusted. A
+    /// file that exists but cannot be used is kept as `<file>.bak` (the first
+    /// such copy stays) and reported by `unreadable`.
     pub fn load(file: Option<&Path>) -> Stored {
         let Some(file) = file else {
             return Stored::empty();
         };
-        let raw = std::fs::metadata(file)
-            .ok()
-            .filter(|m| m.len() <= MAX_STORE_BYTES)
-            .and_then(|_| std::fs::read(file).ok())
-            .and_then(|raw| serde_json::from_slice::<StoredFile>(&raw).ok());
+        let raw = match std::fs::metadata(file) {
+            Err(why) if why.kind() == std::io::ErrorKind::NotFound => return Stored::empty(),
+            Ok(meta) if meta.len() <= MAX_STORE_BYTES => std::fs::read(file)
+                .ok()
+                .and_then(|raw| serde_json::from_slice::<StoredFile>(&raw).ok()),
+            _ => None,
+        };
         match raw {
             Some(stored) if stored.version == STORE_VERSION => Stored::from_file(stored),
-            _ => Stored::empty(),
+            _ => {
+                let backup = file.with_extension("json.bak");
+                if !backup.exists() {
+                    let _ = std::fs::copy(file, backup);
+                }
+                Stored {
+                    unreadable: true,
+                    ..Stored::empty()
+                }
+            }
         }
     }
 
@@ -460,26 +485,42 @@ impl Stored {
             version: STORE_VERSION,
             servers,
             active,
+            unreadable: false,
         }
     }
 
-    pub fn save(&self, file: Option<&Path>) {
-        let Some(file) = file else { return };
+    /// Writes the list through a temporary file of its own that is synced
+    /// before it replaces the old one, so a crash leaves the old list or the
+    /// new one, never half of it.
+    pub fn save(&self, file: Option<&Path>) -> std::io::Result<()> {
+        let Some(file) = file else { return Ok(()) };
         let stored = StoredFile {
             version: self.version,
             servers: self.servers.iter().map(|u| u.as_str().to_owned()).collect(),
             active: self.active.as_ref().map(|u| u.as_str().to_owned()),
         };
-        let Ok(raw) = serde_json::to_vec(&stored) else {
-            return;
-        };
+        let raw = serde_json::to_vec(&stored)?;
         if let Some(parent) = file.parent() {
-            let _ = std::fs::create_dir_all(parent);
+            std::fs::create_dir_all(parent)?;
         }
-        let temporary = file.with_extension("tmp");
-        if std::fs::write(&temporary, raw).is_ok() {
-            let _ = std::fs::rename(&temporary, file);
+        static SAVES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let temporary = file.with_extension(format!(
+            "{}.{}.tmp",
+            std::process::id(),
+            SAVES.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        ));
+        let written = (|| {
+            use std::io::Write;
+            let mut out = std::fs::File::create(&temporary)?;
+            out.write_all(&raw)?;
+            out.sync_all()?;
+            drop(out);
+            std::fs::rename(&temporary, file)
+        })();
+        if written.is_err() {
+            let _ = std::fs::remove_file(&temporary);
         }
+        written
     }
 }
 
@@ -813,7 +854,7 @@ mod tests {
         let file = dir.join("instances.json");
         let mut registry = registry(&["a.example", "b.example"]);
         registry.activate(&id("b.example"));
-        registry.stored().save(Some(&file));
+        registry.stored().save(Some(&file)).unwrap();
         let text = std::fs::read_to_string(&file).unwrap();
         assert!(!text.contains("cookie") && !text.contains("session"));
         let restored = Registry::restore(&Stored::load(Some(&file)));
@@ -884,6 +925,64 @@ mod tests {
             Stored::load(Some(&dir.join("missing.json")))
                 .servers
                 .is_empty()
+        );
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_list_that_cannot_be_used_is_told_from_no_list_and_kept_as_a_backup() {
+        let dir = scratch("unreadable");
+        let file = dir.join("instances.json");
+        // No file, or no place for one, is a fresh start and may be cleaned up after.
+        assert!(!Stored::load(Some(&file)).unreadable());
+        assert!(!Stored::load(None).unreadable());
+        let newer = r#"{"version":2,"servers":["https://a.example/"],"active":null}"#;
+        std::fs::write(&file, newer).unwrap();
+        let stored = Stored::load(Some(&file));
+        assert!(stored.unreadable() && stored.servers.is_empty());
+        assert_eq!(
+            std::fs::read_to_string(dir.join("instances.json.bak")).unwrap(),
+            newer
+        );
+        // The first copy stays; a later damaged file does not replace it.
+        std::fs::write(&file, "{").unwrap();
+        assert!(Stored::load(Some(&file)).unreadable());
+        assert_eq!(
+            std::fs::read_to_string(dir.join("instances.json.bak")).unwrap(),
+            newer
+        );
+        std::fs::write(&file, " ".repeat(MAX_STORE_BYTES as usize + 1)).unwrap();
+        assert!(Stored::load(Some(&file)).unreadable());
+        // A good list is not flagged, and writing one replaces the bad file.
+        registry(&["a.example"]).stored().save(Some(&file)).unwrap();
+        let good = Stored::load(Some(&file));
+        assert!(!good.unreadable());
+        assert_eq!(good.servers.len(), 1);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn saving_reports_failure_and_leaves_no_temporary_file() {
+        let dir = scratch("save");
+        let file = dir.join("instances.json");
+        let stored = registry(&["a.example"]).stored();
+        stored.save(Some(&file)).unwrap();
+        stored.save(Some(&file)).unwrap();
+        let names: Vec<_> = std::fs::read_dir(&dir)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(names, ["instances.json"]);
+        // A directory in the way of the file cannot be replaced: an error, not silence.
+        let blocked = dir.join("blocked.json");
+        std::fs::create_dir_all(blocked.join("inner")).unwrap();
+        assert!(stored.save(Some(&blocked)).is_err());
+        assert!(
+            !std::fs::read_dir(&dir).unwrap().any(|e| e
+                .unwrap()
+                .file_name()
+                .to_string_lossy()
+                .ends_with(".tmp"))
         );
         let _ = std::fs::remove_dir_all(dir);
     }

@@ -296,6 +296,11 @@ pub(crate) async fn open_default_page(
 /// Storage of servers that are no longer in the list (a removal that was cut
 /// short by the end of the program) goes at the next start.
 fn sweep_orphans(app: &tauri::AppHandle) {
+    // An empty list that is only the result of an unusable file proves nothing
+    // about which storage is orphaned; the next start with a good list sweeps.
+    if app.state::<Trusted>().list_unreadable() {
+        return;
+    }
     let known = app
         .state::<Trusted>()
         .registry
