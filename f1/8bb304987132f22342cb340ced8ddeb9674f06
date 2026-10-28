@@ -1,0 +1,21 @@
+experimental/crates/broker/src/actor_socket.rs
+  s_06fcde5dbef956::t_63c3e42872ee5b 39-53,108,135,153-155,162-164,309,314-318,323-324,356-368
+experimental/crates/broker/src/socket.rs
+  s_06fcde5dbef956::t_c3eeb88ec009ab 258,344,401-412,437,489,495
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f18bb304987132f22342cb340ced8ddeb9674f06",
+  "prompts": {},
+  "sessions": {
+    "s_06fcde5dbef956": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "94b73314-95fe-4e96-8c43-d20b0f28358d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}
