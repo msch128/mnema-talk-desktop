@@ -8,7 +8,7 @@ const desktop = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 collectLicenseBundle({
   desktop,
   cargoDir: join(desktop, 'app'),
-  cargoFeatures: 'shell,native-crypto,web-client',
+  cargoFeatures: 'shell,web-client',
   cargoLock: join(desktop, 'app', 'Cargo.lock'),
   toolchainFile: join(desktop, 'app', 'rust-toolchain.toml'),
   npmDir: resolve(desktop, '../mnema-talk/web'),

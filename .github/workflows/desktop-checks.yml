@@ -1,0 +1,150 @@
+name: Desktop checks
+
+on:
+  push:
+    branches: [main, 'codex/**']
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-checks-${{ github.ref }}
+  # Superseded pull request runs are cancelled; push, tag and manual runs never are.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CARGO_DENY_VERSION: 0.20.2
+  GITLEAKS_VERSION: 8.30.1
+  # sha256 of gitleaks_8.30.1_linux_x64.tar.gz from the upstream checksums.txt
+  GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+
+jobs:
+  # Pull requests that touch only documentation skip the native builds below.
+  # Nothing here is a required status check, and the secret scan always runs.
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      native: ${{ steps.filter.outputs.native }}
+    steps:
+      - id: filter
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" != pull_request ]; then echo native=true >> "$GITHUB_OUTPUT"; exit 0; fi
+          files=$(gh api "repos/$REPO/pulls/$PR/files" --paginate --jq '.[].filename')
+          # A here-string, not a pipe: grep -q closes early and pipefail would then read a large file list as "no match".
+          if grep -qvE '(\.md$|^doc/|^docs/|^LICENSE)' <<< "$files"; then
+            echo native=true >> "$GITHUB_OUTPUT"
+          else
+            echo native=false >> "$GITHUB_OUTPUT"
+          fi
+
+  secret-scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '26'
+      - name: Install gitleaks (pinned, checksum verified)
+        run: |
+          set -euo pipefail
+          archive="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl --fail --silent --show-error --location --retry 3 \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/${archive}" \
+            --output "$RUNNER_TEMP/$archive"
+          echo "${GITLEAKS_SHA256}  $RUNNER_TEMP/$archive" | sha256sum --check --strict
+          tar -xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP" gitleaks
+          "$RUNNER_TEMP/gitleaks" version
+      - name: gitleaks
+        run: |
+          set -euo pipefail
+          node scripts/check-native-test-vectors.mjs
+          "$RUNNER_TEMP/gitleaks" dir --no-banner --redact --exit-code 1 --config .gitleaks.toml .
+          "$RUNNER_TEMP/gitleaks" git --no-banner --redact --exit-code 1 --config .gitleaks.toml .
+
+  # The platform-neutral gaming logic (foreground tracking, game matching, input
+  # state machines) is included by the host by path; the root crate builds it on
+  # its own so the tests run on every system the clients ship for, not only Windows.
+  gaming-logic:
+    needs: changes
+    if: needs.changes.outputs.native == 'true'
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install pinned Rust toolchain
+        run: rustup toolchain install 1.99.1 --profile minimal --component clippy
+      # Restored on pull requests, saved only on main.
+      - uses: Swatinem/rust-cache@2201cc584a476d1b508be977bbe4b7d1c7a52e9c # v2.9.3
+        with:
+          key: ${{ hashFiles('Cargo.lock') }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Test and lint the neutral gaming logic
+        run: |
+          set -euo pipefail
+          cargo +1.99.1 test --locked --manifest-path Cargo.toml --lib
+          cargo +1.99.1 clippy --locked --manifest-path Cargo.toml --lib --tests -- -D warnings
+
+  # Script tests, formatting and the advisory scan of every Rust lockfile.
+  desktop-scripts:
+    needs: changes
+    if: needs.changes.outputs.native == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '26'
+      - name: Install pinned Rust toolchain
+        run: rustup toolchain install 1.99.1 --profile minimal --component rustfmt --component clippy
+      # Restored on pull requests, saved only on main.
+      - uses: Swatinem/rust-cache@2201cc584a476d1b508be977bbe4b7d1c7a52e9c # v2.9.3
+        with:
+          key: ${{ hashFiles('Cargo.lock') }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Rust format and gaming logic checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo +1.99.1 fmt --manifest-path Cargo.toml --check
+          cargo +1.99.1 test --locked --manifest-path Cargo.toml
+          cargo +1.99.1 clippy --locked --manifest-path Cargo.toml --all-targets -- -D warnings
+      - name: Script tests
+        shell: bash
+        run: node --test scripts/*.test.mjs
+      - name: Tests of the rail and update pages
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci --prefix experimental/app/page-tests --ignore-scripts --no-audit --no-fund
+          npm test --prefix experimental/app/page-tests
+      # Scoped to the Windows and macOS targets (deny.toml).
+      - name: Rust advisory scan (pinned tool, Windows and macOS graph)
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo +1.99.1 install cargo-deny --version "$CARGO_DENY_VERSION" --locked
+          bash scripts/deny-all.sh

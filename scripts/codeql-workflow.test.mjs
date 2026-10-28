@@ -43,7 +43,6 @@ test('codeql workflow and config are present and valid', () => {
 
   const config = readFileSync(configPath, 'utf8');
   assert.match(config, /paths-ignore:/, 'codeql-config.yml must define paths-ignore');
-  assert.match(config, /openmls/, 'paths-ignore must exclude openmls');
   assert.match(config, /node_modules/, 'paths-ignore must exclude node_modules');
   assert.match(config, /dist/, 'paths-ignore must exclude dist');
 });

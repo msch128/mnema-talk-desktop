@@ -1,10 +1,10 @@
-//! Shortcut bindings and the bounded state machine of the gaming fixture.
+//! Shortcut bindings and a bounded polling state machine.
 //!
 //! The shipped client uses only the validation here ([`Binding`], [`Modifiers`]);
 //! its keys arrive event driven from Raw Input (`input.rs`, `input_windows.rs`)
 //! and its state machine is `Gaming::advance` in the host. [`ShortcutState`] and
-//! [`Sample`] belong to the fixture owner (`native_input`), which feeds them from
-//! its own sampling. Nothing in this file reads key state from the system, and no
+//! [`Sample`] are a polling variant that the host does not use; they stay with
+//! their tests. Nothing in this file reads key state from the system, and no
 //! keyboard hook, input interception, key history or process injection exists.
 //! This adapter alone must never authorize transmission.
 

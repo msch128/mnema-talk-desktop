@@ -62,16 +62,13 @@ updates:
         update-types: [minor, patch]
 
   - package-ecosystem: npm
-    directory: /experimental/ui
-    ignore:
-      - dependency-name: typescript
-        update-types: ["version-update:semver-major"]
+    directory: /experimental/app/page-tests
     schedule: { interval: monthly }
     cooldown: { default-days: 5 }
     open-pull-requests-limit: 3
     commit-message: { prefix: "build(deps)", prefix-development: "build(deps-dev)" }
     groups:
-      npm-native-ui:
+      npm-page-tests:
         patterns: ["*"]
         update-types: [minor, patch]
 

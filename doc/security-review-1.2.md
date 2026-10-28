@@ -1,5 +1,11 @@
 # Security review for 1.2: ECDSA port, advisories, toolchain
 
+> Later change: the vendored OpenMLS workspace, the protected SDK and the other
+> native research crates reviewed below were dormant (no shipped build reached
+> them) and have been removed from the repository, together with the local GLib
+> backport. Paths named in this review no longer exist; it stays as the record
+> of what was checked at the time.
+
 Scope: the move of the vendored OpenMLS `openmls_basic_credential` and
 `openmls_rust_crypto` (and the two compat copies of the 0.7.4 / 0.8.1 basic
 credential) from RustCrypto `p256`/`p384` 0.13 to 0.14 (`ecdsa` 0.17), done to
@@ -76,12 +82,15 @@ unsound, yanked) fails the check unless it is in the graph; nothing is ignored
 blanket.
 
 - **Linux-only, out of the shipped graph:** `gtk` / `glib` 0.18 (GTK3,
-  unmaintained; RUSTSEC-2024-0429 is also covered by the reviewed local
-  backport), `proc-macro-error` (RUSTSEC-2024-0370, through `glib-macros`).
-  `cargo tree -i gtk --target x86_64-pc-windows-msvc` finds no package in
-  either the root or the `experimental/app` graph. The Electron Linux client does
+  unmaintained; RUSTSEC-2024-0429 was once covered by a reviewed local
+  backport, which is gone: `cargo deny check advisories` passes for the two
+  shipped targets without it), `proc-macro-error` (RUSTSEC-2024-0370, through `glib-macros`).
+  `cargo tree -i glib --features shell,web-client,custom-protocol --target all`
+  shows `glib` only below `gtk`, `webkit2gtk`, `wry` and `tao`; the same command
+  with `--target x86_64-pc-windows-msvc` or `--target aarch64-apple-darwin`
+  prints nothing, so the `[patch.crates-io]` entry never reached a shipped build. The Electron Linux client does
   not use them. **Re-enabling the Tauri host on Linux needs Tauri's move to
-  GTK4;** add the Linux target to `deny.toml` then.
+  GTK4;** add the Linux target to `deny.toml` then (and a fix for RUSTSEC-2024-0429 if it is still open).
 - **No ignores:** `deny.toml` has an empty ignore list. RUSTSEC-2026-0173
   (`proc-macro-error2`) was accepted as a scoped exception on 2026-10-25 and
   removed once cargo-deny stopped reporting it (`advisory-not-detected`).
@@ -96,8 +105,7 @@ blanket.
   `tests/sqlcipher_memory_security.rs` in the protected SDK runs the path that
   overflowed (encrypted database, memory security on, heavy allocation) and
   fails if the bundled SQLCipher is older than 4.18.
-- Test-only crates (e.g. `atomic-polyfill` in the vendored OpenMLS workspace's
-  dev-dependencies) are excluded (`exclude-dev`).
+- Test-only crates are excluded (`exclude-dev`).
 
 ## Toolchain and dependencies
 

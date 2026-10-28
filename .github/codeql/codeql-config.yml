@@ -1,10 +1,6 @@
 name: "CodeQL config"
 
 paths-ignore:
-  # Vendored third-party code
-  - 'experimental/vendor/**'
-  - '**/vendor/**'
-  - '**/openmls/**'
   # Dependencies
   - 'node_modules'
   - '**/node_modules/**'

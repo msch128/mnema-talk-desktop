@@ -31,10 +31,10 @@ fn embed_builtin_bundle() {
     }
 }
 
-/// Commands every flavour of the shell registers.
+/// Commands the shell registers: the pages of servers, the rail, the update
+/// bridge, the gaming controls and the notification bridge.
 #[cfg(feature = "shell")]
-const COMMON: &[&str] = &[
-    "native_context",
+const COMMANDS: &[&str] = &[
     "desktop_open_instance",
     "desktop_gaming_sync",
     "desktop_gaming_snapshot",
@@ -45,31 +45,6 @@ const COMMON: &[&str] = &[
     "desktop_gaming_remove_game",
     "native_update_state",
     "native_update_action",
-    "native_connect",
-    "native_metadata_request",
-    "native_personal_metadata_request",
-    "native_public_metadata_request",
-    "native_auth_login",
-    "native_auth_password",
-    "native_auth_register",
-    "native_admin_request",
-    "native_auth_me",
-    "native_auth_refresh",
-    "native_auth_logout",
-    "native_disconnect",
-    "native_request_cancel",
-    "native_socket_open",
-    "native_socket_send",
-    "native_socket_close",
-];
-
-/// Only the shipped web client: the pages of servers, the rail and the
-/// notification bridge.
-#[cfg(all(
-    feature = "shell",
-    not(any(feature = "synthetic-media-fixture", feature = "native-crypto"))
-))]
-const EXTRA: &[&str] = &[
     "desktop_ws_open",
     "desktop_ws_send",
     "desktop_ws_close",
@@ -90,52 +65,14 @@ const EXTRA: &[&str] = &[
     "rail_notify_set",
 ];
 
-#[cfg(all(feature = "shell", feature = "native-crypto"))]
-const EXTRA: &[&str] = &[
-    "native_trust_begin_first_root",
-    "native_trust_request_confirmation",
-    "native_trust_cancel",
-    "native_trust_read_status",
-    "native_chat_publish",
-    "native_chat_receive",
-    "native_chat_mutate",
-    "native_chat_snapshot",
-    "native_device_remove",
-];
-
-#[cfg(all(
-    feature = "shell",
-    feature = "synthetic-media-fixture",
-    not(feature = "native-crypto")
-))]
-const EXTRA: &[&str] = &[
-    "native_fixture_media_open",
-    "native_fixture_media_send",
-    "native_fixture_media_close",
-];
-
-#[cfg(all(feature = "native-crypto", feature = "synthetic-media-fixture"))]
-compile_error!(
-    "the features native-crypto and synthetic-media-fixture are separate research builds; enable one"
-);
-
 fn main() {
     embed_builtin_bundle();
     #[cfg(feature = "shell")]
     {
-        // The build script ends with this one list; the manifest wants it for good.
-        let commands: &'static [&'static str] = Box::leak(
-            COMMON
-                .iter()
-                .chain(EXTRA)
-                .copied()
-                .collect::<Vec<_>>()
-                .into_boxed_slice(),
-        );
         tauri_build::try_build(
             tauri_build::Attributes::new()
-                .app_manifest(tauri_build::AppManifest::new().commands(commands)),
+                .app_manifest(tauri_build::AppManifest::new().commands(COMMANDS)),
         )
-        .expect("native preview capabilities could not be validated");
+        .expect("the capabilities could not be validated");
     }
 }
