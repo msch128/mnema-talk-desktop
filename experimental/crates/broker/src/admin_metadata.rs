@@ -162,13 +162,10 @@ impl AdminEndpoint {
     }
 }
 fn id(s: &str) -> Result<Uuid, Error> {
-    Uuid::parse_str(s)
-        .ok()
-        .filter(|i| !i.is_nil() && i.hyphenated().to_string() == s)
-        .ok_or(Error::InvalidInput)
+    crate::wire::canonical_uuid(s).ok_or(Error::InvalidInput)
 }
 fn text(s: &str, max: usize, required: bool) -> bool {
-    !s.contains('\0') && s.trim().chars().count() <= max && (!required || !s.trim().is_empty())
+    crate::wire::text_within(s.trim(), max) && (!required || !s.trim().is_empty())
 }
 fn json_body(v: Value) -> Result<Option<Zeroizing<Vec<u8>>>, Error> {
     let bytes = serde_json::to_vec(&v).map_err(|_| Error::InvalidInput)?;
@@ -368,16 +365,7 @@ impl Broker {
         {
             Err(Error::Unauthorized) => {
                 let mut s = self.inner.state.lock().map_err(|_| Error::Internal)?;
-                s.current(self.inner.owner, &op)?;
-                s.cancel_requests(None);
-                if let Some(a) = s.active.as_mut() {
-                    a.cancel.cancel();
-                    a.status = Status::ReauthRequired;
-                    a.session = None;
-                    if let Some(f) = a.flight.take() {
-                        f.finish(Err(Error::Unauthorized));
-                    }
-                }
+                s.revoke_after_unauthorized(self.inner.owner, &op)?;
                 return Err(Error::Unauthorized);
             }
             result => result?,

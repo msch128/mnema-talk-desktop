@@ -21,11 +21,7 @@ impl Broker {
         let username = username.trim();
         let display_name = display_name.trim();
         let invite_code = invite_code.trim();
-        if username.len() < 3
-            || username.len() > 32
-            || !username
-                .bytes()
-                .all(|b| b.is_ascii_alphanumeric() || b"_.-".contains(&b))
+        if !crate::wire::valid_username(username)
             || display_name.chars().count() > 24
             || display_name.contains('\0')
             || password.text().chars().count() < 10

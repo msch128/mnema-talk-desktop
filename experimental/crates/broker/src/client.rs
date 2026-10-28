@@ -132,6 +132,9 @@ struct Job {
     request: NativeRequest,
     answer: oneshot::Sender<Result<NativePublication, Error>>,
     cancel: CancellationToken,
+    /// Keeps the request counted until the worker has finished with the job,
+    /// even when the caller's future was dropped long before.
+    _submission: Submission,
 }
 struct Shared {
     broker: Arc<Broker>,
@@ -173,15 +176,20 @@ impl fmt::Debug for NativeClient {
         f.write_str("NativeClient(REDACTED)")
     }
 }
+/// Whether `lease` names the attached main window (same context and owner).
+fn is_window(window: &Option<NativeWindowLease>, lease: &NativeWindowLease) -> bool {
+    window
+        .as_ref()
+        .is_some_and(|w| w.context == lease.context && w.owner == lease.owner)
+}
+/// Whether `lease` still owns the attached main window: it is live and names it.
+fn owns(window: &Option<NativeWindowLease>, lease: &NativeWindowLease) -> bool {
+    !lease.cancel.is_cancelled() && is_window(window, lease)
+}
 impl Shared {
     fn current(&self, lease: &NativeWindowLease) -> Result<(), Error> {
-        if lease.cancel.is_cancelled() {
-            return Err(Error::Stale);
-        }
         let w = self.window.lock().map_err(|_| Error::Internal)?;
-        if w.as_ref()
-            .is_none_or(|w| w.context != lease.context || w.owner != lease.owner)
-        {
+        if !owns(&w, lease) {
             return Err(Error::Stale);
         }
         Ok(())
@@ -230,11 +238,7 @@ impl NativeClient {
         publish: impl FnOnce(&NativeOpaqueReceipt) -> T,
     ) -> Result<T, Error> {
         let windows = self.shared.window.lock().map_err(|_| Error::Internal)?;
-        if lease.cancel.is_cancelled()
-            || windows
-                .as_ref()
-                .is_none_or(|w| w.context != lease.context || w.owner != lease.owner)
-        {
+        if !owns(&windows, lease) {
             return Err(Error::Stale);
         }
         let intent = self.shared.intent.load(Ordering::Acquire);
@@ -316,7 +320,7 @@ impl NativeClient {
                     let worker=worker.clone();
                     tokio::task::spawn_local(async move{
                         let result=tokio::select!{biased;_=job.lease.cancel.cancelled()=>Err(Error::Stale),_=job.cancel.cancelled()=>Err(Error::Cancelled),_=job.answer.closed()=>Err(Error::Cancelled),r=execute(&worker,job.lease.clone(),job.intent,job.request_id,job.broker,job.request)=>r};
-                        let _=job.answer.send(result);drop(permit);
+                        drop(job._submission);let _=job.answer.send(result);drop(permit);
                     });
                 }
             });
@@ -349,7 +353,9 @@ impl NativeClient {
     }
     pub fn detach_main_window(&self, lease: &NativeWindowLease) -> Result<(), Error> {
         let mut w = self.shared.window.lock().map_err(|_| Error::Internal)?;
-        if w.as_ref().is_none_or(|w| w.context != lease.context) {
+        // A lease the detach itself cancelled earlier still names the window,
+        // so only identity is compared here, not the cancelled flag.
+        if !is_window(&w, lease) {
             return Err(Error::Stale);
         }
         lease.cancel.cancel();
@@ -372,11 +378,7 @@ impl NativeClient {
         lease: &NativeWindowLease,
     ) -> Result<NativeAuthenticatedScope, Error> {
         let windows = self.shared.window.lock().map_err(|_| Error::Internal)?;
-        if lease.cancel.is_cancelled()
-            || windows
-                .as_ref()
-                .is_none_or(|w| w.context != lease.context || w.owner != lease.owner)
-        {
+        if !owns(&windows, lease) {
             return Err(Error::Stale);
         }
         let intent = self.shared.intent.load(Ordering::Acquire);
@@ -404,11 +406,7 @@ impl NativeClient {
         publish: impl FnOnce() -> T,
     ) -> Result<T, Error> {
         let windows = self.shared.window.lock().map_err(|_| Error::Internal)?;
-        if lease.cancel.is_cancelled()
-            || windows
-                .as_ref()
-                .is_none_or(|w| w.context != lease.context || w.owner != lease.owner)
-        {
+        if !owns(&windows, lease) {
             return Err(Error::Stale);
         }
         let intent = self.shared.intent.load(Ordering::Acquire);
@@ -512,11 +510,7 @@ impl NativeClient {
         lease: &NativeWindowLease,
     ) -> Result<(Option<Uuid>, Option<Uuid>), Error> {
         let windows = self.shared.window.lock().map_err(|_| Error::Internal)?;
-        if lease.cancel.is_cancelled()
-            || windows
-                .as_ref()
-                .is_none_or(|window| window.context != lease.context || window.owner != lease.owner)
-        {
+        if !owns(&windows, lease) {
             return Err(Error::Stale);
         }
         let intent = self.shared.intent.load(Ordering::Acquire);
@@ -527,11 +521,7 @@ impl NativeClient {
     }
     pub fn authentication_intent(&self, lease: &NativeWindowLease) -> Result<Option<Uuid>, Error> {
         let windows = self.shared.window.lock().map_err(|_| Error::Internal)?;
-        if lease.cancel.is_cancelled()
-            || windows
-                .as_ref()
-                .is_none_or(|w| w.context != lease.context || w.owner != lease.owner)
-        {
+        if !owns(&windows, lease) {
             return Err(Error::Stale);
         }
         self.shared.broker.authentication_intent(lease.owner)
@@ -549,11 +539,7 @@ impl NativeClient {
     }
     pub fn profile_intent(&self, lease: &NativeWindowLease) -> Result<Option<Uuid>, Error> {
         let window = self.shared.window.lock().map_err(|_| Error::Internal)?;
-        if lease.cancel.is_cancelled()
-            || window
-                .as_ref()
-                .is_none_or(|w| w.context != lease.context || w.owner != lease.owner)
-        {
+        if !owns(&window, lease) {
             return Err(Error::Stale);
         }
         let intent = self.shared.intent.load(Ordering::Acquire);
@@ -571,11 +557,7 @@ impl NativeClient {
         profile: Uuid,
     ) -> Result<(), Error> {
         let window = self.shared.window.lock().map_err(|_| Error::Internal)?;
-        if lease.cancel.is_cancelled()
-            || window
-                .as_ref()
-                .is_none_or(|w| w.context != lease.context || w.owner != lease.owner)
-        {
+        if !owns(&window, lease) {
             return Err(Error::Stale);
         }
         let intent = self.shared.intent.load(Ordering::Acquire);
@@ -601,16 +583,12 @@ impl NativeClient {
         if request_id.is_nil() {
             return Err(Error::InvalidInput);
         }
-        let (intent, bound_broker, cancel, _submission) = {
+        let (intent, bound_broker, cancel, submission, slot) = {
             // Window ownership validation and all synchronous Connect side effects
             // share the same native lifecycle lock. An old lease cannot clear a
             // recreated main window after a check/use gap.
             let window = self.shared.window.lock().map_err(|_| Error::Internal)?;
-            if lease.cancel.is_cancelled()
-                || window
-                    .as_ref()
-                    .is_none_or(|w| w.context != lease.context || w.owner != lease.owner)
-            {
+            if !owns(&window, lease) {
                 return Err(Error::Stale);
             }
             if let Some(scope) = retained_scope.as_ref()
@@ -644,6 +622,12 @@ impl NativeClient {
             if requests.len() >= 16 || requests.contains_key(&key) {
                 return Err(Error::Busy);
             }
+            // Take the queue slot before any state is torn down: a Busy answer
+            // must not leave the old profile and session invalidated.
+            let slot = self.sender.try_reserve().map_err(|e| match e {
+                mpsc::error::TrySendError::Full(()) => Error::Busy,
+                mpsc::error::TrySendError::Closed(()) => Error::Internal,
+            })?;
             let connecting = matches!(&request, NativeRequest::Connect { .. });
             let bound_broker = if let Some(expected) = authentication_fence {
                 if connecting {
@@ -730,31 +714,25 @@ impl NativeClient {
                     shared: self.shared.clone(),
                     key,
                 },
+                slot,
             )
         };
         let (answer, receive) = oneshot::channel();
-        self.sender
-            .try_send(Job {
-                request_id,
-                broker: bound_broker,
-                lease: lease.clone(),
-                intent,
-                request,
-                answer,
-                cancel: cancel.clone(),
-            })
-            .map_err(|e| match e {
-                mpsc::error::TrySendError::Full(_) => Error::Busy,
-                mpsc::error::TrySendError::Closed(_) => Error::Internal,
-            })?;
+        slot.send(Job {
+            request_id,
+            broker: bound_broker,
+            lease: lease.clone(),
+            intent,
+            request,
+            answer,
+            cancel: cancel.clone(),
+            _submission: submission,
+        });
         tokio::select! {biased;_=lease.cancel.cancelled()=>Err(Error::Stale),_=cancel.cancelled()=>Err(Error::Cancelled),r=receive=>r.map_err(|_|Error::Internal)?}
     }
     pub fn cancel_request(&self, lease: &NativeWindowLease, request_id: Uuid) -> Result<(), Error> {
         let w = self.shared.window.lock().map_err(|_| Error::Internal)?;
-        if lease.cancel.is_cancelled()
-            || w.as_ref()
-                .is_none_or(|w| w.context != lease.context || w.owner != lease.owner)
-        {
+        if !owns(&w, lease) {
             return Err(Error::Stale);
         }
         if let Some(cancel) = self
@@ -776,11 +754,7 @@ impl NativeClient {
         request_id: Uuid,
     ) -> Result<(), Error> {
         let windows = self.shared.window.lock().map_err(|_| Error::Internal)?;
-        if lease.cancel.is_cancelled()
-            || windows
-                .as_ref()
-                .is_none_or(|w| w.context != lease.context || w.owner != lease.owner)
-        {
+        if !owns(&windows, lease) {
             return Err(Error::Stale);
         }
         let requests = self.shared.requests.lock().map_err(|_| Error::Internal)?;
@@ -802,11 +776,7 @@ impl NativeClient {
         publish: impl FnOnce() -> T,
     ) -> Result<T, Error> {
         let windows = self.shared.window.lock().map_err(|_| Error::Internal)?;
-        if lease.cancel.is_cancelled()
-            || windows
-                .as_ref()
-                .is_none_or(|w| w.context != lease.context || w.owner != lease.owner)
-        {
+        if !owns(&windows, lease) {
             return Err(Error::Stale);
         }
         let intent = self.shared.intent.load(Ordering::Acquire);
@@ -848,10 +818,7 @@ impl NativeClient {
         admit: impl FnOnce(),
     ) -> Result<(), Error> {
         let w = self.shared.window.lock().map_err(|_| Error::Internal)?;
-        if lease.cancel.is_cancelled()
-            || w.as_ref()
-                .is_none_or(|w| w.context != lease.context || w.owner != lease.owner)
-        {
+        if !owns(&w, lease) {
             return Err(Error::Stale);
         }
         if let Some(expected) = profile_fence {
@@ -1074,11 +1041,7 @@ async fn execute(
                 .await?;
             let scope = b.selected_publication_scope(lease.owner)?;
             let window = shared.window.lock().map_err(|_| Error::Internal)?;
-            if lease.cancel.is_cancelled()
-                || window
-                    .as_ref()
-                    .is_none_or(|w| w.context != lease.context || w.owner != lease.owner)
-            {
+            if !owns(&window, &lease) {
                 return Err(Error::Stale);
             }
             if shared.intent.load(Ordering::Acquire) != intent {
