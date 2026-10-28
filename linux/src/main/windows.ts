@@ -8,9 +8,7 @@ import { BaseWindow, BrowserWindow, Menu, app, dialog, shell, type WebContents }
 import { prepareAttachment } from './sessions.ts'
 import { APP_URL, appApi, bundled, parseUrl, pickerUi, updateUi } from '../core/origin.ts'
 import { externalAllowed } from '../core/client.ts'
-import { PARTITIONS, attachmentPartition, type Context, type Role } from './context.ts'
-
-const TITLE = 'Mnema Desktop DEV'
+import { PARTITIONS, TITLE, attachmentPartition, type Context, type Role } from './context.ts'
 
 function preloadPath(): string {
   return join(import.meta.dirname, '..', 'preload', 'preload.cjs')

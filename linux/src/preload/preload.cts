@@ -68,9 +68,9 @@ contextBridge.exposeInMainWorld('__TAURI_INTERNALS__', {
   unregisterCallback(id: unknown): void {
     if (typeof id === 'number') callbacks.delete(id)
   },
-  convertFileSrc(path: unknown): string {
+  convertFileSrc(): string {
     // Nothing is served from the file system.
-    return typeof path === 'string' ? '' : ''
+    return ''
   },
 })
 

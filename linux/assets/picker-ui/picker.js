@@ -3,8 +3,8 @@
 const invoke = (cmd, args) => window.__TAURI_INTERNALS__.invoke(cmd, args || {});
 const de = /^de\b/i.test(navigator.language || '');
 const T = de
-  ? { title: 'Bildschirm teilen', detail: 'Wähle einen Bildschirm oder ein Fenster.', share: 'Teilen', cancel: 'Abbrechen', screens: 'Bildschirme', windows: 'Fenster' }
-  : { title: 'Share your screen', detail: 'Choose a screen or a window.', share: 'Share', cancel: 'Cancel', screens: 'Screens', windows: 'Windows' };
+  ? { title: 'Bildschirm teilen', detail: 'Wähle einen Bildschirm oder ein Fenster.', share: 'Teilen', cancel: 'Abbrechen', screens: 'Bildschirme', windows: 'Fenster', empty: 'Es gibt nichts zu teilen.' }
+  : { title: 'Share your screen', detail: 'Choose a screen or a window.', share: 'Share', cancel: 'Cancel', screens: 'Screens', windows: 'Windows', empty: 'There is nothing to share.' };
 const $ = (id) => document.getElementById(id);
 let chosen = null;
 
@@ -51,5 +51,12 @@ invoke('picker_sources').then((sources) => {
   const list = $('sources');
   const screens = sources.filter((s) => s.screen);
   const others = sources.filter((s) => !s.screen);
+  if (sources.length === 0) {
+    const empty = document.createElement('p');
+    empty.className = 'detail';
+    empty.textContent = T.empty;
+    list.replaceChildren(empty);
+    return;
+  }
   list.replaceChildren(...screens.map(tile), ...others.map(tile));
 }).catch(() => finish(null));

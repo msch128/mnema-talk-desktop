@@ -269,3 +269,25 @@ test('a list that names a server to keep the old storage is read without it: no 
   const r = Registry.restore(stored)
   assert.deepEqual(r.stored(), { servers: [new URL('https://a.example/')], active: new URL('https://a.example/') })
 })
+
+test('a list that could not be read in full proves nothing about the servers missing from it', () => {
+  const file = join(tmp(), 'instances.json')
+  const readInFull = () => Registry.restore(loadStored(file)).readInFull
+  assert.equal(readInFull(), true, 'no file yet')
+  assert.equal(Registry.restore(emptyStored()).readInFull, true)
+  writeFileSync(file, JSON.stringify({ version: 1, servers: ['https://a.example/'], active: null }))
+  assert.equal(readInFull(), true)
+  for (const bad of ['not json', '[]', '{"version":2,"servers":["https://a.example/"],"active":null}', '{"servers":[]}', ' '.repeat(16 * 1024 + 1)]) {
+    writeFileSync(file, bad)
+    assert.equal(readInFull(), false, bad)
+  }
+  // A single address that no longer holds up shortens the list, so the rest cannot be judged either.
+  writeFileSync(file, JSON.stringify({ version: 1, servers: ['https://a.example/', 'javascript:alert(1)'], active: null }))
+  const stored = loadStored(file)
+  assert.equal(stored.servers.length, 1)
+  assert.equal(Registry.restore(stored).readInFull, false)
+  // Saving a list read in full is a list read in full.
+  assert.equal(Registry.restore(registry('a.example').stored()).readInFull, true)
+  // An unreadable file that is not simply absent (here: a directory) is not an empty list.
+  assert.equal(Registry.restore(loadStored(tmp())).readInFull, false)
+})

@@ -2,13 +2,12 @@
 # Starts the given command (the AppImage, or an installed executable) and waits
 # until it has served the instance selector and opened its window. Run it under
 # a display, for example `xvfb-run -a bash scripts/smoke.sh ./Mnema.AppImage`;
-# it needs MNEMA_DEBUG_PROTOCOL=1 in the environment (the app then logs what it
-# serves) and xwininfo (x11-utils).
+# it turns the app's debug log on itself (the app then logs what it serves) and
+# needs xwininfo (x11-utils).
 set -u
+. "$(dirname "$0")/launch-lib.sh"
 [ "$#" -ge 1 ] || { echo 'usage: smoke.sh <command> [args...]' >&2; exit 2; }
-log="$(mktemp)"
-setsid "$@" >"$log" 2>&1 &
-pid=$!
+start_app "$@"
 ready=0
 for _ in $(seq 1 120); do
   sleep 0.5
@@ -18,9 +17,7 @@ for _ in $(seq 1 120); do
     break
   fi
 done
-kill -- "-$pid" 2>/dev/null
-sleep 1
-kill -9 -- "-$pid" 2>/dev/null
+stop_app
 if [ "$ready" = 1 ]; then
   echo "ok: $1 served the instance selector and opened its window"
   exit 0
