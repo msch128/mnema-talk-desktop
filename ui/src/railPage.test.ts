@@ -266,6 +266,70 @@ describe('server rail', () => {
     expect(document.getElementById('live')!.textContent).toBe('a.example removed')
   })
 
+  describe('a state push while the page is in use', () => {
+    const rail = () => (window as unknown as { mnemaRail: { set: (s: unknown) => void } }).mnemaRail
+    const rightClick = (el: Element) => el.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }))
+
+    it('keeps an open menu, and its removal question, when another server changes', async () => {
+      await open(three)
+      rightClick(tiles()[0]!)
+      menuButtons().find((b) => b.textContent === 'Remove…')!.click()
+      expect(document.getElementById('menu')!.hidden).toBe(false)
+      rail().set({ ...three, instances: [server('a'), server('b'), server('c', { unread: 4 })] })
+      expect(document.getElementById('menu')!.hidden).toBe(false)
+      expect(menuButtons().map((b) => b.textContent)).toEqual(['Remove server', 'Cancel'])
+      // Closing it still gives focus back to the (new) tile it belongs to.
+      menuButtons()[1]!.click()
+      expect(document.activeElement).toBe(tiles()[0])
+    })
+
+    it('closes the menu of a server that is gone, and keeps the notification entries of one that stays', async () => {
+      await open(three)
+      invoke.mockImplementation(async (cmd: string) => (cmd === 'rail_state' ? state : cmd === 'rail_notify_get' ? { supported: true, level: 'all' } : undefined))
+      rightClick(tiles()[0]!)
+      rail().set({ ...three, instances: [server('a', { mentions: 1 }), server('b')] })
+      await vi.advanceTimersByTimeAsync(0)
+      expect(menuButtons().map((b) => b.textContent).slice(0, 3)).toEqual(['All messages', 'Only mentions', 'Mute'])
+      rail().set({ ...three, instances: [server('b')] })
+      expect(document.getElementById('menu')!.hidden).toBe(true)
+    })
+
+    it('moves with the server when the order changes under an open menu', async () => {
+      await open(three)
+      rightClick(tiles()[0]!)
+      rail().set({ ...three, instances: [server('b'), server('c'), server('a')] })
+      menuButtons().find((b) => b.textContent === 'Move up')!.click()
+      expect(calls('rail_move')).toEqual([{ id: 'a', to: 1 }])
+    })
+
+    it('leaves keyboard focus on the same server', async () => {
+      await open(three)
+      tiles()[1]!.focus()
+      rail().set({ ...three, instances: [server('a', { unread: 1 }), server('b', { mentions: 2 }), server('c')] })
+      expect(document.activeElement).toBe(tiles()[1])
+      expect((document.activeElement as HTMLElement).dataset.id).toBe('b')
+      // A focus outside the tiles is not pulled onto one.
+      add().focus()
+      rail().set(three)
+      expect(document.activeElement).toBe(add())
+    })
+  })
+
+  it('does not announce a move or a removal the host refused', async () => {
+    await open(three)
+    invoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'rail_state') return state
+      throw new Error('denied')
+    })
+    key(tiles()[1]!, 'ArrowDown', { altKey: true })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(document.getElementById('live')!.textContent).toBe('b.example: the order could not be changed')
+    key(tiles()[0]!, 'Delete')
+    menuButtons().find((b) => b.textContent === 'Remove server')!.click()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(document.getElementById('live')!.textContent).toBe('a.example: the server could not be removed')
+  })
+
   it('closes the menu with Escape, with a press elsewhere and when the window loses focus', async () => {
     await open(three)
     const opened = () => { key(tiles()[0]!, 'F10', { shiftKey: true }); return document.getElementById('menu')!.hidden }
