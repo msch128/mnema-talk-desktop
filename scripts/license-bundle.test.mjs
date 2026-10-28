@@ -1,15 +1,30 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, copyFileSync, cpSync, rmSync, unlinkSync, realpathSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, copyFileSync, rmSync, unlinkSync, realpathSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 
-const original = join(dirname(fileURLToPath(import.meta.url)), 'collect-licenses.mjs');
+const scripts = dirname(fileURLToPath(import.meta.url));
 const source = 'registry+https://github.com/rust-lang/crates.io-index';
-const canonicalDesktop = join(dirname(original), '..');
+// A stand-in for experimental/scripts/collect-licenses.mjs that points the shared collector at the fixture tree.
+const collector = `import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { collectLicenseBundle } from './license-bundle.mjs';
+
+const desktop = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+collectLicenseBundle({
+  desktop,
+  cargoDir: desktop,
+  cargoFeatures: 'shell',
+  cargoLock: join(desktop, 'Cargo.lock'),
+  toolchainFile: join(desktop, 'rust-toolchain.toml'),
+  npmDir: join(desktop, 'ui'),
+  argv: process.argv.slice(2),
+});
+`;
 
 function fixture() {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'mnema-license-check-')));
@@ -17,8 +32,8 @@ function fixture() {
   for (const dir of ['scripts', 'licenses', 'ui/node_modules/example', 'crate']) {
     mkdirSync(join(desktop, dir), { recursive: true });
   }
-  copyFileSync(original, join(desktop, 'scripts', 'collect-licenses.mjs'));
-  for (const name of ['checked-glib.mjs', 'license-bundle.mjs']) copyFileSync(join(dirname(original), name), join(desktop, 'scripts', name));
+  writeFileSync(join(desktop, 'scripts', 'collect-licenses.mjs'), collector);
+  copyFileSync(join(scripts, 'license-bundle.mjs'), join(desktop, 'scripts', 'license-bundle.mjs'));
   const put = (path, value) => writeFileSync(join(desktop, path), typeof value === 'string' ? value : JSON.stringify(value));
   put('Cargo.lock', `version = 4\n[[package]]\nname = "example"\nversion = "1.0.0"\nsource = "${source}"\n`);
   put('rust-toolchain.toml', 'channel = "1.99.1"\n');
@@ -65,39 +80,6 @@ test('missing license text and stale metadata fail instead of yielding an incomp
     assert.notEqual(f.run().status, 0);
     f.put('crate/LICENSE', 'Fixture crate notice.');
     f.put('Cargo.lock', `version = 4\n[[package]]\nname = "example"\nversion = "2.0.0"\nsource = "${source}"\n`);
-    assert.notEqual(f.run().status, 0);
-  } finally { f.close(); }
-});
-
-test('the reviewed local GLib backport retains its license and fails on changed source', () => {
-  const f = fixture();
-  try {
-    mkdirSync(join(f.desktop, 'experimental/vendor'), { recursive: true });
-    cpSync(join(canonicalDesktop, 'experimental/vendor/glib'), join(f.desktop, 'experimental/vendor/glib'), { recursive: true });
-    copyFileSync(join(canonicalDesktop, 'experimental/vendor/glib-source.json'), join(f.desktop, 'experimental/vendor/glib-source.json'));
-    const glibLock = '[[package]]\nname = "glib"\nversion = "0.18.5"\n';
-    for (const path of ['Cargo.toml', 'experimental/app/Cargo.toml', 'experimental/crates/trust-dialog/Cargo.toml']) {
-      mkdirSync(dirname(join(f.desktop, path)), { recursive: true });
-      copyFileSync(join(canonicalDesktop, path), join(f.desktop, path));
-      const lock = join(dirname(path), 'Cargo.lock');
-      const prefix = path === 'Cargo.toml' ? readFileSync(join(f.desktop, lock), 'utf8') : 'version = 4\n';
-      f.put(lock, prefix + glibLock);
-    }
-    const metadata = JSON.parse(readFileSync(join(f.desktop, 'metadata.json')));
-    metadata.packages.push({ name: 'glib', version: '0.18.5', source: null, license: 'MIT',
-      manifest_path: join(f.desktop, 'experimental/vendor/glib/Cargo.toml') });
-    f.put('metadata.json', metadata);
-    const collected = f.run();
-    assert.equal(collected.status, 0, collected.stderr);
-    const manifest = JSON.parse(readFileSync(join(f.desktop, 'licenses/manifest.json')));
-    const pkg = manifest.packages.find(pkg => pkg.name === 'glib');
-    assert.equal(pkg.version, '0.18.5');
-    assert.equal(pkg.license, 'MIT');
-    assert.match(pkg.local_patch, /b5a4071e439bef2b5eea76c3aa25e5ae84839e34$/);
-    assert.ok(pkg.texts.some(text => text.name === 'LICENSE' && text.provenance === 'crate-archive+reviewed-upstream-backport'));
-    assert.equal(JSON.stringify(manifest).includes(f.root), false);
-    assert.equal(f.run('--check').status, 0);
-    f.put('experimental/vendor/glib/src/lib.rs', 'unreviewed replacement');
     assert.notEqual(f.run().status, 0);
   } finally { f.close(); }
 });
