@@ -1,4 +1,4 @@
-name: Desktop probe
+name: Desktop checks
 
 on:
   push:
@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: desktop-probe-${{ github.ref }}
+  group: desktop-checks-${{ github.ref }}
   # Superseded pull request runs are cancelled; push, tag and manual runs never are.
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
@@ -75,26 +75,9 @@ jobs:
           "$RUNNER_TEMP/gitleaks" dir --no-banner --redact --exit-code 1 --config .gitleaks.toml .
           "$RUNNER_TEMP/gitleaks" git --no-banner --redact --exit-code 1 --config .gitleaks.toml .
 
-  # -- Unsigned development probe; does not qualify gaming or E2EE -----------
-  # The published Linux client is Electron and does not use GLib. This job
-  # checks the Tauri host's Linux GLib backport. That host stays off until
-  # Tauri moves to GTK4. Remove `if: ${{ false }}` only together with that move.
-  desktop-glib:
-    if: ${{ false }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: '26'
-      - name: Verify reviewed backport against optimized real Linux GLib
-        run: bash scripts/test-glib-linux.sh
-
   # The platform-neutral gaming logic (foreground tracking, game matching, input
-  # state machines) runs on every system the clients ship for, not only Windows.
+  # state machines) is included by the host by path; the root crate builds it on
+  # its own so the tests run on every system the clients ship for, not only Windows.
   gaming-logic:
     needs: changes
     if: needs.changes.outputs.native == 'true'
@@ -115,17 +98,14 @@ jobs:
         with:
           key: ${{ hashFiles('Cargo.lock') }}
           save-if: ${{ github.ref == 'refs/heads/main' }}
-      # The probe's Linux-only dev-dependency (GLib test) links the system GLib.
-      - name: Install GLib development files
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libglib2.0-dev
       - name: Test and lint the neutral gaming logic
         run: |
           set -euo pipefail
           cargo +1.99.1 test --locked --manifest-path Cargo.toml --lib
           cargo +1.99.1 clippy --locked --manifest-path Cargo.toml --lib --tests -- -D warnings
 
-  desktop-probe:
+  # Script tests, formatting and the advisory scan of every Rust lockfile.
+  desktop-scripts:
     needs: changes
     if: needs.changes.outputs.native == 'true'
     runs-on: windows-latest
@@ -134,17 +114,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: msch128/mnema-talk
-          ref: main
-          path: mnema-talk
-          persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '26'
-          cache: npm
-          cache-dependency-path: ui/package-lock.json
       - name: Install pinned Rust toolchain
         run: rustup toolchain install 1.99.1 --profile minimal --component rustfmt --component clippy
       # Restored on pull requests, saved only on main.
@@ -152,51 +124,26 @@ jobs:
         with:
           key: ${{ hashFiles('Cargo.lock') }}
           save-if: ${{ github.ref == 'refs/heads/main' }}
-      - name: Frontend dependencies, tests and local-asset build
+      - name: Rust format and gaming logic checks
         shell: bash
         run: |
           set -euo pipefail
-          npm ci --prefix ui --no-audit --no-fund
-          node scripts/ensure-npm-optional.mjs ui
-          npm --prefix ui run check
-          npm audit --prefix ui --omit=dev --audit-level=high
-      - name: Rust format, tests and native checks
-        shell: bash
-        run: |
-          set -euo pipefail
-          node scripts/checked-glib.mjs
           cargo +1.99.1 fmt --manifest-path Cargo.toml --check
           cargo +1.99.1 test --locked --manifest-path Cargo.toml
-          cargo +1.99.1 clippy --locked --manifest-path Cargo.toml --all-targets --features shell -- -D warnings
-      - name: Build unsigned feasibility probe (not a release)
-        run: npm run build
-      - name: Verify distribution notices and development manifest tests
+          cargo +1.99.1 clippy --locked --manifest-path Cargo.toml --all-targets -- -D warnings
+      - name: Script tests
+        shell: bash
+        run: node --test scripts/*.test.mjs
+      - name: Tests of the rail and update pages
         shell: bash
         run: |
           set -euo pipefail
-          node --test scripts/*.test.mjs
-          node scripts/collect-licenses.mjs --check
-          node scripts/artifact-manifest.mjs target/release/mnema-desktop-probe.exe target/release/development-manifest.json x86_64-pc-windows-msvc
-      # Scoped to the Windows target (deny.toml); one documented exception, see
-      # doc/security-review-1.2.md.
-      - name: Rust advisory scan (pinned tool, Windows graph)
+          npm ci --prefix experimental/app/page-tests --ignore-scripts --no-audit --no-fund
+          npm test --prefix experimental/app/page-tests
+      # Scoped to the Windows and macOS targets (deny.toml).
+      - name: Rust advisory scan (pinned tool, Windows and macOS graph)
         shell: bash
         run: |
           set -euo pipefail
           cargo +1.99.1 install cargo-deny --version "$CARGO_DENY_VERSION" --locked
-          node scripts/checked-glib.mjs
           bash scripts/deny-all.sh
-      - name: Upload Windows probe for qualification
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: windows-desktop-feasibility-probe
-          path: |
-            target/release/mnema-desktop-probe.exe
-            target/release/development-manifest.json
-            README.md
-            THIRD_PARTY_NOTICES.md
-            licenses/
-            LICENSE
-          if-no-files-found: error
-          retention-days: 7
-

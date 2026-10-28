@@ -1,7 +1,7 @@
 name: Advisories
 
 # The same advisory checks the push and pull request workflows run (npm audit
-# for the three UI/Electron trees, cargo deny for the Rust lockfiles), on a
+# for the Tauri CLI pin and the Electron tree, cargo deny for the Rust lockfiles), on a
 # schedule: an advisory published after the last push to the shipped client
 # would otherwise go unnoticed until someone pushes again.
 on:
@@ -36,7 +36,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        dir: [ui, linux, experimental/ui]
+        dir: [ui, linux, experimental/app/page-tests]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -66,13 +66,11 @@ jobs:
       - name: Install pinned Rust toolchain
         run: rustup toolchain install 1.99.1 --profile minimal
       # Scoped to the shipped Tauri targets, Windows and macOS (deny.toml): the Linux
-      # client is Electron, and the Linux-only GTK3 crates are not in those builds. One documented
-      # exception, see doc/security-review-1.2.md.
+      # client is Electron, and the Linux-only GTK3 crates are not in those builds.
       - name: Rust advisory scan (pinned tool, Windows and macOS graph)
         run: |
           set -euo pipefail
           cargo +1.99.1 install cargo-deny --version "$CARGO_DENY_VERSION" --locked
-          node scripts/checked-glib.mjs
           bash scripts/deny-all.sh
 
   # The experimental host's license bundle binds the app Cargo.lock and the

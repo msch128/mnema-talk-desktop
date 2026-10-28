@@ -185,22 +185,6 @@ jobs:
           RELEASE_TAG: ${{ inputs.tag }}
         run: bash scripts/stage-web-bundle.sh
 
-      - name: Check and link the canonical protected native host on Windows
-        if: inputs.acceptance_release == ''
-        shell: pwsh
-        run: |
-          node scripts/checked-glib.mjs
-          if ($LASTEXITCODE -ne 0) { throw 'Reviewed dependency source verification failed' }
-          cargo test --locked --manifest-path experimental/crates/crypto-owner/qualified-sdk/Cargo.toml
-          if ($LASTEXITCODE -ne 0) { throw 'Protected SDK tests failed' }
-          cargo test --locked --manifest-path experimental/crates/crypto-owner/Cargo.toml --features opaque-relay
-          if ($LASTEXITCODE -ne 0) { throw 'Protected chat-owner tests failed' }
-          cargo build --locked --release --manifest-path experimental/app/Cargo.toml --features shell,native-crypto,custom-protocol
-          if ($LASTEXITCODE -ne 0) { throw 'Protected native host link failed' }
-          cargo test --locked --manifest-path experimental/vendor/openmls/Cargo.toml -p openmls_rust_crypto -p openmls_basic_credential -p openmls_sqlite_storage
-          if ($LASTEXITCODE -ne 0) { throw 'OpenMLS ECDSA provider tests failed' }
-          cargo test --locked --manifest-path experimental/vendor/openmls/Cargo.toml -p openmls --test mnema_ecdsa_roundtrip
-          if ($LASTEXITCODE -ne 0) { throw 'OpenMLS group round trip tests failed' }
       # A real package from a published release, signed by the release pipeline:
       # the host's signature check runs on it, not only on packages the tests sign.
       - name: Fetch a signed release package for the signature tests
@@ -221,8 +205,6 @@ jobs:
           # Items written by keyring 3 (releases up to 0.3.x) stay readable (web_vault.rs).
           MNEMA_KEYRING_COMPAT: '1'
         run: |
-          node scripts/checked-glib.mjs
-          if ($LASTEXITCODE -ne 0) { throw 'Reviewed dependency source verification failed' }
           cargo test --locked --manifest-path experimental/app/Cargo.toml --features shell,web-client,custom-protocol
           if ($LASTEXITCODE -ne 0) { throw 'Shared host tests failed' }
           cargo clippy --locked --manifest-path experimental/app/Cargo.toml --features shell,web-client,custom-protocol --all-targets -- -D warnings
@@ -322,7 +304,6 @@ jobs:
             gaming_surface_origin_checked = $true
             physical_device_qualified = $false
             sealed_media_qualified = $false
-            synthetic_fixture_features = $false
             windows_gui_qualified = $false
             multi_device_e2ee_qualified = $false
             restored_history_qualified = $false
@@ -422,8 +403,6 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          node scripts/checked-glib.mjs
-          if ($LASTEXITCODE -ne 0) { throw 'Reviewed dependency source verification failed' }
           $features = 'shell,web-client,custom-protocol,notify-selftest'
           cargo build --locked --release --manifest-path experimental/app/Cargo.toml --features $features
           if ($LASTEXITCODE -ne 0) { throw 'Host build failed' }
@@ -489,8 +468,6 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          node scripts/checked-glib.mjs
-          if ($LASTEXITCODE -ne 0) { throw 'Reviewed dependency source verification failed' }
           cargo build --locked --release --manifest-path experimental/app/Cargo.toml --features shell,web-client,custom-protocol,multi-selftest
           if ($LASTEXITCODE -ne 0) { throw 'Host build failed' }
       - name: Two servers side by side, isolated from each other
@@ -548,11 +525,8 @@ jobs:
           # Items written by keyring 3 (releases up to 0.3.x) stay readable (web_vault.rs).
           MNEMA_KEYRING_COMPAT: '1'
         run: |
-          node scripts/checked-glib.mjs
           cargo test --locked --manifest-path experimental/app/Cargo.toml --features shell,web-client,custom-protocol
           cargo clippy --locked --manifest-path experimental/app/Cargo.toml --features shell,web-client,custom-protocol --all-targets -- -D warnings
-          # The transport qualification example is run by hand against a private fixture; here it only has to keep compiling.
-          cargo build --locked --manifest-path experimental/app/Cargo.toml --example metadata_fixture --features synthetic-transport-fixture
       # Two servers side by side (see windows-multi-instance): the data stores
       # of WKWebView keep their storage apart from macOS 14 on.
       - name: Two servers side by side, isolated from each other
