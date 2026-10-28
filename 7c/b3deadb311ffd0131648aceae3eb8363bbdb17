@@ -1,0 +1,42 @@
+experimental/crates/broker/src/admin_metadata.rs
+  h_0ff4f4713441f4 171,362
+experimental/crates/broker/src/broker.rs
+  h_0ff4f4713441f4 382-403,802,976
+experimental/crates/broker/src/client.rs
+  h_0ff4f4713441f4 135-137,179-188,192,241,323,356-358,381,409,513,524,542,560,586,591,625-630,717,721-730,735,757,779,821,1044
+experimental/crates/broker/src/http.rs
+  h_0ff4f4713441f4 111-114,127-130,186-188,207-209,244-245,316,325-331
+experimental/crates/broker/src/metadata.rs
+  h_0ff4f4713441f4 60-63,125-127,216,277-339
+experimental/crates/broker/src/opaque_relay.rs
+  h_0ff4f4713441f4 170,269,292
+experimental/crates/broker/src/personal_metadata.rs
+  h_0ff4f4713441f4 125
+experimental/crates/broker/src/registration.rs
+  h_0ff4f4713441f4 24
+experimental/crates/broker/src/socket.rs
+  h_0ff4f4713441f4 299-306
+experimental/crates/broker/src/tests.rs
+  h_0ff4f4713441f4 1077-1106
+experimental/crates/broker/src/wire.rs
+  h_0ff4f4713441f4 9-26,43-45,61-62,65-66,72-73,87,95,159-184
+experimental/crates/broker/tests/https_fixture.py
+  h_0ff4f4713441f4 175-176
+src/windows.rs
+  h_0ff4f4713441f4 221-222
+ui/src/App.test.ts
+  h_0ff4f4713441f4 66,99,101
+ui/src/App.vue
+  h_0ff4f4713441f4 20,67-68,146
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7cb3deadb311ffd0131648aceae3eb8363bbdb17",
+  "prompts": {},
+  "humans": {
+    "h_0ff4f4713441f4": {
+      "author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}
