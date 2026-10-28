@@ -38,7 +38,7 @@ mod game_library_scan;
 #[allow(dead_code)]
 #[path = "../../../src/game_list.rs"]
 mod game_list;
-#[allow(dead_code)] // the one-shot probe is kept for the fixtures; the app listens to events
+#[allow(dead_code)]
 #[path = "../../../src/windows.rs"]
 mod games;
 #[allow(dead_code)]

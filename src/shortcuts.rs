@@ -1,14 +1,10 @@
-//! Shortcut bindings and a bounded polling state machine.
+//! Shortcut bindings: which keys and modifiers the settings accept.
 //!
-//! The shipped client uses only the validation here ([`Binding`], [`Modifiers`]);
-//! its keys arrive event driven from Raw Input (`input.rs`, `input_windows.rs`)
-//! and its state machine is `Gaming::advance` in the host. [`ShortcutState`] and
-//! [`Sample`] are a polling variant that the host does not use; they stay with
-//! their tests. Nothing in this file reads key state from the system, and no
-//! keyboard hook, input interception, key history or process injection exists.
-//! This adapter alone must never authorize transmission.
-
-use std::time::{Duration, Instant};
+//! The keys themselves arrive event driven from Raw Input (`input.rs`,
+//! `input_windows.rs`) and the state machine is `Gaming::advance` in the host.
+//! Nothing in this file reads key state from the system, and no keyboard hook,
+//! input interception, key history or process injection exists. This adapter
+//! alone must never authorize transmission.
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Modifiers {
@@ -22,7 +18,6 @@ pub struct Modifiers {
 pub enum BindingError {
     UnsupportedKey,
     ReservedCombination,
-    Conflict,
 }
 
 /// Validated Win32 virtual-key binding. This is layout-dependent, not a portable
@@ -55,184 +50,12 @@ impl Binding {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Bindings {
-    overlay: Binding,
-    ptt: Option<Binding>,
-}
-
-impl Default for Bindings {
-    fn default() -> Self {
-        Self {
-            overlay: Binding {
-                key: 0x4d, // Alt+M.
-                modifiers: Modifiers {
-                    alt: true,
-                    ..Modifiers::default()
-                },
-            },
-            ptt: None,
-        }
-    }
-}
-
-impl Bindings {
-    pub fn new(overlay: Binding, ptt: Option<Binding>) -> Result<Self, BindingError> {
-        if ptt == Some(overlay) {
-            return Err(BindingError::Conflict);
-        }
-        Ok(Self { overlay, ptt })
-    }
-}
-
-/// Input from this sampler remains internal to the native input owner. Only
-/// action transitions should be forwarded to the authoritative session core.
-#[derive(Debug, Clone, Copy, Default)]
-pub struct Sample {
-    pub modifiers: Modifiers,
-    pub overlay_down: bool,
-    pub ptt_down: bool,
-}
-
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct Actions {
-    pub toggle_overlay: bool,
-    pub press_ptt: bool,
-    pub release_ptt: bool,
-}
-
-#[derive(Debug, Default)]
-struct ButtonState {
-    enabled: bool,
-    armed: bool,
-    down: bool,
-    active: bool,
-}
-
-impl ButtonState {
-    fn update(&mut self, enabled: bool, down: bool, matches: bool) -> (bool, bool) {
-        let was_active = self.active;
-        if !enabled || self.enabled != enabled {
-            self.armed = false;
-            self.active = false;
-        }
-        self.enabled = enabled;
-        if enabled && !down {
-            self.armed = true;
-            self.active = false;
-        }
-        let pressed = enabled && down && !self.down && self.armed && matches;
-        if down {
-            // A fresh primary-key release is required after any press, including
-            // a press with wrong modifiers; restoring a held chord cannot unmute.
-            self.armed = false;
-        }
-        if pressed {
-            self.active = true;
-        }
-        if !matches {
-            self.active = false;
-        }
-        self.down = down;
-        (pressed, was_active && !self.active)
-    }
-}
-
-#[derive(Debug)]
-pub struct ShortcutState {
-    bindings: Bindings,
-    overlay: ButtonState,
-    ptt: ButtonState,
-    last_poll: Option<Instant>,
-}
-
-impl ShortcutState {
-    pub fn new(bindings: Bindings) -> Self {
-        Self {
-            bindings,
-            overlay: ButtonState::default(),
-            ptt: ButtonState::default(),
-            last_poll: None,
-        }
-    }
-
-    pub fn bindings(&self) -> Bindings {
-        self.bindings
-    }
-
-    /// Called on lock, lost input, session/profile change, suspend or shutdown.
-    /// Caller must also force the media owner to release PTT independently.
-    pub fn reset(&mut self) -> Actions {
-        let release_ptt = self.ptt.active;
-        self.overlay = ButtonState::default();
-        self.ptt = ButtonState::default();
-        self.last_poll = None;
-        Actions {
-            release_ptt,
-            ..Actions::default()
-        }
-    }
-
-    pub fn reconfigure(&mut self, bindings: Bindings) -> Actions {
-        let actions = self.reset();
-        self.bindings = bindings;
-        actions
-    }
-
-    /// `overlay_allowed` and `ptt_allowed` must come from session policy, never
-    /// from an arbitrary WebView. A delayed poll releases held PTT and requires
-    /// release/repress. 250ms is a safety bound, not a polling frequency promise.
-    pub fn update(
-        &mut self,
-        sample: Sample,
-        overlay_allowed: bool,
-        ptt_allowed: bool,
-        now: Instant,
-    ) -> Actions {
-        let interrupted = self.last_poll.is_some_and(|previous| {
-            now.saturating_duration_since(previous) > Duration::from_millis(250)
-        });
-        let lost_actions = if interrupted {
-            self.reset()
-        } else {
-            Actions::default()
-        };
-        self.last_poll = Some(now);
-        let (toggle_overlay, _) = self.overlay.update(
-            overlay_allowed,
-            sample.overlay_down,
-            sample.modifiers == self.bindings.overlay.modifiers,
-        );
-        let (press_ptt, release_ptt) = self.ptt.update(
-            ptt_allowed && self.bindings.ptt.is_some(),
-            sample.ptt_down,
-            self.bindings
-                .ptt
-                .is_some_and(|binding| binding.modifiers == sample.modifiers),
-        );
-        Actions {
-            toggle_overlay,
-            press_ptt,
-            release_ptt: lost_actions.release_ptt || release_ptt,
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn mouse_bindings() -> Bindings {
-        Bindings::new(
-            Bindings::default().overlay,
-            Some(Binding::new(0x05, Modifiers::default()).unwrap()),
-        )
-        .unwrap()
-    }
-
     #[test]
-    fn bindings_validate_keys_reserved_combinations_and_conflicts() {
-        assert_eq!(Bindings::default().overlay.key(), 0x4d);
+    fn bindings_validate_keys_and_reserved_combinations() {
         for key in [0, 0x10, 0x12, 0x1b, 0x2e, 0x5b, 0x88, 256] {
             assert_eq!(
                 Binding::new(key, Modifiers::default()),
@@ -263,127 +86,5 @@ mod tests {
             ),
             Err(BindingError::ReservedCombination)
         );
-        let overlay = Bindings::default().overlay;
-        assert_eq!(
-            Bindings::new(overlay, Some(overlay)),
-            Err(BindingError::Conflict)
-        );
-    }
-
-    #[test]
-    fn overlay_toggles_once_and_requires_exact_modifiers_and_fresh_primary_press() {
-        let now = Instant::now();
-        let mut state = ShortcutState::new(Bindings::default());
-        let alt = Modifiers {
-            alt: true,
-            ..Modifiers::default()
-        };
-        let held = Sample {
-            modifiers: alt,
-            overlay_down: true,
-            ptt_down: false,
-        };
-        // Holding the shortcut before startup or policy activation cannot open it.
-        assert_eq!(state.update(held, true, false, now), Actions::default());
-        state.update(Sample::default(), true, false, now);
-        assert!(state.update(held, true, false, now).toggle_overlay);
-        assert!(!state.update(held, true, false, now).toggle_overlay);
-        state.update(Sample::default(), true, false, now);
-        let altgr = Sample {
-            modifiers: Modifiers {
-                control: true,
-                ..alt
-            },
-            ..held
-        };
-        assert!(!state.update(altgr, true, false, now).toggle_overlay);
-        assert!(!state.update(held, true, false, now).toggle_overlay);
-        state.update(Sample::default(), true, false, now);
-        assert!(state.update(held, true, false, now).toggle_overlay);
-    }
-
-    #[test]
-    fn ptt_release_and_context_restore_cannot_resume_a_held_button() {
-        let now = Instant::now();
-        let mut state = ShortcutState::new(mouse_bindings());
-        let held = Sample {
-            ptt_down: true,
-            ..Sample::default()
-        };
-        state.update(Sample::default(), false, true, now);
-        assert!(state.update(held, false, true, now).press_ptt);
-        assert!(state.update(held, false, false, now).release_ptt);
-        assert!(!state.update(held, false, true, now).press_ptt);
-        state.update(Sample::default(), false, true, now);
-        assert!(state.update(held, false, true, now).press_ptt);
-        assert!(
-            state
-                .update(Sample::default(), false, true, now)
-                .release_ptt
-        );
-    }
-
-    #[test]
-    fn modifier_change_releases_ptt_without_reactivating_held_primary() {
-        let now = Instant::now();
-        let mut state = ShortcutState::new(mouse_bindings());
-        let held = Sample {
-            ptt_down: true,
-            ..Sample::default()
-        };
-        state.update(Sample::default(), false, true, now);
-        assert!(state.update(held, false, true, now).press_ptt);
-        let shifted = Sample {
-            modifiers: Modifiers {
-                shift: true,
-                ..Modifiers::default()
-            },
-            ..held
-        };
-        assert!(state.update(shifted, false, true, now).release_ptt);
-        assert!(!state.update(held, false, true, now).press_ptt);
-    }
-
-    #[test]
-    fn stalled_poll_or_reconfiguration_releases_and_requires_repress() {
-        let now = Instant::now();
-        let mut state = ShortcutState::new(mouse_bindings());
-        let held = Sample {
-            ptt_down: true,
-            ..Sample::default()
-        };
-        state.update(Sample::default(), false, true, now);
-        state.update(held, false, true, now);
-        let later = now + Duration::from_millis(251);
-        let actions = state.update(held, false, true, later);
-        assert!(actions.release_ptt);
-        assert!(!actions.press_ptt);
-        state.update(Sample::default(), false, true, later);
-        state.update(held, false, true, later);
-        assert!(state.reconfigure(Bindings::default()).release_ptt);
-        assert_eq!(state.update(held, false, true, later), Actions::default());
-        assert!(!state.reset().release_ptt);
-    }
-
-    #[test]
-    fn policy_cannot_be_bypassed_by_any_combination_of_held_keys() {
-        let now = Instant::now();
-        for flags in 0..64 {
-            let sample = Sample {
-                modifiers: Modifiers {
-                    alt: flags & 1 != 0,
-                    control: flags & 2 != 0,
-                    shift: flags & 4 != 0,
-                    windows: flags & 8 != 0,
-                },
-                overlay_down: flags & 16 != 0,
-                ptt_down: flags & 32 != 0,
-            };
-            let mut state = ShortcutState::new(mouse_bindings());
-            state.update(Sample::default(), true, true, now);
-            assert_eq!(state.update(sample, false, false, now), Actions::default());
-            // Re-enabling with the same held keys must still do nothing.
-            assert_eq!(state.update(sample, true, true, now), Actions::default());
-        }
     }
 }

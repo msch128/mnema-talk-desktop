@@ -3,6 +3,9 @@
 // public key pinned in tauri.conf.json, the way the client does: minisign
 // signature over the package, the same key id, and the signed version equal to
 // the feed's version. Run on the assembled release before it is published.
+// A release rehearsal signs with throwaway keys (one per signing job) and sets
+// UPDATER_PUBKEYS to their public keys, separated by whitespace; a release never
+// sets it and is checked against the pinned key only.
 import { createHash, createPublicKey, verify } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
@@ -38,8 +41,10 @@ export function parseSignature(signatureBase64) {
 
 /** Returns the version named in the signed comment, or throws. */
 export function verifyPackage(content, signatureBase64, pubkeyBase64) {
-  const key = parsePublicKey(pubkeyBase64);
   const sig = parseSignature(signatureBase64);
+  // One key, or several of which the signature names one by its key id.
+  const keys = [pubkeyBase64].flat().map(parsePublicKey);
+  const key = keys.find((candidate) => candidate.keyId.equals(sig.keyId)) ?? keys[0];
   if (!key.keyId.equals(sig.keyId)) throw new Error('Signed with a different key than the pinned one.');
   const publicKey = createPublicKey({ key: Buffer.concat([ED25519_SPKI_PREFIX, key.raw]), format: 'der', type: 'spki' });
   const message = sig.algorithm === 'ED' ? createHash('blake2b512').update(content).digest() : content;
@@ -77,8 +82,10 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const conf = JSON.parse(readFileSync(join(resolve(dirname(fileURLToPath(import.meta.url)), '..'), 'experimental', 'app', 'tauri.conf.json'), 'utf8'));
   const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
   try {
-    const platforms = verifyManifest(manifest, conf.plugins.updater.pubkey, (name) => readFileSync(join(dir, name)), required);
-    console.log(`Verified ${platforms.join(', ')} for ${manifest.version} against the pinned key.`);
+    const rehearsal = (process.env.UPDATER_PUBKEYS ?? '').split(/\s+/).filter(Boolean);
+    const pinned = rehearsal.length > 0 ? rehearsal : conf.plugins.updater.pubkey;
+    const platforms = verifyManifest(manifest, pinned, (name) => readFileSync(join(dir, name)), required);
+    console.log(`Verified ${platforms.join(', ')} for ${manifest.version} against ${rehearsal.length > 0 ? `${rehearsal.length} rehearsal key(s)` : 'the pinned key'}.`);
   } catch (error) {
     console.error(`::error::${error.message}`);
     process.exit(1);

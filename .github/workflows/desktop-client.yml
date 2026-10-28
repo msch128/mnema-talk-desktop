@@ -284,6 +284,7 @@ jobs:
           }
           Copy-Item 'experimental/licenses'  (Join-Path $devOutput 'licenses') -Recurse
           Copy-Item 'LICENSE' $devOutput
+          Copy-Item 'THIRD_PARTY_NOTICES.md' (Join-Path $devOutput 'HOST_THIRD_PARTY_NOTICES.md')
           Copy-Item 'mnema-talk/THIRD_PARTY_NOTICES.md' $devOutput
           Copy-Item 'experimental/THIRD_PARTY_NOTICES.md' (Join-Path $devOutput 'NATIVE_THIRD_PARTY_NOTICES.md')
           Copy-Item 'experimental/README.md' (Join-Path $devOutput 'SOURCE_STATUS.md')
