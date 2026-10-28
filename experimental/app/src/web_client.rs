@@ -8,7 +8,7 @@ use crate::instances::{
 };
 use crate::web_bundle::{Held, Refusal, ServerInfo, Store, TrustedKey, Version, trusted_keys};
 use crate::web_proxy::{Resp, forward, now, serve_bundle};
-use crate::web_trust::{Accepted, TrustState, root_key};
+use crate::web_trust::{Accepted, RELEASE_FLOOR, TrustState, root_key};
 use crate::web_ws::WsEvent;
 use reqwest::{Client, redirect::Policy};
 use serde::Deserialize;
@@ -90,9 +90,10 @@ impl Trusted {
     pub(crate) fn new(data_dir: Option<std::path::PathBuf>, builtin: Option<&[u8]>) -> Trusted {
         // Before anything of this run is written: what is there is the old client's.
         let adoptable = data_dir.as_deref().is_some_and(old_client_left_data);
-        let trust = TrustState::load(
+        let trust = TrustState::load_with(
             data_dir.as_ref().map(|d| d.join("web-trust")).as_deref(),
             root_key(),
+            RELEASE_FLOOR,
         );
         crate::web_trust::publish(trust.statement());
         let keys = trust.effective_keys(trusted_keys());

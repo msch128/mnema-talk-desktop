@@ -65,6 +65,34 @@
    "secs": null
   },
   {
+   "input": "2026-02-29T00:00:00Z",
+   "secs": null
+  },
+  {
+   "input": "2026-02-31T00:00:00Z",
+   "secs": null
+  },
+  {
+   "input": "2026-04-31T00:00:00Z",
+   "secs": null
+  },
+  {
+   "input": "2100-02-29T00:00:00Z",
+   "secs": null
+  },
+  {
+   "input": "2024-02-30T00:00:00Z",
+   "secs": null
+  },
+  {
+   "input": "2000-02-29T00:00:00Z",
+   "secs": 951782400
+  },
+  {
+   "input": "2026-04-30T00:00:00Z",
+   "secs": 1777507200
+  },
+  {
    "input": "",
    "secs": null
   }
@@ -489,6 +517,34 @@
      "now": 1793491200,
      "expect": "updated",
      "serial": 3
+    }
+   ]
+  },
+  {
+   "name": "a later statement cannot allow a revoked key again",
+   "steps": [
+    {
+     "doc": "{\"schema\":1,\"serial\":2,\"issued_at\":\"2026-10-17T10:00:00Z\",\"expires_at\":\"2027-01-15T10:00:00Z\",\"bundle_keys\":[\"8139770ea87d175f56a35466c34c7ecccb8d8a91b4ee37a25df60f5b8fc9b394\"],\"revoked_bundle_keys\":[\"34750f98bd59fcfc\"],\"updater_keys\":[],\"revoked_updater_keys\":[]}",
+     "sig": "Jcjufuv/5O+UPtxDRUF2KBwJTMKNjgoES+Ag57WXlIVGNrDUn/sIxucDWOsru1Dgv8ACq/oKRIRhcRBuWflDDg==",
+     "now": 1793491200,
+     "expect": "updated",
+     "serial": 2
+    },
+    {
+     "doc": "{\"schema\":1,\"serial\":3,\"issued_at\":\"2026-10-17T10:00:00Z\",\"expires_at\":\"2027-01-15T10:00:00Z\",\"bundle_keys\":[\"8a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c\",\"8139770ea87d175f56a35466c34c7ecccb8d8a91b4ee37a25df60f5b8fc9b394\"],\"revoked_bundle_keys\":[],\"updater_keys\":[],\"revoked_updater_keys\":[]}",
+     "sig": "JtUc/B8vUHhUOMyLHHnXEmfWue2QDDlzuFus1mS8N/iWex9iOgzjIBkOo2nUhN0BLiI8xaTvb47ZHoFsC/UUDw==",
+     "now": 1793491200,
+     "expect": {
+      "error": "a revoked bundle key is allowed again"
+     },
+     "serial": 2
+    },
+    {
+     "doc": "{\"schema\":1,\"serial\":4,\"issued_at\":\"2026-10-17T10:00:00Z\",\"expires_at\":\"2027-01-15T10:00:00Z\",\"bundle_keys\":[\"8139770ea87d175f56a35466c34c7ecccb8d8a91b4ee37a25df60f5b8fc9b394\",\"ed4928c628d1c2c6eae90338905995612959273a5c63f93636c14614ac8737d1\"],\"revoked_bundle_keys\":[],\"updater_keys\":[],\"revoked_updater_keys\":[]}",
+     "sig": "XuVZwQuYyDl3u1U+sSn8h27mhxEWUDX3koRMPc/8Ro2v+AUHrxUuNfblPk+FMR1MFI7pFOD6ZgRks4Ume0KJDg==",
+     "now": 1793491200,
+     "expect": "updated",
+     "serial": 4
     }
    ]
   },

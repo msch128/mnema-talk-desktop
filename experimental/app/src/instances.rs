@@ -7,7 +7,11 @@
 //! opened for. This module is the bookkeeping, free of any window handling so
 //! that the isolation rules can be tested: the shell (`web_shell`) turns it
 //! into webviews.
-use crate::{web_bundle::Held, web_proxy::Instance, web_ws::Sockets};
+use crate::{
+    web_bundle::{Held, is_hex_id16},
+    web_proxy::Instance,
+    web_ws::Sockets,
+};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{path::Path, sync::Arc};
@@ -38,13 +42,6 @@ pub fn id_for(origin: &Url) -> String {
     hex::encode(&Sha256::digest(origin.as_str().as_bytes())[..8])
 }
 
-fn valid_id(id: &str) -> bool {
-    id.len() == 16
-        && id
-            .bytes()
-            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
-}
-
 /// The label of the page of one server.
 pub fn instance_label(id: &str) -> String {
     format!("{INSTANCE_PREFIX}{id}")
@@ -60,13 +57,13 @@ pub fn attachment_label(id: &str) -> String {
 pub fn id_of_instance_label(label: &str) -> Option<&str> {
     label
         .strip_prefix(INSTANCE_PREFIX)
-        .filter(|id| valid_id(id))
+        .filter(|id| is_hex_id16(id))
 }
 
 pub fn id_of_attachment_label(label: &str) -> Option<&str> {
     label
         .strip_prefix(ATTACHMENT_PREFIX)
-        .filter(|id| valid_id(id))
+        .filter(|id| is_hex_id16(id))
 }
 
 /// What the server's page is doing: still being checked, running, or refused

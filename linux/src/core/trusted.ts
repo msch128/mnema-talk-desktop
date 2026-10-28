@@ -16,7 +16,7 @@ import { PINNED_BUNDLE_KEYS, ROOT_PUB } from './pinned.ts'
 import { Sockets } from './sockets.ts'
 import { compareVersions } from './version.ts'
 import { type Held, type ServerInfo, Store, refusalText } from './store.ts'
-import { TrustError, TrustState, type Statement, rootKey, statementCaps } from './trust.ts'
+import { type Floor, RELEASE_FLOOR, TrustError, TrustState, type Statement, rootKey, statementCaps } from './trust.ts'
 import { checkAndInstall as installNewer, fetchTrust as fetchStatement, updatesDisabled } from './updates.ts'
 
 export function pinnedKeys(): TrustedKey[] {
@@ -36,6 +36,8 @@ export interface TrustedDeps {
   root: string
   pinned: () => TrustedKey[]
   log(message: string): void
+  /** What this release knows of the trust statements; none in tests that use arbitrary serials. */
+  floor?: Floor
 }
 
 export function defaultDeps(vault: Vault | null): TrustedDeps {
@@ -48,6 +50,7 @@ export function defaultDeps(vault: Vault | null): TrustedDeps {
     root: ROOT_PUB,
     pinned: pinnedKeys,
     log: (message) => console.error(`Mnema Desktop: ${message}`),
+    floor: RELEASE_FLOOR,
   }
 }
 
@@ -71,7 +74,7 @@ export class Trusted {
   constructor(dataDir: string | null, builtin: Uint8Array | null, deps: TrustedDeps) {
     this.dataDir = dataDir
     this.deps = deps
-    this.trust = TrustState.load(dataDir ? join(dataDir, 'web-trust') : null, rootKey(deps.root))
+    this.trust = TrustState.load(dataDir ? join(dataDir, 'web-trust') : null, rootKey(deps.root), { floor: deps.floor, log: (m) => deps.log(m) })
     this.keys = this.trust.effectiveKeys(deps.pinned())
     this.store = Store.load(dataDir ? join(dataDir, 'web-bundles') : null, builtin, this.keys)
     this.registry = Registry.restore(dataDir ? loadStored(this.instancesFile()) : emptyStored())
