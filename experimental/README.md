@@ -105,47 +105,28 @@ Windows and macOS run this Tauri host. Linux runs the Electron client in
 [`../linux`](../linux/README.md). Runtime qualification on macOS and Linux
 hardware remains separate.
 
-## Preserved native research checkpoint
+## Source layout
 
-The material below describes the earlier experimental native-crypto transport,
-which is preserved for future work and is not selected by the shipped `web-client`
-build. Its preview-server requirements and feature restrictions do not describe
-the production web-client mode above.
+- `app/`: the Tauri host, its command permissions and capabilities.
+- `app/page-tests/`: behaviour tests of the plain pages the host serves (the server rail and the update page).
+- `licenses/`: the dependency license bundle shipped with a build, bound to `app/Cargo.lock` and the web app's `package-lock.json`.
+- `../src/`: the gaming logic the host includes by path (`app/src/web_gaming.rs`).
+- `../mnema-talk/web/`: the web app, checked out from mnema-talk.
 
-# Native desktop development checkpoint
+From this repository's root, install the web app's dependencies with
+`npm ci --prefix mnema-talk/web` and build it, then build the host with
+`cargo build --locked --manifest-path experimental/app/Cargo.toml --features shell,web-client,custom-protocol`.
+Builds use Rust 1.99.1 and the committed Cargo lockfile. The result is an
+unsigned DEV executable without an automatic updater. Operating-system
+toolchains are required for native dependency compilation.
 
-This directory preserves the current native desktop implementation while it is
-being integrated. It is an experimental source checkpoint, not a released 0.7
-application. The production server does not enable its native preview routes.
-
-The client builds the canonical `web/src` Vue interface into `web/dist` and loads
-that same bundle in a local Tauri webview. Browser requests retain their existing
-cookie transport; the desktop runtime uses fixed native commands. Its
-native broker selects an HTTPS community, keeps authentication credentials out
-of the renderer, and exposes fixed commands for account and community metadata.
-The protected-chat implementation combines a native confirmation dialog,
-protected operating-system storage, SQLCipher and the pinned OpenMLS provider.
-The UI presents public results; it does not issue cryptographic permissions.
-
-Native operations capture both profile and authentication lifetime before
-admission and retain the original authenticated scope through queue processing
-and publication. Typed chat events carry native author, receipt, timestamp and
-revision data into the existing ChatArea, MessageRow and ThreadSidebar. Renderer
-inputs supply text and target claims, never cryptographic authority.
-
-A controlled macOS DEV run against an isolated test instance exercised discovery,
-login, native OS root confirmation, message creation, edit, quoted reply,
-reaction, thread creation and deletion. This demonstrates a single-owner local
-flow. It does not qualify multi-device enrollment, persistent/restored history,
-native voice or complete E2EE. The combined integration still requires
-independent source review and the full repository checks before publication.
-
-The protected native-crypto mode still lacks qualified native voice and complete
-web feature parity. The separate web-client mode uses the same Vue web app and
-provides the Windows Gaming DEV integration described in [desktop-app.md](https://github.com/msch128/mnema-talk/blob/main/doc/desktop-app.md#windows-gaming-dev).
-The published v0.7.1 Windows web-client executable has startup/login/chat/logout
-evidence; this does not qualify native-crypto mode or real-game overlays. Development builds have no code-signing certificate. This checkpoint does not activate experimental
-server routes or deploy an application.
+The `Shared desktop client DEV builds` workflow builds this mode on Windows and
+macOS. Matching pushes to `main` and `codex/**` produce short-lived unsigned DEV
+artifacts with source revision/hash receipts and dependency notices. The managed
+release workflow also calls it for a release tag; the release then carries the
+installers, the signed update files and a portable ZIP (see "Releasing" in the
+main README). Acceptance dispatches can instead exercise an existing published
+EXE. Linking alone does not qualify runtime behavior or games.
 
 The shared client rejects desktop call joins, automatic call restoration, camera
 and screen sharing before capture or connection-state changes until the native
@@ -153,34 +134,8 @@ protected-media owner is integrated. Browser voice behavior remains available.
 The browser's server-version reload banner is omitted for embedded desktop
 assets, because reloading cannot install a new desktop build.
 
-## Source layout
-
-- `app/`: native Tauri host and local-window command permissions.
-- `crates/`: the canonical broker, native storage and cryptographic integration.
-- `vendor/`: pinned provider source required by the native dependency graph.
-- `../mnema-talk/web/`: the canonical interface, checked out from mnema-talk.
-- `ui/`: historical checkpoint, no longer the application build input.
-
-From this repository's root, install the shared frontend with `npm ci --prefix mnema-talk/web`,
-then run `npm run build:client:dev`. Native builds use Rust
-1.99.1 and the committed Cargo lockfile. The equivalent native command after
-building `mnema-talk/web/dist` is
-`cargo build --locked --manifest-path experimental/app/Cargo.toml --features shell,native-crypto,custom-protocol`.
-This produces an unsigned DEV executable without configuring an automatic updater.
-Operating-system toolchains are required for native dependency compilation.
-The synthetic transport and media fixture features are disabled by default.
-
-The current `Shared desktop client DEV builds` workflow builds `web-client`
-mode on Windows, rather than this native-crypto research mode. Matching pushes
-to `main` and `codex/**` produce short-lived unsigned DEV artifacts with source
-revision/hash receipts and dependency notices. The managed release workflow
-also calls it for a release tag; the release then carries the installers, the
-signed update files and a portable ZIP (see "Releasing" in the main README).
-Acceptance dispatches can instead exercise an existing published EXE. Native
-key custody for the research mode remains an outstanding qualification target. Linking alone does not qualify runtime behavior or games.
-
-License and source-provenance records accompany the native graph. Existing
-vendored noise-filter assets retain their upstream notices; attribution of every
-transitive component in that prebuilt WASM is still being verified before binary
-distribution. No test account credentials, local database, captured user data,
-native keychain, build artifact or private handoff belongs in this checkpoint.
+Existing vendored noise-filter assets retain their upstream notices; attribution
+of every transitive component in that prebuilt WASM is still being verified
+before binary distribution. No test account credentials, local database,
+captured user data, native keychain, build artifact or private handoff belongs
+in this directory.
