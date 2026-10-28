@@ -14,7 +14,7 @@ const MAX_DOWNLOAD: usize = 96 << 20;
 #[derive(Deserialize)]
 struct Release {
     tag_name: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "crate::web_json::objects")]
     assets: Vec<Asset>,
 }
 
@@ -28,7 +28,7 @@ struct Asset {
 
 /// The newest release that carries a bundle: its version and download URL.
 pub fn bundle_asset(json: &[u8]) -> Option<(Version, Url)> {
-    let release: Release = serde_json::from_slice(json).ok()?;
+    let release: Release = crate::web_json::parse(json)?;
     let version = Version::parse(release.tag_name.strip_prefix('v')?)?;
     let wanted = format!("mnema-web-{version}.zip");
     let asset = release
@@ -193,6 +193,25 @@ mod tests {
             b"{".to_vec(),
         ] {
             assert!(bundle_asset(&json).is_none());
+        }
+    }
+
+    /// The same release feed in forms a strict reader refuses: byte order mark,
+    /// repeated keys, wrong types, data after the document.
+    #[test]
+    fn release_json() {
+        use base64::{Engine, engine::general_purpose::STANDARD};
+        let v: serde_json::Value =
+            serde_json::from_str(include_str!("../../../test-vectors/json.json"))
+                .expect("the vector file is JSON");
+        for c in v["releases"].as_array().unwrap() {
+            let name = c["name"].as_str().unwrap();
+            let bytes = STANDARD.decode(c["input"].as_str().unwrap()).unwrap();
+            let got = bundle_asset(&bytes).map(|(version, url)| {
+                serde_json::json!({ "version": version.to_string(), "url": url.as_str() })
+            });
+            let want = (!c["result"].is_null()).then(|| c["result"].clone());
+            assert_eq!(got, want, "{name}");
         }
     }
 

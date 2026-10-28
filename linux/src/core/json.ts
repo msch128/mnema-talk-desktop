@@ -21,7 +21,8 @@ export class JsonFloat {
   }
 }
 
-const MAX_DEPTH = 128
+/** Containers (objects and arrays) nested at most this deep, like serde_json's recursion limit of 128. */
+const MAX_DEPTH = 127
 const INTEGER = /^-?(?:0|[1-9][0-9]*)$/
 const NUMBER = /^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?/
 const WHITESPACE = new Set([' ', '\t', '\n', '\r'])
@@ -51,7 +52,6 @@ class Reader {
   }
 
   private value(depth: number): unknown {
-    if (depth > MAX_DEPTH) this.fail()
     this.space()
     const c = this.text[this.at]
     if (c === '{') return this.object(depth)
@@ -111,6 +111,7 @@ class Reader {
   }
 
   private array(depth: number): unknown[] {
+    if (depth >= MAX_DEPTH) this.fail()
     this.at++
     const out: unknown[] = []
     this.space()
@@ -125,6 +126,7 @@ class Reader {
   }
 
   private object(depth: number): Record<string, unknown> {
+    if (depth >= MAX_DEPTH) this.fail()
     this.at++
     const out: Record<string, unknown> = Object.create(null) as Record<string, unknown>
     this.space()

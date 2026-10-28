@@ -20,6 +20,8 @@ mod web_client;
 #[cfg(feature = "web-client")]
 mod web_gaming;
 #[cfg(feature = "web-client")]
+mod web_json;
+#[cfg(feature = "web-client")]
 mod web_notify;
 #[cfg(feature = "web-client")]
 mod web_permissions;

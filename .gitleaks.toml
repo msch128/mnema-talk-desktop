@@ -37,5 +37,5 @@ regexes = [
 [[rules.allowlists]]
 description = "Shared test vectors of the Linux client and the Tauri host: public keys, signatures and statements made from throwaway one-byte seeds"
 paths = [
-  '''^test-vectors/(?:bundle|client|minisign|proxy|store|trust)\.json$'''
+  '''^test-vectors/(?:bundle|client|json|minisign|proxy|store|trust|zip)\.json$'''
 ]

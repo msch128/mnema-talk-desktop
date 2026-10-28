@@ -498,8 +498,8 @@ struct Health {
 }
 
 fn parse_health(bytes: &[u8]) -> Result<ServerInfo, String> {
-    let health: Health = serde_json::from_slice(bytes)
-        .map_err(|_| "This instance needs an update for the desktop client.")?;
+    let health: Health = crate::web_json::parse(bytes)
+        .ok_or("This instance needs an update for the desktop client.")?;
     match (health.status.as_str(), health.web_client_api) {
         ("ok", Some(web_client_api)) if web_client_api >= 1 => Ok(ServerInfo {
             version: Version::parse(&health.version),
@@ -1875,6 +1875,39 @@ mod shared_vectors {
     fn load() -> Value {
         serde_json::from_str(include_str!("../../../test-vectors/client.json"))
             .expect("the vector file is JSON")
+    }
+
+    /// The same health document in forms a strict reader refuses: byte order
+    /// mark, repeated keys, wrong types, data after the document.
+    #[test]
+    fn health_json() {
+        use base64::{Engine, engine::general_purpose::STANDARD};
+        let v: Value = serde_json::from_str(include_str!("../../../test-vectors/json.json"))
+            .expect("the vector file is JSON");
+        for c in v["healths"].as_array().unwrap() {
+            let name = c["name"].as_str().unwrap();
+            let bytes = STANDARD.decode(c["input"].as_str().unwrap()).unwrap();
+            match parse_health(&bytes) {
+                Ok(info) => {
+                    let ok = &c["result"]["ok"];
+                    assert_eq!(
+                        info.version.map(|v| v.to_string()).as_deref(),
+                        ok["version"].as_str(),
+                        "{name}"
+                    );
+                    assert_eq!(
+                        Some(u64::from(info.web_client_api)),
+                        ok["api"].as_u64(),
+                        "{name}"
+                    );
+                }
+                Err(message) => assert_eq!(
+                    Some(message.as_str()),
+                    c["result"]["error"].as_str(),
+                    "{name}"
+                ),
+            }
+        }
     }
 
     #[test]

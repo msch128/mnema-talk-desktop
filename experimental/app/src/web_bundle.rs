@@ -118,6 +118,7 @@ struct Manifest {
     security_floor: String,
     commit: String,
     key_id: String,
+    #[serde(deserialize_with = "crate::web_json::objects")]
     files: Vec<FileEntry>,
 }
 
@@ -152,11 +153,98 @@ pub fn valid_path(path: &str) -> bool {
             .all(|segment| !segment.is_empty() && segment != "." && segment != "..")
 }
 
+/// The archive rules the zip crate does not enforce, the same as the Linux
+/// client's `zip.ts`: the end record is the last 22 bytes (no comment, nothing
+/// appended, no ZIP64 locator), the first entry starts the file, the central
+/// directory ends where the end record begins, and no size or offset is a ZIP64
+/// marker, and no name is used twice. Returns, per entry in directory order, whether it must not be read:
+/// encrypted, or a link, directory or device written by a system with Unix modes.
+fn check_layout(data: &[u8]) -> Result<Vec<bool>, String> {
+    const BAD: &str = "not a readable zip";
+    let u16_at = |at: usize| u16::from_le_bytes([data[at], data[at + 1]]);
+    let u32_at =
+        |at: usize| u32::from_le_bytes([data[at], data[at + 1], data[at + 2], data[at + 3]]);
+    if data.len() < 22 {
+        return Err(BAD.into());
+    }
+    let eocd = data.len() - 22;
+    if u32_at(eocd) != 0x0605_4b50 || u16_at(eocd + 20) != 0 {
+        return Err(BAD.into());
+    }
+    if data.len() >= 42 && u32_at(eocd - 20) == 0x0706_4b50 {
+        return Err(BAD.into());
+    }
+    if u32_at(0) != 0x0403_4b50 {
+        return Err(BAD.into());
+    }
+    let (disk, cd_disk, on_disk, total) = (
+        u16_at(eocd + 4),
+        u16_at(eocd + 6),
+        u16_at(eocd + 8),
+        u16_at(eocd + 10),
+    );
+    let (cd_size, cd_offset) = (u32_at(eocd + 12) as usize, u32_at(eocd + 16) as usize);
+    if disk != 0
+        || cd_disk != 0
+        || on_disk != total
+        || total == 0xffff
+        || cd_size == 0xffff_ffff
+        || cd_offset == 0xffff_ffff
+        || cd_offset + cd_size != eocd
+    {
+        return Err(BAD.into());
+    }
+    let mut refused = Vec::with_capacity(total as usize);
+    let mut at = cd_offset;
+    let mut starts_file = false;
+    let mut names: HashSet<&[u8]> = HashSet::with_capacity(total as usize);
+    for _ in 0..total {
+        if at + 46 > cd_offset + cd_size || u32_at(at) != 0x0201_4b50 {
+            return Err(BAD.into());
+        }
+        let flags = u16_at(at + 8);
+        let sizes = [u32_at(at + 20), u32_at(at + 24), u32_at(at + 42)];
+        let end = at
+            + 46
+            + u16_at(at + 28) as usize
+            + u16_at(at + 30) as usize
+            + u16_at(at + 32) as usize;
+        if end > cd_offset + cd_size || sizes.contains(&0xffff_ffff) {
+            return Err(BAD.into());
+        }
+        // The zip crate decodes a name that is not UTF-8 instead of refusing it, and
+        // keeps one of two entries of the same name.
+        let name = &data[at + 46..at + 46 + u16_at(at + 28) as usize];
+        let Ok(text) = std::str::from_utf8(name) else {
+            return Err("invalid entry name".into());
+        };
+        if !names.insert(name) {
+            return Err(format!("duplicate entry {text}"));
+        }
+        let kind = if u16_at(at + 4) >> 8 == 3 {
+            (u32_at(at + 38) >> 16) & 0o170_000
+        } else {
+            0
+        };
+        refused.push(flags & (1 | 0x40 | 0x2000) != 0 || (kind != 0 && kind != 0o100_000));
+        starts_file |= sizes[2] == 0;
+        at = end;
+    }
+    if total > 0 && !starts_file {
+        return Err(BAD.into());
+    }
+    Ok(refused)
+}
+
 fn read_entry(
     zip: &mut zip::ZipArchive<Cursor<&[u8]>>,
+    refused: &[bool],
     index: usize,
     limit: u64,
 ) -> Result<Vec<u8>, String> {
+    if refused.get(index).copied().unwrap_or(true) {
+        return Err("unreadable entry".into());
+    }
     let entry = zip.by_index(index).map_err(|_| "unreadable entry")?;
     let name = entry.name().map_err(|_| "invalid entry name")?.into_owned();
     if entry.size() > limit {
@@ -178,6 +266,7 @@ fn read_entry(
 /// manifest is parsed before it holds), then that the zip holds exactly the
 /// files the manifest lists with the listed sizes and hashes.
 pub fn verify(data: &[u8], keys: &[TrustedKey]) -> Result<Bundle, String> {
+    let refused = check_layout(data)?;
     let mut zip =
         zip::ZipArchive::new(Cursor::new(data)).map_err(|_| "not a readable zip".to_owned())?;
     if zip.len() > MAX_ENTRIES + 2 {
@@ -200,8 +289,8 @@ pub fn verify(data: &[u8], keys: &[TrustedKey]) -> Result<Bundle, String> {
     else {
         return Err("manifest or signature is missing".into());
     };
-    let manifest_bytes = read_entry(&mut zip, manifest_at, MAX_MANIFEST)?;
-    let signature_text = read_entry(&mut zip, signature_at, MAX_SIGNATURE)?;
+    let manifest_bytes = read_entry(&mut zip, &refused, manifest_at, MAX_MANIFEST)?;
+    let signature_text = read_entry(&mut zip, &refused, signature_at, MAX_SIGNATURE)?;
     let signature: [u8; 64] = STANDARD
         .decode(String::from_utf8_lossy(&signature_text).trim())
         .ok()
@@ -214,7 +303,7 @@ pub fn verify(data: &[u8], keys: &[TrustedKey]) -> Result<Bundle, String> {
         .ok_or(NOT_TRUSTED)?;
 
     let manifest: Manifest =
-        serde_json::from_slice(&manifest_bytes).map_err(|_| "unreadable manifest")?;
+        crate::web_json::parse(&manifest_bytes).ok_or("unreadable manifest")?;
     let Compat {
         version,
         min_server_version,
@@ -232,7 +321,7 @@ pub fn verify(data: &[u8], keys: &[TrustedKey]) -> Result<Bundle, String> {
         if declared != file.size {
             return Err(format!("{}: size does not match the manifest", file.path));
         }
-        let body = read_entry(&mut zip, at, file.size)?;
+        let body = read_entry(&mut zip, &refused, at, file.size)?;
         if hex::encode(Sha256::digest(&body)) != file.sha256 {
             return Err(format!(
                 "{}: content does not match the manifest",
@@ -278,7 +367,8 @@ fn check_manifest(m: &Manifest, signer: &str) -> Result<Compat, String> {
     let mut seen = HashSet::with_capacity(m.files.len());
     let mut total = 0u64;
     for file in &m.files {
-        if !valid_path(&file.path) || !seen.insert(file.path.as_str()) {
+        // Two paths that differ only in case would collide on a case-insensitive disk.
+        if !valid_path(&file.path) || !seen.insert(file.path.to_lowercase()) {
             return Err(format!("invalid or duplicate path {}", file.path));
         }
         if file.sha256.len() != 64
@@ -294,7 +384,7 @@ fn check_manifest(m: &Manifest, signer: &str) -> Result<Compat, String> {
         }
         total += file.size;
     }
-    if !seen.contains("index.html") {
+    if !m.files.iter().any(|f| f.path == "index.html") {
         return Err("index.html is missing".into());
     }
     if total > MAX_TOTAL {
@@ -1852,7 +1942,40 @@ mod shared_vectors {
 
     #[test]
     fn bundles() {
-        let v = load(include_str!("../../../test-vectors/bundle.json"));
+        check_bundles(&load(include_str!("../../../test-vectors/bundle.json")));
+    }
+
+    /// The same manifest in forms a strict reader refuses: byte order mark, repeated
+    /// keys, unknown fields, wrong types, data after the document.
+    #[test]
+    fn manifest_json() {
+        check_bundles(&load(include_str!("../../../test-vectors/json.json")));
+    }
+
+    /// Hostile zip structures: both clients refuse each of them with the same message.
+    #[test]
+    fn zip_structures() {
+        let v = load(include_str!("../../../test-vectors/zip.json"));
+        check_bundles(&v);
+        let open: Vec<&str> = v["bundles"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|c| c["result"]["ok"].is_object())
+            .map(|c| c["name"].as_str().unwrap())
+            .collect();
+        assert_eq!(
+            open,
+            [
+                "a plain stored bundle",
+                "an entry that announces a data descriptor",
+                "an entry with a regular file mode",
+                "a link mode written by a system that does not use modes"
+            ]
+        );
+    }
+
+    fn check_bundles(v: &Value) {
         for c in v["bundles"].as_array().unwrap() {
             let name = c["name"].as_str().unwrap();
             let zip = STANDARD.decode(c["zip"].as_str().unwrap()).unwrap();

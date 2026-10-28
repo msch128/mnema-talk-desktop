@@ -71,7 +71,7 @@ export const expected = Object.fromEntries([
     "b8d35efd41749567427cb9ae52d9a7362904154978ff6a5fb20c0258a8ffdec1"
   ]
 ]);
-export const SHARED_VECTORS = ['bundle', 'client', 'minisign', 'proxy', 'store', 'trust'].map(name => `test-vectors/${name}.json`);
+export const SHARED_VECTORS = ['bundle', 'client', 'json', 'minisign', 'proxy', 'store', 'trust', 'zip'].map(name => `test-vectors/${name}.json`);
 function main() {
   const args = process.argv.slice(2);
   if (args.some(arg => arg !== '--staged') || args.length > 1) throw new Error('Usage: check-native-test-vectors.mjs [--staged]');
