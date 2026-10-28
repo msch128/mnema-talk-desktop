@@ -187,6 +187,14 @@ test('the security floor only moves up and withdraws older bundles', () => {
   assert.throws(() => Store.load(d, null, trusted(7)).install(bundle(old), trusted(7)), /below the security floor/)
 })
 
+test('a patch for an older contract is not shadowed by a newer one', () => {
+  const store = Store.load(dir(), bundle(spec('0.9.0', { api: 2 })), trusted(7))
+  assert.deepEqual(store.install(bundle(spec('0.8.5')), trusted(7)), [0, 8, 5])
+  assert.throws(() => store.install(bundle(spec('0.8.4')), trusted(7)), /already held/)
+  assert.throws(() => store.install(bundle(spec('0.8.5')), trusted(7)), /already held/)
+  assert.deepEqual(store.held().map((h) => h.bundle.version), [[0, 9, 0], [0, 8, 5]])
+})
+
 test('updates install only newer verified bundles and survive a restart', () => {
   const d = dir()
   const store = Store.load(d, bundle(spec('0.8.0')), trusted(7))

@@ -123,7 +123,10 @@ pub async fn check_and_install(
     };
     {
         let store = store.lock().map_err(|_| "busy")?;
-        if store.held().iter().any(|h| h.bundle.version >= version) {
+        // Only the exact version is known before the download. Whether a
+        // bundle of another version is new for its `web_client_api` is decided
+        // by `Store::install` once the bundle is verified.
+        if store.held().iter().any(|h| h.bundle.version == version) {
             return Ok(None);
         }
     }

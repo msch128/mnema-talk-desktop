@@ -574,7 +574,9 @@ pub fn desktop_gaming_add_game(
     state: tauri::State<'_, Mutex<Gaming>>,
     name: String,
 ) -> Result<Vec<String>, String> {
-    change_games(&window, &state, |games| game_candidate::add_game(games, &name))
+    change_games(&window, &state, |games| {
+        game_candidate::add_game(games, &name)
+    })
 }
 /// Takes one game off the list; returns the new list.
 #[tauri::command]

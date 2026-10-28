@@ -202,11 +202,15 @@ pub fn verify(data: &[u8], keys: &[TrustedKey]) -> Result<Bundle, String> {
     let signer = keys
         .iter()
         .find(|k| k.key.verify_strict(&manifest_bytes, &signature).is_ok())
-        .ok_or("signature does not match a trusted key")?;
+        .ok_or(NOT_TRUSTED)?;
 
     let manifest: Manifest =
         serde_json::from_slice(&manifest_bytes).map_err(|_| "unreadable manifest")?;
-    let version = check_manifest(&manifest, &signer.id)?;
+    let Compat {
+        version,
+        min_server_version,
+        security_floor,
+    } = check_manifest(&manifest, &signer.id)?;
     if index.len() != manifest.files.len() + 2 {
         return Err("zip entries do not match the manifest".into());
     }
@@ -231,16 +235,22 @@ pub fn verify(data: &[u8], keys: &[TrustedKey]) -> Result<Bundle, String> {
     Ok(Bundle {
         version,
         web_client_api: manifest.web_client_api,
-        min_server_version: Version::parse(&manifest.min_server_version)
-            .ok_or("min_server_version")?,
-        security_floor: Version::parse(&manifest.security_floor).ok_or("security_floor")?,
+        min_server_version,
+        security_floor,
         key_id: manifest.key_id,
         commit: manifest.commit,
         files,
     })
 }
 
-fn check_manifest(m: &Manifest, signer: &str) -> Result<Version, String> {
+/// The version numbers of a checked manifest.
+struct Compat {
+    version: Version,
+    min_server_version: Version,
+    security_floor: Version,
+}
+
+fn check_manifest(m: &Manifest, signer: &str) -> Result<Compat, String> {
     if m.schema != 1 || m.name != "mnema-web" {
         return Err("unsupported manifest".into());
     }
@@ -281,7 +291,11 @@ fn check_manifest(m: &Manifest, signer: &str) -> Result<Version, String> {
     if total > MAX_TOTAL {
         return Err("bundle exceeds the size limit".into());
     }
-    Ok(version)
+    Ok(Compat {
+        version,
+        min_server_version: min,
+        security_floor: floor,
+    })
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -377,6 +391,37 @@ struct State {
     last_check: u64,
 }
 
+/// Writes through a temporary file and a rename, so a crash leaves either the
+/// old or the new content and never a torn file.
+pub(crate) fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let tmp = path.with_extension("tmp");
+    std::fs::write(&tmp, bytes)?;
+    std::fs::rename(&tmp, path)
+}
+
+const STATE_FILE: &str = "state.json";
+const STATE_BACKUP: &str = "state.json.bak";
+/// Why a bundle did not verify when its signer is simply not trusted (now).
+/// Such a file stays on disk: the key may be trusted again.
+const NOT_TRUSTED: &str = "signature does not match a trusted key";
+
+/// The recorded marks. A state file that is there but cannot be parsed falls
+/// back to the last good copy, so damage does not drop the floors and marks.
+/// A missing file is a fresh start: the marks are rebuilt from the bundles.
+fn read_state(dir: &Path) -> State {
+    let parse = |name: &str| std::fs::read(dir.join(name)).ok();
+    match parse(STATE_FILE) {
+        None => State::default(),
+        Some(raw) => serde_json::from_slice(&raw)
+            .ok()
+            .or_else(|| parse(STATE_BACKUP).and_then(|raw| serde_json::from_slice(&raw).ok()))
+            .unwrap_or_default(),
+    }
+}
+
 /// Marks from before signers were recorded.
 const UNKNOWN_SIGNER: &str = "";
 
@@ -391,8 +436,9 @@ pub struct Store {
     /// Ids of the keys trusted right now.
     trusted: Vec<String>,
     last_check: u64,
-    /// Bundles were dropped or refused because their key is not trusted. Only
-    /// picks the message when nothing can be served.
+    /// Bundles were dropped or refused because their key is not trusted (and
+    /// no trusted bundle was installed since). Only picks the message when
+    /// nothing can be served; other rejects do not count.
     withdrawn: bool,
     held: Vec<Held>,
     /// Verified bundles below the floor. Never served; they return if the key
@@ -409,22 +455,27 @@ impl Store {
     /// The security floor is the highest floor any verified manifest declares
     /// (or an earlier run recorded); bundles below it are dropped.
     pub fn load(dir: Option<&Path>, builtin: Option<&[u8]>, keys: &[TrustedKey]) -> Store {
-        let state: State = dir
-            .and_then(|d| std::fs::read(d.join("state.json")).ok())
-            .and_then(|raw| serde_json::from_slice(&raw).ok())
-            .unwrap_or_default();
+        let state = dir.map(read_state).unwrap_or_default();
         let mut verified: Vec<Held> = Vec::new();
         let mut rejected = Vec::new();
+        let mut withdrawn = false;
         if let Some(bytes) = builtin {
             match verify(bytes, keys) {
                 Ok(bundle) => verified.push(Held {
                     bundle: Arc::new(bundle),
                     source: Source::Builtin,
                 }),
-                Err(_) => rejected.push("built-in".to_owned()),
+                Err(reason) => {
+                    withdrawn |= reason == NOT_TRUSTED;
+                    rejected.push("built-in".to_owned())
+                }
             }
         }
-        for path in cached_files(dir) {
+        let mut usable = 0;
+        for (named, path) in cached_files(dir) {
+            if usable >= MAX_CACHED_FILES {
+                break;
+            }
             let name = path
                 .file_name()
                 .map(|n| n.to_string_lossy().into_owned())
@@ -434,19 +485,38 @@ impl Store {
                 .filter(|m| m.len() <= MAX_ZIP)
                 .and_then(|_| std::fs::read(&path).ok())
                 .ok_or_else(|| "unreadable".to_owned())
-                .and_then(|bytes| verify(&bytes, keys));
+                .and_then(|bytes| verify(&bytes, keys))
+                .and_then(|bundle| {
+                    if bundle.version == named {
+                        Ok(bundle)
+                    } else {
+                        Err("file name does not match the bundle".to_owned())
+                    }
+                });
             match loaded {
                 Ok(bundle) if !verified.iter().any(|h| h.bundle.version == bundle.version) => {
+                    usable += 1;
                     verified.push(Held {
                         bundle: Arc::new(bundle),
                         source: Source::Cache,
                     })
                 }
-                Ok(_) => {}
-                Err(_) => rejected.push(name),
+                // Same version as one already held: the file is redundant.
+                Ok(_) => {
+                    let _ = std::fs::remove_file(&path);
+                }
+                Err(reason) => {
+                    // A file nobody can use is removed; one whose signer is
+                    // not trusted right now stays, the key may return.
+                    if reason == NOT_TRUSTED {
+                        withdrawn = true;
+                    } else {
+                        let _ = std::fs::remove_file(&path);
+                    }
+                    rejected.push(name);
+                }
             }
         }
-        let withdrawn = !rejected.is_empty();
         let mut floors = state.floors;
         if let Some(floor) = state.security_floor {
             let entry = floors.entry(UNKNOWN_SIGNER.to_owned()).or_insert(floor);
@@ -490,10 +560,16 @@ impl Store {
             marks: self.marks.clone(),
             last_check: self.last_check,
         };
-        if std::fs::create_dir_all(dir).is_ok()
-            && let Ok(raw) = serde_json::to_vec(&state)
-        {
-            let _ = std::fs::write(dir.join("state.json"), raw);
+        let Ok(raw) = serde_json::to_vec(&state) else {
+            return;
+        };
+        // The file in place is the last good one: keep it as the fallback.
+        let current = dir.join(STATE_FILE);
+        if std::fs::read(&current).is_ok_and(|old| serde_json::from_slice::<State>(&old).is_ok()) {
+            let _ = std::fs::copy(&current, dir.join(STATE_BACKUP));
+        }
+        if let Err(error) = write_atomic(&current, &raw) {
+            eprintln!("Mnema Desktop: cannot save the bundle state: {error}");
         }
     }
 
@@ -593,7 +669,13 @@ impl Store {
     pub fn install(&mut self, bytes: &[u8], keys: &[TrustedKey]) -> Result<Version, String> {
         let bundle = verify(bytes, keys)?;
         let version = bundle.version;
-        if self.held.iter().any(|h| h.bundle.version >= version) {
+        // Per contract: a patch for an older `web_client_api` is not shadowed
+        // by a newer bundle of another one. A version is held only once (it
+        // names the cached file).
+        if self.held.iter().any(|h| {
+            h.bundle.version == version
+                || (h.bundle.web_client_api == bundle.web_client_api && h.bundle.version > version)
+        }) {
             return Err("a bundle of this version or newer is already held".into());
         }
         if version < self.floor.max(bundle.security_floor) {
@@ -608,6 +690,7 @@ impl Store {
                 .map_err(|_| "cannot write the bundle")?;
         }
         self.trusted = keys.iter().map(|k| k.id.clone()).collect();
+        self.withdrawn = false;
         self.raise_marks(&bundle);
         self.recompute();
         self.held.push(Held {
@@ -755,23 +838,28 @@ impl Store {
         *mark = (*mark).max(bundle.version);
     }
 
-    /// Keeps the built-in bundle and the newest few cached ones; removes the
-    /// files of the rest, and of anything below the floor.
+    /// Keeps the built-in bundle and, per web client API, the newest few
+    /// cached ones, served or shelved; the rest is dropped with its file. A
+    /// shelved bundle only matters if the key that raised the floor is
+    /// revoked, and then the newest of them are the ones that return.
     fn prune(&mut self) {
-        let mut cached = 0;
         let mut dropped = Vec::new();
-        self.held.retain(|h| {
-            if h.source == Source::Builtin {
-                return true;
-            }
-            cached += 1;
-            if cached > KEEP_CACHED {
-                dropped.push(h.bundle.version);
-                false
-            } else {
-                true
-            }
-        });
+        for list in [&mut self.held, &mut self.shelved] {
+            let mut cached: BTreeMap<u32, usize> = BTreeMap::new();
+            list.retain(|h| {
+                if h.source == Source::Builtin {
+                    return true;
+                }
+                let n = cached.entry(h.bundle.web_client_api).or_default();
+                *n += 1;
+                if *n > KEEP_CACHED {
+                    dropped.push(h.bundle.version);
+                    false
+                } else {
+                    true
+                }
+            });
+        }
         if let Some(dir) = &self.dir {
             for version in dropped {
                 let _ = std::fs::remove_file(dir.join(format!("mnema-web-{version}.zip")));
@@ -794,21 +882,28 @@ pub fn install_current(
     store.install(bytes, &keys)
 }
 
-fn cached_files(dir: Option<&Path>) -> Vec<PathBuf> {
+/// The cached bundle files by the version in their name, newest first. A
+/// `.partial` left by an interrupted install is removed.
+fn cached_files(dir: Option<&Path>) -> Vec<(Version, PathBuf)> {
     let Some(entries) = dir.and_then(|d| std::fs::read_dir(d).ok()) else {
         return Vec::new();
     };
-    let mut files: Vec<PathBuf> = entries
-        .filter_map(Result::ok)
-        .filter(|e| {
-            let name = e.file_name();
-            let name = name.to_string_lossy();
-            name.starts_with("mnema-web-") && name.ends_with(".zip") && e.path().is_file()
-        })
-        .map(|e| e.path())
-        .collect();
-    files.sort();
-    files.truncate(MAX_CACHED_FILES);
+    let mut files = Vec::new();
+    for entry in entries.filter_map(Result::ok) {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        let Some(rest) = name.strip_prefix("mnema-web-") else {
+            continue;
+        };
+        if !entry.path().is_file() {
+            continue;
+        }
+        if rest.ends_with(".zip.partial") {
+            let _ = std::fs::remove_file(entry.path());
+        } else if let Some(version) = rest.strip_suffix(".zip").and_then(Version::parse) {
+            files.push((version, entry.path()));
+        }
+    }
+    files.sort_by_key(|(version, _)| std::cmp::Reverse(*version));
     files
 }
 
@@ -1534,9 +1629,151 @@ mod tests {
         assert_eq!(versions, ["0.8.4", "0.8.3", "0.8.2", "0.8.0"]);
         assert!(!d.join("mnema-web-0.8.1.zip").exists());
         assert!(d.join("notes.txt").exists());
-        assert!(
-            store.rejected.contains(&"mnema-web-9.9.9.zip".to_owned()) || store.rejected.is_empty()
+        assert_eq!(store.rejected, vec!["mnema-web-9.9.9.zip".to_owned()]);
+        assert!(!d.join("mnema-web-9.9.9.zip").exists());
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_patch_for_an_older_contract_is_not_shadowed_by_a_newer_one() {
+        let mut api2 = Spec::new("0.9.0");
+        api2.api = 2;
+        let mut store = Store::load(None, Some(&bundle(&api2)), &trusted(7));
+        // 0.8.5 speaks contract 1: it is new for that contract.
+        assert_eq!(
+            store
+                .install(&bundle(&Spec::new("0.8.5")), &trusted(7))
+                .unwrap(),
+            Version(0, 8, 5)
         );
+        // Same contract and not newer, or a version already held: refused.
+        assert!(
+            store
+                .install(&bundle(&Spec::new("0.8.4")), &trusted(7))
+                .is_err()
+        );
+        assert!(
+            store
+                .install(&bundle(&Spec::new("0.8.5")), &trusted(7))
+                .is_err()
+        );
+        let info = |api| ServerInfo {
+            version: None,
+            web_client_api: api,
+        };
+        assert_eq!(
+            store.select(&info(1)).unwrap().bundle.version,
+            Version(0, 8, 5)
+        );
+        assert_eq!(
+            store.select(&info(2)).unwrap().bundle.version,
+            Version(0, 9, 0)
+        );
+    }
+
+    #[test]
+    fn only_a_withdrawn_signer_picks_the_withdrawn_message() {
+        // A damaged file is not a withdrawn signer, and it is removed.
+        let d = dir("withdrawn-damaged");
+        std::fs::write(d.join("mnema-web-0.1.0.zip"), b"garbage").unwrap();
+        let store = Store::load(Some(&d), None, &trusted(7));
+        assert_eq!(store.rejected, vec!["mnema-web-0.1.0.zip".to_owned()]);
+        assert_eq!(store.empty_reason(), Refusal::NoBundle);
+        assert!(!d.join("mnema-web-0.1.0.zip").exists());
+        let _ = std::fs::remove_dir_all(&d);
+
+        // A bundle of a key that is not trusted is, and its file is kept.
+        let d = dir("withdrawn-key");
+        let mut other = Spec::new("0.2.0");
+        other.seed = 5;
+        std::fs::write(d.join("mnema-web-0.2.0.zip"), bundle(&other)).unwrap();
+        let mut store = Store::load(Some(&d), None, &trusted(7));
+        assert_eq!(store.empty_reason(), Refusal::SignerWithdrawn);
+        assert!(d.join("mnema-web-0.2.0.zip").exists());
+        // A trusted bundle installed afterwards clears it.
+        store
+            .install(&bundle(&Spec::new("0.3.0")), &trusted(7))
+            .unwrap();
+        assert!(!store.withdrawn);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_damaged_state_file_falls_back_to_the_last_good_one() {
+        let d = dir("state-backup");
+        let mut floor = Spec::new("0.8.4");
+        floor.floor = "0.8.2";
+        let mut store = Store::load(Some(&d), Some(&bundle(&Spec::new("0.8.0"))), &trusted(7));
+        store.install(&bundle(&floor), &trusted(7)).unwrap();
+        store
+            .install(&bundle(&Spec::new("0.8.5")), &trusted(7))
+            .unwrap();
+        assert!(!d.join("state.tmp").exists());
+        // A torn write, and the bundles that carried the floor are gone.
+        std::fs::write(d.join("state.json"), b"{\"floors\":").unwrap();
+        for v in ["0.8.4", "0.8.5"] {
+            std::fs::remove_file(d.join(format!("mnema-web-{v}.zip"))).unwrap();
+        }
+        let again = Store::load(Some(&d), Some(&bundle(&Spec::new("0.8.0"))), &trusted(7));
+        assert_eq!(again.floor(), Version(0, 8, 2));
+        // The next save is whole again.
+        let raw = std::fs::read(d.join("state.json")).unwrap();
+        assert!(serde_json::from_slice::<State>(&raw).is_ok());
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn cached_files_are_ordered_by_version_and_leftovers_are_removed() {
+        let d = dir("scan");
+        for name in [
+            "mnema-web-0.9.0.zip",
+            "mnema-web-0.10.0.zip",
+            "mnema-web-1.2.0.zip",
+            "mnema-web-1.2.0.zip.partial",
+            "mnema-web-x.zip",
+            "other.zip",
+        ] {
+            std::fs::write(d.join(name), b"x").unwrap();
+        }
+        let versions: Vec<_> = cached_files(Some(&d)).into_iter().map(|(v, _)| v).collect();
+        assert_eq!(
+            versions,
+            [Version(1, 2, 0), Version(0, 10, 0), Version(0, 9, 0)]
+        );
+        assert!(!d.join("mnema-web-1.2.0.zip.partial").exists());
+        assert!(d.join("mnema-web-x.zip").exists());
+        assert!(d.join("other.zip").exists());
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_duplicate_of_the_builtin_version_is_removed_from_the_cache() {
+        let d = dir("duplicate");
+        let spec = Spec::new("0.8.0");
+        std::fs::write(d.join("mnema-web-0.8.0.zip"), bundle(&spec)).unwrap();
+        let store = Store::load(Some(&d), Some(&bundle(&spec)), &trusted(7));
+        assert_eq!(store.held().len(), 1);
+        assert!(!d.join("mnema-web-0.8.0.zip").exists());
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn shelved_bundles_are_bounded_too() {
+        let d = dir("shelved");
+        let mut store = Store::load(Some(&d), Some(&bundle(&Spec::new("0.8.0"))), &trusted(7));
+        for v in ["0.8.1", "0.8.2", "0.8.3"] {
+            store.install(&bundle(&Spec::new(v)), &trusted(7)).unwrap();
+        }
+        for v in ["0.9.0", "0.9.1"] {
+            let mut raised = Spec::new(v);
+            raised.floor = v;
+            store.install(&bundle(&raised), &trusted(7)).unwrap();
+        }
+        assert_eq!(store.newest().unwrap().bundle.version, Version(0, 9, 1));
+        assert!(!d.join("mnema-web-0.8.1.zip").exists());
+        for v in ["0.8.2", "0.8.3", "0.9.0", "0.9.1"] {
+            assert!(d.join(format!("mnema-web-{v}.zip")).exists(), "{v}");
+        }
         let _ = std::fs::remove_dir_all(&d);
     }
 
@@ -1550,21 +1787,6 @@ mod tests {
         assert!(store.check_due(1_000_000 + CHECK_INTERVAL_SECS));
         assert!(!Store::load(Some(&d), None, &trusted(7)).check_due(1_000_001));
         let _ = std::fs::remove_dir_all(&d);
-    }
-
-    /// Cross-language check: set to a bundle produced by the Go tool. CI points
-    /// it at the released bundle that is also built into the executable.
-    #[test]
-    fn a_bundle_from_the_signing_tool_verifies_with_the_pinned_key() {
-        let Some(path) =
-            std::env::var_os("MNEMA_TEST_BUNDLE_ZIP").filter(|p| Path::new(p).exists())
-        else {
-            return;
-        };
-        let bytes = std::fs::read(path).unwrap();
-        let bundle =
-            verify(&bytes, &trusted_keys()).expect("pinned key must verify the released bundle");
-        assert!(bundle.file("index.html").is_some());
     }
 }
 

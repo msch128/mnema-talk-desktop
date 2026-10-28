@@ -283,6 +283,15 @@ fn data_dir(name: &str) -> PathBuf {
 /// A running (mock) app at version 0.1.0 that trusts `trusted` and looks for
 /// releases on `port`.
 fn app_with(trusted: &Keys, port: u16, dir: &Path) -> tauri::App<MockRuntime> {
+    app_with_source(trusted, port, dir, false)
+}
+
+fn app_with_source(
+    trusted: &Keys,
+    port: u16,
+    dir: &Path,
+    github_only: bool,
+) -> tauri::App<MockRuntime> {
     let mut context = mock_context(noop_assets());
     context.config_mut().plugins.0.insert(
         "updater".into(),
@@ -300,7 +309,7 @@ fn app_with(trusted: &Keys, port: u16, dir: &Path) -> tauri::App<MockRuntime> {
     let source = Source {
         endpoints: vec![Url::parse(&format!("http://127.0.0.1:{port}/latest.json")).unwrap()],
         pubkey: trusted.pubkey(),
-        github_only: false,
+        github_only,
         target: Some("windows-x86_64".into()),
         executable_path: Some(dir.join("Mnema Test.app/Contents/MacOS/mnema")),
     };
@@ -364,13 +373,14 @@ fn a_signed_newer_release_is_found_downloaded_verified_and_kept_for_the_next_sta
     // not discarded; once one is fresh it is re-verified and applied.
     let trusted = crate::web_client::Trusted::new(None, None);
     handle.manage(trusted);
-    assert!(prepare_pending(&handle).is_none());
+    assert!(run(prepare_pending(&handle)).is_none());
     assert!(
         dir.join(PENDING_FILE).exists(),
         "kept for the fetch to succeed"
     );
     handle.state::<crate::web_client::Trusted>().set_fresh(true);
-    let (update, bytes) = prepare_pending(&handle).expect("verified installer for the next start");
+    let (update, bytes) =
+        run(prepare_pending(&handle)).expect("verified installer for the next start");
     assert_eq!((update.version.as_str(), bytes), ("0.2.0", rel.bytes));
 }
 
@@ -481,6 +491,83 @@ fn an_unreachable_server_is_silent_in_the_background_and_reported_on_request() {
 }
 
 #[test]
+fn a_rejected_download_url_is_a_failure_and_keeps_the_installer() {
+    let keys = keys();
+    let dir = data_dir("bad-url");
+    let port = publish(&release("0.2.0", &keys));
+    let app = app_with(&keys, port, &dir);
+    let handle = app.handle().clone();
+    run(look(&handle, true));
+    run(install(&handle, Mode::Later));
+    assert_eq!(
+        handle.state::<NativeUpdates>().snapshot().phase,
+        Phase::Ready
+    );
+    drop(app);
+
+    // The manifest now points outside GitHub (the local test server).
+    let app = app_with_source(&keys, port, &dir, true);
+    let handle = app.handle().clone();
+    assert!(!run(look(&handle, true)));
+    let snap = handle.state::<NativeUpdates>().snapshot();
+    assert_eq!(
+        (snap.phase, snap.error),
+        (Phase::Failed, Some(Failure::Verify))
+    );
+    assert!(run(prepare_pending(&handle)).is_none());
+    assert!(
+        dir.join(PENDING_FILE).exists(),
+        "a rejected URL is not a newer release; the installer stays"
+    );
+}
+
+#[test]
+fn a_failed_check_does_not_count_as_a_completed_one() {
+    let keys = keys();
+    let dir = data_dir("failed-check");
+    let dead = {
+        let l = TcpListener::bind("127.0.0.1:0").unwrap();
+        l.local_addr().unwrap().port()
+    };
+    let app = app_with(&keys, dead, &dir);
+    let handle = app.handle().clone();
+    run(look(&handle, false));
+    assert_eq!(Persisted::load(Some(&dir)).last_check, 0);
+    let port = publish(&release("0.1.0", &keys));
+    let app = app_with(&keys, port, &dir);
+    run(look(&app.handle().clone(), false));
+    assert_ne!(Persisted::load(Some(&dir)).last_check, 0);
+}
+
+#[test]
+fn a_menu_text_is_only_set_when_it_changes() {
+    let dir = data_dir("menu");
+    let keys = keys();
+    let app = app_with(&keys, 1, &dir);
+    let handle = app.handle().clone();
+    let state = handle.state::<NativeUpdates>();
+    let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let counted = calls.clone();
+    state.menu.lock().unwrap().items.push(Arc::new(move |_| {
+        counted.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    }));
+    for _ in 0..5 {
+        state.with(|i| i.snapshot.received += 1);
+    }
+    assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 1);
+    state.with(|i| i.snapshot.phase = Phase::Failed);
+    assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 2);
+}
+
+#[test]
+fn an_oversized_installer_is_abandoned() {
+    assert!(!over_cap(0, None));
+    assert!(!over_cap(MAX_INSTALLER, Some(MAX_INSTALLER)));
+    assert!(over_cap(0, Some(MAX_INSTALLER + 1)));
+    assert!(over_cap(MAX_INSTALLER + 1, None));
+}
+
+#[test]
 fn skipping_silences_one_version_and_survives_a_restart() {
     let keys = keys();
     let dir = data_dir("skip");
@@ -537,7 +624,7 @@ fn a_kept_installer_that_changed_on_disk_or_went_stale_is_dropped() {
     bytes[0] ^= 0xff;
     std::fs::write(dir.join(PENDING_FILE), &bytes).unwrap();
     let app = app_with(&keys, port, &dir);
-    assert!(prepare_pending(&app.handle().clone()).is_none());
+    assert!(run(prepare_pending(&app.handle().clone())).is_none());
     assert!(!dir.join(PENDING_FILE).exists());
     assert_eq!(Persisted::load(Some(&dir)).pending, None);
     drop(app);
@@ -552,7 +639,7 @@ fn a_kept_installer_that_changed_on_disk_or_went_stale_is_dropped() {
     drop(app);
     let newer = publish(&release("0.3.0", &keys));
     let app = app_with(&keys, newer, &dir);
-    assert!(prepare_pending(&app.handle().clone()).is_none());
+    assert!(run(prepare_pending(&app.handle().clone())).is_none());
     assert!(!dir.join(PENDING_FILE).exists());
 }
 
@@ -595,7 +682,7 @@ fn nothing_new_is_installed_without_a_fresh_trust_statement() {
     // failed this round) installs nothing new.
     app.manage(crate::web_client::Trusted::new(None, None));
     assert!(!installs_allowed(app.handle()));
-    assert!(prepare_pending(app.handle()).is_none());
+    assert!(run(prepare_pending(app.handle())).is_none());
 }
 
 // -------------------------------------------------------- shared vectors
