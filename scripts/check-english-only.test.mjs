@@ -9,6 +9,12 @@ test('flags umlauts and German words, not English text', () => {
   assert.equal(germanLines('const unmitigated = auf2').length, 0)
 })
 
+test('flags German spelled with \\u escapes', () => {
+  assert.equal(germanLines('"title": "Pr\\u00fcfung"', [], { decode: true }).length, 1)
+  assert.equal(germanLines('"title": "Mnema \\u2014 Desktop"', [], { decode: true }).length, 0)
+  assert.equal(germanLines('"title": "Pr\\u00fcfung"').length, 0)
+})
+
 test('text entries remove names before the check', () => {
   const { texts } = parseAllowlist('text: Schr(ö|oe)der | a surname')
   assert.equal(germanLines('Marius Schröder', texts).length, 0)

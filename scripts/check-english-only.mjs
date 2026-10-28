@@ -55,10 +55,13 @@ function globToRegExp(glob) {
   return new RegExp(`^${body}$`)
 }
 
-export function germanLines(content, texts = []) {
+// JSON strings can spell an umlaut as \uXXXX; for .json files the decoded text is checked.
+const decodeEscapes = (line) => line.replace(/\\u([0-9a-fA-F]{4})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
+
+export function germanLines(content, texts = [], { decode = false } = {}) {
   const hits = []
   content.split(/\r?\n/).forEach((raw, i) => {
-    const line = texts.reduce((l, re) => l.replace(re, ' '), raw)
+    const line = texts.reduce((l, re) => l.replace(re, ' '), decode ? decodeEscapes(raw) : raw)
     if (umlaut.test(line) || word.test(line)) hits.push([i + 1, raw.trim().slice(0, 140)])
   })
   return hits
@@ -77,7 +80,7 @@ function main() {
     let buf
     try { buf = readFileSync(join(root, file)) } catch { continue }
     if (buf.includes(0)) continue
-    for (const [n, text] of germanLines(buf.toString('utf8'), texts)) problems.push(`${file}:${n}: ${text}`)
+    for (const [n, text] of germanLines(buf.toString('utf8'), texts, { decode: file.endsWith('.json') })) problems.push(`${file}:${n}: ${text}`)
   }
   const unused = paths.map((_, i) => i).filter((i) => !used.has(i))
   if (unused.length > 0) {
