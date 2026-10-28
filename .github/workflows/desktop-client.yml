@@ -168,7 +168,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Rust selection failed' }
       # Restored on pull requests, saved only on main.
       - if: inputs.acceptance_release == ''
-        uses: Swatinem/rust-cache@2201cc584a476d1b508be977bbe4b7d1c7a52e9c # v2.9.3
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: experimental/app -> target
           key: ${{ hashFiles('**/Cargo.lock') }}
@@ -386,7 +386,7 @@ jobs:
           rustup default $env:RUST_VERSION
           if ($LASTEXITCODE -ne 0) { throw 'Rust selection failed' }
       # Restored on pull requests, saved only on main.
-      - uses: Swatinem/rust-cache@2201cc584a476d1b508be977bbe4b7d1c7a52e9c # v2.9.3
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: experimental/app -> target
           key: ${{ hashFiles('**/Cargo.lock') }}
@@ -454,7 +454,7 @@ jobs:
           rustup default $env:RUST_VERSION
           if ($LASTEXITCODE -ne 0) { throw 'Rust selection failed' }
       # Restored on pull requests, saved only on main.
-      - uses: Swatinem/rust-cache@2201cc584a476d1b508be977bbe4b7d1c7a52e9c # v2.9.3
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: experimental/app -> target
           key: ${{ hashFiles('**/Cargo.lock') }}
