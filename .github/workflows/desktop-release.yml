@@ -212,6 +212,7 @@ jobs:
           ditto "$app" "$RUNNER_TEMP/dmg/Mnema Desktop DEV.app"
           ln -s /Applications "$RUNNER_TEMP/dmg/Applications"
           cp LICENSE THIRD_PARTY_NOTICES.md "$RUNNER_TEMP/dmg/"
+          cp -R experimental/licenses "$RUNNER_TEMP/dmg/licenses"
           # GitHub's macOS runners often answer the first create with
           # "Resource busy". A failed attempt must not abort under set -e.
           dmg="$out/$name.dmg"
