@@ -1,0 +1,45 @@
+experimental/app/src/instances.rs
+  s_06fcde5dbef956::t_0e3f0b36e86f30 776,781
+experimental/app/src/selftest_multi.rs
+  s_06fcde5dbef956::t_459fb32389f9a6 396,419
+experimental/app/src/web_client.rs
+  s_06fcde5dbef956::t_48f5b6b5f6bb31 13,470
+experimental/app/src/web_proxy.rs
+  s_06fcde5dbef956::t_9e58c79d3a68c9 7,16,200-203,205-206,209-236,245-249,259-260,270-286,293-300,302-303,309-310,312-313,315,317-318,321,328,338-339,341-360,394-429,437,447-453,458-468,471-494,535-543,545-556,589-592,596-607,674-708,730,744-747,773-776,1192,1200,1204-1210,1212,1214,1216,1232-1382,1640-1739,1892-1893,1911-1929,2053-2059
+experimental/app/src/web_shell.rs
+  s_06fcde5dbef956::t_247cd9006d35b4 949,970-976
+experimental/app/src/web_updates.rs
+  s_06fcde5dbef956::t_5edbdd08829ab9 48
+experimental/app/src/web_vault.rs
+  s_06fcde5dbef956::t_2e48df65e9801f 3-4,9-39,42-43,81-89,92-99,111,113,116-117,125,128-129,134-135,139-146,148-151,153,159,173,214,217,228,243,251
+experimental/app/src/web_ws.rs
+  s_06fcde5dbef956::t_2e2e8dde0abdb2 4-5,17,25-34,44-49,55,63-66,70-71,77-89,94,181-189,192,207-208,217-218,223,228,231-234,237,239,241-244,342-348,351-355,502-568
+linux/scripts/gen-vectors.ts
+  s_06fcde5dbef956::t_8d98695d00be2e 20,448-449,503
+linux/src/core/proxy.ts
+  s_06fcde5dbef956::t_7ab5f0ca51a659 220-229,302-304,308-344,358,374-376,399-400
+linux/src/main/protocol.ts
+  s_06fcde5dbef956::t_0e6766a09c80af 90
+linux/test/proxy.test.ts
+  s_06fcde5dbef956::t_2b3f07d1d6a8a6 8,215,272-307
+linux/test/vectors.test.ts
+  s_06fcde5dbef956::t_a11ec6ef26eb1b 15,129
+test-vectors/proxy.json
+  s_06fcde5dbef956::t_fe57acc9b1f29c 245,265-318
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "343a84c8a2a9dca9f8d1c6f2f7966a65c2e8c225",
+  "prompts": {},
+  "sessions": {
+    "s_06fcde5dbef956": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "94b73314-95fe-4e96-8c43-d20b0f28358d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}
