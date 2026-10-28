@@ -47,6 +47,16 @@ test('refuses another key, changed content and a forged trusted comment', () => 
   assert.throws(() => verifyPackage(data, b64('nonsense'), s.pubkey), /minisign/);
 });
 
+test('with several keys, a signature is checked against the key it names', () => {
+  const first = signer(Buffer.from('1111111111111111', 'hex'));
+  const second = signer(Buffer.from('2222222222222222', 'hex'));
+  const data = Buffer.from('package');
+  const keys = [first.pubkey, second.pubkey];
+  assert.equal(verifyPackage(data, second.sign(data, '1.2.3'), keys), '1.2.3');
+  assert.equal(verifyPackage(data, first.sign(data, '1.2.3'), keys), '1.2.3');
+  assert.throws(() => verifyPackage(data, signer().sign(data, '1.2.3'), keys), /different key/);
+});
+
 test('checks every platform of the feed and the signed version', () => {
   const s = signer();
   const files = { 'a-setup.exe': Buffer.from('exe'), 'a.app.tar.gz': Buffer.from('app') };

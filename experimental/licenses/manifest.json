@@ -1,7 +1,7 @@
 {
   "schema": "mnema-desktop-license-bundle-v1",
   "scope": "Conservative locked Rust graph and production npm closure; not a claim that all packages are linked.",
-  "cargo_lock_sha256": "67546ee8a7e88618ac14a509e06ecbb78e39d75f7664abf96d68466b8bdab94a",
+  "cargo_lock_sha256": "62faa3c5c4b7202eb51b02b85955c23e4cd61c2d1acd92b9ed91de013441ed19",
   "npm_lock_sha256": "003ab0cd56a24c72ce519ef01616d6bdb9784f737939e50467eb619eafd99968",
   "supplemental": {
     "rust_standard_library": {
