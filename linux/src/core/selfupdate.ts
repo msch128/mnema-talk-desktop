@@ -20,6 +20,7 @@
  */
 import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
+import { parseStrictJson } from './json.ts'
 import { verifyPackage } from './minisign.ts'
 import { CHECK_INTERVAL_SECS } from './store.ts'
 import { type Statement, chooseUpdaterKey } from './trust.ts'
@@ -104,7 +105,7 @@ export interface Update {
 export function parseFeed(bytes: Uint8Array, platform: string): Omit<Update, 'key'> | null {
   let feed: unknown
   try {
-    feed = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes))
+    feed = parseStrictJson(bytes)
   } catch {
     return null
   }

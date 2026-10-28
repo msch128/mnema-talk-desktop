@@ -5,6 +5,7 @@
  * `experimental/app/src/web_client.rs` and `local_route.rs`; the shared vectors
  * must pass in both.
  */
+import { asU32, parseStrictJson } from './json.ts'
 import { type ServerInfo } from './store.ts'
 import { parseVersion } from './version.ts'
 
@@ -102,13 +103,13 @@ const UPDATE_NEEDED = 'This instance needs an update for the desktop client.'
 export function parseHealth(bytes: Uint8Array): ServerInfo {
   let health: unknown
   try {
-    health = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes))
+    health = parseStrictJson(bytes)
   } catch {
     throw new Error(UPDATE_NEEDED)
   }
   if (typeof health !== 'object' || health === null || Array.isArray(health)) throw new Error(UPDATE_NEEDED)
   const { status, version, web_client_api: api } = health as Record<string, unknown>
-  const apiOk = api === undefined || api === null || (typeof api === 'number' && Number.isInteger(api) && api >= 0 && api <= 0xffffffff)
+  const apiOk = api === undefined || api === null || asU32(api) !== null
   if (typeof status !== 'string' || (version !== undefined && typeof version !== 'string') || !apiOk) throw new Error(UPDATE_NEEDED)
   if (status !== 'ok') throw new Error('This instance is not compatible with this desktop client.')
   if (typeof api !== 'number' || api < 1) throw new Error(UPDATE_NEEDED)

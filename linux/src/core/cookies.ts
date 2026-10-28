@@ -10,9 +10,12 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync, existsSync } from 'node
 import { dirname } from 'node:path'
 
 export const MAX_COOKIES = 32
+/** Longest Max-Age kept, in seconds (400 days); a longer digit string would overflow to Infinity and be lost at the next restart. */
+const MAX_MAX_AGE = 34_560_000
 
 /** A place for small secrets, addressed by account name. */
 export interface Vault {
+  /** `null` if nothing is stored. Throws if an entry exists but cannot be read now (a locked keyring), so the caller keeps it. */
   load(account: string): Buffer | null
   /** `false` if the secret could not be stored; the caller then falls back. */
   save(account: string, secret: Buffer): boolean
@@ -51,7 +54,7 @@ export function parseSetCookie(raw: string): Parsed | null {
     if (key === 'secure') parsed.secure = true
     else if (key === 'path' && value !== null && value !== '') parsed.path = value
     else if (key === 'domain' && value !== null && value.replace(/^\./, '') !== '') parsed.domain = value.replace(/^\./, '').toLowerCase()
-    else if (key === 'max-age' && value !== null && /^-?[0-9]+$/.test(value)) parsed.maxAge = Math.max(0, Number(value))
+    else if (key === 'max-age' && value !== null && /^-?[0-9]+$/.test(value)) parsed.maxAge = Math.min(MAX_MAX_AGE, Math.max(0, Number(value)))
     else if (key === 'expires' && value !== null) {
       const at2 = Date.parse(value)
       if (!Number.isNaN(at2)) parsed.expires = Math.floor(at2 / 1000)
@@ -74,9 +77,15 @@ export class Jar {
     this.file = file
     this.vault = vault
     let fromVault: Stored[] | null = null
+    let unreadable = false
     if (vault) {
-      const raw = vault.vault.load(vault.account)
-      if (raw) fromVault = parseStored(raw)
+      try {
+        const raw = vault.vault.load(vault.account)
+        if (raw) fromVault = parseStored(raw)
+      } catch {
+        // The entry exists but cannot be opened now: leave it alone, it may open later.
+        unreadable = true
+      }
     }
     const legacy = fromVault === null
     let cookies = fromVault
@@ -88,7 +97,7 @@ export class Jar {
     }
     const live = cookies.filter((c) => c.expires !== null && c.expires > now).slice(0, MAX_COOKIES)
     this.cookies = live
-    if (vault && (legacy || (file !== null && existsSync(file)))) this.persist(live)
+    if (vault && !unreadable && (legacy || (file !== null && existsSync(file)))) this.persist(live)
   }
 
   private persist(cookies: Stored[]): void {

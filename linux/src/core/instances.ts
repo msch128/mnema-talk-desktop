@@ -11,6 +11,7 @@ import { createHash, randomBytes } from 'node:crypto'
 import { mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { parseAddress } from './client.ts'
+import { MAX_BADGE, badgeCount } from './notify.ts'
 import type { Instance } from './proxy.ts'
 import type { Sockets } from './sockets.ts'
 import type { Held } from './store.ts'
@@ -18,7 +19,7 @@ import type { Held } from './store.ts'
 /** Ctrl+1 to Ctrl+9 reach the servers, so there are at most nine. */
 export const MAX_INSTANCES = 9
 /** What the badge and the rail show at most. */
-export const MAX_COUNT = 999
+export const MAX_COUNT = MAX_BADGE
 const STORE_VERSION = 1
 const MAX_STORE_BYTES = 16 * 1024
 
@@ -103,8 +104,6 @@ function hue(id: string): number {
   return (Number.parseInt(id.slice(0, 4), 16) || 0) % 360
 }
 
-const bound = (n: number) => Math.min(MAX_COUNT, Math.max(0, Math.trunc(Number.isFinite(n) ? n : 0)))
-
 /** The list at rest: addresses only. No session, no name the page chose. */
 export interface Stored {
   servers: URL[]
@@ -161,8 +160,6 @@ export class Registry {
   private slots: Slot[] = []
   private front: string | null = null
   private addingNow = false
-  /** The server that keeps the storage of the single-server client. */
-
   static restore(stored: Stored): Registry {
     const registry = new Registry()
     for (const origin of stored.servers) {
@@ -259,8 +256,8 @@ export class Registry {
   report(id: string, unread: number, mentions: number): boolean {
     const slot = this.slot(id)
     if (!slot) return false
-    slot.unread = bound(unread)
-    slot.mentions = bound(mentions)
+    slot.unread = badgeCount(unread)
+    slot.mentions = badgeCount(mentions)
     slot.reported = true
     return true
   }
@@ -270,7 +267,7 @@ export class Registry {
     const slot = this.slot(id)
     if (!slot) return false
     if (slot.reported) return true
-    slot.mentions = bound(count)
+    slot.mentions = badgeCount(count)
     slot.unread = slot.mentions > 0 ? 1 : 0
     return true
   }

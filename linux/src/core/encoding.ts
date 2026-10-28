@@ -13,9 +13,14 @@ export function strictBase64(text: string): Buffer | null {
   return raw.toString('base64') === text ? raw : null
 }
 
+/** Rust's `str::trim` removes the Unicode White_Space set; JavaScript's `trim` differs (it strips U+FEFF and keeps U+0085). */
+const WHITE_SPACE = '\\t-\\r \\u0085\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000'
+const RUST_TRIM = new RegExp(`^[${WHITE_SPACE}]+|[${WHITE_SPACE}]+$`, 'gu')
+
 /** `String::from_utf8_lossy(bytes).trim()` */
 export function lossyTrimmed(bytes: Uint8Array): string {
-  return new TextDecoder('utf-8', { fatal: false }).decode(bytes).trim()
+  // `ignoreBOM` keeps a leading byte order mark, as `from_utf8_lossy` does.
+  return new TextDecoder('utf-8', { fatal: false, ignoreBOM: true }).decode(bytes).replace(RUST_TRIM, '')
 }
 
 export function sha256Hex(bytes: Uint8Array): string {

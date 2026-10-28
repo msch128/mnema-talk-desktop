@@ -36,11 +36,14 @@ export function osVault(dir: string): Vault | null {
     load(account) {
       const path = file(account)
       if (!path) return null
+      let blob: Buffer
       try {
-        return Buffer.from(safeStorage.decryptString(readFileSync(path)), 'utf8')
+        blob = readFileSync(path)
       } catch {
         return null
       }
+      // A blob that will not decrypt (locked keyring) throws: the entry exists and must not count as absent.
+      return Buffer.from(safeStorage.decryptString(blob), 'utf8')
     },
     save(account, secret) {
       const path = file(account)

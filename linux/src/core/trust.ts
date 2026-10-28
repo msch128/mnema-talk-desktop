@@ -13,6 +13,7 @@ import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { type TrustedKey, parseKey } from './bundle.ts'
 import { publicKeyFromRaw, verifyEd25519 } from './ed25519.ts'
+import { asU32, asU64, parseStrictJson } from './json.ts'
 import { isLowerHex, lossyTrimmed, strictBase64 } from './encoding.ts'
 import { type Version, parseVersion } from './version.ts'
 
@@ -73,7 +74,7 @@ function stringArray(value: unknown): string[] | null {
 function parseStatement(doc: Uint8Array): Statement | null {
   let raw: unknown
   try {
-    raw = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(doc))
+    raw = parseStrictJson(doc)
   } catch {
     return null
   }
@@ -83,9 +84,10 @@ function parseStatement(doc: Uint8Array): Statement | null {
   if (!keys.every((k) => FIELDS.includes(k))) return null
   // Every field but `max_version` is required.
   if (!FIELDS.filter((f) => f !== 'max_version').every((f) => keys.includes(f))) return null
-  const { schema, serial, issued_at, expires_at } = record
-  if (typeof schema !== 'number' || !Number.isInteger(schema) || schema < 0 || schema > 0xffffffff) return null
-  if (typeof serial !== 'number' || !Number.isSafeInteger(serial) || serial < 0) return null
+  const { issued_at, expires_at } = record
+  const schema = asU32(record.schema)
+  const serial = asU64(record.serial)
+  if (schema === null || serial === null) return null
   if (typeof issued_at !== 'string' || typeof expires_at !== 'string') return null
   const bundleKeys = stringArray(record.bundle_keys)
   const revokedBundleKeys = stringArray(record.revoked_bundle_keys)

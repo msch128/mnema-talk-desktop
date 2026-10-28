@@ -58,6 +58,11 @@ test('a dismissed dialog, a changed package and a refused package each fail once
   await assert.rejects(installDeb(DEB, host([100]).h), /refused/)
 })
 
+test('failed authentication and a command that never finished are told apart from a refused package', async () => {
+  await assert.rejects(installDeb(DEB, host([127]).h), /not authorized/)
+  await assert.rejects(installDeb(DEB, { ...host([]).h, run: () => Promise.resolve(null) }), /did not finish in time/)
+})
+
 // Runs the real script as the current user, with stand-ins for the package tools.
 function runScript(path: string, sha256: string, length: number) {
   const bin = mkdtempSync(join(tmpdir(), 'mnema-bin-'))

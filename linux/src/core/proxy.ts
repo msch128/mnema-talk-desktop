@@ -176,6 +176,8 @@ class Budget {
         const at = this.waiting.indexOf(waiter)
         if (at >= 0) this.waiting.splice(at, 1)
         resolve(null)
+        // A head that gave up may have been the only thing keeping smaller requests behind it from the free memory.
+        this.drain()
       }, timeoutMs)
       this.waiting.push(waiter)
       this.drain()
@@ -188,6 +190,13 @@ class Budget {
       (this.waiting.shift() as { grant: () => void }).grant()
     }
   }
+}
+
+function routeKind(path: string): 'avatar' | 'upload' | 'json' {
+  if (path === '/api/users/me/avatar') return 'avatar'
+  const rest = path.startsWith('/api/channels/') ? path.slice('/api/channels/'.length) : null
+  const id = rest !== null && rest.endsWith('/upload') ? rest.slice(0, -'/upload'.length) : null
+  return id !== null && id !== '' && !id.includes('/') ? 'upload' : 'json'
 }
 
 /** What the proxy lets through, following what the instance announces. */
@@ -217,13 +226,22 @@ export class Limits {
    * own small caps. Before any announcement the fixed cap applies to uploads.
    */
   requestCap(path: string): number {
-    if (path === '/api/users/me/avatar') return MAX_AVATAR_BODY
-    const rest = path.startsWith('/api/channels/') ? path.slice('/api/channels/'.length) : null
-    const id = rest !== null && rest.endsWith('/upload') ? rest.slice(0, -'/upload'.length) : null
-    const isUpload = id !== null && id !== '' && !id.includes('/')
-    if (!isUpload) return MAX_JSON_BODY
+    const kind = routeKind(path)
+    if (kind === 'avatar') return MAX_AVATAR_BODY
+    if (kind === 'json') return MAX_JSON_BODY
     const n = this.uploadBytes()
     return n === null ? MAX_BODY : n + MULTIPART_OVERHEAD
+  }
+
+  /**
+   * What `forward` enforces for `path`: `requestCap`, but never more than the
+   * memory budget can lend. Above it a retry could never succeed, so the body is
+   * refused as too large rather than as a busy proxy. `file` tells a file body
+   * from a JSON one for the wording of the refusal.
+   */
+  bodyLimit(path: string): { cap: number, file: boolean } {
+    const cap = this.requestCap(path)
+    return { cap: Math.min(cap, LARGE_BODY_BUDGET), file: routeKind(path) !== 'json' }
   }
 
   /**
@@ -297,8 +315,10 @@ function isControl(c: string): boolean {
 }
 
 /** The answer to a request body above the cap, in the server's own wording. */
-export function payloadTooLarge(cap: number): Resp {
-  return errorResp(413, 'PAYLOAD_TOO_LARGE', `file exceeds the ${(cap - Math.min(MULTIPART_OVERHEAD, cap)) >> 20} MB limit`)
+export function payloadTooLarge(cap: number, file = true): Resp {
+  if (!file) return errorResp(413, 'PAYLOAD_TOO_LARGE', 'request body is too large')
+  // Not `>>`: that is a 32-bit shift and turns the 2 GiB maximum negative.
+  return errorResp(413, 'PAYLOAD_TOO_LARGE', `file exceeds the ${Math.floor((cap - Math.min(MULTIPART_OVERHEAD, cap)) / 2 ** 20)} MB limit`)
 }
 
 const METHODS = new Set(['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'])
@@ -313,8 +333,8 @@ export async function forward(
   const url = target(instance.origin, pathAndQuery)
   if (!url) return errorResp(400, 'INVALID_INPUT', 'unsupported path')
   if (!METHODS.has(method)) return errorResp(405, 'INVALID_INPUT', 'method not allowed')
-  const cap = instance.limits.requestCap(url.pathname)
-  if (body.length > cap) return payloadTooLarge(cap)
+  const { cap, file } = instance.limits.bodyLimit(url.pathname)
+  if (body.length > cap) return payloadTooLarge(cap, file)
   // Held until the answer is complete: the body stays in memory until the
   // instance has read it.
   const requestMemory = await instance.limits.lend(body.length)
