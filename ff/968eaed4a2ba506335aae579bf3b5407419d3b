@@ -1,0 +1,59 @@
+linux/test/contract.test.ts
+  s_06fcde5dbef956::t_6681e68f878807 52
+  s_06fcde5dbef956::t_8c30fa4244b0a7 49-51
+  s_06fcde5dbef956::t_62a39d297a46b2 53-55
+linux/src/core/bundle.ts
+  s_06fcde5dbef956::t_cd7a6c9a763167 12-13,85,90-93,99-101,179,193-194,201-202,221
+linux/src/core/client.ts
+  s_06fcde5dbef956::t_954d9b876300a4 8,106,112
+linux/src/core/cookies.ts
+  s_06fcde5dbef956::t_9f2313c22945e0 13-14,18,57,80,82-88,100
+linux/src/core/debinstall.ts
+  s_06fcde5dbef956::t_de9cf0e6474ab2 23-24,108-109
+linux/src/core/ed25519.ts
+  s_06fcde5dbef956::t_911a8cf9b11d20 39-62,64,72-76,79-82
+linux/src/core/encoding.ts
+  s_06fcde5dbef956::t_60330eac065d0f 16-19,22-23
+linux/src/core/instances.ts
+  s_06fcde5dbef956::t_71a19caf5c7ff1 14,22,259-260,270
+linux/src/core/json.ts
+  s_06fcde5dbef956::t_7d4f092d642080 1-163
+linux/src/core/notify.ts
+  s_06fcde5dbef956::t_26499da7f9c556 10,16,26
+linux/src/core/proxy.ts
+  s_06fcde5dbef956::t_a66587274babe7 179-180,195-201,229-231,236-246,318-321,336-337
+linux/src/core/selfupdate.ts
+  s_06fcde5dbef956::t_b65d204015569a 23,108
+linux/src/core/trust.ts
+  s_06fcde5dbef956::t_052656de5d0690 16,77,87-90
+linux/src/core/updates.ts
+  s_06fcde5dbef956::t_209368397aa5dc 7,28,43-45
+linux/src/main/protocol.ts
+  s_06fcde5dbef956::t_068a65d973d790 88,90
+linux/src/main/vault.ts
+  s_06fcde5dbef956::t_ac171b293cc99c 39,41,45-46
+linux/test/debinstall.test.ts
+  s_06fcde5dbef956::t_ba219d4d27bda2 61-65
+linux/test/notify.test.ts
+  s_06fcde5dbef956::t_070dae60828514 16-22
+linux/test/proxy.test.ts
+  s_06fcde5dbef956::t_57c547b4b3dd93 8,331-374
+linux/test/strict.test.ts
+  s_06fcde5dbef956::t_49dcf7cf89866c 1-121
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ff968eaed4a2ba506335aae579bf3b5407419d3b",
+  "prompts": {},
+  "sessions": {
+    "s_06fcde5dbef956": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "94b73314-95fe-4e96-8c43-d20b0f28358d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}
