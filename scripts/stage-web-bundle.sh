@@ -37,5 +37,5 @@ if [ -z "$found" ]; then
   exit 0
 fi
 mv "$dir"/mnema-web-*.zip "$dir/builtin.zip"
-if command -v sha256sum >/dev/null; then sum="$(sha256sum "$dir/builtin.zip" | cut -d' ' -f1)"; else sum="$(shasum -a 256 "$dir/builtin.zip" | cut -d' ' -f1)"; fi
+if command -v sha256sum >/dev/null; then sum="$(sha256sum < "$dir/builtin.zip" | cut -d' ' -f1)"; else sum="$(shasum -a 256 < "$dir/builtin.zip" | cut -d' ' -f1)"; fi
 echo "Built-in web bundle from mnema-talk $found (sha256 $sum)" >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
