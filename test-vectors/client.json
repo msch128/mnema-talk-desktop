@@ -302,6 +302,58 @@
    "ok": true
   },
   {
+   "path": "/c/general",
+   "ok": true
+  },
+  {
+   "path": "/c/general-2",
+   "ok": true
+  },
+  {
+   "path": "/c/general/m/11111111-1111-1111-1111-111111111111",
+   "ok": true
+  },
+  {
+   "path": "/c/general/t/11111111-1111-1111-1111-111111111111",
+   "ok": true
+  },
+  {
+   "path": "/c/forum/p/release-notes-1a2b3c4d",
+   "ok": true
+  },
+  {
+   "path": "/v/lounge",
+   "ok": true
+  },
+  {
+   "path": "/v/lounge/chat",
+   "ok": true
+  },
+  {
+   "path": "/v/lounge/chat/m/11111111-1111-1111-1111-111111111111",
+   "ok": true
+  },
+  {
+   "path": "/dm/alice",
+   "ok": true
+  },
+  {
+   "path": "/dm/a.b_c-d",
+   "ok": true
+  },
+  {
+   "path": "/dm/alice/m/11111111-1111-1111-1111-111111111111",
+   "ok": true
+  },
+  {
+   "path": "/dm/g/1a2b3c4d",
+   "ok": true
+  },
+  {
+   "path": "/dm/g/1a2b3c4d/t/11111111-1111-1111-1111-111111111111",
+   "ok": true
+  },
+  {
    "path": "/other.html",
    "ok": false
   },
@@ -318,11 +370,63 @@
    "ok": false
   },
   {
-   "path": "/c/not-an-id",
+   "path": "/c/Not-A-Slug",
    "ok": false
   },
   {
-   "path": "/c/00000000-0000-0000-0000-000000000000",
+   "path": "/c/under_score",
+   "ok": false
+  },
+  {
+   "path": "/c/",
+   "ok": false
+  },
+  {
+   "path": "/c/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "ok": false
+  },
+  {
+   "path": "/c/general/p",
+   "ok": false
+  },
+  {
+   "path": "/c/general/p/Bad",
+   "ok": false
+  },
+  {
+   "path": "/c/general/m/not-an-id",
+   "ok": false
+  },
+  {
+   "path": "/v/lounge/chat/t/x",
+   "ok": false
+  },
+  {
+   "path": "/dm",
+   "ok": false
+  },
+  {
+   "path": "/dm/",
+   "ok": false
+  },
+  {
+   "path": "/dm/al%2fice",
+   "ok": false
+  },
+  {
+   "path": "/dm/alice/extra",
+   "ok": false
+  },
+  {
+   "path": "/dm/g/",
+   "ok": false
+  },
+  {
+   "path": "/dm/g/Group",
+   "ok": false
+  },
+  {
+   "path": "/dm/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
    "ok": false
   },
   {

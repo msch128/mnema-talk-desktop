@@ -12,7 +12,7 @@ import tls from 'node:tls'
 import { BaseWindow, app, dialog, protocol } from 'electron'
 import { APP_SCHEME, PICKER_PREFIX, UI_PREFIX } from '../core/origin.ts'
 import { Trusted, defaultDeps } from '../core/trusted.ts'
-import { checkAndInstall, updatesDisabled } from '../core/updates.ts'
+import { updatesDisabled } from '../core/updates.ts'
 import { CHECK_INTERVAL_SECS } from '../core/store.ts'
 import { loadAssets } from './assets.ts'
 import { PARTITIONS, type Context } from './context.ts'
@@ -102,20 +102,8 @@ function refreshInBackground(ctx: Context): void {
   const { trusted } = ctx
   let first = true
   const once = async () => {
-    if (updatesDisabled()) return
-    const dropped = await trusted.trustRound()
-    const hadBundle = trusted.store.newest() !== undefined
-    const now = Math.floor(Date.now() / 1000)
-    const due = trusted.store.checkDue(now)
-    if (hadBundle && !dropped && !(due || !first)) return
-    let installed = null
-    // Freeze protection: no new bundles without a fresh trust statement.
-    if (trusted.fresh()) {
-      installed = await checkAndInstall(trusted.store, () => trusted.keysInForce()).catch(() => null)
-    }
-    trusted.store.markChecked(Math.floor(Date.now() / 1000))
     // Pages that were showing a withdrawn bundle, or none, move to the newly installed one, or show why there is none.
-    if (dropped || (!hadBundle && installed !== null)) bundlesChanged(ctx)
+    if (await trusted.refresh(first)) bundlesChanged(ctx)
   }
   const loop = async () => {
     await once().catch((error: unknown) => console.error(`Mnema Desktop: update round failed: ${String(error)}`))

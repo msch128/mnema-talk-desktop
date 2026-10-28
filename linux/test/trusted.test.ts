@@ -42,8 +42,8 @@ async function run(t: Trusted, address: string) {
 test('only the hosts own origin and its routes are app pages', () => {
   const id = '11111111-1111-1111-1111-111111111111'
   const app = (path: string) => new URL(path, 'mnema://localhost/')
-  for (const path of ['', '/', '/index.html', '/login', '/admin/users', `/c/${id}`, `/v/${id}/chat`]) assert.ok(bundled(app(path)), path)
-  for (const path of ['/other.html', '/api/health', '/admin/unknown', '/c/not-an-id']) assert.ok(!bundled(app(path)), path)
+  for (const path of ['', '/', '/index.html', '/login', '/admin/users', `/c/${id}`, `/v/${id}/chat`, '/c/general', '/v/lounge/chat', '/dm/alice', '/dm/g/1a2b3c4d']) assert.ok(bundled(app(path)), path)
+  for (const path of ['/other.html', '/api/health', '/admin/unknown', '/c/Not-A-Slug']) assert.ok(!bundled(app(path)), path)
   for (const raw of ['https://community.example/', 'tauri://localhost/', 'http://tauri.localhost/', 'mnema://localhost:9000/', 'mnema://user@localhost/', 'mnema://evil/', 'https://mnema.localhost.evil.example/', 'https://mnema.localhost/']) {
     assert.ok(!bundled(url(raw)), raw)
   }
@@ -108,6 +108,41 @@ test('installs need a fresh statement and a successful fetch in this round', () 
   t.applyRound({ doc, sig }, expiry + 1)
   assert.equal(t.fresh(), false)
   assert.equal(t.keysInForce().length, count)
+})
+
+test('a background round only counts as a check when it really looked, and the update switch keeps the revocation fetch', async () => {
+  let fetched = 0
+  let installs = 0
+  const make = (online: boolean) => new Trusted(null, null, deps({
+    fetchTrust: () => { fetched += 1; return online ? Promise.resolve({ doc, sig }) : Promise.reject(new Error('offline')) },
+    installNewer: () => { installs += 1; return Promise.resolve(null) },
+  }))
+  // Offline: no fresh statement, nothing looked, so the next start still checks.
+  const offline = make(false)
+  assert.equal(await offline.refresh(true), false)
+  assert.equal(installs, 0)
+  assert.equal(offline.store.checkDue(NOW), true)
+  // Online: the check ran and is recorded.
+  const online = make(true)
+  await online.refresh(true)
+  assert.equal(installs, 1)
+  assert.equal(online.store.checkDue(NOW), false)
+  // The switch spares the release request, never the trust statement.
+  const before = process.env.MNEMA_DESKTOP_NO_UPDATE_CHECK
+  process.env.MNEMA_DESKTOP_NO_UPDATE_CHECK = '1'
+  try {
+    fetched = 0
+    installs = 0
+    const switchedOff = make(true)
+    await switchedOff.refresh(false)
+    assert.equal(fetched, 1)
+    assert.equal(installs, 0)
+    assert.equal(switchedOff.fresh(), true)
+    assert.equal(switchedOff.store.checkDue(NOW), true, 'no release check happened')
+  } finally {
+    if (before === undefined) delete process.env.MNEMA_DESKTOP_NO_UPDATE_CHECK
+    else process.env.MNEMA_DESKTOP_NO_UPDATE_CHECK = before
+  }
 })
 
 test('a client without any bundle says so instead of loading server code', () => {

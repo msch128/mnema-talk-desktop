@@ -850,7 +850,9 @@ async fn start_server(app: &tauri::AppHandle, id: &str) {
                     })
                 })
                 .is_some();
-            set.then_some(session)
+            // A key revoked while this server started: the session is ended
+            // and the tab says why, instead of running the withdrawn bundle.
+            (set && trusted.keep_if_held(id, &session)).then_some(session)
         }
         Err(why) => {
             if let Ok(mut registry) = trusted.registry.lock()
@@ -1066,6 +1068,10 @@ pub async fn add_server(
             slot.phase = Phase::Ready(Arc::clone(&session));
         }
         registry.activate(&id);
+    }
+    if !state.keep_if_held(&id, &session) {
+        remove_server(&app, &id).await;
+        return Err(crate::web_client::WITHDRAWN.into());
     }
     let existed = app.get_webview(&instance_label(&id)).is_some();
     if let Err(why) = open_page(&app, &id, &session, invite.as_deref()).await {

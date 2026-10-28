@@ -50,10 +50,11 @@ test('a pasted invite opens the join screen and a bare address does not', () => 
 
 test('actual vue routes stay local without allowing other pages or encoded paths', () => {
   for (const path of ['', '/', '/index.html', '/login', '/admin', '/admin/users', '/admin/channels', '/admin/invites', '/admin/media', '/admin/system', `/c/${ID}`, `/c/${ID}/m/${ID}`,
-    `/c/${ID}/t/${ID}`, `/v/${ID}`, `/v/${ID}/chat`, `/v/${ID}/chat/m/${ID}`, '/invite/abc234xyz789', '/invite/Team_Night-2026', '/invite/abc234xyz789/']) {
+    `/c/${ID}/t/${ID}`, `/v/${ID}`, `/v/${ID}/chat`, `/v/${ID}/chat/m/${ID}`, '/invite/abc234xyz789', '/invite/Team_Night-2026', '/invite/abc234xyz789/',
+    '/c/general', `/c/general/m/${ID}`, `/c/general/t/${ID}`, '/c/forum/p/release-notes-1a2b3c4d', '/v/lounge', '/v/lounge/chat', `/v/lounge/chat/m/${ID}`, '/dm/alice', '/dm/a.b_c-d', `/dm/alice/m/${ID}`, '/dm/g/1a2b3c4d', `/dm/g/1a2b3c4d/t/${ID}`]) {
     assert.ok(appPath(path), path)
   }
-  for (const path of ['/other.html', '/native-media.html', '/admin/unknown', '/admin/users/extra', '/c/not-an-id', '/c/00000000-0000-0000-0000-000000000000', `/c/${ID}/`, `/c/${ID}/m`,
+  for (const path of ['/other.html', '/native-media.html', '/admin/unknown', '/admin/users/extra', '/c/Not-A-Slug', '/c/under_score', '/c/general/p', '/c/general/p/Bad', '/c/general/m/not-an-id', '/dm', '/dm/al%2fice', '/dm/alice/extra', '/dm/g/Group', `/c/${ID}/`, `/c/${ID}/m`,
     `/v/${ID}/chat/t/${ID}`, `/c/${ID}%2fm%2f${ID}`, `//c/${ID}`, '/index.html/extra', '/INDEX.HTML', '/c/AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA',
     '/invite', '/invite/', '/invite/abc', '/invite/abc234xyz789/extra', '/INVITE/abc234xyz789', `/invite/${'a'.repeat(65)}`]) {
     assert.ok(!appPath(path), path)

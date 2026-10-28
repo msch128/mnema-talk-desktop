@@ -251,6 +251,20 @@ jobs:
           New-Item -ItemType Directory -Path $devOutput -Force | Out-Null
           $devExe = Join-Path $devOutput 'Mnema Desktop DEV.exe'
           Copy-Item 'experimental/app/target/release/mnema-native-client-preview.exe' $devExe
+          # The probe is compiled out of the shipped executable. A separate build
+          # with the feature on is what the check starts.
+          $probeTarget = Join-Path $env:RUNNER_TEMP 'probe-target'
+          $env:CARGO_TARGET_DIR = $probeTarget
+          try {
+            cargo build --locked --release --manifest-path experimental/app/Cargo.toml --features shell,web-client,custom-protocol,webview-probe
+            if ($LASTEXITCODE -ne 0) { throw 'Probe executable build failed' }
+          } finally {
+            Remove-Item Env:CARGO_TARGET_DIR -ErrorAction SilentlyContinue
+          }
+          $probeOutput = Join-Path $env:RUNNER_TEMP 'mnema-desktop-probe'
+          New-Item -ItemType Directory -Path $probeOutput -Force | Out-Null
+          $probeExe = Join-Path $probeOutput 'Mnema Desktop DEV.exe'
+          Copy-Item (Join-Path $probeTarget 'release/mnema-native-client-preview.exe') $probeExe
           $probeLog = Join-Path $env:RUNNER_TEMP 'webview-probe.log'
           if (Test-Path $probeLog) { Remove-Item $probeLog }
           $env:MNEMA_WEBVIEW_PROBE = '1'
@@ -262,7 +276,7 @@ jobs:
           # permission UI stays off, because it grants before the host is asked.
           Add-Type -AssemblyName UIAutomationClient
           try {
-            $process = Start-Process -FilePath $devExe -PassThru
+            $process = Start-Process -FilePath $probeExe -PassThru
             try {
               $windowReady = $false
               for ($attempt = 0; $attempt -lt 60; $attempt++) {

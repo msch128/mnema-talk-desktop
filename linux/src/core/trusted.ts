@@ -158,6 +158,32 @@ export class Trusted {
     return this.applyRound(fetched, this.deps.now())
   }
 
+  /**
+   * One background round: the trust statement first (a revoked key must stop
+   * counting before anything else is installed), then newer bundles. The
+   * statement is fetched even when the update check is switched off: that
+   * switch spares the release request to GitHub and must not stop a revoked key
+   * from counting. Returns whether pages must move to what is held now (a
+   * bundle was withdrawn, or the first one arrived).
+   */
+  async refresh(first: boolean): Promise<boolean> {
+    const dropped = await this.trustRound()
+    const hadBundle = this.store.newest() !== undefined
+    const due = this.store.checkDue(this.deps.now())
+    let installed: unknown = null
+    if (!updatesDisabled() && (!hadBundle || dropped || due || !first)) {
+      // Freeze protection: no new bundles without a fresh trust statement.
+      if (this.fresh()) {
+        try {
+          installed = await this.deps.installNewer(this.store, () => this.keys)
+          // A skipped or failed round did not look: look again next start.
+          this.store.markChecked(this.deps.now())
+        } catch { /* offline or refused */ }
+      }
+    }
+    return dropped || (!hadBundle && installed !== null && installed !== undefined)
+  }
+
   /** The running session of a server. */
   session(id: string): Session | null {
     return this.registry.session(id)
