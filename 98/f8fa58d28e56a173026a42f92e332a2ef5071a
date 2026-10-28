@@ -1,0 +1,41 @@
+linux/src/core/downloads.ts
+  s_06fcde5dbef956::t_df12bb21096e63 1-20
+linux/src/core/osvault.ts
+  s_06fcde5dbef956::t_76b09490718829 1-85
+linux/src/core/recovery.ts
+  s_06fcde5dbef956::t_ad4fd4b1cd7f10 1-24
+linux/src/core/title.ts
+  s_06fcde5dbef956::t_61ffee5e7bac12 1-2
+linux/src/main/main.ts
+  s_06fcde5dbef956::t_9050470839791a 14-15,39-41,58,74-76
+linux/src/main/sessions.ts
+  s_06fcde5dbef956::t_71c6263312ee04 10,34-42
+linux/src/main/shell.ts
+  s_06fcde5dbef956::t_1675386472455c 20
+linux/src/main/vault.ts
+  s_06fcde5dbef956::t_0f43fcbd4e0843 11,15,18,23
+linux/src/main/windows.ts
+  s_06fcde5dbef956::t_e96fdfe93cf5c4 9-10,78,81-85
+linux/src/preload/preload.cts
+  s_06fcde5dbef956::t_d4888c7aa043b9 71,73
+linux/test/osvault.test.ts
+  s_06fcde5dbef956::t_e398927b9ea9f0 1-92
+linux/test/preload.test.ts
+  s_06fcde5dbef956::t_22a5747de57479 1-27
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "98f8fa58d28e56a173026a42f92e332a2ef5071a",
+  "prompts": {},
+  "sessions": {
+    "s_06fcde5dbef956": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "94b73314-95fe-4e96-8c43-d20b0f28358d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}
