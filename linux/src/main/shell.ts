@@ -17,6 +17,7 @@ import { inviteCode, parseAddress } from '../core/client.ts'
 import { AddError, MAX_INSTANCES, idFor } from '../core/instances.ts'
 import { APP_URL } from '../core/origin.ts'
 import { LEGACY_PARTITION, PARTITIONS, attachmentPartition, serverPartition, type Context } from './context.ts'
+import { TITLE } from '../core/title.ts'
 import { buildMenu } from './menu.ts'
 import { setLauncherBadge, toastsClosed } from './notify.ts'
 import { prepare, prepareServer } from './sessions.ts'
@@ -25,7 +26,6 @@ import { loadAssets } from './assets.ts'
 import { appPreload, harden, pagePreferences, railPreload } from './windows.ts'
 
 export const RAIL_WIDTH = 68
-const TITLE = 'Mnema Desktop DEV'
 
 // ------------------------------------------------------------------- layout
 

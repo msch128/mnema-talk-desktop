@@ -11,6 +11,8 @@ import { join } from 'node:path'
 import tls from 'node:tls'
 import { BaseWindow, app, dialog, protocol } from 'electron'
 import { APP_SCHEME, PICKER_PREFIX, UI_PREFIX } from '../core/origin.ts'
+import { passwordStoreSwitch } from '../core/osvault.ts'
+import { TITLE } from '../core/title.ts'
 import { Trusted, defaultDeps } from '../core/trusted.ts'
 import { checkAndInstall, updatesDisabled } from '../core/updates.ts'
 import { CHECK_INTERVAL_SECS } from '../core/store.ts'
@@ -34,6 +36,9 @@ app.setPath('userData', process.env.MNEMA_DESKTOP_DATA_DIR || join(app.getPath('
 // Wayland where the session is Wayland (screen capture then goes through the PipeWire portal).
 app.commandLine.appendSwitch('ozone-platform-hint', 'auto')
 app.commandLine.appendSwitch('enable-features', 'WebRTCPipeWireCapturer')
+// Window-manager-only sessions (sway, i3, Hyprland) would get Chromium's plaintext password store even with a secret service running.
+const passwordStore = passwordStoreSwitch(process.env, (name) => app.commandLine.hasSwitch(name))
+if (passwordStore) app.commandLine.appendSwitch('password-store', passwordStore)
 // No app.enableSandbox(): it also removes --no-sandbox from the command line, which the start check below must see.
 // Every window sets sandbox: true itself.
 
@@ -50,7 +55,7 @@ function useSystemCertificates(): void {
 async function start(): Promise<void> {
   if (sandboxDisabled((name) => app.commandLine.hasSwitch(name), process.env) && !sandboxAccepted(process.env)) {
     console.error(SANDBOX_MESSAGE)
-    dialog.showErrorBox('Mnema Desktop DEV', SANDBOX_MESSAGE)
+    dialog.showErrorBox(TITLE, SANDBOX_MESSAGE)
     app.exit(1)
     return
   }
@@ -66,7 +71,9 @@ async function start(): Promise<void> {
     builtin = readFileSync(join(app.getAppPath(), 'bundle', 'builtin.zip'))
     if (builtin.length === 0) builtin = null
   } catch { /* a build without a bundle has to download one */ }
-  const trusted = new Trusted(dataDir, builtin, defaultDeps(osVault(dataDir)))
+  const vault = osVault(dataDir)
+  if (!vault && !process.env.MNEMA_DESKTOP_NO_VAULT) console.warn('Mnema Desktop: no secret service was found, so sessions rest in a private file (mode 0600) instead of the keyring.')
+  const trusted = new Trusted(dataDir, builtin, defaultDeps(vault))
   for (const name of trusted.store.rejected) {
     console.error(`Mnema Desktop: refused web bundle ${name}: it does not verify against the pinned keys.`)
   }

@@ -7,6 +7,7 @@
  * ever reach that server.
  */
 import { session } from 'electron'
+import { closeWhenStarted } from '../core/downloads.ts'
 import { APP_SCHEME } from '../core/origin.ts'
 import { attachmentPartition, serverPartition, type Context, type Role } from './context.ts'
 import { secureSession } from './permissions.ts'
@@ -30,6 +31,15 @@ export function prepareServer(ctx: Context, id: string): string {
 
 export function prepareAttachment(ctx: Context, id: string): string {
   const partition = attachmentPartition(id)
+  if (!ctx.prepared.has(partition)) {
+    // A download answer leaves the window empty: close it once the download is under way.
+    session.fromPartition(partition).on('will-download', (_event, item) => {
+      closeWhenStarted(item, () => {
+        const win = ctx.shell.attachments.get(id)
+        if (win && !win.isDestroyed()) win.close()
+      })
+    })
+  }
   prepare(ctx, partition, 'attachment', appHandler('attachment', ctx.trusted, ctx.debug, id))
   return partition
 }
