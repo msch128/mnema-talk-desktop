@@ -125,7 +125,8 @@ export async function checkAndInstall(store: Store, keys: () => readonly Trusted
   const release = await fetchLimited(sources.latest ?? new URL(LATEST_RELEASE_URL), 'application/vnd.github+json', MAX_RELEASE_JSON, sources.fetch)
   const found = bundleAsset(release, sources.fetch?.allowHttp === true)
   if (!found) return null
-  if (store.held().some((h) => compareVersions(h.bundle.version, found.version) >= 0)) return null
+  // Only the exact version is known before the download; `install` decides per web client API.
+  if (store.held().some((h) => compareVersions(h.bundle.version, found.version) === 0)) return null
   const bytes = await fetchLimited(found.url, 'application/octet-stream', MAX_DOWNLOAD, sources.fetch)
   return installCurrent(store, keys, bytes)
 }

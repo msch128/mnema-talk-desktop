@@ -252,7 +252,12 @@ export class Store {
   install(bytes: Uint8Array, keys: readonly TrustedKey[]): Version {
     const bundle = verifyBundle(bytes, keys)
     const version = bundle.version
-    if (this.heldBundles.some((h) => compareVersions(h.bundle.version, version) >= 0)) {
+    // Per contract: a patch for an older web client API is not shadowed by a
+    // newer bundle of another one. A version is held only once (it names the file).
+    const held = (h: Held) =>
+      compareVersions(h.bundle.version, version) === 0 ||
+      (h.bundle.webClientApi === bundle.webClientApi && compareVersions(h.bundle.version, version) > 0)
+    if (this.heldBundles.some(held)) {
       throw new BundleError('a bundle of this version or newer is already held')
     }
     if (compareVersions(version, maxVersion(this.floorInForce, bundle.securityFloor)) < 0) throw new BundleError('below the security floor')
@@ -367,16 +372,24 @@ export class Store {
     by.set(bundle.keyId, mark === undefined ? bundle.version : maxVersion(mark, bundle.version))
   }
 
-  /** Keeps the built-in bundle and the newest cached ones; removes the files of the rest. */
+  /**
+   * Keeps the built-in bundle and, per web client API, the newest cached ones,
+   * served or shelved; removes the files of the rest.
+   */
   private prune(): void {
-    let cached = 0
     const dropped: Version[] = []
-    this.heldBundles = this.heldBundles.filter((h) => {
-      if (h.source === 'builtin') return true
-      cached += 1
-      if (cached > KEEP_CACHED) { dropped.push(h.bundle.version); return false }
-      return true
-    })
+    const keep = (list: Held[]): Held[] => {
+      const cached = new Map<number, number>()
+      return list.filter((h) => {
+        if (h.source === 'builtin') return true
+        const n = (cached.get(h.bundle.webClientApi) ?? 0) + 1
+        cached.set(h.bundle.webClientApi, n)
+        if (n > KEEP_CACHED) { dropped.push(h.bundle.version); return false }
+        return true
+      })
+    }
+    this.heldBundles = keep(this.heldBundles)
+    this.shelved = keep(this.shelved)
     for (const version of dropped) this.removeCached(version)
   }
 

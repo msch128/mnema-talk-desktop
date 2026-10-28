@@ -11,7 +11,7 @@
 //!
 //! "On next start" keeps the verified installer on disk. It is verified again
 //! against a freshly fetched manifest before it runs.
-use crate::web_bundle::{CHECK_INTERVAL_SECS, Version};
+use crate::web_bundle::{CHECK_INTERVAL_SECS, Version, write_atomic};
 use base64::Engine as _;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -188,15 +188,6 @@ impl Persisted {
             &serde_json::to_vec(self).unwrap_or_default(),
         );
     }
-}
-
-fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    let tmp = path.with_extension("tmp");
-    std::fs::write(&tmp, bytes)?;
-    std::fs::rename(&tmp, path)
 }
 
 struct Inner {
