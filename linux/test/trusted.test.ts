@@ -218,3 +218,36 @@ test('opening an instance picks the verified bundle by the server health and nev
   servers.push(down)
   await assert.rejects(t.connect(down.origin.href), /unavailable or redirects/)
 })
+
+test('a torn pair of statement and signature is fetched once more before the round counts as failed', async () => {
+  const torn = Buffer.from(sig)
+  torn[3] = torn[3] === 0x41 ? 0x42 : 0x41
+  let fetches = 0
+  const messages: string[] = []
+  const t = new Trusted(null, null, deps({ fetchTrust: async () => { fetches += 1; return { doc, sig: fetches === 1 ? torn : sig } }, log: (m: string) => { messages.push(m) } }))
+  await t.trustRound()
+  assert.equal(fetches, 2)
+  assert.equal(t.fresh(), true)
+  assert.equal(messages.length, 0)
+  // A pair that stays wrong is refused after the one retry and logged once.
+  const bad = new Trusted(null, null, deps({ fetchTrust: async () => { fetches += 1; return { doc, sig: torn } }, log: (m: string) => { messages.push(m) } }))
+  fetches = 0
+  await bad.trustRound()
+  assert.equal(fetches, 2)
+  assert.equal(bad.fresh(), false)
+  assert.equal(messages.length, 1)
+  assert.match(messages[0] as string, /trust statement refused/)
+})
+
+test('a failed bundle install is logged, not swallowed', async () => {
+  const newer = await health({ status: 'ok', version: '1.0.0', web_client_api: 2 })
+  const messages: string[] = []
+  const t = new Trusted(null, bundle(spec('0.8.0')), deps({
+    pinned: () => keysFor(7),
+    fetchTrust: async () => ({ doc, sig }),
+    installNewer: async () => { throw new Error('unreachable') },
+    log: (m: string) => { messages.push(m) },
+  }))
+  await assert.rejects(t.connect(newer.origin.href))
+  assert.ok(messages.some((m) => /could not install a newer bundle: unreachable/.test(m)), messages.join('|'))
+})

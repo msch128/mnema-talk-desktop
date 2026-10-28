@@ -99,6 +99,9 @@ async function start(): Promise<void> {
   refreshInBackground(ctx)
 }
 
+/** How long to wait before a background round that found no network is repeated. */
+const RETRY_MS = 10 * 60 * 1000
+
 /**
  * Verifies updates in the background: the trust statement first (a revoked key
  * must stop counting before anything is installed), then newer bundles. A
@@ -108,13 +111,23 @@ async function start(): Promise<void> {
 function refreshInBackground(ctx: Context): void {
   const { trusted } = ctx
   let first = true
-  const once = async () => {
+  // A round that could not reach the network does not use up the interval: it is tried again soon.
+  const once = async (): Promise<boolean> => {
     // Pages that were showing a withdrawn bundle, or none, move to the newly installed one, or show why there is none.
     if (await trusted.refresh(first)) bundlesChanged(ctx)
+    return trusted.reached
   }
+  let retry: NodeJS.Timeout | null = null
   const loop = async () => {
-    await once().catch((error: unknown) => console.error(`Mnema Desktop: update round failed: ${String(error)}`))
+    const reached = await once().catch((error: unknown) => {
+      console.error(`Mnema Desktop: update round failed: ${String(error)}`)
+      return false
+    })
     first = false
+    if (!reached && retry === null) {
+      retry = setTimeout(() => { retry = null; void loop() }, RETRY_MS)
+      retry.unref()
+    }
   }
   void loop()
   setInterval(() => { void loop() }, CHECK_INTERVAL_SECS * 1000).unref()

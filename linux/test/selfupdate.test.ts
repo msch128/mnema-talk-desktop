@@ -170,6 +170,41 @@ test('nothing newer, no entry for this platform and an unreachable feed', async 
   assert.deepEqual([g.updater.snapshot().phase, g.updater.snapshot().error], ['failed', 'offline'])
 })
 
+test('a failed look does not use up the check interval', async () => {
+  const server = await feed(() => ({ version: '0.2.0', package: PKG }))
+  const offline = harness({ ...server, origin: new URL('http://127.0.0.1:1') }, null)
+  await offline.updater.check(false)
+  assert.equal(offline.updater.due(), true, 'offline at start: the next poll tries again')
+  const online = harness(server, null)
+  await online.updater.check(false)
+  assert.equal(online.updater.due(), false, 'a successful look stamps the check')
+})
+
+test('without a fresh statement the update fetches one first and otherwise says the trust is missing, not the signature', async () => {
+  const server = await feed(() => ({ version: '0.2.0', package: PKG }))
+  let allowed = false
+  let rounds = 0
+  const healed = harness(server, null, { installsAllowed: () => allowed, trustRound: async () => { rounds += 1; allowed = true } })
+  await healed.updater.check(false)
+  await healed.updater.install('now')
+  assert.equal(rounds, 1)
+  assert.equal(healed.installed.length, 1)
+  const stuck = harness(server, null, { installsAllowed: () => false, trustRound: async () => { rounds += 1 } })
+  await stuck.updater.check(false)
+  await stuck.updater.install('now')
+  assert.deepEqual([stuck.updater.snapshot().phase, stuck.updater.snapshot().error], ['failed', 'untrusted'])
+})
+
+test('a kept package does not persist the signature it was verified with', async () => {
+  const d = dir()
+  const server = await feed(() => ({ version: '0.2.0', package: PKG }))
+  const h = harness(server, d)
+  await h.updater.check(false)
+  await h.updater.install('later')
+  const saved = JSON.parse(readFileSync(join(d, 'native-update.json'), 'utf8')) as { pending: Record<string, unknown> }
+  assert.deepEqual(saved.pending, { version: '0.2.0' })
+})
+
 test('a package whose signature does not verify is never installed', async () => {
   const other = minisignKey(4)
   for (const release of [
@@ -209,7 +244,7 @@ test('a revoked updater key, a missing fresh statement and a key the statement d
   const stale = harness(server, null, { installsAllowed: () => false })
   await stale.updater.check(false)
   await stale.updater.install('now')
-  assert.deepEqual([stale.updater.snapshot().phase, stale.updater.snapshot().error], ['failed', 'verify'])
+  assert.deepEqual([stale.updater.snapshot().phase, stale.updater.snapshot().error], ['failed', 'untrusted'])
   assert.equal(stale.installed.length, 0)
 })
 
@@ -307,8 +342,7 @@ test('a skipped version stays quiet and a newer one is offered again; a version 
   await keep.updater.check(false)
   await keep.updater.install('later')
   const upgraded = harness(server, held, { current: '0.2.1' })
-  assert.equal(upgraded.updater.hasPending(), false)
-  assert.equal(upgraded.updater.snapshot().phase, 'idle')
+    assert.equal(upgraded.updater.snapshot().phase, 'idle')
   assert.equal(existsSync(join(held, 'native-update.pending')), false)
 })
 
@@ -382,7 +416,7 @@ test('a kept package asks before it is installed at start', async () => {
   const declined = harness(server, d, { confirmStart: () => Promise.resolve(false) })
   assert.equal(await declined.updater.applyPending(), false)
   assert.equal(declined.installed.length, 0)
-  assert.ok(declined.updater.hasPending())
+  assert.ok(existsSync(join(d, 'native-update.pending')))
   const accepted = harness(server, d, { confirmStart: () => Promise.resolve(true) })
   assert.equal(await accepted.updater.applyPending(), true)
   assert.equal(accepted.installed.length, 1)

@@ -18,8 +18,9 @@
  * install is updated through the package manager (`debinstall.ts`) from its own
  * feed entry (`linux-<arch>-deb`); other installations only get the release page.
  */
-import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { chmodSync, existsSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { writeFileAtomic } from './atomic.ts'
 import { parseStrictJson } from './json.ts'
 import { verifyPackage } from './minisign.ts'
 import { CHECK_INTERVAL_SECS } from './store.ts'
@@ -39,7 +40,8 @@ const PENDING_FILE = 'native-update.pending'
 
 export type Phase = 'idle' | 'checking' | 'up_to_date' | 'available' | 'downloading' | 'ready' | 'installing' | 'failed'
 export type Mode = 'now' | 'later'
-export type Failure = 'offline' | 'verify' | 'install' | 'unknown'
+/** `untrusted`: no current trust statement could be fetched, so nothing new is installed (the signature is not at fault). */
+export type Failure = 'offline' | 'verify' | 'untrusted' | 'install' | 'unknown'
 
 /** What the update window shows. No raw error text crosses to the page. */
 export interface Snapshot {
@@ -133,7 +135,7 @@ export function trimNotes(body: string | null): string | null {
 
 // ------------------------------------------------------------------- state
 
-interface Pending { version: string, signature: string }
+interface Pending { version: string }
 
 interface Persisted {
   last_check: number
@@ -152,7 +154,7 @@ function loadPersisted(dir: string | null): Persisted {
     return {
       last_check: typeof last === 'number' && Number.isInteger(last) && last >= 0 ? last : 0,
       skipped: typeof skipped === 'string' ? skipped : null,
-      pending: held && typeof held.version === 'string' && typeof held.signature === 'string' ? { version: held.version, signature: held.signature } : null,
+      pending: held && typeof held.version === 'string' ? { version: held.version } : null,
     }
   } catch {
     return empty
@@ -160,10 +162,7 @@ function loadPersisted(dir: string | null): Persisted {
 }
 
 function writeAtomic(path: string, bytes: Uint8Array): void {
-  mkdirSync(dirname(path), { recursive: true, mode: 0o700 })
-  const tmp = `${path}.tmp`
-  writeFileSync(tmp, bytes, { mode: 0o600 })
-  renameSync(tmp, path)
+  writeFileAtomic(path, bytes, { dirMode: 0o700 })
 }
 
 /** A dot marks a waiting update; the word is the same in every language. */
@@ -239,14 +238,6 @@ export class SelfUpdater {
     return { ...this.snap }
   }
 
-  get lastCheck(): number {
-    return this.persisted.last_check
-  }
-
-  hasPending(): boolean {
-    return this.persisted.pending !== null
-  }
-
   private save(): void {
     if (!this.env.dir) return
     try { writeAtomic(join(this.env.dir, STATE_FILE), Buffer.from(JSON.stringify(this.persisted))) } catch { /* kept in memory */ }
@@ -308,7 +299,8 @@ export class SelfUpdater {
     let announce = false
     this.change(() => {
       this.busy = false
-      this.persisted.last_check = this.env.now()
+      // A failed look (offline at start) does not use up the interval: the next poll tries again.
+      if (!failure) this.persisted.last_check = this.env.now()
       if (failure) {
         if (manual) { this.snap.phase = 'failed'; this.snap.error = failure } else if (this.snap.phase === 'checking') this.snap.phase = 'idle'
       } else if (found) {
@@ -356,9 +348,12 @@ export class SelfUpdater {
     })
     // The statement may have changed since the check. Without a fresh one
     // (expired, or its fetch failed this round) nothing new is installed.
-    if (!this.env.installsAllowed() || !chooseUpdaterKey(this.env.pubkey, this.env.statement(), update.signature).ok) {
-      return this.fail('verify')
+    if (!this.env.installsAllowed() && this.env.trustRound) {
+      // Started offline, say: the statement of this round is fetched now instead of reporting the signature as wrong.
+      await withTimeout(this.env.trustRound(), START_TIMEOUT_MS).catch(() => undefined)
     }
+    if (!this.env.installsAllowed()) return this.fail('untrusted')
+    if (!chooseUpdaterKey(this.env.pubkey, this.env.statement(), update.signature).ok) return this.fail('verify')
     let bytes = this.heldPackage(update)
     if (!bytes) {
       try {
@@ -382,7 +377,7 @@ export class SelfUpdater {
       if (!stored) return this.fail('install')
       this.change(() => {
         this.busy = false
-        this.persisted.pending = { version: update.version, signature: update.signature }
+        this.persisted.pending = { version: update.version }
         this.save()
         this.snap.phase = 'ready'
       })

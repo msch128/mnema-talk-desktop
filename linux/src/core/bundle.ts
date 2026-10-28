@@ -9,7 +9,7 @@
  * where bytes came from.
  */
 import type { KeyObject } from 'node:crypto'
-import { publicKeyFromRaw, sha256Prefix, verifyEd25519 } from './ed25519.ts'
+import { isEd25519Point, publicKeyFromRaw, sha256Prefix, verifyEd25519 } from './ed25519.ts'
 import { asU32, asU64, parseStrictJson } from './json.ts'
 import { isLowerHex, lossyTrimmed, sha256Hex, strictBase64 } from './encoding.ts'
 import { type Version, compareVersions, parseVersion } from './version.ts'
@@ -38,6 +38,7 @@ export function keyId(raw: Uint8Array): string {
 export function parseKey(rawHex: string): TrustedKey | null {
   if (!/^(?:[0-9a-fA-F]{2})+$/.test(rawHex) || rawHex.length !== 64) return null
   const raw = Buffer.from(rawHex, 'hex')
+  if (!isEd25519Point(raw)) return null
   const key = publicKeyFromRaw(raw)
   return key ? { id: keyId(raw), raw, key } : null
 }

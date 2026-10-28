@@ -8,10 +8,11 @@
  * isolation rules can be tested.
  */
 import { createHash, randomBytes } from 'node:crypto'
-import { mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs'
-import { dirname } from 'node:path'
+import { readFileSync, statSync } from 'node:fs'
+import { writeFileAtomic } from './atomic.ts'
 import { parseAddress } from './client.ts'
 import { MAX_BADGE, badgeCount } from './notify.ts'
+import { isLowerHex } from './encoding.ts'
 import type { Instance } from './proxy.ts'
 import type { Sockets } from './sockets.ts'
 import type { Held } from './store.ts'
@@ -38,7 +39,7 @@ export function idFor(origin: URL): string {
 }
 
 export function validId(id: string): boolean {
-  return /^[0-9a-f]{16}$/.test(id)
+  return isLowerHex(id, 16)
 }
 
 export type Phase =
@@ -145,10 +146,7 @@ export function loadStored(file: string | null): Stored {
 export function saveStored(file: string | null, stored: Stored): void {
   if (!file) return
   try {
-    mkdirSync(dirname(file), { recursive: true })
-    const temporary = `${file}.tmp`
-    writeFileSync(temporary, JSON.stringify({ version: STORE_VERSION, servers: stored.servers.map((u) => u.href), active: stored.active?.href ?? null }), { mode: 0o600 })
-    renameSync(temporary, file)
+    writeFileAtomic(file, Buffer.from(JSON.stringify({ version: STORE_VERSION, servers: stored.servers.map((u) => u.href), active: stored.active?.href ?? null })), { dirMode: 0o700 })
   } catch { /* the list is a convenience; the sessions do not depend on it */ }
 }
 

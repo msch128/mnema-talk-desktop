@@ -8,19 +8,14 @@
  */
 import { createHash } from 'node:crypto'
 import { publicKeyFromRaw, verifyEd25519 } from './ed25519.ts'
-import { strictBase64 } from './encoding.ts'
+import { strictBase64, strictUtf8 } from './encoding.ts'
 import { compareVersions, parseVersion } from './version.ts'
 
 export type VerifyError = 'key' | 'signature' | 'mismatch' | 'version'
 
 function text(wrapped: string): string | null {
   const raw = strictBase64(wrapped.trim())
-  if (!raw) return null
-  try {
-    return new TextDecoder('utf-8', { fatal: true }).decode(raw)
-  } catch {
-    return null
-  }
+  return raw ? strictUtf8(raw) : null
 }
 
 function lines(value: string): string[] {
@@ -38,10 +33,31 @@ function decodeKey(value: string): MinisignKey | null {
   return { keyId: bytes.subarray(2, 10), raw: bytes.subarray(10) }
 }
 
-function decodeSignature(value: string): MinisignSignature | null {
-  const [, sigLine, trustedLine, globalLine] = lines(value)
-  const bytes = strictBase64((sigLine ?? '').trim())
+/** The signature line alone: algorithm `Ed` or `ED` (prehashed), key id, signature. */
+function decodeSignatureLine(value: string): { bytes: Buffer, lines: string[] } | null {
+  const all = lines(value)
+  const bytes = strictBase64((all[1] ?? '').trim())
   if (!bytes || bytes.length !== 74 || bytes[0] !== 0x45 || (bytes[1] !== 0x64 && bytes[1] !== 0x44)) return null
+  return { bytes, lines: all }
+}
+
+/** Key id (8 bytes, hex, file order) of a minisign public key in the form of `tauri.conf.json`: base64 of the `.pub` file. */
+export function minisignKeyId(pubkey: string): string | null {
+  const wrapped = text(pubkey)
+  return wrapped === null ? null : (decodeKey(wrapped)?.keyId.toString('hex') ?? null)
+}
+
+/** Key id named by a minisign signature (base64 of the `.sig` file); the signature itself is not checked. */
+export function signatureKeyId(signature: string): string | null {
+  const wrapped = text(signature)
+  return wrapped === null ? null : (decodeSignatureLine(wrapped)?.bytes.subarray(2, 10).toString('hex') ?? null)
+}
+
+function decodeSignature(value: string): MinisignSignature | null {
+  const line = decodeSignatureLine(value)
+  if (!line) return null
+  const { bytes } = line
+  const [, , trustedLine, globalLine] = line.lines
   if (!trustedLine?.startsWith('trusted comment: ')) return null
   const global = strictBase64((globalLine ?? '').trim())
   if (!global || global.length !== 64) return null

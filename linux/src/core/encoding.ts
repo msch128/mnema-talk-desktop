@@ -30,3 +30,24 @@ export function sha256Hex(bytes: Uint8Array): string {
 export function isLowerHex(text: string, length: number): boolean {
   return text.length === length && /^[0-9a-f]+$/.test(text)
 }
+
+/**
+ * Strict UTF-8 as Rust's `String::from_utf8` reads it: invalid bytes give null
+ * and a leading byte order mark stays in the text (a decoder's default is to
+ * drop it silently, so a BOM-prefixed name or document would pass here and be
+ * refused by the Tauri host).
+ */
+export function strictUtf8(bytes: Uint8Array): string | null {
+  try {
+    return new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes)
+  } catch {
+    return null
+  }
+}
+
+/** `serde_json::from_slice`: strict UTF-8 without a byte order mark, then JSON. Throws on anything else. */
+export function strictJson(bytes: Uint8Array): unknown {
+  const text = strictUtf8(bytes)
+  if (text === null) throw new Error('not UTF-8')
+  return JSON.parse(text)
+}

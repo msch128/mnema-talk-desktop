@@ -14,6 +14,7 @@ import { join } from 'node:path'
 import { type TrustedKey, parseKey } from './bundle.ts'
 import { publicKeyFromRaw, verifyEd25519 } from './ed25519.ts'
 import { asU32, asU64, parseStrictJson } from './json.ts'
+import { minisignKeyId, signatureKeyId } from './minisign.ts'
 import { isLowerHex, lossyTrimmed, strictBase64 } from './encoding.ts'
 import { type Version, parseVersion } from './version.ts'
 
@@ -71,9 +72,7 @@ export function parseUtc(text: string): number | null {
   return seconds >= 0 ? seconds : null
 }
 
-function validId(id: string): boolean {
-  return isLowerHex(id, 16)
-}
+const validId = (id: string): boolean => isLowerHex(id, 16)
 
 function stringArray(value: unknown): string[] | null {
   return Array.isArray(value) && value.every((v) => typeof v === 'string') ? (value as string[]) : null
@@ -167,34 +166,7 @@ export function statementBundleKeys(s: Statement): TrustedKey[] {
     .filter((k): k is TrustedKey => k !== null && !s.revoked_bundle_keys.includes(k.id))
 }
 
-function decodeText(wrapped: string): string | null {
-  const raw = strictBase64(wrapped.trim())
-  if (!raw) return null
-  try {
-    return new TextDecoder('utf-8', { fatal: true }).decode(raw)
-  } catch {
-    return null
-  }
-}
-
-function secondLine(text: string | null): string | null {
-  // Rust's `str::lines` splits on \n and drops one trailing \r per line.
-  return text === null ? null : (text.split('\n')[1]?.replace(/\r$/, '') ?? null)
-}
-
-/** Key id (8 bytes, hex, file order) of a minisign public key in the form of `tauri.conf.json`: base64 of the `.pub` file. */
-export function minisignKeyId(pubkey: string): string | null {
-  const line = secondLine(decodeText(pubkey))
-  const raw = line === null ? null : strictBase64(line.trim())
-  return raw && raw.length === 42 && raw[0] === 0x45 && raw[1] === 0x64 ? raw.subarray(2, 10).toString('hex') : null
-}
-
-/** Key id named by a minisign signature (base64 of the `.sig` file). */
-export function signatureKeyId(signature: string): string | null {
-  const line = secondLine(decodeText(signature))
-  const raw = line === null ? null : strictBase64(line.trim())
-  return raw && raw.length === 74 && raw[0] === 0x45 && (raw[1] === 0x64 || raw[1] === 0x44) ? raw.subarray(2, 10).toString('hex') : null
-}
+export { minisignKeyId, signatureKeyId }
 
 export type UpdaterRefusal = 'revoked' | 'not_allowed' | 'malformed'
 

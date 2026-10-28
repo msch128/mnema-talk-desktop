@@ -131,11 +131,15 @@ test('the last good statement survives a restart and a damaged file is ignored',
   assert.equal(state(9, d).statement()?.serial, 3)
   // The same files under another root key are not a statement.
   assert.equal(state(8, d).statement(), null)
+  const file = join(d, 'trust-state.json')
+  const kept = readFileSync(file)
   const edited = Buffer.from(docBytes)
   edited[5] ^= 1
   const stored = JSON.parse(readFileSync(join(d, 'trust-state.json'), 'utf8')) as Record<string, string>
   stored.statement = edited.toString('base64')
   writeFileSync(join(d, 'trust-state.json'), JSON.stringify(stored))
+  assert.equal(state(9, d).statement(), null)
+  writeFileSync(file, kept.subarray(0, 10))
   assert.equal(state(9, d).statement(), null)
 })
 
