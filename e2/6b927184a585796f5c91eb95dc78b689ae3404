@@ -1,0 +1,27 @@
+experimental/crates/broker/examples/opaque_relay_fixture.rs
+  s_06fcde5dbef956::t_94ae859a53f729 8-16,24
+experimental/crates/broker/examples/support/transport_fixture.rs
+  s_06fcde5dbef956::t_e60002b8d05ee2 4,73-83,89,93-96,101-102,123-126,131-138
+experimental/crates/broker/src/lib.rs
+  s_06fcde5dbef956::t_2fa23edd42cf0b 11-18
+experimental/crates/broker/src/tests.rs
+  s_06fcde5dbef956::t_ae5b4552a7d961 3043-3044
+experimental/crates/crypto-owner/examples/two_native_peers.rs
+  s_06fcde5dbef956::t_fd4f8dca0206cf 8-10,57,83-86
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e26b927184a585796f5c91eb95dc78b689ae3404",
+  "prompts": {},
+  "sessions": {
+    "s_06fcde5dbef956": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "94b73314-95fe-4e96-8c43-d20b0f28358d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}
