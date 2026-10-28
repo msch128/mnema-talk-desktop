@@ -415,8 +415,9 @@ impl JarInner {
                 Save::Stored => self.remove_file(),
                 // The store exists and said no: the session stays in memory
                 // and the next start asks for a new login, rather than the
-                // cookie landing in a plaintext file.
-                Save::Refused => {}
+                // cookie landing in a plaintext file. An older entry would be
+                // loaded at the next start, so it goes too.
+                Save::Refused => vault.remove(account),
                 Save::NoStore => write_private(&self.file, &raw),
             }
             return;
@@ -549,8 +550,15 @@ impl Limits {
         let message = match Route::of(path) {
             Route::Json => "request too large".to_owned(),
             Route::Avatar | Route::Upload => format!(
-                "file exceeds the {} MB limit",
-                (cap - MULTIPART_OVERHEAD.min(cap)) >> 20
+                "file exceeds the {} MB limit{}",
+                (cap - MULTIPART_OVERHEAD.min(cap)) >> 20,
+                // The cap can sit below the instance's limit: this client
+                // holds at most LARGE_BODY_BUDGET of a file in memory.
+                if cap == LARGE_BODY_BUDGET {
+                    " of this client"
+                } else {
+                    ""
+                }
             ),
         };
         Resp::error(413, "PAYLOAD_TOO_LARGE", &message)
@@ -596,16 +604,26 @@ pub fn client_builder() -> reqwest::ClientBuilder {
         .min_tls_version(reqwest::tls::Version::TLS_1_2)
 }
 
-/// How long a transfer may stand still, in either direction of the answer.
-/// There is no limit on the whole exchange: a 2 GiB file on a slow link takes
-/// as long as it takes.
+/// How long the server may stay silent while the proxy waits for response
+/// headers (GET/HEAD) or for the next piece of any answer. It is not a client
+/// timeout: reqwest's read timeout is armed when the request starts and keeps
+/// running while the body uploads, so it cannot serve here.
 const IDLE_TIMEOUT: Duration = Duration::from_secs(120);
 
+/// Base time for a request that carries a body, on top of the allowance below.
+const UPLOAD_BASE: Duration = Duration::from_secs(600);
+
+/// Slowest uplink an upload is still expected to finish on, in bytes per second.
+const UPLOAD_MIN_RATE: u64 = 64 << 10;
+
+/// Total time for a request with a body: the old 600 s plus what the body
+/// needs at the minimum rate, so a large file on a home uplink can finish.
+fn upload_timeout(body_len: usize) -> Duration {
+    UPLOAD_BASE + Duration::from_secs(body_len as u64 / UPLOAD_MIN_RATE)
+}
+
 pub fn client() -> Result<Client, reqwest::Error> {
-    client_builder()
-        .redirect(Policy::none())
-        .read_timeout(IDLE_TIMEOUT)
-        .build()
+    client_builder().redirect(Policy::none()).build()
 }
 
 const FORWARDED_REQUEST: &[&str] = &[
@@ -754,12 +772,22 @@ pub async fn forward(
     if let Some(cookie) = instance.jar.header(now()) {
         request = request.header("cookie", cookie);
     }
-    if method != reqwest::Method::GET && method != reqwest::Method::HEAD {
-        request = request.body(body);
+    let has_body = method != reqwest::Method::GET && method != reqwest::Method::HEAD;
+    if has_body {
+        // The server answers after it has read the body, so waiting for the
+        // headers is bounded by the upload, not by the idle limit.
+        request = request.timeout(upload_timeout(body.len())).body(body);
     }
-    let mut response = match request.send().await {
-        Ok(response) => response,
-        Err(_) => return Resp::error(502, "UNAVAILABLE", "the server could not be reached"),
+    let sent = if has_body {
+        request.send().await.map_err(|_| ())
+    } else {
+        match tokio::time::timeout(IDLE_TIMEOUT, request.send()).await {
+            Ok(result) => result.map_err(|_| ()),
+            Err(_) => Err(()),
+        }
+    };
+    let Ok(mut response) = sent else {
+        return Resp::error(502, "UNAVAILABLE", "the server could not be reached");
     };
     let status = response.status().as_u16();
     let set_cookie: Vec<String> = response
@@ -806,9 +834,11 @@ pub async fn forward(
             .map_or(0, |n| (n as usize).min(read_cap)),
     );
     loop {
-        match response.chunk().await {
-            Ok(Some(chunk)) if chunk.len() <= read_cap - out.len() => out.extend_from_slice(&chunk),
-            Ok(None) => break,
+        match tokio::time::timeout(IDLE_TIMEOUT, response.chunk()).await {
+            Ok(Ok(Some(chunk))) if chunk.len() <= read_cap - out.len() => {
+                out.extend_from_slice(&chunk)
+            }
+            Ok(Ok(None)) => break,
             _ => {
                 return Resp::error(
                     502,
@@ -889,6 +919,14 @@ mod tests {
             .iter()
             .find(|(n, _)| n == name)
             .map(|(_, v)| v.as_str())
+    }
+
+    #[test]
+    fn uploads_get_a_total_timeout_that_grows_with_the_body() {
+        assert_eq!(upload_timeout(0), UPLOAD_BASE);
+        assert!(upload_timeout(1 << 30) > Duration::from_secs(600 + 16000));
+        assert!(upload_timeout(1 << 30) > upload_timeout(1 << 20));
+        assert!(UPLOAD_BASE > IDLE_TIMEOUT);
     }
 
     #[test]

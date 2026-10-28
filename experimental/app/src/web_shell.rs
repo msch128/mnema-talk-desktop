@@ -968,9 +968,13 @@ fn page_builder(
         // links navigate to. The proxy answers the latter.
         .on_navigation(move |url| bundled(url) || app_api(url))
         // A reload or navigation ends the document that opened the host-side
-        // sockets; nothing else would close them.
+        // sockets; nothing else would close them. Only app routes count: a
+        // download navigation keeps the document, and its sockets, alive. A
+        // page that loses a socket reconnects on its own.
         .on_page_load(move |_, payload| {
-            if matches!(payload.event(), tauri::webview::PageLoadEvent::Started) {
+            if matches!(payload.event(), tauri::webview::PageLoadEvent::Started)
+                && bundled(payload.url())
+            {
                 sockets.document_replaced();
             }
         })
