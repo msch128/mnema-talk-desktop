@@ -51,6 +51,10 @@ export function defaultDeps(vault: Vault | null): TrustedDeps {
   }
 }
 
+function errorText(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
+
 export class Trusted {
   readonly store: Store
   /** The servers, their sessions and their counters. */
@@ -71,7 +75,7 @@ export class Trusted {
   constructor(dataDir: string | null, builtin: Uint8Array | null, deps: TrustedDeps) {
     this.dataDir = dataDir
     this.deps = deps
-    this.trust = TrustState.load(dataDir ? join(dataDir, 'web-trust') : null, rootKey(deps.root))
+    this.trust = TrustState.load(dataDir ? join(dataDir, 'web-trust') : null, rootKey(deps.root), deps.log)
     this.keys = this.trust.effectiveKeys(deps.pinned())
     this.store = Store.load(dataDir ? join(dataDir, 'web-bundles') : null, builtin, this.keys)
     this.registry = Registry.restore(dataDir ? loadStored(this.instancesFile()) : emptyStored())
@@ -129,13 +133,11 @@ export class Trusted {
     return dropped
   }
 
-  /**
-   * One trust round with the result of a fetch: applies the statement and
-   * decides whether installs are allowed. Returns whether bundles were dropped.
-   */
-  applyRound(fetched: { doc: Buffer, sig: Buffer } | null, now: number): boolean {
+  /** Applies one fetched pair; the refusal, if any, is returned and not logged. */
+  private attempt(fetched: { doc: Buffer, sig: Buffer } | null, now: number): { dropped: boolean, ok: boolean, refusal: TrustError | null } {
     let dropped = false
     let ok = false
+    let refusal: TrustError | null = null
     // Offline or unreachable: the last good statement stays in force.
     if (fetched) {
       try {
@@ -143,19 +145,41 @@ export class Trusted {
         ok = true
       } catch (error) {
         if (!(error instanceof TrustError)) throw error
-        this.deps.log(`trust statement refused: ${error.message}`)
+        refusal = error
       }
     }
     this.freshRound = ok && this.trust.fresh(now)
+    return { dropped, ok, refusal }
+  }
+
+  /**
+   * One trust round with the result of a fetch: applies the statement and
+   * decides whether installs are allowed. Returns whether bundles were dropped.
+   */
+  applyRound(fetched: { doc: Buffer, sig: Buffer } | null, now: number): boolean {
+    const { dropped, refusal } = this.attempt(fetched, now)
+    if (refusal) this.deps.log(`trust statement refused: ${refusal.message}`)
     return dropped
   }
 
+  /**
+   * Fetches and applies the statement. The pair comes from two requests to a
+   * cached host, so a refused pair is fetched once more before it counts as a
+   * failed round (a statement published between the two requests, or caches
+   * that disagree, heals itself).
+   */
   async trustRound(): Promise<boolean> {
-    let fetched: { doc: Buffer, sig: Buffer } | null = null
-    try {
-      fetched = await this.deps.fetchTrust()
-    } catch { /* offline */ }
-    return this.applyRound(fetched, this.deps.now())
+    const fetch = async () => {
+      try {
+        return await this.deps.fetchTrust()
+      } catch {
+        return null /* offline */
+      }
+    }
+    let result = this.attempt(await fetch(), this.deps.now())
+    if (result.refusal) result = this.attempt(await fetch(), this.deps.now())
+    if (result.refusal) this.deps.log(`trust statement refused: ${result.refusal.message}`)
+    return result.dropped
   }
 
   /** The running session of a server. */
@@ -181,7 +205,12 @@ export class Trusted {
     if (first.refusal.kind === 'server_newer') {
       if (!this.fresh()) await this.trustRound()
       if (this.fresh() && !updatesDisabled()) {
-        try { await this.deps.installNewer(this.store, () => this.keys) } catch { /* the refusal below says what is missing */ }
+        try {
+          await this.deps.installNewer(this.store, () => this.keys)
+        } catch (error) {
+          // The refusal below says what is missing; this says why it is.
+          this.deps.log(`could not install a newer bundle: ${errorText(error)}`)
+        }
       }
       const again = this.store.select(server)
       if (again.ok) return again.held

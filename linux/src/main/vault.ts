@@ -10,9 +10,10 @@
  * (`basic_text`): that is not a vault, so there is none, and the jar uses its
  * 0600 file instead (see `core/cookies.ts`).
  */
-import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { safeStorage } from 'electron'
+import { writeFileAtomic } from '../core/atomic.ts'
 import type { Vault } from '../core/cookies.ts'
 
 const ACCOUNT = /^[0-9a-f]{16}$/
@@ -46,10 +47,7 @@ export function osVault(dir: string): Vault | null {
       const path = file(account)
       if (!path) return false
       try {
-        mkdirSync(join(dir, 'vault'), { recursive: true, mode: 0o700 })
-        const partial = `${path}.partial`
-        writeFileSync(partial, safeStorage.encryptString(secret.toString('utf8')), { mode: 0o600 })
-        renameSync(partial, path)
+        writeFileAtomic(path, safeStorage.encryptString(secret.toString('utf8')), { dirMode: 0o700 })
         return true
       } catch {
         return false

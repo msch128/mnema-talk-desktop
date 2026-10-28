@@ -5,6 +5,7 @@
  * `Store.install` verifies it against the keys in force.
  */
 import { LATEST_RELEASE_URL, TRUST_SIG_URL, TRUST_URL } from './pinned.ts'
+import { strictJson } from './encoding.ts'
 import { MAX_STATEMENT } from './trust.ts'
 import { type HttpResponse, readBody, send } from './http.ts'
 import { type TrustedKey } from './bundle.ts'
@@ -24,7 +25,7 @@ export function updatesDisabled(env: NodeJS.ProcessEnv = process.env): boolean {
 export function bundleAsset(json: Uint8Array, allowHttp = false): { version: Version, url: URL } | null {
   let release: unknown
   try {
-    release = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(json))
+    release = strictJson(json)
   } catch {
     return null
   }

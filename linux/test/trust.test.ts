@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, test } from 'node:test'
@@ -131,10 +131,38 @@ test('the last good statement survives a restart and a damaged file is ignored',
   assert.equal(state(9, d).statement()?.serial, 3)
   // The same files under another root key are not a statement.
   assert.equal(state(8, d).statement(), null)
+  const stored = join(d, 'trust-state.json')
+  const kept = readFileSync(stored)
   const edited = Buffer.from(docBytes)
   edited[5] ^= 1
-  writeFileSync(join(d, 'trust.json'), edited)
+  writeFileSync(stored, JSON.stringify({ statement: edited.toString('base64'), signature: sig.toString('base64') }))
   assert.equal(state(9, d).statement(), null)
+  writeFileSync(stored, kept.subarray(0, 10))
+  assert.equal(state(9, d).statement(), null)
+})
+
+test('a statement that cannot be stored is still in force, and an older pair of files is read', () => {
+  const d = dir()
+  const messages: string[] = []
+  // A file where the directory should be: every write fails.
+  const blocked = join(d, 'blocked')
+  writeFileSync(blocked, 'x')
+  const trust = TrustState.load(join(blocked, 'trust'), root(9), (m) => messages.push(m))
+  const [docBytes, sig] = signed(9, doc(4, [2], [1]))
+  assert.equal(trust.accept(docBytes, sig, NOW), 'updated')
+  assert.equal(trust.statement()?.serial, 4, 'the revocation counts although the disk refused it')
+  assert.equal(trust.effectiveKeys(trusted(1))[0]?.id, trusted(2)[0]?.id)
+  assert.match(messages.join('\n'), /cannot store the trust statement/)
+  // The pair of files an older version wrote still loads, and the next statement replaces it.
+  const old = dir()
+  writeFileSync(join(old, 'trust.json'), docBytes)
+  writeFileSync(join(old, 'trust.json.sig'), sig)
+  const migrated = state(9, old)
+  assert.equal(migrated.statement()?.serial, 4)
+  const [d5, s5] = signed(9, doc(5, [2], [1]))
+  migrated.accept(d5, s5, NOW)
+  assert.equal(existsSync(join(old, 'trust.json')), false)
+  assert.equal(state(9, old).statement()?.serial, 5)
 })
 
 test('minisign key ids are read from keys and signatures', () => {

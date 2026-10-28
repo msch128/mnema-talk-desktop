@@ -9,15 +9,20 @@
  * lower serial than the highest one accepted is refused.
  */
 import type { KeyObject } from 'node:crypto'
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
+import { writeFileAtomic } from './atomic.ts'
 import { type TrustedKey, parseKey } from './bundle.ts'
 import { publicKeyFromRaw, verifyEd25519 } from './ed25519.ts'
-import { isLowerHex, lossyTrimmed, strictBase64 } from './encoding.ts'
+import { isLowerHex, lossyTrimmed, strictBase64, strictJson } from './encoding.ts'
+import { minisignKeyId, signatureKeyId } from './minisign.ts'
 import { type Version, parseVersion } from './version.ts'
 
 export const MAX_STATEMENT = 64 << 10
 
+/** Statement and signature in one file, so a crash cannot leave a torn pair. */
+const STATE_FILE = 'trust-state.json'
+/** The two files older versions wrote; read when the combined file is absent. */
 const STATEMENT_FILE = 'trust.json'
 const SIGNATURE_FILE = 'trust.json.sig'
 /** Longest validity a statement may claim (the signing tool's bound). */
@@ -62,9 +67,7 @@ export function parseUtc(text: string): number | null {
   return seconds >= 0 ? seconds : null
 }
 
-function validId(id: string): boolean {
-  return isLowerHex(id, 16)
-}
+const validId = (id: string): boolean => isLowerHex(id, 16)
 
 function stringArray(value: unknown): string[] | null {
   return Array.isArray(value) && value.every((v) => typeof v === 'string') ? (value as string[]) : null
@@ -73,7 +76,7 @@ function stringArray(value: unknown): string[] | null {
 function parseStatement(doc: Uint8Array): Statement | null {
   let raw: unknown
   try {
-    raw = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(doc))
+    raw = strictJson(doc)
   } catch {
     return null
   }
@@ -157,34 +160,7 @@ export function statementBundleKeys(s: Statement): TrustedKey[] {
     .filter((k): k is TrustedKey => k !== null && !s.revoked_bundle_keys.includes(k.id))
 }
 
-function decodeText(wrapped: string): string | null {
-  const raw = strictBase64(wrapped.trim())
-  if (!raw) return null
-  try {
-    return new TextDecoder('utf-8', { fatal: true }).decode(raw)
-  } catch {
-    return null
-  }
-}
-
-function secondLine(text: string | null): string | null {
-  // Rust's `str::lines` splits on \n and drops one trailing \r per line.
-  return text === null ? null : (text.split('\n')[1]?.replace(/\r$/, '') ?? null)
-}
-
-/** Key id (8 bytes, hex, file order) of a minisign public key in the form of `tauri.conf.json`: base64 of the `.pub` file. */
-export function minisignKeyId(pubkey: string): string | null {
-  const line = secondLine(decodeText(pubkey))
-  const raw = line === null ? null : strictBase64(line.trim())
-  return raw && raw.length === 42 && raw[0] === 0x45 && raw[1] === 0x64 ? raw.subarray(2, 10).toString('hex') : null
-}
-
-/** Key id named by a minisign signature (base64 of the `.sig` file). */
-export function signatureKeyId(signature: string): string | null {
-  const line = secondLine(decodeText(signature))
-  const raw = line === null ? null : strictBase64(line.trim())
-  return raw && raw.length === 74 && raw[0] === 0x45 && (raw[1] === 0x64 || raw[1] === 0x44) ? raw.subarray(2, 10).toString('hex') : null
-}
+export { minisignKeyId, signatureKeyId }
 
 export type UpdaterRefusal = 'revoked' | 'not_allowed' | 'malformed'
 
@@ -211,24 +187,29 @@ export class TrustState {
   private current: { statement: Statement, doc: Buffer } | null
   private readonly dir: string | null
   private readonly root: KeyObject
+  private readonly log: (message: string) => void
 
-  /** Loads and re-verifies the stored statement; a damaged or foreign file is ignored, which falls back to the compiled-in keys. */
-  static load(dir: string | null, root: KeyObject): TrustState {
+  /**
+   * Loads and re-verifies the stored statement; a damaged or foreign file is
+   * ignored, which falls back to the compiled-in keys. `log` hears about a
+   * statement that could not be stored.
+   */
+  static load(dir: string | null, root: KeyObject, log: (message: string) => void = () => {}): TrustState {
     let current: { statement: Statement, doc: Buffer } | null = null
     if (dir) {
       try {
-        const doc = readFileSync(join(dir, STATEMENT_FILE))
-        const sig = readFileSync(join(dir, SIGNATURE_FILE))
+        const { doc, sig } = readStored(dir)
         current = { statement: verifyStatement(doc, sig, root), doc }
       } catch { /* ignored: the compiled-in keys apply */ }
     }
-    return new TrustState(dir, root, current)
+    return new TrustState(dir, root, current, log)
   }
 
-  private constructor(dir: string | null, root: KeyObject, current: { statement: Statement, doc: Buffer } | null) {
+  private constructor(dir: string | null, root: KeyObject, current: { statement: Statement, doc: Buffer } | null, log: (message: string) => void) {
     this.dir = dir
     this.root = root
     this.current = current
+    this.log = log
   }
 
   statement(): Statement | null {
@@ -263,24 +244,36 @@ export class TrustState {
         fail('a different trust statement with the same serial')
       }
     }
-    if (this.dir) {
-      try {
-        mkdirSync(this.dir, { recursive: true, mode: 0o700 })
-        const write = (name: string, bytes: Uint8Array) => {
-          const partial = join(this.dir as string, `${name}.partial`)
-          writeFileSync(partial, bytes, { mode: 0o600 })
-          renameSync(partial, join(this.dir as string, name))
-        }
-        // A torn pair fails verification at load and is ignored.
-        write(SIGNATURE_FILE, sig)
-        write(STATEMENT_FILE, doc)
-      } catch {
-        fail('cannot store the trust statement')
-      }
-    }
+    // In force first: a revocation counts even when the disk refuses it, and
+    // the next fetch stores it again.
     this.current = { statement, doc: Buffer.from(doc) }
+    if (this.dir) this.persist(doc, sig)
     return 'updated'
   }
+
+  /** Best effort: the statement in memory already decides. */
+  private persist(doc: Uint8Array, sig: Uint8Array): void {
+    const dir = this.dir as string
+    try {
+      writeFileAtomic(join(dir, STATE_FILE), Buffer.from(JSON.stringify({ statement: Buffer.from(doc).toString('base64'), signature: Buffer.from(sig).toString('base64') })), { dirMode: 0o700 })
+    } catch (error) {
+      this.log(`cannot store the trust statement: ${String(error)}`)
+      return
+    }
+    // The old pair would only be read when the combined file is missing.
+    try {
+      rmSync(join(dir, STATEMENT_FILE), { force: true })
+      rmSync(join(dir, SIGNATURE_FILE), { force: true })
+    } catch { /* the combined file is read first */ }
+  }
+}
+
+function readStored(dir: string): { doc: Buffer, sig: Buffer } {
+  try {
+    const raw = JSON.parse(readFileSync(join(dir, STATE_FILE), 'utf8')) as { statement?: unknown, signature?: unknown }
+    if (typeof raw.statement === 'string' && typeof raw.signature === 'string') return { doc: Buffer.from(raw.statement, 'base64'), sig: Buffer.from(raw.signature, 'base64') }
+  } catch { /* absent or damaged: try the older pair */ }
+  return { doc: readFileSync(join(dir, STATEMENT_FILE)), sig: readFileSync(join(dir, SIGNATURE_FILE)) }
 }
 
 export function rootKey(rawHex: string): KeyObject {

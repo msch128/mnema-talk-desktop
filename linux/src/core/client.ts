@@ -5,6 +5,7 @@
  * `experimental/app/src/web_client.rs` and `local_route.rs`; the shared vectors
  * must pass in both.
  */
+import { strictJson } from './encoding.ts'
 import { type ServerInfo } from './store.ts'
 import { parseVersion } from './version.ts'
 
@@ -102,7 +103,7 @@ const UPDATE_NEEDED = 'This instance needs an update for the desktop client.'
 export function parseHealth(bytes: Uint8Array): ServerInfo {
   let health: unknown
   try {
-    health = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes))
+    health = strictJson(bytes)
   } catch {
     throw new Error(UPDATE_NEEDED)
   }

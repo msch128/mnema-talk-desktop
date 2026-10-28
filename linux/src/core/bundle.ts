@@ -10,7 +10,7 @@
  */
 import type { KeyObject } from 'node:crypto'
 import { isEd25519Point, publicKeyFromRaw, sha256Prefix, verifyEd25519 } from './ed25519.ts'
-import { isLowerHex, lossyTrimmed, sha256Hex, strictBase64 } from './encoding.ts'
+import { isLowerHex, lossyTrimmed, sha256Hex, strictBase64, strictJson } from './encoding.ts'
 import { type Version, compareVersions, parseVersion } from './version.ts'
 import { ZipArchive, ZipError } from './zip.ts'
 
@@ -90,7 +90,7 @@ function u64(value: unknown): value is number {
 function parseManifest(bytes: Uint8Array): Manifest | null {
   let raw: unknown
   try {
-    raw = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes))
+    raw = strictJson(bytes)
   } catch {
     return null
   }

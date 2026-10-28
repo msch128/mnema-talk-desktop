@@ -92,6 +92,9 @@ async function start(): Promise<void> {
   refreshInBackground(ctx)
 }
 
+/** How long to wait before a background round that found no network is repeated. */
+const RETRY_MS = 10 * 60 * 1000
+
 /**
  * Verifies updates in the background: the trust statement first (a revoked key
  * must stop counting before anything is installed), then newer bundles. A
@@ -101,25 +104,39 @@ async function start(): Promise<void> {
 function refreshInBackground(ctx: Context): void {
   const { trusted } = ctx
   let first = true
-  const once = async () => {
-    if (updatesDisabled()) return
+  // A round that could not reach the network does not use up the interval: it is tried again soon.
+  const once = async (): Promise<boolean> => {
+    if (updatesDisabled()) return true
     const dropped = await trusted.trustRound()
     const hadBundle = trusted.store.newest() !== undefined
     const now = Math.floor(Date.now() / 1000)
     const due = trusted.store.checkDue(now)
-    if (hadBundle && !dropped && !(due || !first)) return
+    if (hadBundle && !dropped && !(due || !first)) return true
     let installed = null
+    let reached = false
     // Freeze protection: no new bundles without a fresh trust statement.
     if (trusted.fresh()) {
-      installed = await checkAndInstall(trusted.store, () => trusted.keysInForce()).catch(() => null)
+      try {
+        installed = await checkAndInstall(trusted.store, () => trusted.keysInForce())
+        reached = true
+      } catch { /* offline or refused: retried below */ }
     }
-    trusted.store.markChecked(Math.floor(Date.now() / 1000))
+    if (reached) trusted.store.markChecked(Math.floor(Date.now() / 1000))
     // Pages that were showing a withdrawn bundle, or none, move to the newly installed one, or show why there is none.
     if (dropped || (!hadBundle && installed !== null)) bundlesChanged(ctx)
+    return reached
   }
+  let retry: NodeJS.Timeout | null = null
   const loop = async () => {
-    await once().catch((error: unknown) => console.error(`Mnema Desktop: update round failed: ${String(error)}`))
+    const reached = await once().catch((error: unknown) => {
+      console.error(`Mnema Desktop: update round failed: ${String(error)}`)
+      return false
+    })
     first = false
+    if (!reached && retry === null) {
+      retry = setTimeout(() => { retry = null; void loop() }, RETRY_MS)
+      retry.unref()
+    }
   }
   void loop()
   setInterval(() => { void loop() }, CHECK_INTERVAL_SECS * 1000).unref()

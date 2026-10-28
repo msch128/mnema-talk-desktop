@@ -3,8 +3,9 @@
  * selection against a server. A port of `Store` in
  * `experimental/app/src/web_bundle.rs`.
  */
-import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, unlinkSync } from 'node:fs'
 import { join } from 'node:path'
+import { writeFileAtomic } from './atomic.ts'
 import { MAX_ZIP, type Bundle, type TrustedKey, BundleError, verifyBundle } from './bundle.ts'
 import { type Version, ZERO, compareVersions, formatVersion, maxVersion, minVersion, parseVersion } from './version.ts'
 
@@ -100,12 +101,6 @@ function cachedFiles(dir: string | null): string[] {
   return files.slice(0, MAX_CACHED_FILES)
 }
 
-function writeAtomic(path: string, bytes: Uint8Array): void {
-  const partial = `${path}.partial`
-  writeFileSync(partial, bytes, { mode: 0o600 })
-  renameSync(partial, path)
-}
-
 export class Store {
   /** Names of cached files that failed verification (diagnostics only). */
   rejected: string[] = []
@@ -187,7 +182,7 @@ export class Store {
     }
     try {
       mkdirSync(this.dir, { recursive: true, mode: 0o700 })
-      writeAtomic(join(this.dir, 'state.json'), Buffer.from(JSON.stringify(state)))
+      writeFileAtomic(join(this.dir, 'state.json'), Buffer.from(JSON.stringify(state)))
     } catch { /* the marks are rebuilt from the held bundles */ }
   }
 
@@ -263,7 +258,7 @@ export class Store {
         throw new BundleError('cannot create the cache directory')
       }
       try {
-        writeAtomic(join(this.dir, `mnema-web-${formatVersion(version)}.zip`), bytes)
+        writeFileAtomic(join(this.dir, `mnema-web-${formatVersion(version)}.zip`), bytes)
       } catch {
         throw new BundleError('cannot write the bundle')
       }

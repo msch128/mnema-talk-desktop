@@ -11,6 +11,8 @@ import type { Instance } from './proxy.ts'
 export const MAX_FRAME = 1 << 20
 export const MAX_SOCKETS = 4
 export const MAX_OUTGOING = 1 << 20
+/** What may wait unsent per socket; a link that stalls cannot make the host queue more. */
+export const MAX_BUFFERED = 4 << 20
 
 export type WsEvent =
   | { kind: 'open', id: number }
@@ -85,9 +87,11 @@ export class Sockets {
   }
 
   send(id: number, text: string): void {
-    if (Buffer.byteLength(text) > MAX_OUTGOING) throw new Error('message too large')
+    const length = Buffer.byteLength(text)
+    if (length > MAX_OUTGOING) throw new Error('message too large')
     const ws = this.open.get(id)
     if (!ws || ws.readyState !== WebSocket.OPEN) throw new Error('unknown socket')
+    if (ws.bufferedAmount + length > MAX_BUFFERED) throw new Error('socket is backed up')
     ws.send(text, (error) => { if (error) ws.terminate() })
   }
 
