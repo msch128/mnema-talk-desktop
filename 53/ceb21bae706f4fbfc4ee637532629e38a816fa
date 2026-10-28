@@ -1,0 +1,28 @@
+experimental/app/Cargo.lock
+  h_0ff4f4713441f4 3234
+experimental/app/Cargo.toml
+  h_0ff4f4713441f4 3
+experimental/app/tauri.conf.json
+  h_0ff4f4713441f4 5
+experimental/licenses/manifest.json
+  h_0ff4f4713441f4 4
+linux/package-lock.json
+  h_0ff4f4713441f4 3,9
+linux/package.json
+  h_0ff4f4713441f4 5
+scripts/ensure-npm-optional.mjs
+  h_0ff4f4713441f4 8-10,17-30,38,49,51,73-74,76-77
+scripts/ensure-npm-optional.test.mjs
+  h_0ff4f4713441f4 6,35-77
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "53ceb21bae706f4fbfc4ee637532629e38a816fa",
+  "prompts": {},
+  "humans": {
+    "h_0ff4f4713441f4": {
+      "author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}
