@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, test } from 'node:test'
 import { writeFileAtomic } from '../src/core/atomic.ts'
-import { strictJson, strictUtf8 } from '../src/core/encoding.ts'
+import { strictUtf8 } from '../src/core/encoding.ts'
 import { ZipArchive } from '../src/core/zip.ts'
 import { parseHealth } from '../src/core/client.ts'
 import { zipOf } from './helpers/fixtures.ts'
@@ -16,9 +16,6 @@ const tmp = () => { const d = mkdtempSync(join(tmpdir(), 'mnema-enc-')); dirs.pu
 test('a byte order mark is kept, not dropped, and invalid UTF-8 is refused', () => {
   assert.equal(strictUtf8(Buffer.from([0xef, 0xbb, 0xbf, 0x61])), '﻿a')
   assert.equal(strictUtf8(Buffer.from([0xff])), null)
-  assert.deepEqual(strictJson(Buffer.from('{"a":1}')), { a: 1 })
-  assert.throws(() => strictJson(Buffer.from('﻿{"a":1}')))
-  assert.throws(() => strictJson(Buffer.from([0x7b, 0xff, 0x7d])))
 })
 
 test('a BOM-prefixed document is refused like serde refuses it', () => {

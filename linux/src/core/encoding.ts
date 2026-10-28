@@ -44,10 +44,3 @@ export function strictUtf8(bytes: Uint8Array): string | null {
     return null
   }
 }
-
-/** `serde_json::from_slice`: strict UTF-8 without a byte order mark, then JSON. Throws on anything else. */
-export function strictJson(bytes: Uint8Array): unknown {
-  const text = strictUtf8(bytes)
-  if (text === null) throw new Error('not UTF-8')
-  return JSON.parse(text)
-}
