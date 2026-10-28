@@ -1,0 +1,32 @@
+linux/src/core/bundle.ts
+  h_0ff4f4713441f4 20,22
+linux/src/core/cookies.ts
+  h_0ff4f4713441f4 43
+linux/src/core/ed25519.ts
+  h_0ff4f4713441f4 55
+linux/src/core/http.ts
+  h_0ff4f4713441f4 31
+linux/src/core/instances.ts
+  h_0ff4f4713441f4 45,77
+linux/src/core/notify.ts
+  h_0ff4f4713441f4 9
+linux/src/core/proxy.ts
+  h_0ff4f4713441f4 85
+linux/src/core/selfupdate.ts
+  h_0ff4f4713441f4 32-34
+linux/src/core/sockets.ts
+  h_0ff4f4713441f4 15
+linux/src/core/store.ts
+  h_0ff4f4713441f4 17
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d5125a9e465a998fd7dd088bf7625c3ad2a291dc",
+  "prompts": {},
+  "humans": {
+    "h_0ff4f4713441f4": {
+      "author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}
