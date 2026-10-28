@@ -83,7 +83,7 @@ test('a signed manifest is read as strictly as the Tauri host reads it', () => {
   assert.doesNotThrow(() => verifyBundle(signedManifest(original), trusted(7)))
   const refused = (text: string, why: string) => assert.throws(() => verifyBundle(signedManifest(text), trusted(7)), /unreadable manifest/, why)
   refused(`\uFEFF${original}`, 'byte order mark')
-  refused(original.replace('{', '{"schema":1,'), 'repeated key')
+  refused(`{"schema":1,${original.slice(1)}`, 'repeated key')
   refused(original.replace('"schema":1', '"schema":1.0'), 'schema written as 1.0')
   refused(original.replace('"web_client_api":1', '"web_client_api":1e0'), 'api written as 1e0')
   refused(original.replace(/"size":(\d+)/, '"size":$1.0'), 'size written as 1.0')
@@ -94,7 +94,7 @@ test('a trust statement is read strictly, and a signature is trimmed like Rust t
   const text = statementText({})
   const sign = (doc: string) => Buffer.from(signWith(root, Buffer.from(doc)).toString('base64'))
   assert.ok(verifyStatement(Buffer.from(text), sign(text), rootKey(root.hex)))
-  const dup = text.replace('{', '{"serial":1,')
+  const dup = `{"serial":1,${text.slice(1)}`
   assert.throws(() => verifyStatement(Buffer.from(dup), sign(dup), rootKey(root.hex)), /unreadable/)
   const float = text.replace('"serial":1', '"serial":1.0')
   assert.throws(() => verifyStatement(Buffer.from(float), sign(float), rootKey(root.hex)), /unreadable/)

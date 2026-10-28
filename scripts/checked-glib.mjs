@@ -11,7 +11,7 @@ const desktop = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 export const GLIB_VERSION = '0.18.5';
 export const GLIB_ARCHIVE_SHA256 = '233daaf6e83ae6a12a52055f568f9d7cf4671dabb78ff9560ab6da230ce00ee5';
 const manifestSha256 = '7d039c58a6e0f95f4d882a88f397b1615666c513271edbce0f2ed610d36e3dde';
-const glibVersionLine = new RegExp(`^version = "${GLIB_VERSION.replace(/\./g, '\\.')}"$`, 'm');
+const glibVersionLine = new RegExp(`^version = "${GLIB_VERSION.replace(/[\\.]/g, '\\$&')}"$`, 'm');
 const registry = 'registry+https://github.com/rust-lang/crates.io-index';
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 export const GLIB_ROOTS = [

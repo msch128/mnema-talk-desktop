@@ -1,11 +1,14 @@
 import assert from 'node:assert/strict';
 import { chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { delimiter, dirname, join, basename } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
 
-const script = new URL('./stage-web-bundle.sh', import.meta.url).pathname;
+const script = fileURLToPath(new URL('./stage-web-bundle.sh', import.meta.url));
+// The Windows runners spell the variable `Path`; a second `PATH` key would be ignored or shadow it.
+const pathKey = Object.keys(process.env).find(k => k.toUpperCase() === 'PATH') ?? 'PATH';
 
 // A stand-in `gh`: v3 is the newest release without a bundle, v2 has one, "broken" fails like a network error.
 function stage(env = {}) {
@@ -27,8 +30,9 @@ esac
   chmodSync(join(bin, 'gh'), 0o755);
   const summary = join(root, 'summary.md');
   const dir = join(root, 'out');
-  const run = spawnSync('bash', [script], {
-    env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, BUNDLE_DIR: dir, GITHUB_STEP_SUMMARY: summary, ...env },
+  const run = spawnSync('bash', [basename(script)], {
+    cwd: dirname(script),
+    env: { ...process.env, [pathKey]: `${bin}${delimiter}${process.env[pathKey]}`, BUNDLE_DIR: dir, GITHUB_STEP_SUMMARY: summary, ...env },
     encoding: 'utf8',
   });
   return { run, dir, summary };
