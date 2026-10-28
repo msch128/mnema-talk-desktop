@@ -837,7 +837,8 @@ mod tests {
             write(bad);
             assert!(Stored::load(Some(&file)).servers.is_empty(), "{bad}");
         }
-        // Single entries that are wrong are dropped, the rest stays.
+        // Plain http becomes https and a path is the same server. Duplicates
+        // and values that are not addresses are dropped.
         let mut servers: Vec<String> = [
             "http://plain.example/",
             "https://a.example/path",
@@ -859,13 +860,22 @@ mod tests {
         );
         let stored = Stored::load(Some(&file));
         assert_eq!(stored.servers.len(), MAX_INSTANCES);
-        assert_eq!(stored.servers[0], url("https://a.example/"));
+        assert_eq!(stored.servers[0], url("https://plain.example/"));
+        assert_eq!(stored.servers[1], url("https://a.example/"));
+        assert_eq!(
+            stored
+                .servers
+                .iter()
+                .filter(|server| server.as_str() == "https://a.example/")
+                .count(),
+            1
+        );
         assert_eq!(
             stored.active, None,
             "the front must be a server on the list"
         );
         let registry = Registry::restore(&stored);
-        assert_eq!(registry.active(), Some(id("a.example").as_str()));
+        assert_eq!(registry.active(), Some(id("plain.example").as_str()));
         // Too large to be ours.
         write(&" ".repeat(MAX_STORE_BYTES as usize + 1));
         assert!(Stored::load(Some(&file)).servers.is_empty());
