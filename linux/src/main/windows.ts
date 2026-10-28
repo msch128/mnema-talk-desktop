@@ -6,11 +6,11 @@
 import { join } from 'node:path'
 import { BaseWindow, BrowserWindow, Menu, app, dialog, shell, type WebContents } from 'electron'
 import { prepareAttachment } from './sessions.ts'
+import { RendererRecovery } from '../core/recovery.ts'
+import { TITLE } from '../core/title.ts'
 import { APP_URL, appApi, bundled, parseUrl, pickerUi, updateUi } from '../core/origin.ts'
 import { externalAllowed } from '../core/client.ts'
 import { PARTITIONS, attachmentPartition, type Context, type Role } from './context.ts'
-
-const TITLE = 'Mnema Desktop DEV'
 
 function preloadPath(): string {
   return join(import.meta.dirname, '..', 'preload', 'preload.cjs')
@@ -75,8 +75,14 @@ export function harden(ctx: Context, contents: WebContents, role: Role, parent: 
     }
     return { action: 'deny' }
   })
+  const recovery = new RendererRecovery()
   contents.on('render-process-gone', (_event, details) => {
     console.error(`Mnema Desktop: the ${role} page's renderer ended: ${details.reason}`)
+    // The page is gone with its sockets' owner: close them, so the reloaded page starts clean. An attachment window shows a one-off download and stays as it is.
+    const server = ctx.servers.get(contents.id)
+    if (server) ctx.trusted.registry.session(server)?.sockets.closeAll()
+    if (role === 'attachment' || contents.isDestroyed() || !recovery.allow(details.reason, Date.now())) return
+    contents.reload()
   })
   const id = contents.id
   contents.once('destroyed', () => { ctx.roles.delete(id); ctx.servers.delete(id) })
