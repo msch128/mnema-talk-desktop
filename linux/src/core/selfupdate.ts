@@ -29,9 +29,9 @@ import { type FetchOptions, fetchLimited, updatesDisabled } from './updates.ts'
 import { type Version, compareVersions, parseVersion } from './version.ts'
 
 export const POLL_MS = 15 * 60 * 1000
-export const CHECK_TIMEOUT_MS = 30_000
-export const DOWNLOAD_TIMEOUT_MS = 15 * 60 * 1000
-export const START_TIMEOUT_MS = 8_000
+const CHECK_TIMEOUT_MS = 30_000
+const DOWNLOAD_TIMEOUT_MS = 15 * 60 * 1000
+const START_TIMEOUT_MS = 8_000
 const NOTES_MAX = 2000
 const MAX_FEED = 1 << 20
 const MAX_PACKAGE = 512 << 20

@@ -82,7 +82,7 @@ export function plain(status: number, text: string): Resp {
 }
 
 /** The server's error envelope, so the app's error handling applies. */
-export function errorResp(status: number, code: string, message: string): Resp {
+function errorResp(status: number, code: string, message: string): Resp {
   return {
     status,
     headers: [['content-type', 'application/json'], ['x-content-type-options', 'nosniff'], ['cache-control', 'no-store']],

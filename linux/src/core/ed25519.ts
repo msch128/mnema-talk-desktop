@@ -52,7 +52,7 @@ const SMALL_ORDER = new Set([
 ])
 
 /** Whether the compressed point has small order: a signature under such a key or with such an R proves nothing. */
-export function isSmallOrder(raw: Uint8Array): boolean {
+function isSmallOrder(raw: Uint8Array): boolean {
   return SMALL_ORDER.has(Buffer.from(raw).toString('hex'))
 }
 

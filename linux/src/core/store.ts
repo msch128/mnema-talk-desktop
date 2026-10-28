@@ -14,7 +14,7 @@ const MAX_CACHED_FILES = 16
 const KEEP_CACHED = 3
 export const CHECK_INTERVAL_SECS = 6 * 60 * 60
 
-export type Source = 'builtin' | 'cache'
+type Source = 'builtin' | 'cache'
 
 export interface Held {
   readonly bundle: Bundle

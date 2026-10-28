@@ -42,7 +42,7 @@ export function validId(id: string): boolean {
   return isLowerHex(id, 16)
 }
 
-export type Phase =
+type Phase =
   | { kind: 'starting' }
   | { kind: 'ready', session: Session }
   | { kind: 'refused', why: string }
@@ -74,7 +74,7 @@ export class AddError extends Error {
 }
 
 /** What the rail draws for one server (the shape the rail page reads). */
-export interface RailInstance {
+interface RailInstance {
   id: string
   name: string
   initial: string

@@ -17,9 +17,9 @@ import { ZipArchive, ZipError } from './zip.ts'
 
 export const MAX_ENTRIES = 4000
 export const MAX_FILE = 64 << 20
-export const MAX_TOTAL = 256 << 20
+const MAX_TOTAL = 256 << 20
 export const MAX_MANIFEST = 4 << 20
-export const MAX_SIGNATURE = 1024
+const MAX_SIGNATURE = 1024
 export const MAX_PATH = 512
 /** A cached bundle larger than this is not even read. */
 export const MAX_ZIP = 96 << 20

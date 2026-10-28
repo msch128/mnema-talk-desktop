@@ -40,7 +40,7 @@ interface Parsed {
 }
 
 /** `Set-Cookie` as the `cookie` crate reads it, as far as the jar needs it. */
-export function parseSetCookie(raw: string): Parsed | null {
+function parseSetCookie(raw: string): Parsed | null {
   const [pair = '', ...attributes] = raw.split(';')
   const eq = pair.indexOf('=')
   if (eq < 0) return null

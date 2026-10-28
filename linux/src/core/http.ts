@@ -28,7 +28,7 @@ export interface HttpResponse {
   destroy(): void
 }
 
-export class HttpError extends Error {}
+class HttpError extends Error {}
 
 const sharedHttps = new HttpsAgent({ keepAlive: true, maxSockets: 16, minVersion: 'TLSv1.2' })
 

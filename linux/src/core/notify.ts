@@ -6,7 +6,7 @@
  */
 export const MAX_TITLE = 100
 export const MAX_BODY = 240
-export const MAX_ID = 64
+const MAX_ID = 64
 /** What the launcher badge and the rail show at most. */
 export const MAX_BADGE = 999
 /** Shortest gap between two toasts. */

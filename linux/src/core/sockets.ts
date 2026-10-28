@@ -12,7 +12,7 @@ export const MAX_FRAME = 1 << 20
 export const MAX_SOCKETS = 4
 export const MAX_OUTGOING = 1 << 20
 /** What may wait unsent per socket; a link that stalls cannot make the host queue more. */
-export const MAX_BUFFERED = 4 << 20
+const MAX_BUFFERED = 4 << 20
 
 export type WsEvent =
   | { kind: 'open', id: number }
