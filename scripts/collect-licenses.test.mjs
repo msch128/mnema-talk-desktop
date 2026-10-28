@@ -18,7 +18,7 @@ function fixture() {
     mkdirSync(join(desktop, dir), { recursive: true });
   }
   copyFileSync(original, join(desktop, 'scripts', 'collect-licenses.mjs'));
-  copyFileSync(join(dirname(original), 'checked-glib.mjs'), join(desktop, 'scripts', 'checked-glib.mjs'));
+  for (const name of ['checked-glib.mjs', 'license-bundle.mjs']) copyFileSync(join(dirname(original), name), join(desktop, 'scripts', name));
   const put = (path, value) => writeFileSync(join(desktop, path), typeof value === 'string' ? value : JSON.stringify(value));
   put('Cargo.lock', `version = 4\n[[package]]\nname = "example"\nversion = "1.0.0"\nsource = "${source}"\n`);
   put('rust-toolchain.toml', 'channel = "1.99.1"\n');
@@ -140,5 +140,25 @@ test('vendored fonts must match the reviewed original bytes and attribution', ()
     assert.equal(f.run().status, 0);
     f.put('ui/src/assets/font.woff2', 'replaced font fixture');
     assert.notEqual(f.run('--check').status, 0);
+  } finally { f.close(); }
+});
+
+test('an npm package without a license file takes its pinned override text, a tampered one fails', () => {
+  const f = fixture();
+  try {
+    unlinkSync(join(f.desktop, 'ui/node_modules/example/LICENSE'));
+    assert.notEqual(f.run().status, 0);
+    const text = 'Pinned npm license text.';
+    const sha256 = createHash('sha256').update(text).digest('hex');
+    mkdirSync(join(f.desktop, 'licenses', 'texts'), { recursive: true });
+    f.put(`licenses/texts/${sha256}.txt`, text);
+    f.put('licenses/upstream-overrides.json', { 'npm:example@1.0.0': [{
+      name: 'LICENSE', sha256, source: 'https://www.npmjs.com/package/example/v/1.0.0', provenance: 'upstream-override',
+    }] });
+    const collected = f.run();
+    assert.equal(collected.status, 0, collected.stderr);
+    assert.equal(f.run('--check').status, 0);
+    f.put(`licenses/texts/${sha256}.txt`, 'tampered');
+    assert.notEqual(f.run().status, 0);
   } finally { f.close(); }
 });
