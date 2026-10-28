@@ -21,13 +21,15 @@ test('external links cannot launch files, scripts or credentialed targets', () =
   }
 })
 
-test('only explicit https origins are selectable', () => {
+test('an address keeps its port and drops a pasted invite link', () => {
   for (const valid of ['community.example', 'https://community.example/', 'https://community.example:8443', ' community.example ', 'http://localhost:8080', 'http://127.0.0.1', 'http://[::1]:3000']) {
     assert.doesNotThrow(() => parseAddress(valid), valid)
   }
   assert.equal(parseAddress('community.example').href, 'https://community.example/')
-  for (const invalid of ['', 'http://community.example', 'http://127.0.0.1.example', 'http://192.168.1.10:8080', 'https://user@community.example', 'https://community.example/path',
-    'https://community.example?token=x', 'https://community.example/#x', 'https://community.example\\other', 'https://community.example\n', 'https://community.example/?', 'https://a@b.example', 'ftp://community.example']) {
+  assert.equal(parseAddress('https://community.example:8443/?invite=code').href, 'https://community.example:8443/')
+  assert.equal(parseAddress('http://community.example:8443/path?invite=code').href, 'https://community.example:8443/')
+  assert.equal(parseAddress('http://localhost:8080/path?x=1').href, 'http://localhost:8080/')
+  for (const invalid of ['', 'https://user@community.example', 'https://community.example\\other', 'https://community.example\n', 'https://a@b.example', 'ftp://community.example']) {
     assert.throws(() => parseAddress(invalid), Error, JSON.stringify(invalid))
   }
   assert.throws(() => parseAddress('a'.repeat(3000)), /Enter an HTTPS instance address/)

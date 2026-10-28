@@ -506,6 +506,7 @@ function proxyVectors(): Json {
 function clientVectors(): Json {
   const addresses = ['community.example', 'https://community.example/', 'https://community.example:8443', ' community.example ', 'COMMUNITY.example', 'http://localhost:8080', 'http://127.0.0.1', 'http://127.1', 'http://[::1]:3000',
     'http://LOCALHOST', '', 'http://community.example', 'http://127.0.0.1.example', 'http://192.168.1.10:8080', 'https://user@community.example', 'https://user:pw@community.example', 'https://community.example/path',
+    'https://community.example:8443/?invite=code', 'http://community.example:8443/path?invite=code', 'http://localhost:8080/path?x=1',
     'https://community.example?token=x', 'https://community.example/#x', 'https://community.example\\other', 'https://community.example\n', 'https://community.example/?', 'https://a@b.example', 'ftp://community.example',
     'https://', 'https://exa mple.com', 'http://0.0.0.0', 'http://[::]', 'https://community.example:99999']
     .map((input) => {

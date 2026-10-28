@@ -91,7 +91,7 @@ test('commands are refused to windows that may not call them', async () => {
   assert.equal(await call(selector, 'native_update_state'), 'Not allowed.')
   assert.equal(await call(selector, 'desktop_ws_send', '{ id: 1, data: "x" }'), 'Not allowed.')
   assert.equal(await call(selector, 'desktop_gaming_sync'), 'Unknown command.')
-  assert.equal(await call(selector, 'desktop_open_instance', '{ address: "http://community.example" }'), 'Use an HTTPS origin without credentials, a path or query.')
+  assert.equal(await call(selector, 'desktop_open_instance', '{ address: "https://user@community.example" }'), 'Use an HTTPS origin without credentials, a path or query.')
   assert.equal(await call(selector, 'desktop_open_instance', '{ address: "http://127.0.0.1:9" }'), 'Unable to reach the instance using trusted HTTPS.')
   assert.equal(await call(selector, 'desktop_open_instance', '{}'), 'invalid arguments')
 })

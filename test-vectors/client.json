@@ -48,15 +48,15 @@
   },
   {
    "input": "http://community.example",
-   "error": "Use an HTTPS origin without credentials, a path or query."
+   "href": "https://community.example/"
   },
   {
    "input": "http://127.0.0.1.example",
-   "error": "Use an HTTPS origin without credentials, a path or query."
+   "href": "https://127.0.0.1.example/"
   },
   {
    "input": "http://192.168.1.10:8080",
-   "error": "Use an HTTPS origin without credentials, a path or query."
+   "href": "https://192.168.1.10:8080/"
   },
   {
    "input": "https://user@community.example",
@@ -68,15 +68,27 @@
   },
   {
    "input": "https://community.example/path",
-   "error": "Use an HTTPS origin without credentials, a path or query."
+   "href": "https://community.example/"
+  },
+  {
+   "input": "https://community.example:8443/?invite=code",
+   "href": "https://community.example:8443/"
+  },
+  {
+   "input": "http://community.example:8443/path?invite=code",
+   "href": "https://community.example:8443/"
+  },
+  {
+   "input": "http://localhost:8080/path?x=1",
+   "href": "http://localhost:8080/"
   },
   {
    "input": "https://community.example?token=x",
-   "error": "Use an HTTPS origin without credentials, a path or query."
+   "href": "https://community.example/"
   },
   {
    "input": "https://community.example/#x",
-   "error": "Use an HTTPS origin without credentials, a path or query."
+   "href": "https://community.example/"
   },
   {
    "input": "https://community.example\\other",
@@ -88,7 +100,7 @@
   },
   {
    "input": "https://community.example/?",
-   "error": "Use an HTTPS origin without credentials, a path or query."
+   "href": "https://community.example/"
   },
   {
    "input": "https://a@b.example",
@@ -108,11 +120,11 @@
   },
   {
    "input": "http://0.0.0.0",
-   "error": "Use an HTTPS origin without credentials, a path or query."
+   "href": "https://0.0.0.0/"
   },
   {
    "input": "http://[::]",
-   "error": "Use an HTTPS origin without credentials, a path or query."
+   "href": "https://[::]/"
   },
   {
    "input": "https://community.example:99999",

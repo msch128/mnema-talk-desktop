@@ -177,7 +177,7 @@ test('opening an instance picks the verified bundle by the server health and nev
   )
   assert.deepEqual(updates, [], 'nothing is installed without a fresh trust statement')
   // Addresses that are not an HTTPS origin are refused before any request.
-  await assert.rejects(t.connect('http://community.example'), /Use an HTTPS origin/)
+  await assert.rejects(t.connect('https://user@community.example'), /Use an HTTPS origin/)
   // An instance that is down.
   const down = await serve(reply(503, {}, 'x'))
   servers.push(down)

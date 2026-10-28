@@ -13,7 +13,11 @@ function isLoopback(url: URL): boolean {
   return host.toLowerCase() === 'localhost' || /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host) || host === '[::1]'
 }
 
-/** The address of an instance: an HTTPS origin, or HTTP for this very machine. */
+/**
+ * The address of an instance. A pasted invite link keeps the host and an
+ * explicit port; the path, query and fragment are the page, not the server.
+ * Plain http on another machine becomes https. This machine stays http.
+ */
 export function parseAddress(input: string): URL {
   if (Buffer.byteLength(input) > 2048 || [...input].some((c) => /\p{Cc}/u.test(c))) throw new Error('Enter an HTTPS instance address.')
   const trimmed = input.trim()
@@ -25,13 +29,15 @@ export function parseAddress(input: string): URL {
   } catch {
     throw new Error('Invalid instance address.')
   }
-  // HTTPS, except for an instance on this very machine (a development stack).
-  const secure = url.protocol === 'https:' || (url.protocol === 'http:' && isLoopback(url))
   const authority = raw.slice(raw.indexOf('://') + 3)
-  if (!secure || url.hostname === '' || url.username !== '' || url.password !== '' || url.href.includes('?') || url.href.includes('#')
-    || url.pathname !== '/' || authority.includes('@')) {
+  if (url.hostname === '') throw new Error('Invalid instance address.')
+  if (url.username !== '' || url.password !== '' || authority.includes('@') || (url.protocol !== 'https:' && url.protocol !== 'http:')) {
     throw new Error('Use an HTTPS origin without credentials, a path or query.')
   }
+  if (url.protocol === 'http:' && !isLoopback(url)) url.protocol = 'https:'
+  url.pathname = '/'
+  url.search = ''
+  url.hash = ''
   return url
 }
 

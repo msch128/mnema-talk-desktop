@@ -352,22 +352,28 @@ pub(crate) fn address(input: &str) -> Result<Url, String> {
     if raw.contains('\\') || raw.chars().any(char::is_whitespace) {
         return Err("Invalid instance address.".into());
     }
-    let url = Url::parse(&raw).map_err(|_| "Invalid instance address.")?;
-    // HTTPS, except for an instance on this very machine (a development stack).
-    let secure = url.scheme() == "https" || (url.scheme() == "http" && loopback(&url));
-    if !secure
-        || url.host_str().is_none()
-        || !url.username().is_empty()
+    let mut url = Url::parse(&raw).map_err(|_| "Invalid instance address.")?;
+    // A pasted invite link keeps the host and an explicit port. The path,
+    // query and fragment belong to the page. Plain http elsewhere becomes
+    // https; a server on this machine stays http.
+    let credentials = !url.username().is_empty()
         || url.password().is_some()
-        || url.query().is_some()
-        || url.fragment().is_some()
-        || url.path() != "/"
         || raw
             .split_once("://")
-            .is_some_and(|(_, authority)| authority.contains('@'))
-    {
+            .is_some_and(|(_, authority)| authority.contains('@'));
+    if url.host_str().is_none() {
+        return Err("Invalid instance address.".into());
+    }
+    if credentials || (url.scheme() != "https" && url.scheme() != "http") {
         return Err("Use an HTTPS origin without credentials, a path or query.".into());
     }
+    if url.scheme() == "http" && !loopback(&url) {
+        url.set_scheme("https")
+            .map_err(|_| "Invalid instance address.".to_string())?;
+    }
+    url.set_path("/");
+    url.set_query(None);
+    url.set_fragment(None);
     Ok(url)
 }
 
@@ -935,7 +941,7 @@ mod tests {
     }
 
     #[test]
-    fn only_explicit_https_origins_are_selectable() {
+    fn an_address_keeps_its_port_and_drops_a_pasted_invite_link() {
         for valid in [
             "community.example",
             "https://community.example/",
@@ -943,15 +949,25 @@ mod tests {
         ] {
             assert!(address(valid).is_ok());
         }
+        assert_eq!(
+            address("https://community.example:8443/?invite=code")
+                .unwrap()
+                .as_str(),
+            "https://community.example:8443/"
+        );
+        assert_eq!(
+            address("http://community.example:8443/path?invite=code")
+                .unwrap()
+                .as_str(),
+            "https://community.example:8443/"
+        );
+        assert_eq!(
+            address("http://localhost:8080/path?x=1").unwrap().as_str(),
+            "http://localhost:8080/"
+        );
         for invalid in [
             "",
-            "http://community.example",
-            "http://127.0.0.1.example",
-            "http://192.168.1.10:8080",
             "https://user@community.example",
-            "https://community.example/path",
-            "https://community.example?token=x",
-            "https://community.example/#x",
             "https://community.example\\other",
             "https://community.example\n",
         ] {
