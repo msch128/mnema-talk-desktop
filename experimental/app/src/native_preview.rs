@@ -769,16 +769,25 @@ fn native_socket_close(
 }
 #[cfg(feature = "synthetic-transport-fixture")]
 mod transport_fixture;
+/// Report a start-up failure with a non-zero status so qualification runs and
+/// CI can tell it from a normal exit. Only the error class is printed.
+fn startup_failed(stage: &str, error: &dyn std::fmt::Debug) -> ! {
+    eprintln!("native preview start-up failed ({stage}): {error:?}");
+    std::process::exit(1)
+}
 fn main() {
     #[cfg(feature = "synthetic-transport-fixture")]
     let configured = transport_fixture::client();
     #[cfg(not(feature = "synthetic-transport-fixture"))]
     let configured = NativeClient::ephemeral();
-    let Ok(client) = configured else { return };
+    let client = match configured {
+        Ok(client) => client,
+        Err(error) => startup_failed("transport", &error),
+    };
     #[cfg(feature = "synthetic-media-fixture")]
     let media = match media_fixture::configured_actor() {
         Ok(m) => m,
-        Err(_) => return,
+        Err(error) => startup_failed("media", &error),
     };
     let builder = tauri::Builder::default()
         .manage(RuntimeState {

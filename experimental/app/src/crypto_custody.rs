@@ -64,7 +64,9 @@ mod mac {
             let path = CString::new(path.as_os_str().as_bytes()).map_err(|_| Error::Invalid)?;
             let mut random = Zeroizing::new([0; 32]);
             getrandom::fill(random.as_mut()).map_err(|_| Error::Random)?;
-            let mut password = Zeroizing::new(String::new());
+            // Fixed capacity: a growing String would leave freed, unzeroed
+            // prefixes of the password behind.
+            let mut password = Zeroizing::new(String::with_capacity(random.len() * 2));
             use std::fmt::Write;
             for b in random.iter() {
                 write!(&mut *password, "{b:02x}").map_err(|_| Error::Invalid)?;

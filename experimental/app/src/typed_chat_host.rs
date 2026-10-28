@@ -38,8 +38,51 @@ pub(crate) enum Toggle {
     Toggle,
 }
 
+const MAX_CLAIMS: usize = 256;
+/// Admitted mutations by client event id. An entry stays after its publish was
+/// acknowledged so a repeated event id replays the exact operation, never its
+/// inverse. Only acknowledged entries are evicted (oldest first) to make room;
+/// unacknowledged ones are kept for their retry and bound the table.
 #[derive(Default)]
-pub(super) struct Claims(std::collections::HashMap<Uuid, (Input, ChatOperation)>);
+pub(super) struct Claims {
+    entries: std::collections::HashMap<Uuid, (Input, ChatOperation, bool)>,
+    order: std::collections::VecDeque<Uuid>,
+}
+
+impl Claims {
+    fn get(&self, event: &Uuid) -> Option<(&Input, &ChatOperation)> {
+        self.entries.get(event).map(|(input, op, _)| (input, op))
+    }
+
+    fn insert(&mut self, event: Uuid, input: Input, operation: ChatOperation) -> Result<(), Error> {
+        if self.entries.contains_key(&event) {
+            return Ok(());
+        }
+        if self.entries.len() >= MAX_CLAIMS {
+            let evictable = self
+                .order
+                .iter()
+                .position(|id| self.entries.get(id).is_some_and(|entry| entry.2))
+                .ok_or(Error::Busy)?;
+            if let Some(id) = self.order.remove(evictable) {
+                self.entries.remove(&id);
+            }
+        }
+        self.entries.insert(event, (input, operation, false));
+        self.order.push_back(event);
+        Ok(())
+    }
+
+    fn is_full(&self) -> bool {
+        self.entries.len() >= MAX_CLAIMS && !self.entries.values().any(|entry| entry.2)
+    }
+
+    fn acknowledge(&mut self, event: &Uuid) {
+        if let Some(entry) = self.entries.get_mut(event) {
+            entry.2 = true;
+        }
+    }
+}
 
 impl Input {
     fn validate(&self) -> Result<(), Error> {
@@ -143,10 +186,16 @@ fn claim(
     ChatEventClaim::claim(operation).map_err(|_| Error::InvalidInput)
 }
 
+const WINDOW_ROWS: usize = 1024;
+const WINDOW_BYTES: usize = 512 * 1024;
+
+/// Newest-first window of whole pages holding at most `budget` rows. Older
+/// pages are left out instead of failing, so a busy channel stays readable.
 fn history(
     chat: &mut NativeChatOwner,
     scope: Arc<NativeAuthenticatedScope>,
     parent: Option<Uuid>,
+    budget: usize,
 ) -> Result<Vec<serde_json::Value>, Error> {
     let mut rows = Vec::new();
     let mut before = None;
@@ -168,10 +217,10 @@ fn history(
                 },
             )
             .map_err(crypto_error)?;
-        rows.append(&mut page);
-        if rows.len() > 1024 {
-            return Err(Error::BodyLimit);
+        if rows.len() + page.len() > budget {
+            return Ok(rows);
         }
+        rows.append(&mut page);
         if !older {
             return Ok(rows);
         }
@@ -181,6 +230,56 @@ fn history(
         }
         before = Some(next);
     }
+}
+
+/// Author object of one row. A member the instance no longer lists (deactivated
+/// account, disabled bot) keeps its row with an empty profile instead of
+/// failing the whole snapshot; the server omits `avatar_url` when none is set.
+fn author_fields(
+    member: Option<&serde_json::Value>,
+    account: &str,
+) -> serde_json::Map<String, serde_json::Value> {
+    let text = |field: &str| {
+        member
+            .and_then(|member| member.get(field))
+            .filter(|value| value.is_string())
+            .cloned()
+            .unwrap_or_else(|| serde_json::json!(""))
+    };
+    let mut fields = serde_json::Map::new();
+    fields.insert("id".into(), serde_json::json!(account));
+    for field in ["username", "display_name", "avatar_url"] {
+        fields.insert(field.into(), text(field));
+    }
+    fields
+}
+
+/// Drop rows from the end (oldest pages, then thread replies of the oldest
+/// roots) until the serialized snapshot fits `limit` bytes.
+fn trim_to_bytes(
+    rows: &mut Vec<serde_json::Value>,
+    channel: Uuid,
+    limit: usize,
+) -> Result<(), Error> {
+    let overhead = serde_json::to_vec(&serde_json::json!({"channel_id":channel,"messages":[]}))
+        .map_err(|_| Error::Protocol)?
+        .len();
+    let sizes = rows
+        .iter()
+        .map(|row| serde_json::to_vec(row).map(|bytes| bytes.len() + 1))
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|_| Error::Protocol)?;
+    let mut total = overhead + sizes.iter().sum::<usize>();
+    let mut keep = rows.len();
+    while total > limit && keep > 0 {
+        keep -= 1;
+        total -= sizes[keep];
+    }
+    if keep == 0 && !rows.is_empty() {
+        return Err(Error::BodyLimit);
+    }
+    rows.truncate(keep);
+    Ok(())
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -200,7 +299,7 @@ pub(super) async fn process(
     let affected = match (event, input) {
         (Some(event), Some(input)) => {
             let original = input.clone();
-            let claim = if let Some((previous, operation)) = claims.0.get(&event) {
+            let claim = if let Some((previous, operation)) = claims.get(&event) {
                 if previous != &input {
                     return Err(Error::Denied);
                 }
@@ -208,7 +307,7 @@ pub(super) async fn process(
                 // Retry this exact admitted operation, never its inverse.
                 ChatEventClaim::claim(operation.clone()).map_err(|_| Error::InvalidInput)?
             } else {
-                if claims.0.len() >= 256 {
+                if claims.is_full() {
                     return Err(Error::Busy);
                 }
                 claim(chat, scope.clone(), event, input)?
@@ -216,12 +315,9 @@ pub(super) async fn process(
             let prepared = chat
                 .prepare_chat_event_retained(scope.clone(), event, &claim)
                 .map_err(crypto_error)?;
-            claims
-                .0
-                .entry(event)
-                .or_insert_with(|| (original, claim.operation().clone()));
-            Some(
-                chat.publish_chat_event(prepared, |publication| {
+            claims.insert(event, original, claim.operation().clone())?;
+            let message = chat
+                .publish_chat_event(prepared, |publication| {
                     let matching = publication
                         .receipts
                         .iter()
@@ -235,8 +331,9 @@ pub(super) async fn process(
                     Ok(matching[0].message_id)
                 })
                 .await
-                .map_err(crypto_error)?,
-            )
+                .map_err(crypto_error)?;
+            claims.acknowledge(&event);
+            Some(message)
         }
         (None, None) => {
             // Bounded catch-up of actual event pages. No mutation is retried.
@@ -260,7 +357,7 @@ pub(super) async fn process(
         }
         _ => return Err(Error::InvalidInput),
     };
-    let mut rows = history(chat, scope.clone(), None)?;
+    let mut rows = history(chat, scope.clone(), None, WINDOW_ROWS)?;
     let roots = rows
         .iter()
         .map(|row| {
@@ -271,13 +368,14 @@ pub(super) async fn process(
         })
         .collect::<Result<Vec<_>, _>>()?;
     for root in roots {
-        rows.extend(history(chat, scope.clone(), Some(root))?);
-        if rows.len() > 1024 {
-            return Err(Error::BodyLimit);
+        let budget = WINDOW_ROWS.saturating_sub(rows.len());
+        if budget == 0 {
+            break;
         }
+        rows.extend(history(chat, scope.clone(), Some(root), budget)?);
     }
     // Author display data comes from this instance's real members response.
-    // Missing profiles fail closed; no usernames, dates or revisions are made up.
+    // No usernames, dates or revisions are made up.
     let publication = client
         .request_retained_authenticated(
             lease,
@@ -293,40 +391,30 @@ pub(super) async fn process(
         return Err(Error::Protocol);
     }
     let members = members.body.as_array().ok_or(Error::Protocol)?;
+    let members = members
+        .iter()
+        .filter_map(|member| {
+            let id = member.get("id").and_then(serde_json::Value::as_str)?;
+            Some((id, member))
+        })
+        .collect::<std::collections::HashMap<_, _>>();
     for row in &mut rows {
         let account = row
             .get("account_id")
             .and_then(serde_json::Value::as_str)
             .ok_or(Error::Protocol)?;
-        let author = members
-            .iter()
-            .find(|member| member.get("id").and_then(serde_json::Value::as_str) == Some(account))
-            .ok_or(Error::Protocol)?;
-        let mut author_fields = serde_json::Map::new();
-        for field in ["id", "username", "display_name", "avatar_url"] {
-            let value = author
-                .get(field)
-                .filter(|value| value.is_string())
-                .ok_or(Error::Protocol)?;
-            author_fields.insert(field.into(), value.clone());
-        }
+        let author = author_fields(members.get(account).copied(), account);
         let row = row.as_object_mut().ok_or(Error::Protocol)?;
         row.insert("channel_id".into(), serde_json::json!(control.channel));
-        row.insert("author".into(), serde_json::Value::Object(author_fields));
+        row.insert("author".into(), serde_json::Value::Object(author));
         // This native version admits text only; attachments/pins/mentions have
         // no events in its closed schema. These values assert no extra grants.
         row.insert("attachments".into(), serde_json::json!([]));
         row.insert("is_pinned".into(), serde_json::json!(false));
         row.insert("mentions".into(), serde_json::json!([]));
     }
+    trim_to_bytes(&mut rows, control.channel, WINDOW_BYTES)?;
     let snapshot = serde_json::json!({"channel_id":control.channel,"messages":rows});
-    if serde_json::to_vec(&snapshot)
-        .map_err(|_| Error::Protocol)?
-        .len()
-        > 512 * 1024
-    {
-        return Err(Error::BodyLimit);
-    }
     client.with_authenticated_publication(lease, &scope, || {
         let state = app.state::<RuntimeState>();
         let registry = state.registry.try_lock().map_err(|_| Error::Stale)?;
@@ -469,6 +557,76 @@ pub(crate) async fn native_chat_mutate(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn op() -> ChatOperation {
+        ChatOperation::Create {
+            message_id: Uuid::new_v4().to_string(),
+            body: "x".into(),
+            parent_id: None,
+        }
+    }
+    fn input() -> Input {
+        Input::Create { body: "x".into() }
+    }
+
+    #[test]
+    fn acknowledged_claims_are_evicted_so_mutations_keep_working() {
+        let mut claims = Claims::default();
+        for _ in 0..(MAX_CLAIMS * 3) {
+            let event = Uuid::new_v4();
+            assert!(!claims.is_full());
+            claims.insert(event, input(), op()).unwrap();
+            claims.acknowledge(&event);
+        }
+        assert!(claims.entries.len() <= MAX_CLAIMS);
+    }
+
+    #[test]
+    fn unacknowledged_claims_stay_for_their_retry_and_bound_the_table() {
+        let mut claims = Claims::default();
+        let first = Uuid::new_v4();
+        claims.insert(first, input(), op()).unwrap();
+        for _ in 1..MAX_CLAIMS {
+            claims.insert(Uuid::new_v4(), input(), op()).unwrap();
+        }
+        assert!(claims.is_full());
+        assert!(matches!(
+            claims.insert(Uuid::new_v4(), input(), op()),
+            Err(Error::Busy)
+        ));
+        assert!(claims.get(&first).is_some());
+        claims.acknowledge(&first);
+        claims.insert(Uuid::new_v4(), input(), op()).unwrap();
+        assert!(claims.get(&first).is_none());
+    }
+
+    #[test]
+    fn author_without_avatar_or_member_still_renders() {
+        let member = serde_json::json!({"id":"a","username":"u","display_name":"U"});
+        let fields = author_fields(Some(&member), "a");
+        assert_eq!(fields["username"], "u");
+        assert_eq!(fields["avatar_url"], "");
+        let gone = author_fields(None, "b");
+        assert_eq!(gone["id"], "b");
+        assert_eq!(gone["username"], "");
+    }
+
+    #[test]
+    fn oversized_snapshot_keeps_a_newest_window_instead_of_failing() {
+        let channel = Uuid::new_v4();
+        let mut rows = (0..10)
+            .map(|n| serde_json::json!({"n": n, "body": "a".repeat(100)}))
+            .collect::<Vec<_>>();
+        trim_to_bytes(&mut rows, channel, 450).unwrap();
+        assert!(!rows.is_empty() && rows.len() < 10);
+        assert_eq!(rows[0]["n"], 0);
+        let size = serde_json::to_vec(&serde_json::json!({"channel_id":channel,"messages":rows}))
+            .unwrap()
+            .len();
+        assert!(size <= 450);
+        let mut single = vec![serde_json::json!({"body": "a".repeat(1000)})];
+        assert!(trim_to_bytes(&mut single, channel, 450).is_err());
+    }
     #[test]
     fn renderer_cannot_supply_authority_or_unknown_operation_fields() {
         assert!(

@@ -20,6 +20,26 @@ mod typed_chat;
 pub(super) use typed_chat::{native_chat_mutate, native_chat_snapshot};
 
 static SETUPS: AtomicUsize = AtomicUsize::new(0);
+const MAX_CONCURRENT_SETUPS: usize = 16;
+/// One reserved first-root setup. The slot is released when the setup thread
+/// exits (or when begin fails before it starts), so cancelled or failed setups
+/// never use up the limit for the rest of the process.
+struct SetupSlot(&'static AtomicUsize);
+impl SetupSlot {
+    fn reserve(counter: &'static AtomicUsize) -> Result<Self, Error> {
+        counter
+            .try_update(Ordering::AcqRel, Ordering::Acquire, |count| {
+                (count < MAX_CONCURRENT_SETUPS).then_some(count + 1)
+            })
+            .map_err(|_| Error::Busy)?;
+        Ok(Self(counter))
+    }
+}
+impl Drop for SetupSlot {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::AcqRel);
+    }
+}
 #[derive(Clone, Serialize)]
 pub(super) struct Status {
     operation_id: String,
@@ -34,6 +54,19 @@ pub(super) struct ChatDisplay {
     account_id: Uuid,
     device_id: String,
     body: String,
+}
+impl From<&mnema_private_native_crypto_owner::NativeChatDisplay> for ChatDisplay {
+    fn from(row: &mnema_private_native_crypto_owner::NativeChatDisplay) -> Self {
+        Self {
+            id: row.id,
+            number: row.number,
+            channel_id: row.channel_id,
+            client_event_id: row.client_event_id,
+            account_id: row.account_id,
+            device_id: row.device_id.clone(),
+            body: row.body.clone(),
+        }
+    }
 }
 enum Job {
     RemoveDevice {
@@ -277,7 +310,7 @@ fn negative_notice(
         expire_after_enqueue(&control.status, terminal, |_| false);
     }
 }
-struct ThreadExit(Arc<Control>);
+struct ThreadExit(Arc<Control>, #[allow(dead_code)] SetupSlot);
 impl Drop for ThreadExit {
     fn drop(&mut self) {
         if self
@@ -385,7 +418,7 @@ impl Host {
         // Tauri's dispatcher may synchronously wait for the UI thread. Never
         // perform this native getter while its lifecycle registry is locked.
         let native_identity = identity(&window)?;
-        {
+        let slot = {
             // Same native registry mutex as reload/destroy, through actual scope
             // check and host reservation. An old queued begin cannot install a
             // new active owner after the actual window was replaced.
@@ -406,15 +439,11 @@ impl Host {
                 {
                     return Err(Error::Busy);
                 }
-                SETUPS
-                    .try_update(Ordering::AcqRel, Ordering::Acquire, |count| {
-                        (count < 16).then_some(count + 1)
-                    })
-                    .map_err(|_| Error::Busy)?;
+                let slot = SetupSlot::reserve(&SETUPS)?;
                 *current = Some(control.clone());
-                Ok::<_, Error>(())
-            })??;
-        }
+                Ok::<_, Error>(slot)
+            })??
+        };
         let dir = fresh_directory(&app).inspect_err(|_| control.stop())?;
         let (reply, answer) = oneshot::channel();
         let thread_control = control.clone();
@@ -422,7 +451,7 @@ impl Host {
         std::thread::Builder::new()
             .name("mnema-native-core".into())
             .spawn(move || {
-                let _exit = ThreadExit(thread_control.clone());
+                let _exit = ThreadExit(thread_control.clone(), slot);
                 let Ok(runtime) = tokio::runtime::Builder::new_current_thread()
                     .enable_all()
                     .build()
@@ -728,36 +757,14 @@ async fn run_core(
                     let result = if let Some(event) = event {
                         match chat.prepare_chat_retained(scope.clone(), event, &body) {
                             Ok(prepared) => {
-                                chat.publish_chat(prepared, |row| {
-                                    sink(vec![ChatDisplay {
-                                        id: row.id,
-                                        number: row.number,
-                                        channel_id: row.channel_id,
-                                        client_event_id: row.client_event_id,
-                                        account_id: row.account_id,
-                                        device_id: row.device_id.clone(),
-                                        body: row.body.clone(),
-                                    }])
-                                })
-                                .await
+                                chat.publish_chat(prepared, |row| sink(vec![row.into()]))
+                                    .await
                             }
                             Err(error) => Err(error),
                         }
                     } else {
                         chat.receive_page_retained(scope.clone(), |rows| {
-                            sink(
-                                rows.iter()
-                                    .map(|row| ChatDisplay {
-                                        id: row.id,
-                                        number: row.number,
-                                        channel_id: row.channel_id,
-                                        client_event_id: row.client_event_id,
-                                        account_id: row.account_id,
-                                        device_id: row.device_id.clone(),
-                                        body: row.body.clone(),
-                                    })
-                                    .collect(),
-                            )
+                            sink(rows.iter().map(ChatDisplay::from).collect())
                         })
                         .await
                     };
@@ -1192,6 +1199,20 @@ pub(super) fn native_trust_read_status(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn setup_slots_are_released_so_failed_setups_do_not_exhaust_the_limit() {
+        static COUNTER: AtomicUsize = AtomicUsize::new(0);
+        for _ in 0..(MAX_CONCURRENT_SETUPS * 3) {
+            drop(SetupSlot::reserve(&COUNTER).expect("slot free after earlier release"));
+        }
+        let held = (0..MAX_CONCURRENT_SETUPS)
+            .map(|_| SetupSlot::reserve(&COUNTER).expect("within limit"))
+            .collect::<Vec<_>>();
+        assert!(matches!(SetupSlot::reserve(&COUNTER), Err(Error::Busy)));
+        drop(held);
+        assert_eq!(COUNTER.load(Ordering::Acquire), 0);
+        assert!(SetupSlot::reserve(&COUNTER).is_ok());
+    }
     #[tokio::test]
     async fn stopped_actor_never_starts_queued_removal_work() {
         let stop = AtomicBool::new(true);
