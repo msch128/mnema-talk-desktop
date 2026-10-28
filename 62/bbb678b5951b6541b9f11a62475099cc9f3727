@@ -1,0 +1,16 @@
+experimental/app/src/instances.rs
+  h_0ff4f4713441f4 840-841,863-872,878
+linux/test/instances.test.ts
+  h_0ff4f4713441f4 222-225,227
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "62bbb678b5951b6541b9f11a62475099cc9f3727",
+  "prompts": {},
+  "humans": {
+    "h_0ff4f4713441f4": {
+      "author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}
