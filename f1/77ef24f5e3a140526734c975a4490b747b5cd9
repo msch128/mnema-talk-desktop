@@ -1,0 +1,66 @@
+experimental/app/rail-ui/rail.js
+  h_0ff4f4713441f4 150-151
+experimental/app/update-ui/update.js
+  h_0ff4f4713441f4 16,19-20,32,35-36,60-62,80-82,87
+linux/README.md
+  h_0ff4f4713441f4 58-63
+linux/assets/picker-ui/picker.js
+  h_0ff4f4713441f4 6-7,54-60
+linux/assets/rail-ui/rail.js
+  h_0ff4f4713441f4 150-151
+linux/electron-builder.yml
+  h_0ff4f4713441f4 59
+linux/scripts/launch-lib.sh
+  h_0ff4f4713441f4 1-19
+linux/scripts/refuse.sh
+  h_0ff4f4713441f4 7,11,21
+linux/scripts/smoke.sh
+  h_0ff4f4713441f4 5-6,8,10,20
+linux/src/core/instances.ts
+  h_0ff4f4713441f4 112-113,120-124,130,132-134,136,138,140,142,146,152,170-172,175,189-193
+linux/src/core/ipcargs.ts
+  h_0ff4f4713441f4 1-18
+linux/src/core/pagesockets.ts
+  h_0ff4f4713441f4 1-22
+linux/src/core/permitted.ts
+  h_0ff4f4713441f4 1-25
+linux/src/core/tickets.ts
+  h_0ff4f4713441f4 1-19
+linux/src/core/wipe.ts
+  h_0ff4f4713441f4 1-41
+linux/src/main/context.ts
+  h_0ff4f4713441f4 16,44
+linux/src/main/handle.ts
+  h_0ff4f4713441f4 1-35
+linux/src/main/ipc.ts
+  h_0ff4f4713441f4 9,11,14,25-26,80,95,99,104,116,121,156
+linux/src/main/main.ts
+  h_0ff4f4713441f4 12,26,55-57,85,144-145,149-152
+linux/src/main/permissions.ts
+  h_0ff4f4713441f4 9,18,20-21,33-34,73-78
+linux/src/main/rail.ts
+  h_0ff4f4713441f4 7-9,12,17-18,35,45
+linux/src/main/sessions.ts
+  h_0ff4f4713441f4 27
+linux/src/main/shell.ts
+  h_0ff4f4713441f4 13,19-20,22-23,60,63-66,68-70,73,77,83,88-97,104,205,216-217,228-229,235,239,313-314,318,324,328,359-365,367,371,379
+linux/test/host.test.ts
+  h_0ff4f4713441f4 1-94
+linux/test/instances.test.ts
+  h_0ff4f4713441f4 272-293
+linux/test/rail.test.ts
+  h_0ff4f4713441f4 14-19,23-24,48-91
+linux/test/scripts.test.ts
+  h_0ff4f4713441f4 1-21
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f177ef24f5e3a140526734c975a4490b747b5cd9",
+  "prompts": {},
+  "humans": {
+    "h_0ff4f4713441f4": {
+      "author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}
