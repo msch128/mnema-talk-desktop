@@ -53,7 +53,7 @@ async function changeServer() {
   <main v-else class="native-connect-page">
     <section class="native-connect-panel" aria-labelledby="native-connect-title">
       <div class="native-connect-heading"><span class="native-connect-mark" aria-hidden="true">M</span><h1 id="native-connect-title">Mnema Talk</h1></div>
-      <p>Mit deiner Community verbinden.</p>
+      <p>Connect to your community.</p>
       <form @submit.prevent="connect">
         <label for="native-server-url">Server address</label>
         <input id="native-server-url" v-model="address" type="text" inputmode="url" placeholder="talk.example.org" autocomplete="off" autocapitalize="off" spellcheck="false" :disabled="!ready || busy" required />
