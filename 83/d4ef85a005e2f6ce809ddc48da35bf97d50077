@@ -1,0 +1,42 @@
+.gitleaks.toml
+  h_0ff4f4713441f4 40
+experimental/app/src/main.rs
+  h_0ff4f4713441f4 23-24
+experimental/app/src/web_bundle.rs
+  h_0ff4f4713441f4 121,156-238,241,245-247,269,292-293,306,324,370-371,387,1945-1978
+experimental/app/src/web_client.rs
+  h_0ff4f4713441f4 501-502,1880-1912
+experimental/app/src/web_json.rs
+  h_0ff4f4713441f4 1-122
+experimental/app/src/web_trust.rs
+  h_0ff4f4713441f4 51,119,1079-1101
+experimental/app/src/web_updates.rs
+  h_0ff4f4713441f4 17,31,199-217
+linux/scripts/gen-vectors.ts
+  h_0ff4f4713441f4 24,27-28,40-58,130-398,401-402,406,408-438,904-905
+linux/src/core/bundle.ts
+  h_0ff4f4713441f4 214-217,222
+linux/src/core/json.ts
+  h_0ff4f4713441f4 24-25,114,129
+linux/src/core/zip.ts
+  h_0ff4f4713441f4 6-11,26-27,33-35,56-61,70,87-89,92,119
+linux/test/vectors.test.ts
+  h_0ff4f4713441f4 17,26-27,39-86
+scripts/check-native-test-vectors.mjs
+  h_0ff4f4713441f4 74
+test-vectors/json.json
+  h_0ff4f4713441f4 1-1529
+test-vectors/zip.json
+  h_0ff4f4713441f4 1-430
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "83d4ef85a005e2f6ce809ddc48da35bf97d50077",
+  "prompts": {},
+  "humans": {
+    "h_0ff4f4713441f4": {
+      "author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}
