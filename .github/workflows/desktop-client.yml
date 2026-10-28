@@ -63,6 +63,10 @@ on:
 permissions:
   contents: read
 
+env:
+  # The published desktop release whose signed packages feed the signature tests.
+  FIXTURE_VERSION: 0.3.1
+
 concurrency:
   group: shared-desktop-${{ inputs.acceptance_release && format('{0}-{1}', inputs.acceptance_release, github.sha) || inputs.tag || github.ref }}
   # Superseded pull request runs are cancelled; tag, push and acceptance runs never are.
@@ -83,8 +87,10 @@ jobs:
           persist-credentials: false
           ref: ${{ inputs.ref || github.sha }}
 
-      # The Vue app stays in mnema-talk. This host only embeds its built dist
-      # and then loads the selected instance. Default ref is that repo's main.
+      # The Vue app stays in mnema-talk and reaches this host as a signed
+      # bundle (see "Stage the signed web bundle"). The checkout supplies the
+      # notices shipped next to the portable executable. Default ref is that
+      # repo's main.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: msch128/mnema-talk
@@ -151,8 +157,6 @@ jobs:
         if: inputs.acceptance_release == ''
         with:
           node-version: 26
-          cache: npm
-          cache-dependency-path: mnema-talk/web/package-lock.json
       - name: Select pinned Rust toolchain
         if: inputs.acceptance_release == ''
         shell: pwsh
@@ -169,21 +173,6 @@ jobs:
           workspaces: experimental/app -> target
           key: ${{ hashFiles('**/Cargo.lock') }}
           save-if: ${{ github.ref == 'refs/heads/main' }}
-      - name: Check and build the canonical Vue client
-        if: inputs.acceptance_release == ''
-        working-directory: mnema-talk/web
-        shell: pwsh
-        run: |
-          npm ci --no-audit --no-fund
-          if ($LASTEXITCODE -ne 0) { throw 'Web dependencies failed' }
-          npm run lint
-          if ($LASTEXITCODE -ne 0) { throw 'Web lint failed' }
-          npm run typecheck
-          if ($LASTEXITCODE -ne 0) { throw 'Web typecheck failed' }
-          npm run test -- --run
-          if ($LASTEXITCODE -ne 0) { throw 'Web tests failed' }
-          npm run build
-          if ($LASTEXITCODE -ne 0) { throw 'Web build failed' }
       # The web app runs from a signed bundle (mnema-talk
       # doc/desktop-trusted-client.md). The build embeds the one attached to
       # the newest mnema-talk release that has one; the host verifies it with
@@ -219,7 +208,7 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release download v0.3.1 --repo msch128/mnema-talk-desktop --dir signed-package --pattern 'Mnema-Desktop-DEV_0.3.1_x64-setup.exe*'
+        run: gh release download "v$FIXTURE_VERSION" --repo msch128/mnema-talk-desktop --dir signed-package --pattern "Mnema-Desktop-DEV_${FIXTURE_VERSION}_x64-setup.exe*"
       - name: Check and link the actual shared-client Tauri host
         if: inputs.acceptance_release == ''
         shell: pwsh
@@ -227,8 +216,8 @@ jobs:
           # A release build must embed a bundle; the test checks that the pinned key verifies it.
           MNEMA_REQUIRE_BUNDLE: ${{ inputs.tag != '' && '1' || '' }}
           MNEMA_TEST_BUNDLE_ZIP: ${{ github.workspace }}/experimental/app/bundle/builtin.zip
-          MNEMA_TEST_UPDATE_PACKAGE: ${{ github.workspace }}/signed-package/Mnema-Desktop-DEV_0.3.1_x64-setup.exe
-          MNEMA_TEST_UPDATE_VERSION: '0.3.1'
+          MNEMA_TEST_UPDATE_PACKAGE: ${{ github.workspace }}/signed-package/Mnema-Desktop-DEV_${{ env.FIXTURE_VERSION }}_x64-setup.exe
+          MNEMA_TEST_UPDATE_VERSION: ${{ env.FIXTURE_VERSION }}
           # Items written by keyring 3 (releases up to 0.3.x) stay readable (web_vault.rs).
           MNEMA_KEYRING_COMPAT: '1'
         run: |
@@ -241,7 +230,7 @@ jobs:
           cargo build --locked --release --manifest-path experimental/app/Cargo.toml --features shell,web-client,custom-protocol
           if ($LASTEXITCODE -ne 0) { throw 'Shared Windows executable build failed' }
           if (!(Test-Path 'experimental/app/target/release/mnema-native-client-preview.exe')) { throw 'Shared executable missing' }
-          'Unsigned DEV web-client host linked from experimental/app with embedded web/dist. The next step checks the WebView2 origin and the media-permission decision with a synthetic capture device. It does not click a prompt and does not qualify a physical device, sealed media, multi-device E2EE, real games, fullscreen overlays or distribution licenses. The installer of a release updates itself; this portable executable does not.' | Out-File -Append $env:GITHUB_STEP_SUMMARY
+          'Unsigned DEV web-client host linked from experimental/app with the embedded signed web bundle. The next step checks the WebView2 origin and the media-permission decision with a synthetic capture device. It does not click a prompt and does not qualify a physical device, sealed media, multi-device E2EE, real games, fullscreen overlays or distribution licenses. The installer of a release updates itself; this portable executable does not.' | Out-File -Append $env:GITHUB_STEP_SUMMARY
       - name: Prepare unsigned Windows DEV artifact
         if: inputs.acceptance_release == ''
         shell: pwsh
@@ -534,14 +523,14 @@ jobs:
       - name: Fetch a signed release package for the signature tests
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release download v0.3.1 --repo msch128/mnema-talk-desktop --dir signed-package --pattern 'Mnema-Desktop-DEV_0.3.1_aarch64.app.tar.gz*'
+        run: gh release download "v$FIXTURE_VERSION" --repo msch128/mnema-talk-desktop --dir signed-package --pattern "Mnema-Desktop-DEV_${FIXTURE_VERSION}_aarch64.app.tar.gz*"
       - name: Test and lint the shared-client host for macOS
         env:
           # A release build must embed a bundle; the test checks that the pinned key verifies it.
           MNEMA_REQUIRE_BUNDLE: ${{ inputs.tag != '' && '1' || '' }}
           MNEMA_TEST_BUNDLE_ZIP: ${{ github.workspace }}/experimental/app/bundle/builtin.zip
-          MNEMA_TEST_UPDATE_PACKAGE: ${{ github.workspace }}/signed-package/Mnema-Desktop-DEV_0.3.1_aarch64.app.tar.gz
-          MNEMA_TEST_UPDATE_VERSION: '0.3.1'
+          MNEMA_TEST_UPDATE_PACKAGE: ${{ github.workspace }}/signed-package/Mnema-Desktop-DEV_${{ env.FIXTURE_VERSION }}_aarch64.app.tar.gz
+          MNEMA_TEST_UPDATE_VERSION: ${{ env.FIXTURE_VERSION }}
           # Items written by keyring 3 (releases up to 0.3.x) stay readable (web_vault.rs).
           MNEMA_KEYRING_COMPAT: '1'
         run: |
@@ -554,8 +543,17 @@ jobs:
         run: |
           cargo build --locked --manifest-path experimental/app/Cargo.toml --features shell,web-client,custom-protocol,multi-selftest
           node scripts/multi-instance-selftest.mjs "$CARGO_TARGET_DIR/debug/mnema-native-client-preview"
-      # A release (desktop-release.yml) bundles this tested executable; nothing
-      # is rebuilt after the tests.
+      # The debug build above does not run what ships (no debug assertions,
+      # optimised code), so a release also runs the check on the release
+      # profile: the shipped executable is this build without the test feature.
+      - name: Two servers side by side, on the release profile
+        if: inputs.tag != ''
+        run: |
+          set -euo pipefail
+          cargo build --locked --release --target aarch64-apple-darwin --manifest-path experimental/app/Cargo.toml --features shell,web-client,custom-protocol,multi-selftest
+          node scripts/multi-instance-selftest.mjs "$CARGO_TARGET_DIR/aarch64-apple-darwin/release/mnema-native-client-preview"
+      # A release (desktop-release.yml) bundles the executable built below,
+      # which is not rebuilt afterwards.
       - name: Build the Apple silicon executable
         if: inputs.tag != ''
         env:
@@ -567,7 +565,7 @@ jobs:
           echo "Architectures: $archs"
           [[ "$archs" == "arm64" ]] || { echo '::error::the executable is not arm64 only'; exit 1; }
           echo 'Unsigned Apple silicon macOS host linked from experimental/app with the signed web bundle embedded. The release workflow ad-hoc signs it; it is not notarized.' >> "$GITHUB_STEP_SUMMARY"
-      - name: Upload the tested executable for the app bundle
+      - name: Upload the executable for the app bundle
         if: inputs.tag != ''
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
