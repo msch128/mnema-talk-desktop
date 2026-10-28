@@ -13,7 +13,7 @@ use crate::{
     instances::{Phase, id_for, instance_label},
     web_client::Trusted,
     web_shell,
-    web_vault::{Os, Vault},
+    web_vault::{Os, Save, Vault},
 };
 use std::{
     sync::{
@@ -395,7 +395,14 @@ async fn sockets(app: &tauri::AppHandle, trusted: &Trusted, a: &str, b: &str) {
 async fn removal(app: &tauri::AppHandle, trusted: &Trusted, a: &str, b: &str, second: &str) {
     let origin_b = Url::parse(&format!("{second}/")).unwrap();
     let stored = trusted.jar_file(&origin_b);
-    let had_session = Os.load(b).found().is_some() || stored.as_ref().is_some_and(|f| f.exists());
+    // A keychain that exists but refuses (a locked one on a headless runner)
+    // keeps the session in memory on purpose: it never goes to a file.
+    let probe = format!("{b}-probe");
+    let refused = Os.save(&probe, b"probe") == Save::Refused;
+    Os.remove(&probe);
+    let had_session = Os.load(b).found().is_some()
+        || stored.as_ref().is_some_and(|f| f.exists())
+        || refused;
     check(
         "B's session is stored",
         had_session,
