@@ -1,0 +1,29 @@
+experimental/app/Cargo.toml
+  s_06fcde5dbef956::t_2806b95127b05e 61
+experimental/app/src/web_notify/mac.rs
+  s_06fcde5dbef956::t_6e28e2ad898159 8-10,18,30-32,122-160,259-262,295-296,328-334
+experimental/app/src/web_notify/mod.rs
+  s_06fcde5dbef956::t_b29894aba99559 60-66,70,73-108,112,132-139,141-168,173-175,257-260,269-275,277-292,295-323,332-337,343,383,424-427,429-434,460-470,475-480,482,485-488,490-549
+experimental/app/src/web_notify/other.rs
+  s_06fcde5dbef956::t_eab1955f7de503 26
+experimental/app/src/web_notify/win.rs
+  s_06fcde5dbef956::t_35cac9a2c2114c 117-123
+experimental/app/src/web_shell.rs
+  s_06fcde5dbef956::t_164aff220c6a4b 1289
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d31bff5f8573f9a4af9bd9bbdcc47ba423eb89e0",
+  "prompts": {},
+  "sessions": {
+    "s_06fcde5dbef956": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "94b73314-95fe-4e96-8c43-d20b0f28358d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}
