@@ -69,8 +69,8 @@ mandatory ciphersuites (`join`, `book_code`, ...) passes unchanged.
 
 `cargo audit` cannot scope to a target, so the Linux-only crates showed up as
 warnings forever. The check is now `cargo deny check advisories` with
-`deny.toml`, whose graph is the Windows target (the only platform shipped while
-macOS and Linux are paused). Every advisory (vulnerability, unmaintained,
+`deny.toml`, whose graph is the Windows target. The published Linux client is
+Electron and is not in that graph. Every advisory (vulnerability, unmaintained,
 unsound, yanked) fails the check unless it is in the graph; nothing is ignored
 blanket.
 

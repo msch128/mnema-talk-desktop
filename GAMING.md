@@ -43,7 +43,7 @@ window.
 | System | Source | Looks up |
 | --- | --- | --- |
 | Windows | `SetWinEventHook(EVENT_SYSTEM_FOREGROUND, WINEVENT_OUTOFCONTEXT)` on a dedicated thread with its own message loop (out of context: nothing is loaded into other processes) | `QueryFullProcessImageNameW` on the foreground window's single PID, opened with `PROCESS_QUERY_LIMITED_INFORMATION` |
-| macOS, Linux | none: the macOS and Linux desktop clients are paused, and the gaming integration is Windows only for now. Detection is off and the settings say so. | - |
+| macOS, Linux | none: the gaming integration is Windows only. Detection is off and the settings say so. | - |
 
 The foreground source sits behind the `ForegroundSource` trait
 (`src/foreground.rs`) with a fake for tests. The operating-system code is in
@@ -128,7 +128,7 @@ loop.
 | System | Source | Notes |
 | --- | --- | --- |
 | Windows | Raw Input (`RegisterRawInputDevices` with `RIDEV_INPUTSINK`, keyboard and mouse) on its own thread with a hidden window | No keyboard hook, no `GetAsyncKeyState`. Works while a game has the focus. A session lock clears all keys, so a key cannot stay stuck down across the lock screen. |
-| macOS, Linux | none | The desktop clients for these systems are paused; the gaming integration is Windows only for now. |
+| macOS, Linux | none | The gaming integration is Windows only. |
 
 What is read: for each change only the key (or the mouse side button 4 or 5)
 and whether it went down or up. Text is never looked at, no key history is kept

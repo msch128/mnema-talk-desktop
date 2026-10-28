@@ -50,10 +50,7 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  # PAUSED: the Linux client is paused for capacity (1.2), only Windows is
-  # built. The job is kept as it was; remove `if: ${{ false }}` to resume it.
   linux-client:
-    if: ${{ false }}
     strategy:
       fail-fast: false
       matrix:

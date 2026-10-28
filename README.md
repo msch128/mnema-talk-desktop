@@ -4,12 +4,10 @@ The desktop client for [Mnema Talk](https://github.com/msch128/mnema-talk), a
 lightweight, self-hosted, single-server Discord alternative. It wraps the same
 Vue web app as the browser, with two additions: it removes server-served
 JavaScript from the trust equation, and it helps you stay in a Talk while you
-play. Windows runs it in a Tauri host. The macOS (Tauri) and Linux (Electron,
-because the WebKitGTK that Tauri uses on Linux has no WebRTC) clients are
-paused for now: no new builds are made, the code is kept.
+play. Windows and macOS run it in a Tauri host. Linux runs it in Electron,
+because the WebKitGTK that Tauri uses on Linux has no WebRTC.
 
-**Status: Beta, unsigned. Windows only for now; the macOS and Linux clients are
-paused.** The
+**Status: Beta, unsigned.** The
 browser app is the primary, fully supported client. This client is Beta: usable
 and maintained, but not signed with a platform certificate, so Windows
 SmartScreen and macOS Gatekeeper warn on first start (steps below), and it has
@@ -75,7 +73,7 @@ There is no external security audit.
   Game detection and push-to-talk are event driven (no polling, no process
   enumeration, no injection, no keyboard hook); [GAMING.md](GAMING.md) is the
   reference, including the anti-cheat safety statement. The gaming integration is Windows
-  only for now; the macOS and Linux desktop clients are paused.
+  only. macOS and Linux ship the client without it.
 
 ## Get it
 
@@ -91,11 +89,7 @@ Windows DEV ZIP attached to
 [mnema-talk releases through v0.7.3](https://github.com/msch128/mnema-talk/releases)
 still loads the server's JavaScript and predates the signed bundle.
 
-### macOS (paused)
-
-> **Paused (1.2).** No new macOS builds are made or published; the section
-> describes the last release that shipped one. The code and the CI job are
-> kept and can be resumed.
+### macOS
 
 Download `Mnema-Desktop-DEV_<version>_aarch64.dmg` from the
 [latest release](https://github.com/msch128/mnema-talk-desktop/releases/latest)
@@ -123,14 +117,7 @@ Because every version is a new ad-hoc signature, macOS may also ask once after
 an update whether the app may use its keychain entry; if you decline, you sign
 in again. There is no gaming overlay on macOS.
 
-### Linux (paused)
-
-> **Paused (1.2).** No new Linux builds are made or published; the section
-> describes the last release that shipped them. The code and the CI job are
-> kept. Resuming the Tauri host on Linux also needs Tauri's move to GTK4 (the
-> GTK3 crates are unmaintained, see
-> [doc/security-review-1.2.md](doc/security-review-1.2.md)); the Electron client
-> does not use them.
+### Linux
 
 Download from the [latest release](https://github.com/msch128/mnema-talk-desktop/releases/latest)
 the file for your machine, x86_64 (also called amd64) or arm64:
@@ -228,9 +215,10 @@ offline backup.
    the tested executable into an NSIS installer, signs it in the protected
    environment, smoke-installs it per user on a Windows runner, checks that
    `latest.json` verifies against the pinned key and publishes the installer,
-   its `.sig` file, `latest.json`, a portable ZIP and `SHA256SUMS`. The macOS
-   and Linux jobs are paused (disabled in the workflow with a comment).
-   The release is public only after everything is attached.
+   its `.sig` file, `latest.json`, a portable ZIP, the macOS disk image and
+   updater archive, the Linux AppImages and `.deb` packages, and `SHA256SUMS`.
+   The release is public only after everything is attached. The Tauri host on
+   Linux is not built.
 
 ### Rotating or revoking the updater key
 
@@ -416,10 +404,9 @@ Distribute the complete `licenses/` directory, this notice file and the root
 receipts explicitly remain ineligible for the updater.
 
 The Rust advisory scan (`cargo deny`, `deny.toml`) is scoped to the Windows
-target, the only platform shipped while macOS and Linux are paused. It reports
-nothing for the Windows graphs apart from one documented exception; the Linux-only
-GTK3 crates (`gtk`, `glib` 0.18, `proc-macro-error`) are not in them. Details,
-the exception and what resuming Linux needs:
+target. The published Linux client is Electron and is not in that graph. The
+Linux-only GTK3 crates (`gtk`, `glib` 0.18, `proc-macro-error`) stay out of it;
+the Tauri host on Linux is not built. Details and the exception:
 [doc/security-review-1.2.md](doc/security-review-1.2.md).
 
 

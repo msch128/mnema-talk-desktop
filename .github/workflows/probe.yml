@@ -76,8 +76,9 @@ jobs:
           "$RUNNER_TEMP/gitleaks" git --no-banner --redact --exit-code 1 --config .gitleaks.toml .
 
   # -- Unsigned development probe; does not qualify gaming or E2EE -----------
-  # PAUSED with the Linux client (1.2): GLib is a Linux-only Tauri dependency
-  # that is not in the Windows build. Remove `if: ${{ false }}` to resume.
+  # The published Linux client is Electron and does not use GLib. This job
+  # checks the Tauri host's Linux GLib backport. That host stays off until
+  # Tauri moves to GTK4. Remove `if: ${{ false }}` only together with that move.
   desktop-glib:
     if: ${{ false }}
     runs-on: ubuntu-latest

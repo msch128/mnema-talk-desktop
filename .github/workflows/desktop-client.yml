@@ -501,10 +501,8 @@ jobs:
   # release the Apple silicon (arm64) executable that desktop-release.yml
   # turns into the app bundle. The macOS build has no gaming overlay (the
   # Windows-only parts are compiled out) and is ad-hoc signed, not notarized.
-  # PAUSED: the macOS client is paused for capacity (1.2), only Windows is built.
-  # The job is kept as it was; remove `false &&` to resume it.
   macos-client:
-    if: ${{ false && inputs.acceptance_release == '' }}
+    if: ${{ inputs.acceptance_release == '' }}
     runs-on: macos-15
     timeout-minutes: 60
     outputs:

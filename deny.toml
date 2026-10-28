@@ -2,12 +2,12 @@
 # doc/security-review-1.2.md). Run per manifest:
 #   cargo deny --manifest-path <dir>/Cargo.toml check advisories
 #
-# The graph is scoped to the Windows target, the only platform shipped while the
-# macOS and Linux clients are paused. That is what keeps the Linux-only GTK3
+# The graph is scoped to the Windows target. The published Linux client is
+# Electron and does not use these crates. That is what keeps the Linux-only GTK3
 # crates (gtk, glib 0.18, proc-macro-error) out of the check: they are not in
 # the Windows build (`cargo tree -i gtk --target x86_64-pc-windows-msvc` finds
-# nothing), so no advisory about them is ignored. Resuming Linux for the Tauri
-# host means adding the Linux target here AND moving to Tauri's GTK4 stack.
+# nothing), so no advisory about them is ignored. Building the Tauri host on
+# Linux means adding the Linux target here AND moving to Tauri's GTK4 stack.
 [graph]
 targets = ["x86_64-pc-windows-msvc"]
 all-features = true
