@@ -1,0 +1,14 @@
+scripts/test-windows-notify.ps1
+  h_0ff4f4713441f4 155-160
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5a7081c180005c02d9d97667173385d2a1fbcdb6",
+  "prompts": {},
+  "humans": {
+    "h_0ff4f4713441f4": {
+      "author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}
