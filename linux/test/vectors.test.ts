@@ -14,6 +14,7 @@ import { Jar } from '../src/core/cookies.ts'
 import { verifyPackage } from '../src/core/minisign.ts'
 import { Limits, clampRange, inlineSafe, mimeFor, serveBundle, target } from '../src/core/proxy.ts'
 import { Store } from '../src/core/store.ts'
+import { bundleAsset } from '../src/core/updates.ts'
 import { type Statement, TrustState, chooseUpdaterKey, minisignKeyId, parseUtc, rootKey, signatureKeyId, statementBundleKeys, statementCaps, verifyStatement } from '../src/core/trust.ts'
 import { formatVersion, parseVersion } from '../src/core/version.ts'
 import { sha256 } from './helpers/fixtures.ts'
@@ -22,11 +23,8 @@ type Json = any // eslint-disable-line @typescript-eslint/no-explicit-any -- vec
 const load = (name: string): Json => JSON.parse(readFileSync(new URL(`../../test-vectors/${name}.json`, import.meta.url), 'utf8'))
 const keys = (hexes: string[]): TrustedKey[] => hexes.map((h) => parseKey(h) as TrustedKey)
 
-test('bundle vectors: versions, paths and verification', () => {
-  const v = load('bundle')
-  for (const c of v.versions) assert.deepEqual(parseVersion(c.input), c.parsed, JSON.stringify(c.input))
-  for (const c of v.paths) assert.equal(validPath(c.path), c.valid, JSON.stringify(c.path))
-  for (const c of v.bundles) {
+function checkBundles(cases: Json[]): void {
+  for (const c of cases) {
     let result: Json
     try {
       const b = verifyBundle(Buffer.from(c.zip, 'base64'), keys(c.trusted))
@@ -38,6 +36,54 @@ test('bundle vectors: versions, paths and verification', () => {
     }
     assert.deepEqual(result, c.result, c.name)
   }
+}
+
+test('bundle vectors: versions, paths and verification', () => {
+  const v = load('bundle')
+  for (const c of v.versions) assert.deepEqual(parseVersion(c.input), c.parsed, JSON.stringify(c.input))
+  for (const c of v.paths) assert.equal(validPath(c.path), c.valid, JSON.stringify(c.path))
+  checkBundles(v.bundles)
+})
+
+test('zip vectors: structures that both clients must refuse alike', () => {
+  const v = load('zip')
+  checkBundles(v.bundles)
+  const open = v.bundles.filter((c: Json) => c.result.ok).map((c: Json) => c.name)
+  assert.deepEqual(open, ['a plain stored bundle', 'an entry that announces a data descriptor', 'an entry with a regular file mode', 'a link mode written by a system that does not use modes'])
+})
+
+test('json vectors: byte order marks, repeated keys, unknown fields, wrong types and trailing data', () => {
+  const v = load('json')
+  checkBundles(v.bundles)
+  const root = rootKey(v.root)
+  for (const c of v.statements) {
+    let verify: Json
+    try {
+      const st = verifyStatement(Buffer.from(c.doc, 'base64'), Buffer.from(c.sig), root)
+      verify = { ok: { serial: st.serial, bundle_keys: statementBundleKeys(st).map((k) => k.id), caps: Object.fromEntries([...statementCaps(st)].map(([k, n]) => [String(k), formatVersion(n)])) } }
+    } catch (e) {
+      verify = { error: (e as Error).message }
+    }
+    assert.deepEqual(verify, c.verify, c.name)
+  }
+  for (const c of v.healths) {
+    let result: Json
+    try {
+      const info = parseHealth(Buffer.from(c.input, 'base64'))
+      result = { ok: { version: info.version === null ? null : formatVersion(info.version), api: info.webClientApi } }
+    } catch (e) {
+      result = { error: (e as Error).message }
+    }
+    assert.deepEqual(result, c.result, c.name)
+  }
+  for (const c of v.releases) {
+    const found = bundleAsset(Buffer.from(c.input, 'base64'))
+    assert.deepEqual(found === null ? null : { version: formatVersion(found.version), url: found.url.href }, c.result, c.name)
+  }
+  // Each list opens its plain documents and refuses everything else listed as a fault.
+  const opened = (list: Json[], ok: (c: Json) => boolean) => list.filter(ok).map((c) => c.name)
+  assert.deepEqual(opened(v.statements, (c) => c.verify.ok), ['a plain document', 'spaces and newlines around the document', 'an escaped key'])
+  assert.deepEqual(opened(v.healths, (c) => c.result.ok), ['a plain document', 'spaces and newlines around the document', 'an unknown field', 'an escaped value', 'an unknown field nested 100 deep', 'an unknown field nested 120 deep', 'an unknown field nested 125 deep', 'an unknown field nested 126 deep'])
 })
 
 test('store vectors: selection, rollback marks, revocation and caps', () => {

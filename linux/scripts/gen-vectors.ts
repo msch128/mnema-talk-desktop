@@ -21,10 +21,11 @@ import { Limits, clampRange, inlineSafe, mimeFor, serveBundle, target } from '..
 import { Store } from '../src/core/store.ts'
 import { chooseUpdaterKey, minisignKeyId, parseUtc, signatureKeyId, TrustState, rootKey, statementBundleKeys, statementCaps, verifyStatement } from '../src/core/trust.ts'
 import { verifyPackage } from '../src/core/minisign.ts'
+import { bundleAsset } from '../src/core/updates.ts'
 import { formatVersion, parseVersion } from '../src/core/version.ts'
 import {
-  bundle, entries, entry, minisignKey, minisignSignature, resigned, sha256, signText, spec, statementText, testKey, trusted, zipEntries, zipOf,
-  type Entry, type Spec, type StatementSpec,
+  bundle, entries, entry, minisignKey, minisignSignature, resigned, sha256, manifestOf, signText, signWith, spec, statementText, testKey, trusted, zipEntries, zipOf,
+  type Entry, type Spec, type StatementSpec, type ZipItem,
 } from '../test/helpers/fixtures.ts'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'test-vectors')
@@ -35,6 +36,25 @@ const keysOf = (...seeds: number[]) => seeds.map(hex)
 type Json = Record<string, unknown>
 
 // ------------------------------------------------------------------ bundle
+
+/** What `verifyBundle` answers for one zip: the fields of a good bundle or the refusal. */
+function outcome(name: string, keys: string[], zip: Buffer): { name: string, trusted: string[], zip: string, result: Json } {
+  let result: Json
+  try {
+    const b = verifyBundle(zip, trusted(...keys.map((k) => [7, 5, 8].find((s) => hex(s) === k) as number)))
+    const paths = ['index.html', 'assets/app-1.js', '\u00fcn\u00ef/x.js'].filter((p) => b.file(p) !== undefined)
+    result = {
+      ok: {
+        version: formatVersion(b.version), web_client_api: b.webClientApi, min_server_version: formatVersion(b.minServerVersion),
+        security_floor: formatVersion(b.securityFloor), key_id: b.keyId, commit: b.commit,
+        files: Object.fromEntries(paths.map((p) => [p, sha256(b.file(p) as Uint8Array)])),
+      },
+    }
+  } catch (error) {
+    result = { error: (error as Error).message }
+  }
+  return { name, trusted: keys, zip: b64(zip), result }
+}
 
 function bundleVectors(): Json {
   const versions = ['0.7.16', '0.0.0', '1.2.3', '123456789.0.0', '', '1', '1.2', '1.2.3.4', 'v1.2.3', '01.2.3', '1.2.x', '1..3', '1.2.3-rc1', '-1.0.0', '99999999999.0.0', '+1.0.0', '1.2.3 ', ' 1.2.3']
@@ -107,24 +127,315 @@ function bundleVectors(): Json {
   ]
   for (const [name, change, s] of resignedCases) cases.push({ name, trusted: keysOf(7), zip: resigned(change, s) })
 
-  const out = cases.map(({ name, trusted: keys, zip }) => {
+  const out = cases.map(({ name, trusted: keys, zip }) => outcome(name, keys, zip))
+  return { versions, paths, bundles: out }
+}
+
+// --------------------------------------------------------------------- zip
+
+/** Offsets of the central directory records of a zip built by `zipOf`, by entry name. */
+function central(zip: Buffer): Map<string, number> {
+  const eocd = zip.length - 22
+  const out = new Map<string, number>()
+  let at = zip.readUInt32LE(eocd + 16)
+  for (let i = 0; i < zip.readUInt16LE(eocd + 10); i++) {
+    const length = zip.readUInt16LE(at + 28)
+    out.set(zip.subarray(at + 46, at + 46 + length).toString(), at)
+    at += 46 + length + zip.readUInt16LE(at + 30) + zip.readUInt16LE(at + 32)
+  }
+  return out
+}
+
+/** A copy of a zip built by `zipOf` with its records changed in place; `find` gives the offsets of an entry. */
+function patched(zip: Buffer, change: (copy: Buffer, find: (name: string) => { central: number, local: number }) => void): Buffer {
+  const copy = Buffer.from(zip)
+  const at = central(zip)
+  change(copy, (name) => {
+    const record = at.get(name) as number
+    return { central: record, local: zip.readUInt32LE(record + 42) }
+  })
+  return copy
+}
+
+/** A bundle whose entries are changed and whose manifest is signed again to list them. */
+function resignedEntries(change: (list: Entry[], manifest: { files: { path: string, sha256: string, size: number }[] }) => void): Buffer {
+  const list = entries(spec('0.8.0'))
+  const manifest = JSON.parse(entry(list, 'manifest.json').body.toString()) as { files: { path: string, sha256: string, size: number }[] }
+  change(list, manifest)
+  const raw = Buffer.from(JSON.stringify(manifest))
+  entry(list, 'manifest.json').body = raw
+  entry(list, 'manifest.sig').body = Buffer.from(signWith(testKey(7), raw).toString('base64'))
+  return zipEntries(list)
+}
+
+/**
+ * Hostile zip shapes around a bundle that is otherwise correctly signed. Both
+ * clients must refuse every one of them with the same message; the first
+ * bundle is the control and must open.
+ */
+function zipVectors(): Json {
+  const base = spec('0.8.0')
+  const good = bundle(base)
+  const index = 'app/index.html'
+  const items = (extra: (e: Entry) => Partial<ZipItem>) => zipOf(entries(base).map((e) => ({ name: e.name, body: e.body, ...extra(e) })))
+  const mode = (kind: number, madeBy = 0x0314) => patched(good, (z, f) => { const e = f(index).central; z.writeUInt16LE(madeBy, e + 4); z.writeUInt32LE(kind * 0x10000, e + 38) })
+  const flag = (bit: number) => patched(good, (z, f) => { const e = f(index); z.writeUInt16LE(z.readUInt16LE(e.central + 8) | bit, e.central + 8); z.writeUInt16LE(z.readUInt16LE(e.local + 6) | bit, e.local + 6) })
+  const eocd = good.subarray(good.length - 22)
+  const withZip64Records = (() => {
+    const record = Buffer.alloc(56)
+    record.writeUInt32LE(0x06064b50, 0)
+    record.writeBigUInt64LE(44n, 4)
+    record.writeUInt16LE(45, 12)
+    record.writeUInt16LE(45, 14)
+    record.writeBigUInt64LE(BigInt(eocd.readUInt16LE(10)), 24)
+    record.writeBigUInt64LE(BigInt(eocd.readUInt16LE(10)), 32)
+    record.writeBigUInt64LE(BigInt(eocd.readUInt32LE(12)), 40)
+    record.writeBigUInt64LE(BigInt(eocd.readUInt32LE(16)), 48)
+    const locator = Buffer.alloc(20)
+    locator.writeUInt32LE(0x07064b50, 0)
+    locator.writeBigUInt64LE(BigInt(good.length - 22), 8)
+    locator.writeUInt32LE(1, 16)
+    return Buffer.concat([good.subarray(0, good.length - 22), record, locator, eocd])
+  })()
+  const shifted = (() => {
+    const junk = Buffer.from('JUNKJUNK')
+    const z = Buffer.concat([junk, good])
+    const end = z.length - 22
+    let at = z.readUInt32LE(end + 16) + junk.length
+    for (let i = 0; i < z.readUInt16LE(end + 10); i++) {
+      z.writeUInt32LE(z.readUInt32LE(at + 42) + junk.length, at + 42)
+      at += 46 + z.readUInt16LE(at + 28) + z.readUInt16LE(at + 30) + z.readUInt16LE(at + 32)
+    }
+    z.writeUInt32LE(z.readUInt32LE(end + 16) + junk.length, end + 16)
+    return z
+  })()
+  const cases: { name: string, zip: Buffer }[] = [
+    { name: 'a plain stored bundle', zip: good },
+    { name: 'an entry that announces a data descriptor', zip: flag(8) },
+    { name: 'a zip comment', zip: (() => { const z = Buffer.concat([good, Buffer.from('note')]); z.writeUInt16LE(4, good.length - 2); return z })() },
+    { name: 'an entry marked encrypted', zip: flag(1) },
+    { name: 'an entry with strong encryption', zip: flag(0x40) },
+    { name: 'an entry with a compression method of its own', zip: patched(good, (z, f) => { const e = f(index); z.writeUInt16LE(99, e.central + 10); z.writeUInt16LE(99, e.local + 8) }) },
+    { name: 'a zip64 end record with 65535 entries', zip: patched(good, (z) => { z.writeUInt16LE(0xffff, z.length - 14); z.writeUInt16LE(0xffff, z.length - 12) }) },
+    { name: 'a zip64 directory offset', zip: patched(good, (z) => { z.writeUInt32LE(0xffffffff, z.length - 6) }) },
+    { name: 'a zip64 entry size', zip: patched(good, (z, f) => { z.writeUInt32LE(0xffffffff, f(index).central + 24) }) },
+    { name: 'a zip64 compressed size', zip: patched(good, (z, f) => { z.writeUInt32LE(0xffffffff, f(index).central + 20) }) },
+    { name: 'a zip64 header offset', zip: patched(good, (z, f) => { z.writeUInt32LE(0xffffffff, f(index).central + 42) }) },
+    { name: 'a zip64 end record and locator in front of the end record', zip: withZip64Records },
+    { name: 'an entry that declares a size smaller than it holds', zip: items((e) => ({ declaredSize: e.name === index ? e.body.length - 1 : undefined })) },
+    { name: 'an entry that declares a size larger than it holds', zip: items((e) => ({ declaredSize: e.name === index ? e.body.length + 1 : undefined })) },
+    { name: 'an entry that declares a huge size', zip: items((e) => ({ declaredSize: e.name === index ? 0x7fffffff : undefined })) },
+    { name: 'a manifest that declares a size smaller than it holds', zip: items((e) => ({ declaredSize: e.name === 'manifest.json' ? 10 : undefined })) },
+    { name: 'a deflated entry that declares a size smaller than it inflates to', zip: items((e) => ({ method: 8 as const, declaredSize: e.name === index ? 3 : undefined })) },
+    { name: 'an entry with a wrong checksum', zip: items((e) => ({ crc: e.name === index ? 1 : undefined })) },
+    { name: 'a local header that is not one', zip: patched(good, (z, f) => { z.writeUInt32LE(0, f(index).local) }) },
+    { name: 'bytes in front of the archive', zip: Buffer.concat([Buffer.from('MZ junk before the zip'), good]) },
+    { name: 'bytes in front of the archive, offsets shifted to match', zip: shifted },
+    { name: 'bytes after the end record', zip: Buffer.concat([good, Buffer.from('trailing')]) },
+    { name: 'the same name twice', zip: zipEntries([...entries(base), { name: index, body: Buffer.from('<html>app</html>') }]) },
+    { name: 'the manifest twice', zip: zipEntries([...entries(base), entries(base)[0] as Entry]) },
+    { name: 'a name that differs only in case', zip: zipEntries([...entries(base), { name: 'app/INDEX.html', body: Buffer.from('<html>app</html>') }]) },
+    { name: 'the manifest under another case', zip: zipEntries(entries(base).map((e) => (e.name === 'manifest.json' ? { ...e, name: 'Manifest.json' } : e))) },
+    {
+      name: 'a signed manifest that lists two paths that differ only in case',
+      zip: resignedEntries((list, m) => {
+        list.push({ name: 'app/INDEX.html', body: Buffer.from('<html>app</html>') })
+        m.files.push({ path: 'INDEX.html', sha256: sha256('<html>app</html>'), size: 16 })
+      }),
+    },
+    { name: 'an entry that climbs out of the folder', zip: zipEntries([...entries(base), { name: 'app/../evil.js', body: Buffer.from('x') }]) },
+    { name: 'an entry that starts with a slash', zip: zipEntries(entries(base).map((e) => (e.name === index ? { ...e, name: '/app/index.html' } : e))) },
+    { name: 'an entry with a backslash', zip: zipEntries(entries(base).map((e) => (e.name === index ? { ...e, name: 'app\\index.html' } : e))) },
+    { name: 'an entry with a drive letter', zip: zipEntries([...entries(base), { name: 'C:/evil.js', body: Buffer.from('x') }]) },
+    {
+      name: 'a signed manifest whose path climbs out of the folder',
+      zip: resignedEntries((list, m) => {
+        list.push({ name: 'app/../evil.js', body: Buffer.from('x') })
+        m.files.push({ path: '../evil.js', sha256: sha256('x'), size: 1 })
+      }),
+    },
+    { name: 'an entry that is a symbolic link', zip: mode(0o120777) },
+    { name: 'an entry that is a directory', zip: mode(0o040755) },
+    { name: 'an entry that is a device', zip: mode(0o060644) },
+    { name: 'an entry with a regular file mode', zip: mode(0o100644) },
+    { name: 'a link mode written by a system that does not use modes', zip: mode(0o120777, 0x0014) },
+    { name: 'an entry named by a name that is not UTF-8', zip: Buffer.from(good.toString('latin1').replaceAll('app/index.html', 'app/ind\xe9x.html'), 'latin1') },
+  ]
+  return { bundles: cases.map(({ name, zip }) => outcome(name, keysOf(7), zip)) }
+}
+
+// -------------------------------------------------------------------- json
+
+/**
+ * The same document shapes fed to the four JSON readers of both clients (bundle
+ * manifest, trust statement, health, release feed): a byte order mark, a
+ * repeated key, an unknown field, a wrong type, data after the document. The
+ * documents are kept as exact bytes (base64), since a BOM or a trailing NUL is
+ * not something a JSON string can carry. The first case of each list is the
+ * control and must be accepted.
+ */
+function jsonVectors(): Json {
+  const bom = Buffer.from([0xef, 0xbb, 0xbf])
+  const text = (s: string) => Buffer.from(s)
+  const variants = (doc: string, fields: { dup: string, unknown: string }): [string, Buffer][] => [
+    ['a plain document', text(doc)],
+    ['spaces and newlines around the document', text(`\n \t${doc}\r\n `)],
+    ['a byte order mark', Buffer.concat([bom, text(doc)])],
+    ['a repeated key', text(doc.replace('{', `{${fields.dup},`))],
+    ['an unknown field', text(doc.replace('{', `{${fields.unknown},`))],
+    ['a second document', text(`${doc}${doc}`)],
+    ['a character after the document', text(`${doc}x`)],
+    ['a null byte after the document', Buffer.concat([text(doc), Buffer.alloc(1)])],
+    ['a comma after the document', text(`${doc},`)],
+    ['a trailing comma inside', text(doc.replace(/\}$/, ',}'))],
+    ['single quotes', text(doc.replaceAll('"', "'"))],
+    ['a comment', text(`/*x*/${doc}`)],
+    ['a document that is not UTF-8', Buffer.concat([text(doc.slice(0, -1)), Buffer.from([0xff]), text('}')])],
+    ['an empty input', Buffer.alloc(0)],
+    ['a bare string', text('"x"')],
+    ['null', text('null')],
+    ['an array', text('[]')],
+  ]
+
+  // Manifests: signed bundles whose manifest bytes are exact.
+  const base = spec('0.8.0')
+  const manifest = JSON.stringify(manifestOf(base))
+  const withManifest = (raw: Buffer): Buffer => {
+    const list = entries(base)
+    entry(list, 'manifest.json').body = raw
+    entry(list, 'manifest.sig').body = Buffer.from(signWith(testKey(7), raw).toString('base64'))
+    return zipEntries(list)
+  }
+  const edited = (change: (m: Record<string, unknown>) => void): Buffer => {
+    const m = manifestOf(base)
+    change(m)
+    return text(JSON.stringify(m))
+  }
+  const typed = (key: string, value: unknown): [string, Buffer] => [`${key} as ${JSON.stringify(value)}`, edited((m) => { m[key] = value })]
+  const fileField = (key: string, value: unknown): [string, Buffer] => [`a file ${key} as ${JSON.stringify(value)}`, edited((m) => { (m.files as Record<string, unknown>[])[0] = { ...(m.files as Record<string, unknown>[])[0], [key]: value } })]
+  const raw = (s: string): Buffer => text(manifest.replace(/"schema":1/, s))
+  const manifests: [string, Buffer][] = [
+    ...variants(manifest, { dup: '"schema":1', unknown: '"surprise":1' }),
+    ['a repeated key inside a file', text(manifest.replace('{"path"', '{"path":"x","path"'))],
+    ['an unknown field inside a file', text(manifest.replace('{"path"', '{"extra":1,"path"'))],
+    ['a repeated key with another value', raw('"schema":2,"schema":1')],
+    typed('schema', '1'), typed('schema', true), typed('schema', null), typed('schema', 1.5), typed('schema', [1]),
+    ['schema as 1.0', raw('"schema":1.0')], ['schema as 1e0', raw('"schema":1e0')], ['schema as 01', raw('"schema":01')], ['schema as +1', raw('"schema":+1')], ['schema as 1 with a space inside a number', raw('"schema":1 ')],
+    ['schema above u32', raw('"schema":4294967297')], ['schema negative', raw('"schema":-1')],
+    typed('name', 5), typed('name', null), typed('version', 8), typed('commit', null), typed('key_id', 7),
+    typed('web_client_api', '1'), typed('web_client_api', 1.0), typed('web_client_api', 1.5),
+    typed('files', {}), typed('files', 'x'), typed('files', null),
+    fileField('size', '16'), fileField('size', 16.5), fileField('size', -1), fileField('size', null), fileField('size', true), fileField('path', 5), fileField('sha256', null),
+    ['a file as a string', edited((m) => { (m.files as unknown[])[0] = 'index.html' })],
+    ['a file as an array', edited((m) => { (m.files as unknown[])[0] = ['index.html', 'x', 1] })],
+    ['the manifest as an array of its values', text(JSON.stringify(Object.values(manifestOf(base))))],
+    ['a file as an array of its values', edited((m) => { (m.files as unknown[])[0] = Object.values((m.files as Record<string, unknown>[])[0] as Record<string, unknown>) })],
+    ['an escaped key', text(manifest.replace('"schema"', '"sch\\u0065ma"'))],
+    ['a repeated key written two ways', text(manifest.replace('{', '{"sch\\u0065ma":1,'))],
+    ['an escaped value', text(manifest.replace('"mnema-web"', '"mnema\\u002dweb"'))],
+    ['a lone surrogate', text(manifest.replace('"test"', '"\\ud800"'))],
+    ['a control character in a string', Buffer.from(manifest.replace('"test"', '"te\u0001st"'))],
+    ['a tab character in a string', Buffer.from(manifest.replace('"test"', '"te\tst"'))],
+    ['a deeply nested unknown value', text(manifest.replace('{', `{"surprise":${'['.repeat(300)}${']'.repeat(300)},`))],
+    ['NaN', raw('"schema":NaN')], ['a number with a leading dot', raw('"schema":.5')],
+  ]
+
+  // Trust statements: signed by the root key over the exact bytes.
+  const stmt = statementText({ serial: 1, issued_at: '2026-10-17T10:00:00Z', expires_at: '2027-01-15T10:00:00Z', bundle_keys: [hex(1)] })
+  const rootSeed = 9
+  const root = rootKey(hex(rootSeed))
+  const stmtEdit = (change: (o: Record<string, unknown>) => void): Buffer => {
+    const o = JSON.parse(stmt) as Record<string, unknown>
+    change(o)
+    return text(JSON.stringify(o))
+  }
+  const stmtRaw = (find: string, replace: string): Buffer => text(stmt.replace(find, replace))
+  const statementInputs: [string, Buffer][] = [
+    ...variants(stmt, { dup: '"serial":1', unknown: '"surprise":1' }),
+    ['a repeated key with another value', stmtRaw('"serial":1', '"serial":0,"serial":1')],
+    ['serial as 1.0', stmtRaw('"serial":1', '"serial":1.0')], ['serial as 1e0', stmtRaw('"serial":1', '"serial":1e0')],
+    ['serial as a string', stmtEdit((o) => { o.serial = '1' })], ['serial null', stmtEdit((o) => { o.serial = null })], ['serial negative', stmtEdit((o) => { o.serial = -1 })],
+    ['schema as a string', stmtEdit((o) => { o.schema = '1' })],
+    ['issued_at as a number', stmtEdit((o) => { o.issued_at = 1 })], ['expires_at null', stmtEdit((o) => { o.expires_at = null })],
+    ['bundle_keys as a string', stmtEdit((o) => { o.bundle_keys = hex(1) })], ['bundle_keys with a number', stmtEdit((o) => { o.bundle_keys = [1] })],
+    ['revoked_bundle_keys null', stmtEdit((o) => { o.revoked_bundle_keys = null })],
+    ['updater_keys as an object', stmtEdit((o) => { o.updater_keys = {} })],
+    ['a missing field', stmtEdit((o) => { delete o.revoked_updater_keys })],
+    ['max_version as an array', stmtEdit((o) => { o.max_version = [] })],
+    ['max_version with a number', stmtEdit((o) => { o.max_version = { 1: 9 } })],
+    ['max_version repeated api', stmtRaw('"updater_keys"', '"max_version":{"1":"0.9.0","1":"0.8.0"},"updater_keys"')],
+    ['max_version twice', stmtRaw('"updater_keys"', '"max_version":{"1":"0.9.0"},"max_version":{"1":"0.8.0"},"updater_keys"')],
+    ['the statement as an array of its values', text(JSON.stringify(Object.values(JSON.parse(stmt))))],
+    ['an escaped key', stmtRaw('"serial"', '"ser\\u0069al"')],
+  ]
+  const statements = statementInputs.map(([name, doc]) => {
+    const sig = signWith(testKey(rootSeed), doc).toString('base64')
+    let verify: Json
+    try {
+      const st = verifyStatement(doc, Buffer.from(sig), root)
+      verify = { ok: { serial: st.serial, bundle_keys: statementBundleKeys(st).map((k) => k.id), caps: Object.fromEntries([...statementCaps(st)].map(([k, v]) => [String(k), formatVersion(v)])) } }
+    } catch (error) {
+      verify = { error: (error as Error).message }
+    }
+    return { name, doc: b64(doc), sig, verify }
+  })
+
+  // Health documents.
+  const health = '{"status":"ok","version":"0.7.17","web_client_api":1}'
+  const healthInputs: [string, Buffer][] = [
+    ...variants(health, { dup: '"status":"down"', unknown: '"surprise":[1,{"a":null}]' }),
+    ['a repeated key with another value', text(health.replace('"status":"ok"', '"status":"down","status":"ok"'))],
+    ['web_client_api as 1.0', text(health.replace(':1}', ':1.0}'))], ['web_client_api as 1e0', text(health.replace(':1}', ':1e0}'))],
+    ['web_client_api above u32', text(health.replace(':1}', ':4294967296}'))], ['web_client_api as a string', text(health.replace(':1}', ':"1"}'))],
+    ['web_client_api null', text(health.replace(':1}', ':null}'))], ['status as a number', text(health.replace('"ok"', '1'))],
+    ['version as a number', text(health.replace('"0.7.17"', '17'))], ['version null', text(health.replace('"0.7.17"', 'null'))],
+    ['an escaped value', text(health.replace('"ok"', '"o\\u006b"'))],
+    ['the document as an array of its values', text(JSON.stringify(Object.values(JSON.parse(health))))],
+    ['a repeated key inside an unknown field', text(health.replace('{', '{"surprise":{"a":1,"a":2},'))],
+    ['a repeated key inside an unknown array', text(health.replace('{', '{"surprise":[{"a":1,"a":2}],'))],
+    ...[100, 120, 125, 126, 127, 128, 129, 200].map((depth): [string, Buffer] => [`an unknown field nested ${depth} deep`, text(health.replace('{', `{"surprise":${'['.repeat(depth)}${']'.repeat(depth)},`))]),
+  ]
+  const healths = healthInputs.map(([name, bytes]) => {
     let result: Json
     try {
-      const b = verifyBundle(zip, trusted(...keys.map((k) => [7, 5, 8].find((s) => hex(s) === k) as number)))
-      const paths = ['index.html', 'assets/app-1.js', '\u00fcn\u00ef/x.js'].filter((p) => b.file(p) !== undefined)
-      result = {
-        ok: {
-          version: formatVersion(b.version), web_client_api: b.webClientApi, min_server_version: formatVersion(b.minServerVersion),
-          security_floor: formatVersion(b.securityFloor), key_id: b.keyId, commit: b.commit,
-          files: Object.fromEntries(paths.map((p) => [p, sha256(b.file(p) as Uint8Array)])),
-        },
-      }
+      const info = parseHealth(bytes)
+      result = { ok: { version: info.version === null ? null : formatVersion(info.version), api: info.webClientApi } }
     } catch (error) {
       result = { error: (error as Error).message }
     }
-    return { name, trusted: keys, zip: b64(zip), result }
+    return { name, input: b64(bytes), result }
   })
-  return { versions, paths, bundles: out }
+
+  // Release feeds.
+  const url = 'https://github.com/msch128/mnema-talk/releases/download/v0.8.1/mnema-web-0.8.1.zip'
+  const release = `{"tag_name":"v0.8.1","assets":[{"name":"mnema-web-0.8.1.zip","browser_download_url":"${url}","size":1000}]}`
+  const releaseInputs: [string, Buffer][] = [
+    ...variants(release, { dup: '"tag_name":"v9.9.9"', unknown: '"draft":false' }),
+    ['a repeated key with another value', text(release.replace('"tag_name":"v0.8.1"', '"tag_name":"v9.9.9","tag_name":"v0.8.1"'))],
+    ['an unknown field in an asset', text(release.replace('{"name"', '{"id":7,"name"'))],
+    ['a repeated key in an asset', text(release.replace('{"name"', '{"name":"x","name"'))],
+    ['a size as 1000.0', text(release.replace('1000}', '1000.0}'))], ['a size as 1e3', text(release.replace('1000}', '1e3}'))],
+    ['a size as a string', text(release.replace('1000}', '"1000"}'))], ['a size negative', text(release.replace('1000}', '-1}'))], ['a size null', text(release.replace('1000}', 'null}'))],
+    ['no size', text(release.replace(',"size":1000', ''))],
+    ['tag_name as a number', text(release.replace('"v0.8.1"', '8'))], ['tag_name null', text(release.replace('"v0.8.1"', 'null'))],
+    ['assets null', text(release.replace(/"assets":\[.*\]/, '"assets":null'))], ['assets as an object', text(release.replace(/"assets":\[.*\]/, '"assets":{}'))],
+    ['no assets', text('{"tag_name":"v0.8.1"}')],
+    ['an asset as a string', text(release.replace(/\{"name".*\}\]/, '"x"]'))],
+    ['another asset that is malformed', text(release.replace('"assets":[', '"assets":[{"name":5},'))],
+    ['another asset that is fine', text(release.replace('"assets":[', '"assets":[{"name":"other","browser_download_url":"https://x.example/o","size":1},'))],
+    ['an escaped value', text(release.replace('"v0.8.1"', '"v0.8.\\u0031"'))],
+    ['the document as an array of its values', text(JSON.stringify(Object.values(JSON.parse(release))))],
+    ['an asset as an array of its values', text(release.replace(/\{"name".*\}\]/, '["mnema-web-0.8.1.zip","' + url + '",1000]]'))],
+    ['a repeated key inside an unknown field', text(release.replace('{', '{"surprise":{"a":1,"a":2},'))],
+    ['a repeated key inside an unknown field of an asset', text(release.replace('{"name"', '{"surprise":[{"a":1,"a":2}],"name"'))],
+  ]
+  const releases = releaseInputs.map(([name, bytes]) => {
+    const found = bundleAsset(bytes)
+    return { name, input: b64(bytes), result: found === null ? null : { version: formatVersion(found.version), url: found.url.href } }
+  })
+
+  const bundles = manifests.map(([name, raw]) => outcome(name, keysOf(7), withManifest(raw)))
+  return { root: hex(rootSeed), bundles, statements, healths, releases }
 }
 
 // ------------------------------------------------------------------- store
@@ -590,6 +901,8 @@ function minisignVectors(): Json {
 
 const files: Record<string, Json> = {
   'bundle.json': bundleVectors(),
+  'zip.json': zipVectors(),
+  'json.json': jsonVectors(),
   'store.json': storeVectors(),
   'trust.json': trustVectors(),
   'proxy.json': proxyVectors(),

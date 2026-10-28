@@ -211,13 +211,15 @@ function checkManifest(m: Manifest, signer: string): { version: Version, min: Ve
   const seen = new Set<string>()
   let total = 0
   for (const file of m.files) {
-    if (!validPath(file.path) || seen.has(file.path)) fail(`invalid or duplicate path ${file.path}`)
-    seen.add(file.path)
+    // Two paths that differ only in case would collide on a case-insensitive disk.
+    const folded = file.path.toLowerCase()
+    if (!validPath(file.path) || seen.has(folded)) fail(`invalid or duplicate path ${file.path}`)
+    seen.add(folded)
     if (!isLowerHex(file.sha256, 64)) fail(`${file.path}: invalid sha256`)
     if (file.size > MAX_FILE) fail(`${file.path}: invalid size`)
     total += file.size
   }
-  if (!seen.has('index.html')) fail('index.html is missing')
+  if (!m.files.some((f) => f.path === 'index.html')) fail('index.html is missing')
   if (total > MAX_TOTAL) fail('bundle exceeds the size limit')
   return { version, min, floor }
 }

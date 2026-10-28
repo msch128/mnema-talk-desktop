@@ -48,7 +48,7 @@ pub struct Statement {
     pub updater_keys: Vec<String>,
     pub revoked_updater_keys: Vec<String>,
     /// Optional caps on the rollback marks, per web client API number.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "crate::web_json::unique_map")]
     pub max_version: BTreeMap<String, String>,
 }
 
@@ -116,8 +116,7 @@ pub fn verify_statement(doc: &[u8], sig: &[u8], root: &VerifyingKey) -> Result<S
         .ok_or("malformed trust signature")?;
     root.verify_strict(doc, &Signature::from_bytes(&sig))
         .map_err(|_| "trust signature does not match the root key")?;
-    let statement: Statement =
-        serde_json::from_slice(doc).map_err(|_| "unreadable trust statement")?;
+    let statement: Statement = crate::web_json::parse(doc).ok_or("unreadable trust statement")?;
     statement.validate()?;
     Ok(statement)
 }
@@ -1074,6 +1073,29 @@ mod shared_vectors {
             let got =
                 state(v["root"].as_str().unwrap()).accept(doc, sig, c["now"].as_u64().unwrap());
             assert_eq!(accepted(got), c["accept"], "accept: {name}");
+        }
+    }
+
+    /// The same statement in forms a strict reader refuses: byte order mark,
+    /// repeated keys, unknown fields, wrong types, data after the document.
+    #[test]
+    fn statement_json() {
+        let v: Value = serde_json::from_str(include_str!("../../../test-vectors/json.json"))
+            .expect("the vector file is JSON");
+        let root = parse_key(v["root"].as_str().unwrap()).unwrap().key;
+        for c in v["statements"].as_array().unwrap() {
+            let name = c["name"].as_str().unwrap();
+            let doc = STANDARD.decode(c["doc"].as_str().unwrap()).unwrap();
+            let sig = c["sig"].as_str().unwrap().as_bytes();
+            let verify = match verify_statement(&doc, sig, &root) {
+                Ok(s) => serde_json::json!({ "ok": {
+                    "serial": s.serial,
+                    "bundle_keys": s.bundle_keys().iter().map(|k| k.id.clone()).collect::<Vec<_>>(),
+                    "caps": s.caps().iter().map(|(k, v)| (k.to_string(), Value::String(v.to_string()))).collect::<serde_json::Map<_, _>>(),
+                }}),
+                Err(message) => serde_json::json!({ "error": message }),
+            };
+            assert_eq!(verify, c["verify"], "{name}");
         }
     }
 
