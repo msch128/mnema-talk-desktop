@@ -37,7 +37,9 @@ try {
   const ports = [await freePort(), await freePort()]
   const logs = [join(dir, 'a.log'), join(dir, 'b.log')]
   ;['A', 'B'].forEach((name, i) => children.push(spawn(process.execPath, [join(here, 'fake-instance.mjs'), name, String(ports[i]), logs[i]], { stdio: 'inherit' })))
-  for (let i = 0; i < 50 && !(logs.every((l) => entries(l).some((e) => e.kind === 'listening'))); i++) await sleep(100)
+  const listening = () => logs.every((l) => entries(l).some((e) => e.kind === 'listening'))
+  for (let i = 0; i < 50 && !listening(); i++) await sleep(100)
+  if (!listening()) throw new Error('a stand-in instance did not start listening')
 
   const home = join(dir, 'home')
   // Elsewhere the data directory follows the home directory; on Windows it is
@@ -62,7 +64,9 @@ try {
   console.log(result.join('\n'))
   must(result.includes('done'), 'the host did not finish')
   for (const line of result.filter((l) => l.startsWith('fail'))) fails.push(line)
-  must(result.filter((l) => l.startsWith('ok ')).length >= 33, `too few checks passed (${result.filter((l) => l.startsWith('ok ')).length})`)
+  const passed = result.filter((l) => l.startsWith('ok ')).length
+  const total = Number(result.find((l) => l.startsWith('total '))?.slice(6))
+  must(total > 0 && passed === total, `${passed} of the host's ${total} checks passed`)
 
   const [a, b] = logs.map(entries)
   const origins = ports.map((p) => `http://127.0.0.1:${p}`)
@@ -72,7 +76,7 @@ try {
   must(!b.some((e) => e.kind === 'upgrade'), 'B was sent a socket it never asked for')
   must(!b.some((e) => String(e.cookie).includes('A-token')), 'B was sent A\'s cookie')
   must(!a.some((e) => String(e.cookie).includes('B-token')), 'A was sent B\'s cookie')
-  must(a.every((e) => e.kind !== 'http' || e.origin === null || e.origin === origins[0]), 'A saw an origin that is not its own')
+  ;[a, b].forEach((seen, i) => must(seen.every((e) => e.kind !== 'http' || e.origin === null || e.origin === origins[i]), `${'AB'[i]} saw an origin that is not its own`))
 } finally {
   stop()
   await sleep(500)

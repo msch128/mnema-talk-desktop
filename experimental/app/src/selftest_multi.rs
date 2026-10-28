@@ -8,14 +8,21 @@
 //! record). It drives the real window and the real webviews: it adds both
 //! servers, checks that storage, cookies, counters and sockets of one are not
 //! those of the other, switches, and removes one. The line format (`ok <name>`,
-//! `fail <name>: <why>`, `done`) is the contract with that script.
+//! `fail <name>: <why>`, `total <checks run>`, `done`) is the contract with that script.
 use crate::{
     instances::{Phase, id_for, instance_label},
     web_client::Trusted,
     web_shell,
     web_vault::{Os, Vault},
 };
-use std::{io::Write, sync::Arc, time::Duration};
+use std::{
+    io::Write,
+    sync::{
+        Arc,
+        atomic::{AtomicU32, Ordering},
+    },
+    time::Duration,
+};
 use tauri::Manager;
 use tokio::sync::oneshot;
 use url::Url;
@@ -33,7 +40,11 @@ fn record(line: &str) {
     }
 }
 
+/// How many checks ran, so the script compares the passes with the host's own count.
+static CHECKS: AtomicU32 = AtomicU32::new(0);
+
 fn check(name: &str, good: bool, detail: impl std::fmt::Display) {
+    CHECKS.fetch_add(1, Ordering::Relaxed);
     if good {
         record(&format!("ok {name}"));
     } else {
@@ -136,6 +147,7 @@ pub fn start(app: &tauri::AppHandle) {
         } else {
             record("fail setup: two addresses are needed");
         }
+        record(&format!("total {}", CHECKS.load(Ordering::Relaxed)));
         record("done");
         app.exit(0);
     });
