@@ -5,8 +5,9 @@
 //! would raise an exception. There every call reports `unsupported`.
 //! Authorization is asked lazily, on the page's request or on the first toast;
 //! the system shows its own prompt once and remembers the answer. A click on a
-//! toast arrives at the delegate, which is installed at launch so that even a
-//! toast that started the app is delivered.
+//! toast arrives at the delegate, which is installed at launch. Only toasts of
+//! the current run are acted on, though: the registry knows no earlier run's
+//! session, so a click on a toast that outlived the app is ignored on purpose.
 use super::{Click, Permission, activated, valid_id};
 use block2::RcBlock;
 use objc2::{
@@ -14,7 +15,7 @@ use objc2::{
     rc::Retained,
     runtime::{Bool, NSObject, NSObjectProtocol, ProtocolObject},
 };
-use objc2_foundation::{NSBundle, NSError, NSString};
+use objc2_foundation::{NSArray, NSBundle, NSError, NSString};
 use objc2_user_notifications::{
     UNAuthorizationOptions, UNAuthorizationStatus, UNMutableNotificationContent, UNNotification,
     UNNotificationDefaultActionIdentifier, UNNotificationPresentationOptions,
@@ -26,6 +27,9 @@ use tokio::sync::oneshot;
 
 /// The system prompt waits for the person; give up on it after a while.
 const PROMPT_WAIT: Duration = Duration::from_secs(120);
+/// Every other answer of the system comes at once; a daemon that stays silent
+/// must not leave the page's call pending forever.
+const REPLY_WAIT: Duration = Duration::from_secs(10);
 
 struct Ivars {
     app: tauri::AppHandle,
@@ -112,15 +116,48 @@ fn parse_identifier(id: &str) -> Option<(Click, String)> {
     ))
 }
 
-/// Removes this app's delivered and waiting toasts.
 /// The hints are Windows-only (exclusive fullscreen); macOS has nothing to say.
 pub fn host_toast(_app: &tauri::AppHandle, _title: &str, _body: &str) {}
 
-pub fn clear(_app: &tauri::AppHandle) {
-    if let Some(center) = center() {
-        center.removeAllDeliveredNotifications();
-        center.removeAllPendingNotificationRequests();
-    }
+/// Removes the delivered and waiting toasts of one page run (`session`); the
+/// toasts of the other servers stay.
+pub fn clear(_app: &tauri::AppHandle, session: &str, _others_remain: bool) {
+    let Some(center) = center() else {
+        return;
+    };
+    let session = session.to_owned();
+    let delivered = {
+        let center = center.clone();
+        let session = session.clone();
+        RcBlock::new(move |list: NonNull<NSArray<UNNotification>>| {
+            let ids: Vec<Retained<NSString>> = unsafe { list.as_ref() }
+                .iter()
+                .map(|n| n.request().identifier())
+                .filter(|id| of_session(&id.to_string(), &session))
+                .collect();
+            center.removeDeliveredNotificationsWithIdentifiers(&NSArray::from_retained_slice(&ids));
+        })
+    };
+    center.getDeliveredNotificationsWithCompletionHandler(&delivered);
+    let waiting = {
+        let center = center.clone();
+        RcBlock::new(move |list: NonNull<NSArray<UNNotificationRequest>>| {
+            let ids: Vec<Retained<NSString>> = unsafe { list.as_ref() }
+                .iter()
+                .map(|r| r.identifier())
+                .filter(|id| of_session(&id.to_string(), &session))
+                .collect();
+            center.removePendingNotificationRequestsWithIdentifiers(&NSArray::from_retained_slice(
+                &ids,
+            ));
+        })
+    };
+    center.getPendingNotificationRequestsWithCompletionHandler(&waiting);
+}
+
+/// Whether a request identifier was made for this page run.
+fn of_session(id: &str, session: &str) -> bool {
+    parse_identifier(id).is_some_and(|(_, s)| s == session)
 }
 
 /// The center, or nothing when this process is not an app bundle.
@@ -219,7 +256,10 @@ fn add_request(
 
 pub async fn permission() -> Permission {
     match ask_settings() {
-        Some(rx) => rx.await.unwrap_or(Permission::Unsupported),
+        Some(rx) => match tokio::time::timeout(REPLY_WAIT, rx).await {
+            Ok(Ok(state)) => state,
+            _ => Permission::Unsupported,
+        },
         None => Permission::Unsupported,
     }
 }
@@ -252,8 +292,8 @@ pub async fn show(
     }
     let unavailable = || "The notification could not be shown.".to_owned();
     let rx = add_request(title, body, &click, &session).ok_or_else(unavailable)?;
-    match rx.await {
-        Ok(true) => Ok(true),
+    match tokio::time::timeout(REPLY_WAIT, rx).await {
+        Ok(Ok(true)) => Ok(true),
         _ => Err(unavailable()),
     }
 }
@@ -283,6 +323,13 @@ mod tests {
         ] {
             assert_eq!(parse_identifier(bad), None, "{bad:?}");
         }
+    }
+
+    #[test]
+    fn a_toast_belongs_to_the_run_it_was_shown_for() {
+        assert!(of_session("c|m|s1|n", "s1"));
+        assert!(!of_session("c|m|s2|n", "s1"));
+        assert!(!of_session("not an identifier", "s1"));
     }
 
     #[test]

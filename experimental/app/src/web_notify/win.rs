@@ -114,8 +114,13 @@ pub fn host_toast(app: &tauri::AppHandle, title: &str, body: &str) {
     let _ = Toast::new(id).title(title).text1(body).show();
 }
 
-/// Removes this app's toasts from the notification centre.
-pub fn clear(app: &tauri::AppHandle) {
+/// Removes this app's toasts from the notification centre. WinRT history is
+/// cleared per app, not per toast, so it is only emptied once no other server
+/// is left that could own one.
+pub fn clear(app: &tauri::AppHandle, _session: &str, others_remain: bool) {
+    if others_remain {
+        return;
+    }
     let id = HSTRING::from(app.config().identifier.as_str());
     let _ = ToastNotificationManager::History().and_then(|history| history.ClearWithId(&id));
 }

@@ -1286,7 +1286,7 @@ pub(crate) async fn remove_server(app: &tauri::AppHandle, id: &str) {
         _ => forget_stored_session(&trusted, &slot.origin, id),
     }
     super::web_gaming::forget(app, id);
-    super::web_notify::closed(app, id);
+    super::web_notify::closed(app, id, &slot.generation);
     if let Some(page) = app.get_webview(&instance_label(id)) {
         let _ = page.clear_all_browsing_data();
         let _ = page.close();
