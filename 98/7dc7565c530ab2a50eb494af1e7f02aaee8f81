@@ -1,0 +1,38 @@
+.github/workflows/desktop-client.yml
+  h_0ff4f4713441f4 505
+.github/workflows/desktop-release.yml
+  h_0ff4f4713441f4 4-5,7-9,329,341,356-363,373-377,379-383,385,387,390-392
+.github/workflows/probe.yml
+  h_0ff4f4713441f4 79-81
+GAMING.md
+  h_0ff4f4713441f4 46,131
+README.md
+  h_0ff4f4713441f4 7-8,10,76,92,120,218-221,407-409
+deny.toml
+  h_0ff4f4713441f4 5-6,9-10
+doc/security-review-1.2.md
+  h_0ff4f4713441f4 72-73
+experimental/app/Cargo.lock
+  h_0ff4f4713441f4 3234
+experimental/app/Cargo.toml
+  h_0ff4f4713441f4 3
+experimental/app/tauri.conf.json
+  h_0ff4f4713441f4 5
+experimental/licenses/manifest.json
+  h_0ff4f4713441f4 4
+linux/package-lock.json
+  h_0ff4f4713441f4 3,9
+linux/package.json
+  h_0ff4f4713441f4 5
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "987dc7565c530ab2a50eb494af1e7f02aaee8f81",
+  "prompts": {},
+  "humans": {
+    "h_0ff4f4713441f4": {
+      "author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}
