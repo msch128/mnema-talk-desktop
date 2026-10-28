@@ -1,6 +1,7 @@
 //! Which window may ask WebView2 for a device, and the opt-in probe that
-//! records the answer. `MNEMA_WEBVIEW_PROBE=1` is a test switch: the page
-//! reports its own origin and asks for a microphone. The Windows startup
+//! records the answer. `MNEMA_WEBVIEW_PROBE=1` is a test switch, honoured only
+//! by a build with the `webview-probe` feature (the startup check's own
+//! build, never a shipped one): the page reports its own origin and asks for a microphone. The Windows startup
 //! check reads that record. Wry replaces
 //! `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS`, so the probe passes a synthetic
 //! device through the window builder. The fake permission UI is left off:
@@ -32,12 +33,35 @@ const PROBE_BROWSER_ARGUMENTS: &str = concat!(
 pub const PROBE_SCRIPT: &str = "if(window===window.top){var report=function(kind,value){fetch('/__mnema_probe/'+kind+'?'+encodeURIComponent(String(value).slice(0,180))).catch(function(){})};report('origin',location.href);var devices=navigator.mediaDevices;var ask=function(){if(!devices||!devices.getUserMedia){report('media','missing');return;}devices.getUserMedia({audio:true}).then(function(stream){stream.getTracks().forEach(function(track){track.stop()});report('media','granted')}).catch(function(error){report('media',(error&&error.name)||'error')})};var trusted=window.__MNEMA_TRUSTED_APP__;if(trusted&&trusted.role==='probe')setTimeout(ask,2500);else ask();}";
 
 pub fn probe_enabled() -> bool {
-    std::env::var_os("MNEMA_WEBVIEW_PROBE").is_some_and(|value| value == "1")
+    cfg!(feature = "webview-probe")
+        && std::env::var_os("MNEMA_WEBVIEW_PROBE").is_some_and(|value| value == "1")
 }
 
 /// Synthetic-device arguments while the probe is on. `None` in normal use.
 pub fn probe_browser_arguments() -> Option<&'static str> {
     probe_enabled().then_some(PROBE_BROWSER_ARGUMENTS)
+}
+
+/// The synthetic-device arguments and the profile directory for one window,
+/// logged as the startup check reads them. `None` in normal use.
+fn probe_setup<R, M>(app: &M, label: &str) -> Option<(&'static str, Option<PathBuf>)>
+where
+    R: tauri::Runtime,
+    M: tauri::Manager<R>,
+{
+    let args = probe_browser_arguments()?;
+    note_synthetic_devices();
+    let dir = probe_profile(app, label);
+    emit(&profile_line(label, dir.is_some()));
+    Some((args, dir))
+}
+
+fn profile_line(label: &str, own: bool) -> String {
+    if own {
+        format!("[probe] profile {label}")
+    } else {
+        format!("[probe] profile {label} shared")
+    }
 }
 
 /// Passes the synthetic device through, and gives this window its own WebView2
@@ -52,20 +76,13 @@ where
     R: tauri::Runtime,
     M: tauri::Manager<R>,
 {
-    let Some(args) = probe_browser_arguments() else {
+    let Some((args, dir)) = probe_setup(app, label) else {
         return builder;
     };
-    note_synthetic_devices();
     let builder = builder.additional_browser_args(args);
-    match probe_profile(app, label) {
-        Some(dir) => {
-            emit(&format!("[probe] profile {label}"));
-            builder.data_directory(dir)
-        }
-        None => {
-            emit(&format!("[probe] profile {label} shared"));
-            builder
-        }
+    match dir {
+        Some(dir) => builder.data_directory(dir),
+        None => builder,
     }
 }
 
@@ -80,20 +97,13 @@ where
     R: tauri::Runtime,
     M: tauri::Manager<R>,
 {
-    let Some(args) = probe_browser_arguments() else {
+    let Some((args, dir)) = probe_setup(app, label) else {
         return builder;
     };
-    note_synthetic_devices();
     let builder = builder.additional_browser_args(args);
-    match probe_profile(app, label) {
-        Some(dir) => {
-            emit(&format!("[probe] profile {label}"));
-            builder.data_directory(dir)
-        }
-        None => {
-            emit(&format!("[probe] profile {label} shared"));
-            builder
-        }
+    match dir {
+        Some(dir) => builder.data_directory(dir),
+        None => builder,
     }
 }
 
@@ -167,7 +177,7 @@ fn probe_line(label: &str, path: &str, query: Option<&str>) -> Option<String> {
     if kind != "origin" && kind != "media" {
         return None;
     }
-    if !label.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
+    if !safe_profile_label(label) {
         return None;
     }
     let value = probe_value(query?)?;
@@ -337,6 +347,10 @@ mod tests {
             probe_line("main\n", "/__mnema_probe/origin", Some("x")),
             None
         );
+        // An empty label would make a line a parser reads wrongly.
+        assert_eq!(probe_line("", "/__mnema_probe/origin", Some("x")), None);
+        assert_eq!(profile_line("rail", true), "[probe] profile rail");
+        assert_eq!(profile_line("rail", false), "[probe] profile rail shared");
         assert_eq!(
             probe_line(
                 "main",
@@ -351,6 +365,14 @@ mod tests {
     #[test]
     fn synthetic_devices_are_passed_only_while_the_probe_is_on() {
         assert!(probe_browser_arguments().is_none());
+        // A build without the feature ignores the variable altogether.
+        if !cfg!(feature = "webview-probe") {
+            // SAFETY: no other test of this module reads the variable.
+            unsafe { std::env::set_var("MNEMA_WEBVIEW_PROBE", "1") };
+            let enabled = probe_enabled();
+            unsafe { std::env::remove_var("MNEMA_WEBVIEW_PROBE") };
+            assert!(!enabled);
+        }
         assert!(PROBE_BROWSER_ARGUMENTS.contains("--use-fake-device-for-media-stream"));
         assert!(!PROBE_BROWSER_ARGUMENTS.contains("use-fake-ui-for-media-stream"));
         assert!(safe_profile_label("gaming-overlay"));

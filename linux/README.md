@@ -199,7 +199,7 @@ Without `bundle/builtin.zip` the client still starts and has to download a bundl
 
 | Variable | Effect |
 |---|---|
-| `MNEMA_DESKTOP_NO_UPDATE_CHECK=1` | no background checks (bundles, trust statement, program) |
+| `MNEMA_DESKTOP_NO_UPDATE_CHECK=1` | no requests to GitHub (bundles, program); the trust statement (key revocation) is still fetched |
 | `MNEMA_DESKTOP_DATA_DIR` | another data directory (tests use a temporary one) |
 | `MNEMA_DESKTOP_NO_VAULT=1` | session in the private file, not the secret service |
 | `MNEMA_DEBUG_PROTOCOL=1` | log what the client serves |
