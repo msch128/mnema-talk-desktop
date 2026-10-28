@@ -773,12 +773,12 @@ mod tests {
         session.instance.jar.forget();
         assert_eq!(a.instance.jar.header(11), None);
         assert!(
-            vault.load(&id("a.example")).is_none(),
+            vault.load(&id("a.example")).found().is_none(),
             "the keychain entry is gone"
         );
         assert!(!file.exists(), "and the fallback file");
         assert_eq!(b.instance.jar.header(11).as_deref(), Some("session=x"));
-        assert!(vault.load(&id("b.example")).is_some());
+        assert!(vault.load(&id("b.example")).found().is_some());
         // The label of the removed server leads nowhere.
         assert!(registry.session(&id("a.example")).is_none());
     }

@@ -217,13 +217,16 @@ export class Limits {
    * own small caps. Before any announcement the fixed cap applies to uploads.
    */
   requestCap(path: string): number {
-    if (path === '/api/users/me/avatar') return MAX_AVATAR_BODY
-    const rest = path.startsWith('/api/channels/') ? path.slice('/api/channels/'.length) : null
-    const id = rest !== null && rest.endsWith('/upload') ? rest.slice(0, -'/upload'.length) : null
-    const isUpload = id !== null && id !== '' && !id.includes('/')
-    if (!isUpload) return MAX_JSON_BODY
-    const n = this.uploadBytes()
-    return n === null ? MAX_BODY : n + MULTIPART_OVERHEAD
+    switch (routeOf(path)) {
+      case 'avatar': return MAX_AVATAR_BODY
+      case 'json': return MAX_JSON_BODY
+      case 'upload': {
+        // Never above what the memory budget can lend: a larger body could
+        // only wait for permits that do not exist.
+        const n = this.uploadBytes()
+        return Math.min(n === null ? MAX_BODY : n + MULTIPART_OVERHEAD, LARGE_BODY_BUDGET)
+      }
+    }
   }
 
   /**
@@ -296,9 +299,47 @@ function isControl(c: string): boolean {
   return code < 0x20 || (code >= 0x7f && code <= 0x9f)
 }
 
-/** The answer to a request body above the cap, in the server's own wording. */
-export function payloadTooLarge(cap: number): Resp {
+/** The answer to a request body above the cap `requestCap(path)` gave. */
+export function payloadTooLarge(path: string, cap: number): Resp {
+  if (routeOf(path) === 'json') return errorResp(413, 'PAYLOAD_TOO_LARGE', 'request too large')
   return errorResp(413, 'PAYLOAD_TOO_LARGE', `file exceeds the ${(cap - Math.min(MULTIPART_OVERHEAD, cap)) >> 20} MB limit`)
+}
+
+/** Largest piece of a file asked for in one `Range` request; the answer is read whole. */
+export const RANGE_WINDOW = 8 * 2 ** 20
+
+/**
+ * `value` of a `Range` header with a single byte range cut to `RANGE_WINDOW`.
+ * Anything else (several ranges, another unit, nonsense) goes through unchanged.
+ */
+export function clampRange(value: string): string {
+  const spec = value.trim().startsWith('bytes=') ? value.trim().slice('bytes='.length).trim() : null
+  const dash = spec === null ? -1 : spec.indexOf('-')
+  if (spec === null || dash < 0) return value
+  const first = spec.slice(0, dash).trim()
+  const last = spec.slice(dash + 1).trim()
+  const max = 2n ** 64n - 1n
+  const number = (text: string): bigint | null => {
+    if (!/^[0-9]+$/.test(text)) return null
+    const n = BigInt(text)
+    return n <= max ? n : null
+  }
+  const window = BigInt(RANGE_WINDOW)
+  const cut = (n: bigint): bigint => (n > max ? max : n)
+  const [a, b] = [number(first), number(last)]
+  if (first === '' && b !== null) return `bytes=-${b < window ? b : window}`
+  if (a !== null && last === '') return `bytes=${a}-${cut(a + window - 1n)}`
+  if (a !== null && b !== null && b >= a) return `bytes=${a}-${b < cut(a + window - 1n) ? b : cut(a + window - 1n)}`
+  return value
+}
+
+type Route = 'avatar' | 'upload' | 'json'
+
+function routeOf(path: string): Route {
+  if (path === '/api/users/me/avatar') return 'avatar'
+  const rest = path.startsWith('/api/channels/') ? path.slice('/api/channels/'.length) : null
+  const id = rest !== null && rest.endsWith('/upload') ? rest.slice(0, -'/upload'.length) : null
+  return id !== null && id !== '' && !id.includes('/') ? 'upload' : 'json'
 }
 
 const METHODS = new Set(['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'])
@@ -314,7 +355,7 @@ export async function forward(
   if (!url) return errorResp(400, 'INVALID_INPUT', 'unsupported path')
   if (!METHODS.has(method)) return errorResp(405, 'INVALID_INPUT', 'method not allowed')
   const cap = instance.limits.requestCap(url.pathname)
-  if (body.length > cap) return payloadTooLarge(cap)
+  if (body.length > cap) return payloadTooLarge(url.pathname, cap)
   // Held until the answer is complete: the body stays in memory until the
   // instance has read it.
   const requestMemory = await instance.limits.lend(body.length)
@@ -330,7 +371,9 @@ async function exchange(instance: Instance, method: string, url: URL, headers: r
   const announcesLimit = url.pathname === '/api/permissions' && method === 'GET'
   const out: Record<string, string> = {}
   for (const [name, value] of headers) {
-    if (FORWARDED_REQUEST.has(name.toLowerCase())) out[name.toLowerCase()] = value
+    const lower = name.toLowerCase()
+    if (lower === 'range') out.range = clampRange(value)
+    else if (FORWARDED_REQUEST.has(lower)) out[lower] = value
   }
   // The page cannot choose these: the host speaks as the browser would on the
   // instance's own origin.
@@ -353,7 +396,8 @@ async function exchange(instance: Instance, method: string, url: URL, headers: r
   }
   const status = response.status
   instance.jar.store(response.setCookie, instance.origin.protocol === 'https:', instance.now())
-  if (status >= 300 && status < 400) {
+  // 304 answers the conditional request the proxy passes on; it is no redirect.
+  if (status >= 300 && status < 400 && status !== 304) {
     response.destroy()
     return errorResp(502, 'UNAVAILABLE', 'the server answered with a redirect')
   }

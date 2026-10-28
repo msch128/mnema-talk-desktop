@@ -45,7 +45,7 @@ pub fn disabled() -> bool {
 }
 
 fn client() -> Result<Client, reqwest::Error> {
-    Client::builder()
+    crate::web_proxy::client_builder()
         // Downloads may be redirected to GitHub's asset hosts; HTTPS only.
         .redirect(Policy::custom(|attempt| {
             if attempt.url().scheme() == "https" && attempt.previous().len() < 5 {
@@ -54,8 +54,6 @@ fn client() -> Result<Client, reqwest::Error> {
                 attempt.stop()
             }
         }))
-        .no_proxy()
-        .connect_timeout(Duration::from_secs(10))
         .timeout(Duration::from_secs(120))
         .user_agent("mnema-desktop")
         .build()

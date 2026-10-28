@@ -946,6 +946,7 @@ fn page_builder(
     let gaming_token = super::web_gaming::bind(app, id);
     let popup_app = app.clone();
     let opener = id.to_owned();
+    let sockets = Arc::clone(&session.sockets);
     let builder = WebviewBuilder::new(
         &label,
         WebviewUrl::CustomProtocol(crate::web_client::join_page(invite)),
@@ -966,6 +967,13 @@ fn page_builder(
         // Routes of the app, and the API paths that downloads and attachment
         // links navigate to. The proxy answers the latter.
         .on_navigation(move |url| bundled(url) || app_api(url))
+        // A reload or navigation ends the document that opened the host-side
+        // sockets; nothing else would close them.
+        .on_page_load(move |_, payload| {
+            if matches!(payload.event(), tauri::webview::PageLoadEvent::Started) {
+                sockets.document_replaced();
+            }
+        })
         .on_new_window(move |url, features| new_window(&popup_app, &opener, url, features))
         .on_permission_request(crate::web_client::allow_permission);
     let builder = if super::web_permissions::probe_enabled() {

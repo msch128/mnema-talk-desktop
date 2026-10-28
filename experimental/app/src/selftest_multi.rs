@@ -393,7 +393,7 @@ async fn sockets(app: &tauri::AppHandle, trusted: &Trusted, a: &str, b: &str) {
 async fn removal(app: &tauri::AppHandle, trusted: &Trusted, a: &str, b: &str, second: &str) {
     let origin_b = Url::parse(&format!("{second}/")).unwrap();
     let stored = trusted.jar_file(&origin_b);
-    let had_session = Os.load(b).is_some() || stored.as_ref().is_some_and(|f| f.exists());
+    let had_session = Os.load(b).found().is_some() || stored.as_ref().is_some_and(|f| f.exists());
     check(
         "B's session is stored",
         had_session,
@@ -416,7 +416,7 @@ async fn removal(app: &tauri::AppHandle, trusted: &Trusted, a: &str, b: &str, se
     );
     check(
         "B's stored session is wiped",
-        Os.load(b).is_none() && !stored.as_ref().is_some_and(|f| f.exists()),
+        Os.load(b).found().is_none() && !stored.as_ref().is_some_and(|f| f.exists()),
         "still stored",
     );
     check(
