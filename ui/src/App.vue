@@ -17,7 +17,7 @@ const watching = ref(false)
 const gameError = ref('')
 const names = computed(() => games.value.split(',').map(value => value.trim()).filter(Boolean))
 const invalidGames = computed(() => names.value.length === 0 || names.value.length > 32 || names.value.some(name =>
-  name.length > 128 || name.includes('..') || !/^[a-zA-Z0-9][a-zA-Z0-9_. -]*\.exe$/i.test(name)))
+  name.length > 128 || name.includes('..') || !/^[a-zA-Z0-9][a-zA-Z0-9_. !-]*\.exe$/i.test(name)))
 let timer: ReturnType<typeof setInterval> | undefined
 let gameGeneration = 0
 let polling = false
@@ -64,8 +64,8 @@ watch(address, () => { candidate.value = null; error.value = '' })
 
 async function inspectServer() {
   if (busy.value) return
-  if (!address.value.trim() || address.value.length > 2048) {
-    error.value = 'Enter a server address of at most 2048 characters.'
+  if (!address.value.trim() || new TextEncoder().encode(address.value).length > 2048) {
+    error.value = 'Enter a server address of at most 2048 bytes.'
     return
   }
   const own = ++generation
@@ -143,7 +143,7 @@ onUnmounted(() => {
       <h2 id="game-title">Detect the active game</h2>
       <label for="games">Executable files, separated by commas</label>
       <div class="row"><input id="games" v-model="games" :disabled="watching" spellcheck="false" :aria-invalid="invalidGames" :aria-describedby="invalidGames ? 'games-validation' : undefined"><button type="button" :disabled="!watching && invalidGames" @click="toggleWatching">{{ watching ? 'Stop check' : 'Start game check' }}</button></div>
-      <p v-if="invalidGames" id="games-validation" role="alert">Enter 1 to 32 executable files ending in .exe. Start with a letter or digit, then spaces, dots, hyphens or underscores are allowed; no paths and no consecutive dots. At most 128 characters per name.</p>
+      <p v-if="invalidGames" id="games-validation" role="alert">Enter 1 to 32 executable files ending in .exe. Start with a letter or digit, then spaces, dots, hyphens, underscores or exclamation marks are allowed; no paths and no consecutive dots. At most 128 characters per name.</p>
       <p v-if="gameError" role="alert">{{ gameError }}</p>
       <p class="status" aria-live="polite">{{ gameStatus }}</p>
       <p v-if="lastGame" class="help">Last detected locally: {{ lastGame.game }}. Monitor-filling geometry: {{ lastGame.covers_monitor ? 'yes' : 'no' }}. Exclusive fullscreen: not yet proven.</p>

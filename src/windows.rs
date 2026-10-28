@@ -43,17 +43,9 @@ pub struct GameProbe {
 pub fn valid_game_names(names: &[String]) -> bool {
     !names.is_empty()
         && names.len() <= 32
-        && names.iter().all(|name| {
-            let lower = name.to_ascii_lowercase();
-            name.len() <= 128
-                && lower.ends_with(".exe")
-                && name.len() > 4
-                && name.as_bytes()[0].is_ascii_alphanumeric()
-                && name
-                    .bytes()
-                    .all(|c| c.is_ascii_alphanumeric() || b"-_. !".contains(&c))
-                && !name.contains("..")
-        })
+        && names
+            .iter()
+            .all(|name| super::game_list::valid_executable(name))
 }
 
 #[cfg(any(windows, test))]
@@ -239,7 +231,8 @@ mod tests {
     fn allowlist_only_accepts_bounded_executable_names() {
         assert!(valid_game_names(&[
             "Wow.exe".into(),
-            "GenshinImpact.exe".into()
+            "GenshinImpact.exe".into(),
+            "Game!.exe".into()
         ]));
         for names in [
             vec![],

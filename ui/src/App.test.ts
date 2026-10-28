@@ -63,7 +63,7 @@ describe('desktop probe boundaries', () => {
     expect(w.text()).not.toContain('old-community')
   })
 
-  it.each(['', ' '.repeat(20), 'a'.repeat(2049)])('rejects empty or oversized discovery input before IPC', async value => {
+  it.each(['', ' '.repeat(20), 'a'.repeat(2049), '\u00e4'.repeat(1025)])('rejects empty or oversized discovery input before IPC', async value => {
     const w = app()
     await w.get('#server').setValue(value)
     await w.get('form').trigger('submit')
@@ -96,9 +96,9 @@ describe('desktop probe boundaries', () => {
   it('accepts explicit case-insensitive executable basenames without sending paths', async () => {
     invoke.mockResolvedValue({ platform: 'windows', game: null, covers_monitor: false, exclusive_fullscreen_verified: false })
     const w = app()
-    await w.get('#games').setValue(' , Test-Game_1.EXE ,  Other Game.exe ,')
+    await w.get('#games').setValue(' , Test-Game_1.EXE ,  Other Game.exe , Game!.exe ,')
     await w.findAll('button')[1]!.trigger('click'); await flushPromises()
-    expect(invoke).toHaveBeenCalledWith('inspect_game', { names: ['Test-Game_1.EXE', 'Other Game.exe'] })
+    expect(invoke).toHaveBeenCalledWith('inspect_game', { names: ['Test-Game_1.EXE', 'Other Game.exe', 'Game!.exe'] })
     expect(w.find('#games-validation').exists()).toBe(false)
   })
 
