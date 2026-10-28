@@ -17,7 +17,7 @@ import { fileURLToPath } from 'node:url'
 import { MAX_FILE, MAX_PATH, parseKey, validPath, verifyBundle } from '../src/core/bundle.ts'
 import { appPath, externalAllowed, inviteCode, parseAddress, parseHealth } from '../src/core/client.ts'
 import { Jar } from '../src/core/cookies.ts'
-import { Limits, inlineSafe, mimeFor, serveBundle, target } from '../src/core/proxy.ts'
+import { Limits, clampRange, inlineSafe, mimeFor, serveBundle, target } from '../src/core/proxy.ts'
 import { Store } from '../src/core/store.ts'
 import { chooseUpdaterKey, minisignKeyId, parseUtc, signatureKeyId, TrustState, rootKey, statementBundleKeys, statementCaps, verifyStatement } from '../src/core/trust.ts'
 import { verifyPackage } from '../src/core/minisign.ts'
@@ -445,6 +445,8 @@ function proxyVectors(): Json {
     for (const mb of c.announce) limits.announceUploadMb(mb)
     return { ...c, request_cap: limits.requestCap(c.path), response_cap: limits.responseCap() }
   })
+  const ranges = ['bytes=0-', 'bytes=100-', 'bytes=0-99', 'bytes=0-1073741823', 'bytes=-500', 'bytes=-1073741824', 'bytes=18446744073709551615-', 'bytes=0-1,5-', 'items=0-', 'bytes=a-b', 'bytes=9-3', 'bytes=-', '']
+    .map((input) => ({ input, clamped: clampRange(input) }))
   const mimes = ['index.html', 'a.JS', 'a.mjs', 'a.css', 'a.json', 'a.map', 'a.wasm', 'a.svg', 'a.png', 'a.jpg', 'a.jpeg', 'a.webp', 'a.gif', 'a.ico', 'a.woff2', 'a.woff', 'a.txt', 'a.webmanifest', 'a.mp3', 'a.ogg', 'a.oga', 'a.wav', 'a.bin', 'noext', 'a.tar.gz']
     .map((name) => ({ name, type: mimeFor(name) }))
 
@@ -498,7 +500,7 @@ function proxyVectors(): Json {
     }
   })
 
-  return { inline_safe: types, targets, caps: capSteps, mimes, serve: { trusted: keysOf(7), zip: b64(zip), cases: serveCases }, jars }
+  return { inline_safe: types, targets, caps: capSteps, ranges, mimes, serve: { trusted: keysOf(7), zip: b64(zip), cases: serveCases }, jars }
 }
 
 // ------------------------------------------------------------------ client

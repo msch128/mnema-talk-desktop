@@ -87,7 +87,7 @@ async function proxy(session: Session, request: Request, url: URL): Promise<Resp
   if (method !== 'GET' && method !== 'HEAD') {
     const cap = session.instance.limits.requestCap(url.pathname)
     const read = await readRequestBody(request, cap)
-    if (!read) return payloadTooLarge(cap)
+    if (!read) return payloadTooLarge(url.pathname, cap)
     body = read
   }
   return forward(session.instance, method, url.pathname + url.search, headers, body)

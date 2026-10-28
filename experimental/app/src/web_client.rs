@@ -10,7 +10,7 @@ use crate::web_bundle::{Held, Refusal, ServerInfo, Store, TrustedKey, Version, t
 use crate::web_proxy::{Resp, forward, now, serve_bundle};
 use crate::web_trust::{Accepted, TrustState, root_key};
 use crate::web_ws::WsEvent;
-use reqwest::{Client, redirect::Policy};
+use reqwest::redirect::Policy;
 use serde::Deserialize;
 use std::{
     borrow::Cow,
@@ -467,9 +467,8 @@ fn parse_health(bytes: &[u8]) -> Result<ServerInfo, String> {
 }
 
 pub(crate) async fn discover(origin: &Url) -> Result<ServerInfo, String> {
-    let client = Client::builder()
+    let client = crate::web_proxy::client_builder()
         .redirect(Policy::none())
-        .no_proxy()
         .timeout(Duration::from_secs(10))
         .build()
         .map_err(|_| "Unable to initialize HTTPS.")?;

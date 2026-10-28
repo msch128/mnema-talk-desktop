@@ -242,7 +242,7 @@
     2048
    ],
    "path": "/api/channels/00000000-0000-4000-8000-000000000000/upload",
-   "request_cap": 2148532224,
+   "request_cap": 1073741824,
    "response_cap": 1073741824
   },
   {
@@ -260,6 +260,60 @@
    "path": "/api/channels/00000000-0000-4000-8000-000000000000/upload",
    "request_cap": 134217728,
    "response_cap": 134217728
+  }
+ ],
+ "ranges": [
+  {
+   "input": "bytes=0-",
+   "clamped": "bytes=0-8388607"
+  },
+  {
+   "input": "bytes=100-",
+   "clamped": "bytes=100-8388707"
+  },
+  {
+   "input": "bytes=0-99",
+   "clamped": "bytes=0-99"
+  },
+  {
+   "input": "bytes=0-1073741823",
+   "clamped": "bytes=0-8388607"
+  },
+  {
+   "input": "bytes=-500",
+   "clamped": "bytes=-500"
+  },
+  {
+   "input": "bytes=-1073741824",
+   "clamped": "bytes=-8388608"
+  },
+  {
+   "input": "bytes=18446744073709551615-",
+   "clamped": "bytes=18446744073709551615-18446744073709551615"
+  },
+  {
+   "input": "bytes=0-1,5-",
+   "clamped": "bytes=0-1,5-"
+  },
+  {
+   "input": "items=0-",
+   "clamped": "items=0-"
+  },
+  {
+   "input": "bytes=a-b",
+   "clamped": "bytes=a-b"
+  },
+  {
+   "input": "bytes=9-3",
+   "clamped": "bytes=9-3"
+  },
+  {
+   "input": "bytes=-",
+   "clamped": "bytes=-"
+  },
+  {
+   "input": "",
+   "clamped": ""
   }
  ],
  "mimes": [
