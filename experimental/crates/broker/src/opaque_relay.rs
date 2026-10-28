@@ -333,7 +333,7 @@ impl Broker {
             let mut state = self.inner.state.lock().map_err(|_| Error::Internal)?;
             state.current(self.inner.owner, &op)?;
             state.check_authenticated(self.inner.owner, owner, &scope)?;
-            state.requests.get_mut(&op.id).ok_or(Error::Stale)?.phase = RequestPhase::Delivered;
+            state.mark_phase(&op, RequestPhase::Delivered)?;
         }
         Ok(NativeOpaqueDelivery {
             operation: op,

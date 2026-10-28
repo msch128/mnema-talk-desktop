@@ -96,6 +96,13 @@ pub(crate) struct Grant {
     pub(crate) access_expires_at: DateTime<Utc>,
     pub(crate) family_expires_at: DateTime<Utc>,
 }
+impl Grant {
+    /// Wall-clock expiry of the access token; the single policy for every
+    /// request that needs a live token.
+    pub(crate) fn is_access_expired(&self) -> bool {
+        self.access_expires_at <= Utc::now()
+    }
+}
 impl fmt::Debug for Grant {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str("Grant(REDACTED)")

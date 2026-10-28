@@ -81,6 +81,36 @@ enum RequestPhase {
     Running,
     Delivered,
 }
+impl Active {
+    /// A credential flow is mid-flight: a native ticket is pending or the status is
+    /// one of the transitional ones. Selectors and tickets must not be handed out.
+    fn is_transitioning(&self) -> bool {
+        self.pending_invocation.is_some() || self.in_credential_flow()
+    }
+    fn in_credential_flow(&self) -> bool {
+        matches!(
+            self.status,
+            Status::SigningIn | Status::ChangingCredentials | Status::Registering
+        )
+    }
+    /// The session, only while its status accepts authenticated requests.
+    fn live_session(&self) -> Option<&Session> {
+        self.session
+            .as_ref()
+            .filter(|_| matches!(self.status, Status::Authenticated | Status::Rotating))
+    }
+    /// Identities an invocation ticket is bound to: authentication family
+    /// (falling back to the last retired one) and authority revision.
+    fn ticket_identities(&self) -> (Option<Uuid>, Option<Uuid>) {
+        (
+            self.session
+                .as_ref()
+                .map(|session| session.authentication_identity)
+                .or(self.last_authentication_identity),
+            self.session.as_ref().map(|session| session.native_identity),
+        )
+    }
+}
 struct RequestEntry {
     window: WindowOwner,
     cancel: CancellationToken,
@@ -227,10 +257,7 @@ impl Drop for LoginGuard {
             && state.profiles.is_current(self.profile)
             && let Some(active) = state.active.as_mut()
             && active.epoch == self.epoch
-            && matches!(
-                active.status,
-                Status::SigningIn | Status::ChangingCredentials | Status::Registering
-            )
+            && active.in_credential_flow()
         {
             active.status = Status::ReauthRequired;
             active.session = None;
@@ -311,6 +338,47 @@ impl State {
         }
         Ok(())
     }
+    /// The one publication-scope rule: same main window, owner, current profile, same epoch.
+    fn check_scope(
+        &self,
+        broker: u64,
+        owner: WindowOwner,
+        scope: PublicationScope,
+    ) -> Result<(), Error> {
+        self.main(broker, owner)?;
+        if owner != scope.window {
+            return Err(Error::Denied);
+        }
+        if !self.profiles.is_current(scope.profile)
+            || self.active.as_ref().is_none_or(|a| a.epoch != scope.epoch)
+        {
+            return Err(Error::Stale);
+        }
+        Ok(())
+    }
+    /// Authority revision of the live session; an operation may only commit while
+    /// it still carries this revision.
+    fn session_revision(&self) -> Option<Uuid> {
+        self.active
+            .as_ref()
+            .and_then(|a| a.session.as_ref())
+            .map(|session| session.native_identity)
+    }
+    fn session_matches(&self, op: &Operation) -> bool {
+        op.auth_revision == self.session_revision()
+    }
+    fn mark_phase(&mut self, op: &Operation, phase: RequestPhase) -> Result<(), Error> {
+        self.requests.get_mut(&op.id).ok_or(Error::Stale)?.phase = phase;
+        Ok(())
+    }
+    /// Current operation under the still-live session, moved to `phase`.
+    fn advance(&mut self, broker: u64, op: &Operation, phase: RequestPhase) -> Result<(), Error> {
+        self.current(broker, op)?;
+        if !self.session_matches(op) {
+            return Err(Error::Stale);
+        }
+        self.mark_phase(op, phase)
+    }
     fn cancel_requests(&mut self, owner: Option<WindowOwner>) {
         self.requests.retain(|_, request| {
             if owner.is_none_or(|o| o == request.window) {
@@ -351,16 +419,7 @@ impl Broker {
         scope: PublicationScope,
     ) -> Result<(), Error> {
         let s = self.inner.state.lock().map_err(|_| Error::Internal)?;
-        s.main(self.inner.owner, owner)?;
-        if owner != scope.window {
-            return Err(Error::Denied);
-        }
-        if !s.profiles.is_current(scope.profile)
-            || s.active.as_ref().is_none_or(|a| a.epoch != scope.epoch)
-        {
-            return Err(Error::Stale);
-        }
-        Ok(())
+        s.check_scope(self.inner.owner, owner, scope)
     }
     /// Trusted native enqueue only. Never re-enter broker from the callback.
     pub(crate) fn with_publication<T>(
@@ -370,15 +429,7 @@ impl Broker {
         publish: impl FnOnce() -> T,
     ) -> Result<T, Error> {
         let s = self.inner.state.lock().map_err(|_| Error::Internal)?;
-        s.main(self.inner.owner, owner)?;
-        if owner != scope.window {
-            return Err(Error::Denied);
-        }
-        if !s.profiles.is_current(scope.profile)
-            || s.active.as_ref().is_none_or(|a| a.epoch != scope.epoch)
-        {
-            return Err(Error::Stale);
-        }
+        s.check_scope(self.inner.owner, owner, scope)?;
         Ok(publish())
     }
     pub fn selected_publication_scope(
@@ -710,22 +761,12 @@ impl Broker {
         body: Option<Zeroizing<Vec<u8>>>,
     ) -> Result<crate::http::Body, Error> {
         self.verify(op)?;
-        if matches!(endpoint, Endpoint::Me | Endpoint::Logout)
-            && op
-                .grant
-                .as_ref()
-                .is_some_and(|g| g.access_expires_at <= Utc::now())
-        {
+        if endpoint == Endpoint::Me && op.grant.as_ref().is_some_and(|g| g.is_access_expired()) {
             return Err(Error::Expired);
         }
         let result = tokio::select! {biased;_=op.cancelled()=>Err(self.verify(op).err().unwrap_or(Error::Cancelled)),result=op.http.request(endpoint,&op.origin,access,body)=>result};
         self.verify(op)?;
-        if matches!(endpoint, Endpoint::Me | Endpoint::Logout)
-            && op
-                .grant
-                .as_ref()
-                .is_some_and(|g| g.access_expires_at <= Utc::now())
-        {
+        if endpoint == Endpoint::Me && op.grant.as_ref().is_some_and(|g| g.is_access_expired()) {
             return Err(Error::Expired);
         }
         result
@@ -860,16 +901,14 @@ impl Broker {
             || a.session.as_ref().is_none_or(|session| {
                 session.authentication_identity != delivery.authentication_identity
             })
-            || a.session.as_ref().is_none_or(|g| {
-                g.grant.user.id != delivery.value.id || g.grant.access_expires_at <= Utc::now()
-            })
+            || a.session
+                .as_ref()
+                .is_none_or(|g| g.grant.user.id != delivery.value.id || g.grant.is_access_expired())
         {
             return Err(Error::Stale);
         }
         // Repeat the scope comparison under the user/session check lock.
-        if !s.profiles.is_current(delivery.scope.profile) || a.epoch != delivery.scope.epoch {
-            return Err(Error::Stale);
-        }
+        s.check_scope(self.inner.owner, owner, delivery.scope)?;
         Ok(delivery.value)
     }
     pub async fn login(
@@ -895,7 +934,7 @@ impl Broker {
         if active
             .session
             .as_ref()
-            .is_none_or(|session| session.grant.access_expires_at <= Utc::now())
+            .is_none_or(|session| session.grant.is_access_expired())
         {
             return Err(Error::Expired);
         }
@@ -905,10 +944,10 @@ impl Broker {
         {
             let mut s = self.inner.state.lock().map_err(|_| Error::Internal)?;
             s.current(self.inner.owner, &op)?;
-            s.requests.get_mut(&op.id).ok_or(Error::Stale)?.phase = RequestPhase::Running;
+            s.mark_phase(&op, RequestPhase::Running)?;
         }
         let grant = op.grant.as_ref().ok_or(Error::Unauthorized)?;
-        if grant.access_expires_at <= Utc::now() {
+        if grant.is_access_expired() {
             return Err(Error::Expired);
         }
         let body = match self
@@ -939,16 +978,13 @@ impl Broker {
         {
             let mut s = self.inner.state.lock().map_err(|_| Error::Internal)?;
             s.current(self.inner.owner, &op)?;
-            let revision = s
-                .active
-                .as_ref()
-                .and_then(|a| a.session.as_ref())
-                .map(|session| session.native_identity)
-                .ok_or(Error::ReauthRequired)?;
-            if op.auth_revision != Some(revision) {
+            if s.session_revision().is_none() {
+                return Err(Error::ReauthRequired);
+            }
+            if !s.session_matches(&op) {
                 return Err(Error::Stale);
             }
-            s.requests.get_mut(&op.id).ok_or(Error::Stale)?.phase = RequestPhase::Delivered;
+            s.mark_phase(&op, RequestPhase::Delivered)?;
             // A verified same-account /me can supersede an old grant role.
             // Retire native capabilities before delivering a downgraded reply.
             let session = s
@@ -976,19 +1012,14 @@ impl Broker {
                 return Err(Error::Denied);
             }
             s.current(self.inner.owner, &delivery.operation)?;
-            if delivery.operation.auth_revision
-                != s.active
-                    .as_ref()
-                    .and_then(|a| a.session.as_ref())
-                    .map(|session| session.native_identity)
-            {
+            if !s.session_matches(&delivery.operation) {
                 return Err(Error::Stale);
             }
             if delivery
                 .operation
                 .grant
                 .as_ref()
-                .is_some_and(|g| g.access_expires_at <= Utc::now())
+                .is_some_and(|g| g.is_access_expired())
             {
                 return Err(Error::Expired);
             }
@@ -1098,12 +1129,7 @@ impl Broker {
         s.current(self.inner.owner, &op)?;
         // An accepted /me role change after refresh dispatch retires that
         // request's authority revision. Never admit its older role snapshot.
-        if op.auth_revision
-            != s.active
-                .as_ref()
-                .and_then(|a| a.session.as_ref())
-                .map(|session| session.native_identity)
-        {
+        if !s.session_matches(&op) {
             return Err(Error::UncertainRotation);
         }
         let next_epoch = s
@@ -1164,8 +1190,18 @@ impl Broker {
         self.drain(Some(op.id)).await?;
         self.verify(&op)?;
         self.memory.clear().map_err(|_| Error::Vault)?;
-        self.send(&op, Endpoint::Logout, Some(&old.access_token), None)
-            .await?;
+        // The server revokes the family only for a live access token. An expired one
+        // cannot be revoked by this call (the family lapses on its own), so the
+        // local logout above stands and is not reported as a failure.
+        if !old.is_access_expired() {
+            match self
+                .send(&op, Endpoint::Logout, Some(&old.access_token), None)
+                .await
+            {
+                Ok(_) | Err(Error::Unauthorized) => {}
+                Err(e) => return Err(e),
+            }
+        }
         Ok(LogoutDelivery {
             scope: Self::scope_from_operation(&op),
         })

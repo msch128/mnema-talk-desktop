@@ -180,7 +180,7 @@ impl Broker {
         {
             let mut s = self.inner.state.lock().map_err(|_| Error::Internal)?;
             s.current(self.inner.owner, &op)?;
-            s.requests.get_mut(&op.id).ok_or(Error::Stale)?.phase = RequestPhase::Delivered;
+            s.mark_phase(&op, RequestPhase::Delivered)?;
         }
         Ok(MetadataDelivery {
             operation: op,
@@ -197,7 +197,7 @@ impl Broker {
         {
             let mut s = self.inner.state.lock().map_err(|_| Error::Internal)?;
             s.current(self.inner.owner, &op)?;
-            s.requests.get_mut(&op.id).ok_or(Error::Stale)?.phase = RequestPhase::Running;
+            s.mark_phase(&op, RequestPhase::Running)?;
         }
         let grant = op.grant.as_ref().ok_or(Error::Unauthorized)?;
         let body = match self
@@ -224,7 +224,7 @@ impl Broker {
         {
             let mut s = self.inner.state.lock().map_err(|_| Error::Internal)?;
             s.current(self.inner.owner, &op)?;
-            s.requests.get_mut(&op.id).ok_or(Error::Stale)?.phase = RequestPhase::Delivered;
+            s.mark_phase(&op, RequestPhase::Delivered)?;
         }
         Ok(MetadataDelivery {
             operation: op,
@@ -247,7 +247,7 @@ impl Broker {
                 .operation
                 .grant
                 .as_ref()
-                .is_none_or(|g| g.access_expires_at <= Utc::now())
+                .is_none_or(|g| g.is_access_expired())
         {
             return Err(Error::Expired);
         }

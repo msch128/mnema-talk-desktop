@@ -104,10 +104,10 @@ impl Broker {
         {
             let mut s = self.inner.state.lock().map_err(|_| Error::Internal)?;
             s.current(self.inner.owner, &op)?;
-            s.requests.get_mut(&op.id).ok_or(Error::Stale)?.phase = RequestPhase::Running;
+            s.mark_phase(&op, RequestPhase::Running)?;
         }
         let grant = op.grant.as_ref().ok_or(Error::Unauthorized)?;
-        if grant.access_expires_at <= Utc::now() {
+        if grant.is_access_expired() {
             return Err(Error::Expired);
         }
         let body = match self
@@ -136,7 +136,7 @@ impl Broker {
             }
             result => result?,
         };
-        if grant.access_expires_at <= Utc::now() {
+        if grant.is_access_expired() {
             return Err(Error::Expired);
         }
         let user: User = body.decode()?;
@@ -147,7 +147,7 @@ impl Broker {
         {
             let mut s = self.inner.state.lock().map_err(|_| Error::Internal)?;
             s.current(self.inner.owner, &op)?;
-            s.requests.get_mut(&op.id).ok_or(Error::Stale)?.phase = RequestPhase::Delivered;
+            s.mark_phase(&op, RequestPhase::Delivered)?;
         }
         Ok(MeDelivery {
             operation: op,

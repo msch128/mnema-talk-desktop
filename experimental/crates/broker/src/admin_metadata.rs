@@ -342,19 +342,10 @@ impl Broker {
         let op = self.prepare_me(owner)?;
         {
             let mut s = self.inner.state.lock().map_err(|_| Error::Internal)?;
-            s.current(self.inner.owner, &op)?;
-            if op.auth_revision
-                != s.active
-                    .as_ref()
-                    .and_then(|active| active.session.as_ref())
-                    .map(|session| session.native_identity)
-            {
-                return Err(Error::Stale);
-            }
-            s.requests.get_mut(&op.id).ok_or(Error::Stale)?.phase = RequestPhase::Running;
+            s.advance(self.inner.owner, &op, RequestPhase::Running)?;
         }
         let grant = op.grant.as_ref().ok_or(Error::Unauthorized)?;
-        if grant.access_expires_at <= Utc::now() {
+        if grant.is_access_expired() {
             return Err(Error::Expired);
         }
         let body = match self
@@ -382,7 +373,7 @@ impl Broker {
             }
             result => result?,
         };
-        if grant.access_expires_at <= Utc::now() {
+        if grant.is_access_expired() {
             return Err(Error::Expired);
         }
         let status = body.status();
@@ -403,16 +394,7 @@ impl Broker {
         };
         {
             let mut s = self.inner.state.lock().map_err(|_| Error::Internal)?;
-            s.current(self.inner.owner, &op)?;
-            if op.auth_revision
-                != s.active
-                    .as_ref()
-                    .and_then(|active| active.session.as_ref())
-                    .map(|session| session.native_identity)
-            {
-                return Err(Error::Stale);
-            }
-            s.requests.get_mut(&op.id).ok_or(Error::Stale)?.phase = RequestPhase::Delivered;
+            s.advance(self.inner.owner, &op, RequestPhase::Delivered)?;
         }
         Ok(AdminDelivery {
             operation: op,
@@ -430,19 +412,14 @@ impl Broker {
             return Err(Error::Denied);
         }
         s.current(self.inner.owner, &delivery.operation)?;
-        if delivery.operation.auth_revision
-            != s.active
-                .as_ref()
-                .and_then(|active| active.session.as_ref())
-                .map(|session| session.native_identity)
-        {
+        if !s.session_matches(&delivery.operation) {
             return Err(Error::Stale);
         }
         if delivery
             .operation
             .grant
             .as_ref()
-            .is_none_or(|g| g.access_expires_at <= Utc::now())
+            .is_none_or(|g| g.is_access_expired())
         {
             return Err(Error::Expired);
         }

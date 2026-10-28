@@ -100,7 +100,7 @@ impl Broker {
         active.status = Status::Selected;
         // Completed account metadata must not keep HTTP drain custody alive
         // while its IPC delivery waits. Final commit still checks original epoch.
-        state.requests.get_mut(&op.id).ok_or(Error::Stale)?.phase = RequestPhase::Delivered;
+        state.mark_phase(&op, RequestPhase::Delivered)?;
         completion.armed = false;
         Ok(RegistrationDelivery {
             operation: op,
