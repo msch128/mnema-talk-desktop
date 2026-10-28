@@ -208,8 +208,6 @@ pub struct Snapshot {
     input_note: Option<&'static str>,
     /// A game in exclusive fullscreen hides the sidepeek and overlay; suggest borderless windowed.
     exclusive_fullscreen_hint: bool,
-    /// The game in front, when one is detected; never a path or a title.
-    game: Option<String>,
 }
 pub struct Gaming {
     /// The app origin the sessions are bound to (`local_origin` of their pages).
@@ -247,9 +245,6 @@ pub struct Gaming {
     exclusive_hint: bool,
     /// Install folders of the launcher libraries, scanned off the hot path.
     library: std::sync::Arc<game_library_scan::Library>,
-    /// The game in front, by the name the user, a launcher or our list gives it.
-    #[cfg_attr(not(windows), allow(dead_code))]
-    game_name: Option<String>,
     #[cfg(windows)]
     game: Option<GameLease>,
 }
@@ -276,7 +271,6 @@ impl Default for Gaming {
             hint: Default::default(),
             exclusive_hint: false,
             library: Default::default(),
-            game_name: None,
             #[cfg(windows)]
             game: None,
         }
@@ -373,7 +367,6 @@ pub fn desktop_gaming_snapshot(
         detection_note: g.detection_note,
         input_note: g.input_note,
         exclusive_fullscreen_hint: g.exclusive_hint,
-        game: g.game_name.clone().filter(|_| active),
     })
 }
 struct Command {
@@ -492,6 +485,13 @@ pub fn desktop_gaming_control(
     command.dispatch(window.app_handle());
     Ok(())
 }
+/// Writes through a temporary file and a rename, so a crash mid-save leaves the
+/// previous file instead of a truncated one that `setup` would discard.
+fn write_atomic(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()> {
+    let tmp = path.with_extension("tmp");
+    std::fs::write(&tmp, bytes)?;
+    std::fs::rename(&tmp, path)
+}
 /// Saves `settings` and makes them current. The command to release push-to-talk
 /// is returned for the caller to send after it lets go of the lock.
 fn apply_settings(
@@ -506,7 +506,7 @@ fn apply_settings(
         .map_err(|_| "Settings unavailable.")?;
     std::fs::create_dir_all(&dir).map_err(|_| "Cannot save settings.")?;
     let data = serde_json::to_vec(&settings).map_err(|_| "Invalid settings.")?;
-    std::fs::write(dir.join("gaming.json"), data).map_err(|_| "Cannot save settings.")?;
+    write_atomic(&dir.join("gaming.json"), &data).map_err(|_| "Cannot save settings.")?;
     let command = Command::new(g, "ptt-release");
     g.ptt_down = false;
     g.ptt_armed = false;
@@ -802,7 +802,6 @@ fn native_sample(
         || window_title(hwnd),
     );
     let detected = identified.is_some();
-    g.game_name = identified.map(|found| found.name);
     if let Some(f) = g.foreground.clone().filter(|_| detected) {
         let mut pid = 0;
         unsafe {
@@ -851,7 +850,7 @@ fn announced_game(
     title: impl FnOnce() -> String,
 ) -> Option<game_identify::Identified> {
     let front = front.filter(|f| window != 0 && f.window == window)?;
-    let title = if front.basename().to_ascii_lowercase().starts_with("java") {
+    let title = if game_identify::is_java(front.basename()) {
         title()
     } else {
         String::new()
@@ -1326,6 +1325,21 @@ mod tests {
         let other = front(2, r"D:\Games\Custom.exe");
         let never = || panic!("title read for a non-Java process");
         assert!(announced_game(Some(&other), 2, &["Custom.exe".into()], &empty, never).is_some());
+        let helper = front(3, r"C:\Java\bin\javaws.exe");
+        let never = || panic!("title read for a process that is not a Java runtime");
+        assert!(announced_game(Some(&helper), 3, &[], &empty, never).is_none());
+    }
+    #[test]
+    fn saved_settings_replace_the_file_whole_and_leave_no_temporary() {
+        let dir = std::env::temp_dir().join(format!("mnema-gaming-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("gaming.json");
+        write_atomic(&file, b"{\"old\":1}").unwrap();
+        write_atomic(&file, b"{\"new\":2}").unwrap();
+        assert_eq!(std::fs::read(&file).unwrap(), b"{\"new\":2}");
+        assert!(!file.with_extension("tmp").exists());
+        let _ = std::fs::remove_dir_all(&dir);
     }
     fn ptt_talk() -> Gaming {
         let mut g = Gaming {

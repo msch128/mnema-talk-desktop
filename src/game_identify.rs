@@ -53,7 +53,8 @@ pub fn is_helper(file: &str) -> bool {
     HELPERS.iter().any(|h| h.eq_ignore_ascii_case(file))
 }
 
-fn is_java(file: &str) -> bool {
+/// The Java runtimes, whose shared executable is told apart by the window title.
+pub fn is_java(file: &str) -> bool {
     matches!(file.to_ascii_lowercase().as_str(), "javaw.exe" | "java.exe")
 }
 
