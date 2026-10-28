@@ -3231,7 +3231,7 @@ dependencies = [
 
 [[package]]
 name = "mnema-native-client-preview"
-version = "1.2.3"
+version = "1.2.4"
 dependencies = [
  "apple-native-keyring-store",
  "base64 0.23.1",

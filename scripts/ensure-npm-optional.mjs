@@ -5,13 +5,29 @@
 // platform is installed, and installs a missing one at exactly the locked
 // version. It does not retry: if the package is still missing afterwards, or
 // installed at another version, the build fails with the name.
+// Linux packages also name a libc (`glibc` or `musl`). Installing the other
+// one makes npm exit EBADPLATFORM, so an unknown libc skips those packages
+// instead of guessing.
 //   node scripts/ensure-npm-optional.mjs <dir with package-lock.json> [scope/prefix, default @tauri-apps/cli-]
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-export function wanted(lock, prefix, platform = process.platform, arch = process.arch) {
+// Official Node builds set glibcVersionRuntime when they are linked to glibc.
+// A musl build names libc.musl or ld-musl in the report's shared objects.
+export function hostLibc() {
+  if (process.platform !== 'linux') return null;
+  const header = process.report.getReport().header ?? {};
+  if (header.glibcVersionRuntime || header.glibcVersion) return 'glibc';
+  const objects = Array.isArray(header.sharedObjects) ? header.sharedObjects : [];
+  const text = objects.join('\n');
+  if (text.includes('libc.musl-') || text.includes('ld-musl-')) return 'musl';
+  if (text.includes('libc.so.6') || text.includes('ld-linux')) return 'glibc';
+  throw new Error('cannot tell glibc from musl; refusing to guess a platform package');
+}
+
+export function wanted(lock, prefix, platform = process.platform, arch = process.arch, libc = hostLibc()) {
   const out = [];
   for (const [path, entry] of Object.entries(lock.packages ?? {})) {
     const name = path.replace(/^node_modules\//, '');
@@ -19,6 +35,7 @@ export function wanted(lock, prefix, platform = process.platform, arch = process
     if (!entry.optional) continue;
     if (entry.os && !entry.os.includes(platform)) continue;
     if (entry.cpu && !entry.cpu.includes(arch)) continue;
+    if (entry.libc && (!libc || !entry.libc.includes(libc))) continue;
     out.push({ name, version: entry.version });
   }
   return out;
@@ -29,9 +46,9 @@ const installedVersion = (dir, name) => {
   return existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')).version : null;
 };
 
-export function ensure(dir, prefix, { install = defaultInstall, platform, arch } = {}) {
+export function ensure(dir, prefix, { install = defaultInstall, platform, arch, libc } = {}) {
   const lock = JSON.parse(readFileSync(join(dir, 'package-lock.json'), 'utf8'));
-  const needed = wanted(lock, prefix, platform, arch);
+  const needed = wanted(lock, prefix, platform, arch, libc);
   const notes = [];
   for (const { name, version } of needed) {
     if (installedVersion(dir, name) === version) continue;
@@ -53,7 +70,9 @@ function defaultInstall(dir, spec) {
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const [dir = '.', prefix = '@tauri-apps/cli-'] = process.argv.slice(2);
-  const { needed, notes } = ensure(resolve(dir), prefix);
+  const libc = hostLibc();
+  const { needed, notes } = ensure(resolve(dir), prefix, { libc });
   for (const note of notes) console.log(`::warning::${note}`);
-  console.log(`Optional packages for ${process.platform}-${process.arch}: ${needed.map((p) => `${p.name}@${p.version}`).join(', ') || 'none locked'}`);
+  const label = [process.platform, process.arch, libc].filter(Boolean).join('-');
+  console.log(`Optional packages for ${label}: ${needed.map((p) => `${p.name}@${p.version}`).join(', ') || 'none locked'}`);
 }
