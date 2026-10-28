@@ -1,0 +1,30 @@
+experimental/app/src/selftest_multi.rs
+  h_0ff4f4713441f4 30
+experimental/app/src/web_bundle.rs
+  h_0ff4f4713441f4 403-404,406,410-417,701,1723
+experimental/app/src/web_gaming.rs
+  h_0ff4f4713441f4 9
+experimental/app/src/web_notify/selftest.rs
+  h_0ff4f4713441f4 9,16
+experimental/app/src/web_permissions.rs
+  h_0ff4f4713441f4 226-229,241-248
+experimental/app/src/web_trust.rs
+  h_0ff4f4713441f4 9,431
+linux/src/core/atomic.ts
+  h_0ff4f4713441f4 1,9-10,23-29
+linux/src/core/osvault.ts
+  h_0ff4f4713441f4 6,8,69-70
+linux/src/core/trust.ts
+  h_0ff4f4713441f4 12,14,298
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7c92eaca0cef9338f69f55c745f84627fd1d66d6",
+  "prompts": {},
+  "humans": {
+    "h_0ff4f4713441f4": {
+      "author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}
