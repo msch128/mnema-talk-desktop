@@ -20,8 +20,8 @@ import { join } from 'node:path'
 const DEB_NAME = 'mnema-desktop-dev.deb'
 const AR_MAGIC = '!<arch>\n'
 const INSTALL_TIMEOUT_MS = 10 * 60 * 1000
-/** pkexec: the user dismissed the dialog (126) or is not authorized (127 without a command). */
-const PKEXEC_DECLINED = 126
+/** pkexec: the user dismissed the dialog (126) or authentication failed (127). */
+const PKEXEC_DECLINED = [126, 127]
 /** Exit statuses of the privileged script: the copy does not match the verified hash, is not the expected size, or the source is not a regular file. */
 export const HASH_MISMATCH = 87
 export const NOT_REGULAR = 88
@@ -105,7 +105,8 @@ export async function installDeb(bytes: Uint8Array, host: DebHost): Promise<DebR
     }
     const code = await host.run(installCommand(path, sha256, bytes.length))
     if (code === 0) return 'installed'
-    if (code === PKEXEC_DECLINED) throw new Error('installation was not authorized')
+    if (code === null) throw new Error('the package manager did not finish in time or could not be started')
+    if (PKEXEC_DECLINED.includes(code)) throw new Error('installation was not authorized')
     if (code === HASH_MISMATCH || code === WRONG_SIZE || code === NOT_REGULAR) throw new Error('the package changed after it was verified; nothing was installed')
     throw new Error('the package manager refused the package')
   } finally {

@@ -13,6 +13,7 @@ const T = de
       reconnect: 'Erneut verbinden', up: 'Nach oben', down: 'Nach unten', remove: 'Entfernen …',
       confirm: 'Server entfernen', confirmNote: 'Entfernt die Anmeldung und alle lokalen Daten dieses Servers von diesem Gerät.', cancel: 'Abbrechen',
       moved: (name, n) => `${name} an Position ${n}`, removed: (name) => `${name} entfernt`,
+      moveFailed: (name) => `${name}: Die Reihenfolge konnte nicht geändert werden`, removeFailed: (name) => `${name}: Der Server konnte nicht entfernt werden`,
       notifications: 'Benachrichtigungen', levels: { all: 'Alle Nachrichten', mentions: 'Nur Erwähnungen', mute: 'Stummschalten' },
       notifySet: (name, level) => `${name}: ${level}`, notifyFailed: (name) => `${name}: Die Einstellung konnte nicht geändert werden`,
     }
@@ -23,6 +24,7 @@ const T = de
       reconnect: 'Reconnect', up: 'Move up', down: 'Move down', remove: 'Remove…',
       confirm: 'Remove server', confirmNote: 'Removes the sign-in and all local data of this server from this device.', cancel: 'Cancel',
       moved: (name, n) => `${name} moved to position ${n}`, removed: (name) => `${name} removed`,
+      moveFailed: (name) => `${name}: the order could not be changed`, removeFailed: (name) => `${name}: the server could not be removed`,
       notifications: 'Notifications', levels: { all: 'All messages', mentions: 'Only mentions', mute: 'Mute' },
       notifySet: (name, level) => `${name}: ${level}`, notifyFailed: (name) => `${name}: the setting could not be changed`,
     };
@@ -32,14 +34,17 @@ let state = { active: null, adding: true, can_add: false, instances: [] };
 let dragging = null;
 let menuFor = null;
 let menuLoad = 0;
+let menuSync = null;
 
-function call(cmd, args) {
+// Resolves to { ok, value }; a command the host refuses is { ok: false }.
+function attempt(cmd, args) {
   try {
-    return Promise.resolve(host.invoke(cmd, args)).catch(() => undefined);
+    return Promise.resolve(host.invoke(cmd, args)).then((value) => ({ ok: true, value }), () => ({ ok: false, value: undefined }));
   } catch {
-    return Promise.resolve(undefined);
+    return Promise.resolve({ ok: false, value: undefined });
   }
 }
+const call = (cmd, args) => attempt(cmd, args).then((result) => result.value);
 const count = (n) => (n > 99 ? '99+' : String(n));
 
 function label(server) {
@@ -111,8 +116,9 @@ function keys(event, server, index) {
 
 function move(server, to) {
   if (to < 0 || to >= state.instances.length) return;
-  call('rail_move', { id: server.id, to }).then(() => {
-    $('live').textContent = T.moved(server.name, to + 1);
+  attempt('rail_move', { id: server.id, to }).then(({ ok }) => {
+    $('live').textContent = ok ? T.moved(server.name, to + 1) : T.moveFailed(server.name);
+    if (!ok) return;
     const moved = document.querySelector(`.tile[data-id="${server.id}"]`);
     if (moved) moved.focus();
   });
@@ -123,6 +129,7 @@ function closeMenu() {
   menu.hidden = true;
   menu.dataset.mode = '';
   menuLoad += 1;
+  menuSync = null;
   menu.replaceChildren();
   const owner = menuFor;
   menuFor = null;
@@ -140,10 +147,11 @@ function entry(text, action, className) {
 }
 
 function openMenu(server, anchor, confirm) {
+  // A push of the host may have replaced the tile this menu was asked from.
+  if (!anchor.isConnected) anchor = [...document.querySelectorAll('.tile')].find((t) => t.dataset.id === server.id) || anchor;
   closeMenu();
   menuFor = anchor;
   const menu = $('menu');
-  const index = state.instances.findIndex((s) => s.id === server.id);
   const title = document.createElement('div');
   title.className = 'title';
   title.textContent = server.name;
@@ -156,12 +164,14 @@ function openMenu(server, anchor, confirm) {
     menu.append(note, entry(T.confirm, () => remove(server), 'danger'), entry(T.cancel, closeMenu));
   } else {
     if (server.status === 'refused') menu.append(entry(T.reconnect, () => { closeMenu(); call('rail_reconnect', { id: server.id }); }));
-    const up = entry(T.up, () => { closeMenu(); move(server, index - 1); });
-    up.disabled = index <= 0;
-    const down = entry(T.down, () => { closeMenu(); move(server, index + 1); });
-    down.disabled = index >= state.instances.length - 1;
-    menu.append(up, down, entry(T.remove, () => openMenu(server, anchor, true), 'danger'));
-    if (server.status === 'ready') loadNotify(server, anchor);
+    const at = () => state.instances.findIndex((s) => s.id === server.id);
+    const up = entry(T.up, () => { const from = at(); closeMenu(); move(server, from - 1); });
+    const down = entry(T.down, () => { const from = at(); closeMenu(); move(server, from + 1); });
+    // The order can change under an open menu; its two entries follow it.
+    menuSync = () => { const from = at(); up.disabled = from <= 0; down.disabled = from < 0 || from >= state.instances.length - 1; };
+    menuSync();
+    menu.append(up, down, entry(T.remove, () => openMenu(server, menuFor, true), 'danger'));
+    if (server.status === 'ready') loadNotify(server);
   }
   menu.hidden = false;
   const box = anchor.getBoundingClientRect();
@@ -174,11 +184,11 @@ function openMenu(server, anchor, confirm) {
 // The member's server-wide notification level, from the server itself (through
 // the host). A server that cannot answer (older, still connecting, or this
 // host has no such command) simply gets no entries.
-function loadNotify(server, anchor) {
+function loadNotify(server) {
   const load = ++menuLoad;
   call('rail_notify_get', { id: server.id }).then((info) => {
     const menu = $('menu');
-    if (load !== menuLoad || menuFor !== anchor || menu.hidden || menu.dataset.mode !== 'main') return;
+    if (load !== menuLoad || menu.hidden || menu.dataset.mode !== 'main') return;
     if (!info || info.supported !== true || !(info.level in T.levels)) return;
     const head = document.createElement('div');
     head.className = 'note';
@@ -202,7 +212,7 @@ function loadNotify(server, anchor) {
 function remove(server) {
   menuFor = null;
   closeMenu();
-  call('rail_remove', { id: server.id }).then(() => { $('live').textContent = T.removed(server.name); });
+  attempt('rail_remove', { id: server.id }).then(({ ok }) => { $('live').textContent = ok ? T.removed(server.name) : T.removeFailed(server.name); });
 }
 
 function render() {
@@ -222,8 +232,21 @@ function render() {
 function set(next) {
   if (!next || !Array.isArray(next.instances)) return;
   state = next;
-  if (menuFor && !document.body.contains(menuFor)) closeMenu();
+  // Every push builds new tiles. What the person is working with has to survive
+  // that: the focused tile, and the tile an open menu belongs to.
+  const focused = document.activeElement && document.activeElement.classList.contains('tile') ? document.activeElement.dataset.id : null;
+  const owner = menuFor ? menuFor.dataset.id : null;
   render();
+  const tileOf = (id) => [...document.querySelectorAll('.tile')].find((t) => t.dataset.id === id);
+  const refocus = focused && tileOf(focused);
+  if (refocus) refocus.focus();
+  if (owner) {
+    const again = tileOf(owner);
+    if (again) {
+      menuFor = again;
+      if (menuSync) menuSync();
+    } else closeMenu();
+  }
 }
 
 $('add').addEventListener('click', () => {

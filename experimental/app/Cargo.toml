@@ -1,6 +1,6 @@
 [package]
 name = "mnema-native-client-preview"
-version = "1.2.7"
+version = "1.2.8"
 edition = "2024"
 publish = false
 license = "AGPL-3.0-only"
@@ -12,6 +12,8 @@ web-client = ["shell", "dep:reqwest", "dep:ed25519-dalek", "dep:sha2", "dep:hex"
 multi-selftest = ["web-client"]
 # Test-only: the app posts one toast on its own and records the outcome (src/web_notify/selftest.rs). Never in a shipped build.
 notify-selftest = ["web-client"]
+# Test-only: the WebView2 startup check sets MNEMA_WEBVIEW_PROBE to read the permission decision (src/web_permissions.rs). Compiled out of every shipped build.
+webview-probe = ["web-client"]
 custom-protocol = ["shell", "tauri/custom-protocol"]
 synthetic-media-fixture = ["dep:mnema-private-synthetic-media-actor","dep:mnema-private-synthetic-media-policy","tauri/dynamic-acl"]
 synthetic-transport-fixture=["mnema-private-native-client-broker/synthetic-transport-fixture","dep:libc"]
@@ -58,7 +60,7 @@ security-framework={version="=3.7.0",optional=true}
 security-framework-sys={version="=2.17.0",optional=true}
 core-foundation={version="=0.10.1",optional=true}
 objc2={version="=0.6.5",optional=true}
-objc2-foundation={version="=0.3.2",optional=true,default-features=false,features=["std","NSBundle","NSError","NSString"]}
+objc2-foundation={version="=0.3.2",optional=true,default-features=false,features=["std","NSArray","NSBundle","NSError","NSString"]}
 objc2-user-notifications={version="=0.3.2",optional=true,default-features=false,features=["std","block2","UNNotification","UNNotificationContent","UNNotificationRequest","UNNotificationResponse","UNNotificationSettings","UNNotificationSound","UNNotificationTrigger","UNUserNotificationCenter"]}
 block2={version="=0.6.2",optional=true}
 [target.'cfg(any(target_os="macos",target_os="windows"))'.dependencies]

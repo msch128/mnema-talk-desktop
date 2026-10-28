@@ -69,8 +69,9 @@ The four trust commands use `{context,profileIntent,channelId,onStatus}` for Beg
 
 ## Shared client integration successor
 
-The host's application input is now the canonical `web/dist` bundle. The
-historical `experimental/ui` checkpoint is not built or loaded by this host.
+The host's application input is now the signed web bundle built from the
+canonical `web` app and verified against the pinned key. The historical
+`experimental/ui` checkpoint is not built or loaded by this host.
 Browser and desktop mount the same App, ChatArea, MessageRow and ThreadSidebar.
 Desktop first selects an instance through NativeBootstrap and verifies discovery.
 

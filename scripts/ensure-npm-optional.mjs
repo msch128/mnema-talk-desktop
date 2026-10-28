@@ -6,8 +6,8 @@
 // version. It does not retry: if the package is still missing afterwards, or
 // installed at another version, the build fails with the name.
 // Linux packages also name a libc (`glibc` or `musl`). Installing the other
-// one makes npm exit EBADPLATFORM, so an unknown libc skips those packages
-// instead of guessing.
+// one makes npm exit EBADPLATFORM, so an unknown libc (hostLibc() is null)
+// skips those packages with a warning instead of guessing.
 //   node scripts/ensure-npm-optional.mjs <dir with package-lock.json> [scope/prefix, default @tauri-apps/cli-]
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
@@ -16,6 +16,7 @@ import { fileURLToPath } from 'node:url';
 
 // Official Node builds set glibcVersionRuntime when they are linked to glibc.
 // A musl build names libc.musl or ld-musl in the report's shared objects.
+// Null off Linux and when the libc cannot be told.
 export function hostLibc() {
   if (process.platform !== 'linux') return null;
   const header = process.report.getReport().header ?? {};
@@ -24,7 +25,7 @@ export function hostLibc() {
   const text = objects.join('\n');
   if (text.includes('libc.musl-') || text.includes('ld-musl-')) return 'musl';
   if (text.includes('libc.so.6') || text.includes('ld-linux')) return 'glibc';
-  throw new Error('cannot tell glibc from musl; refusing to guess a platform package');
+  return null;
 }
 
 export function wanted(lock, prefix, platform = process.platform, arch = process.arch, libc = hostLibc()) {
@@ -73,6 +74,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const libc = hostLibc();
   const { needed, notes } = ensure(resolve(dir), prefix, { libc });
   for (const note of notes) console.log(`::warning::${note}`);
+  if (process.platform === 'linux' && !libc) console.log('::warning::cannot tell glibc from musl; packages that name a libc were skipped');
   const label = [process.platform, process.arch, libc].filter(Boolean).join('-');
   console.log(`Optional packages for ${label}: ${needed.map((p) => `${p.name}@${p.version}`).join(', ') || 'none locked'}`);
 }

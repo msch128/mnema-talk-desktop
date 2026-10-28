@@ -104,6 +104,14 @@ impl fmt::Debug for Body {
     }
 }
 impl Body {
+    #[cfg(test)]
+    pub(crate) fn for_test(bytes: &[u8], status: u16) -> Self {
+        Self(Zeroizing::new(bytes.to_vec()), status)
+    }
+    #[cfg(test)]
+    pub(crate) fn test_json(json: &str) -> Self {
+        Self(Zeroizing::new(json.as_bytes().to_vec()), 200)
+    }
     pub(crate) fn status(&self) -> u16 {
         self.1
     }
@@ -116,6 +124,10 @@ impl Body {
     }
 }
 const AUTH_BODY_MAX: usize = 16 * 1024;
+/// Records requested per opaque relay page; the receiver rejects longer pages.
+pub(crate) const OPAQUE_PAGE_LIMIT: usize = 10;
+/// Upper bound of one serialized relay event, the size of a published event.
+const OPAQUE_EVENT_MAX: usize = 96 * 1024;
 impl Http {
     fn builder() -> reqwest::ClientBuilder {
         Client::builder()
@@ -171,7 +183,9 @@ impl Http {
         {
             return Err(Error::Denied);
         }
-        let max_body = if matches!(
+        let max_body = if matches!(endpoint, Endpoint::OpaquePage(_, _)) {
+            OPAQUE_PAGE_LIMIT * OPAQUE_EVENT_MAX
+        } else if matches!(
             endpoint,
             Endpoint::Channels
                 | Endpoint::Members
@@ -180,7 +194,6 @@ impl Http {
                 | Endpoint::Legal
                 | Endpoint::PublicHealth
                 | Endpoint::PublicLegal
-                | Endpoint::OpaquePage(_, _)
                 | Endpoint::Admin(_)
                 | Endpoint::OpaquePost(_)
         ) {
@@ -191,7 +204,9 @@ impl Http {
         let (method, path) = endpoint.route();
         let mut url = origin.join(&path).map_err(|_| Error::InvalidInput)?;
         let query = match endpoint {
-            Endpoint::OpaquePage(_, after) => Some(format!("after={after}&limit=10")),
+            Endpoint::OpaquePage(_, after) => {
+                Some(format!("after={after}&limit={OPAQUE_PAGE_LIMIT}"))
+            }
             _ => None,
         };
         url.set_query(query.as_deref());
@@ -226,6 +241,8 @@ impl Http {
             if bytes.len() > request_max {
                 return Err(Error::BodyLimit);
             }
+            // reqwest takes ownership of a plain copy that cannot be wiped; the
+            // caller's buffer is Zeroizing and the request lives for one call.
             request = request
                 .header(header::CONTENT_TYPE, "application/json")
                 .body(bytes.to_vec());
@@ -296,13 +313,7 @@ impl Http {
             .get(header::CONTENT_TYPE)
             .and_then(|h| h.to_str().ok())
             .unwrap_or("");
-        if content_type.split(';').next().unwrap_or("").trim() != "application/json"
-            || response
-                .headers()
-                .get(header::CACHE_CONTROL)
-                .and_then(|h| h.to_str().ok())
-                != Some("no-store")
-        {
+        if content_type.split(';').next().unwrap_or("").trim() != "application/json" {
             return Err(Error::Protocol);
         }
         if response
@@ -311,7 +322,13 @@ impl Http {
         {
             return Err(Error::BodyLimit);
         }
-        let mut bytes = Zeroizing::new(Vec::new());
+        // Allocate once: a growing buffer would leave earlier, unwiped copies
+        // of tokens behind on every reallocation.
+        let capacity = response
+            .content_length()
+            .map_or(max_body, |length| length as usize)
+            .min(max_body);
+        let mut bytes = Zeroizing::new(Vec::with_capacity(capacity));
         while let Some(chunk) = response.chunk().await.map_err(|_| Error::Network)? {
             if chunk.len() > max_body.saturating_sub(bytes.len()) {
                 return Err(Error::BodyLimit);

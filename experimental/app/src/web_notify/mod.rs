@@ -37,7 +37,6 @@ const MAX_SERVER_NAME: usize = 60;
 const MAX_ID: usize = 64;
 /// Shortest gap between two toasts, so a flooding page cannot spam the desktop.
 const MIN_GAP: Duration = Duration::from_millis(300);
-const MAX_BADGE: u32 = 999;
 
 /// What the page learns when a toast was used.
 #[derive(Serialize, Clone, Debug, PartialEq, Eq)]
@@ -58,19 +57,59 @@ pub enum Permission {
     Unsupported,
 }
 
+/// What a page asked to show, before the server's name is added.
+struct Toast {
+    title: String,
+    body: String,
+    click: Click,
+}
+
 /// What the host remembers between two toasts.
 #[derive(Default)]
 pub struct Notifier {
-    /// When each server last showed a toast: one that floods does not hold up
-    /// the others.
-    last: Mutex<HashMap<String, Instant>>,
+    state: Mutex<Throttle>,
 }
 
-/// Plain text only: control characters become spaces, the length is bounded
-/// in characters, and anything cut off is marked.
+/// Per server, so one that floods does not hold up the others.
+#[derive(Default)]
+struct Throttle {
+    /// When each server last showed a toast.
+    last: HashMap<String, Instant>,
+    /// The newest toast that arrived too soon after the last one; it is shown
+    /// when the gap is over, and older held ones are replaced by it.
+    held: HashMap<String, Toast>,
+}
+
+/// What to do with a toast that arrived.
+enum Offer {
+    Show(Toast),
+    /// Kept for later. `flush` says whether this call has to schedule the
+    /// showing (no earlier held toast did already).
+    Held {
+        wait: Duration,
+        flush: bool,
+    },
+}
+
+/// Invisible format characters (Unicode `Cf`) that reorder or hide text:
+/// zero-width spaces and marks, bidi overrides and isolates, the word joiner
+/// and the byte order mark. The zero-width joiner stays: emoji sequences need it.
+fn is_invisible(c: char) -> bool {
+    matches!(
+        c,
+        '\u{ad}' | '\u{61c}' | '\u{180e}' | '\u{200b}'..='\u{200c}' | '\u{200e}'..='\u{200f}'
+            | '\u{202a}'..='\u{202e}' | '\u{2060}'..='\u{2064}' | '\u{2066}'..='\u{206f}'
+            | '\u{feff}'
+    )
+}
+
+/// Plain text only: control characters become spaces, invisible format
+/// characters are dropped, the length is bounded in characters, and anything
+/// cut off is marked.
 pub fn clean(text: &str, max: usize) -> String {
     let flat: String = text
         .chars()
+        .filter(|c| !is_invisible(*c))
         .map(|c| if c.is_control() { ' ' } else { c })
         .collect();
     let flat = flat.split_whitespace().collect::<Vec<_>>().join(" ");
@@ -90,23 +129,50 @@ pub fn valid_id(id: &str) -> bool {
 }
 
 impl Notifier {
-    fn due(&self, server: &str, now: Instant) -> bool {
-        let Ok(mut last) = self.last.lock() else {
-            return false;
+    /// Lets a toast through when the server's last one is far enough back;
+    /// otherwise keeps it, replacing an earlier held one.
+    fn offer(&self, server: &str, now: Instant, toast: Toast) -> Offer {
+        let Ok(mut state) = self.state.lock() else {
+            return Offer::Held {
+                wait: MIN_GAP,
+                flush: false,
+            };
         };
-        if last
-            .get(server)
-            .is_some_and(|at| now.duration_since(*at) < MIN_GAP)
-        {
-            return false;
+        let elapsed = state.last.get(server).map(|at| now.duration_since(*at));
+        match elapsed {
+            Some(gap) if gap < MIN_GAP => {
+                let flush = state.held.insert(server.to_owned(), toast).is_none();
+                Offer::Held {
+                    wait: MIN_GAP - gap,
+                    flush,
+                }
+            }
+            _ => {
+                state.last.insert(server.to_owned(), now);
+                Offer::Show(toast)
+            }
         }
-        last.insert(server.to_owned(), now);
-        true
+    }
+
+    /// The held toast of a server, if its gap is over; it counts as shown now.
+    fn take_held(&self, server: &str, now: Instant) -> Option<Toast> {
+        let mut state = self.state.lock().ok()?;
+        let toast = state.held.remove(server)?;
+        state.last.insert(server.to_owned(), now);
+        Some(toast)
+    }
+
+    /// A toast that did not reach the screen does not hold up the next one.
+    fn release(&self, server: &str) {
+        if let Ok(mut state) = self.state.lock() {
+            state.last.remove(server);
+        }
     }
 
     fn forget(&self, server: &str) {
-        if let Ok(mut last) = self.last.lock() {
-            last.remove(server);
+        if let Ok(mut state) = self.state.lock() {
+            state.last.remove(server);
+            state.held.remove(server);
         }
     }
 }
@@ -188,8 +254,10 @@ fn tagged(title: &str, name: &str, several: bool) -> String {
 }
 
 /// Shows one toast: bounded plain text, rate limited, and, where the OS has
-/// not been asked yet, preceded by asking. A toast the user has turned off in
-/// the OS is dropped without an error, like the browser does.
+/// not been asked yet, preceded by asking. A toast that comes too soon after
+/// the last one of its server is held and shown once the gap is over (a burst
+/// shows its newest toast, not none). A toast the user has turned off in the
+/// OS is dropped without an error, like the browser does.
 async fn deliver(
     app: &tauri::AppHandle,
     server: &str,
@@ -198,25 +266,61 @@ async fn deliver(
     channel_id: String,
     message_id: String,
 ) -> Result<bool, String> {
-    if !app.state::<Notifier>().due(server, Instant::now()) {
-        return Ok(false);
+    let toast = Toast {
+        title: title.to_owned(),
+        body: body.to_owned(),
+        click: Click {
+            channel_id,
+            message_id,
+        },
+    };
+    match app.state::<Notifier>().offer(server, Instant::now(), toast) {
+        Offer::Show(toast) => show(app, server, toast).await,
+        Offer::Held { wait, flush } => {
+            if flush {
+                let (app, server) = (app.clone(), server.to_owned());
+                tauri::async_runtime::spawn(async move {
+                    tokio::time::sleep(wait).await;
+                    let held = app.state::<Notifier>().take_held(&server, Instant::now());
+                    if let Some(toast) = held {
+                        let _ = show(&app, &server, toast).await;
+                    }
+                });
+            }
+            Ok(false)
+        }
     }
-    let click = Click {
-        channel_id,
-        message_id,
-    };
-    let (session, title) = {
-        let trusted = app.state::<super::web_client::Trusted>();
-        let registry = trusted.registry.lock().map_err(|_| "busy")?;
-        let slot = registry.slot(server).ok_or("No instance is selected.")?;
-        (
-            slot.generation.clone(),
-            tagged(title, &slot.name(), registry.len() > 1),
-        )
-    };
-    platform::show(app, &title, &clean(body, MAX_BODY), click, session).await
 }
 
+/// Hands a toast that passed the rate limit to the platform, tagged with the
+/// name of its server. When it does not reach the screen the server's gap is
+/// given back.
+async fn show(app: &tauri::AppHandle, server: &str, toast: Toast) -> Result<bool, String> {
+    let shown = async {
+        let (session, title) = {
+            let trusted = app.state::<super::web_client::Trusted>();
+            let registry = trusted.registry.lock().map_err(|_| "busy")?;
+            let slot = registry.slot(server).ok_or("No instance is selected.")?;
+            (
+                slot.generation.clone(),
+                tagged(&toast.title, &slot.name(), registry.len() > 1),
+            )
+        };
+        platform::show(
+            app,
+            &title,
+            &clean(&toast.body, MAX_BODY),
+            toast.click,
+            session,
+        )
+        .await
+    }
+    .await;
+    if !matches!(shown, Ok(true)) {
+        app.state::<Notifier>().release(server);
+    }
+    shown
+}
 /// The user used a toast: bring the server it came from to the front and tell
 /// its page which message the toast was about.
 ///
@@ -225,20 +329,18 @@ async fn deliver(
 /// other page.
 pub(crate) fn activated(app: &tauri::AppHandle, click: Click, session: &str) {
     let trusted = app.state::<super::web_client::Trusted>();
-    let Some(id) = trusted
-        .registry
-        .lock()
-        .ok()
-        .and_then(|r| r.by_generation(session).map(|s| s.id.clone()))
-    else {
+    // One lookup for both, so a page that restarted meanwhile does not get
+    // the click of its predecessor.
+    let Some((id, channel)) = trusted.registry.lock().ok().and_then(|r| {
+        r.by_generation(session)
+            .map(|s| (s.id.clone(), s.clicks.clone()))
+    }) else {
         return;
     };
     #[cfg(feature = "notify-selftest")]
     selftest::clicked(&click);
     super::web_shell::bring_forward(app, &id);
-    if let Ok(registry) = trusted.registry.lock()
-        && let Some(channel) = registry.slot(&id).and_then(|s| s.clicks.as_ref())
-    {
+    if let Some(channel) = channel {
         let _ = channel.send(click);
     }
 }
@@ -278,7 +380,7 @@ pub fn desktop_set_badge(webview: Webview, count: u32) -> Result<(), String> {
         .registry
         .lock()
         .map_err(|_| "busy")?
-        .report_badge(&session.id, count.min(MAX_BADGE));
+        .report_badge(&session.id, count);
     super::web_shell::counts_changed(app);
     Ok(())
 }
@@ -319,11 +421,17 @@ fn dot() -> tauri::image::Image<'static> {
 }
 
 /// A server left the list or its page went away: nothing may be delivered to
-/// it anymore, and the toasts still on the screen or in the notification
-/// centre are of servers that may be gone.
-pub fn closed(app: &tauri::AppHandle, server: &str) {
+/// it anymore, and its toasts (those of page run `generation`) leave the
+/// screen and the notification centre. Those of other servers stay where the
+/// platform can tell them apart.
+pub fn closed(app: &tauri::AppHandle, server: &str, generation: &str) {
     app.state::<Notifier>().forget(server);
-    platform::clear(app);
+    let others_remain = app
+        .state::<super::web_client::Trusted>()
+        .registry
+        .lock()
+        .map_or(true, |r| r.len() > 0);
+    platform::clear(app, generation, others_remain);
 }
 
 #[cfg(test)]
@@ -349,19 +457,96 @@ mod tests {
         }
     }
 
+    fn toast(n: u8) -> Toast {
+        Toast {
+            title: format!("t{n}"),
+            body: String::new(),
+            click: Click {
+                channel_id: "c".into(),
+                message_id: n.to_string(),
+            },
+        }
+    }
+
     #[test]
     fn toasts_are_rate_limited_per_server() {
         let n = Notifier::default();
         let t = Instant::now();
-        assert!(n.due("a", t));
-        assert!(!n.due("a", t + Duration::from_millis(100)));
+        let ms = Duration::from_millis;
+        assert!(matches!(n.offer("a", t, toast(1)), Offer::Show(_)));
+        assert!(matches!(
+            n.offer("a", t + ms(100), toast(2)),
+            Offer::Held { .. }
+        ));
         assert!(
-            n.due("b", t + Duration::from_millis(100)),
+            matches!(n.offer("b", t + ms(100), toast(3)), Offer::Show(_)),
             "another server is not held up"
         );
-        assert!(n.due("a", t + MIN_GAP + Duration::from_millis(1)));
+        assert!(matches!(
+            n.offer("a", t + MIN_GAP + ms(1), toast(4)),
+            Offer::Show(_)
+        ));
         n.forget("a");
-        assert!(n.due("a", t + MIN_GAP + Duration::from_millis(2)));
+        assert!(matches!(
+            n.offer("a", t + MIN_GAP + ms(2), toast(5)),
+            Offer::Show(_)
+        ));
+    }
+
+    #[test]
+    fn a_burst_is_coalesced_into_its_newest_toast() {
+        let n = Notifier::default();
+        let t = Instant::now();
+        let ms = Duration::from_millis;
+        assert!(matches!(n.offer("a", t, toast(1)), Offer::Show(_)));
+        let Offer::Held { wait, flush } = n.offer("a", t + ms(100), toast(2)) else {
+            panic!("held");
+        };
+        assert!(flush, "the first held toast schedules the showing");
+        assert_eq!(wait, MIN_GAP - ms(100));
+        let Offer::Held { flush, .. } = n.offer("a", t + ms(150), toast(3)) else {
+            panic!("held");
+        };
+        assert!(!flush, "a showing is already scheduled");
+        let shown = n.take_held("a", t + MIN_GAP).expect("the newest is kept");
+        assert_eq!(shown.click.message_id, "3");
+        assert!(n.take_held("a", t + MIN_GAP).is_none());
+        assert!(
+            matches!(
+                n.offer("a", t + MIN_GAP + ms(10), toast(4)),
+                Offer::Held { .. }
+            ),
+            "the held toast that was shown restarts the gap"
+        );
+    }
+
+    #[test]
+    fn a_removed_server_drops_its_held_toast_and_a_failed_one_frees_the_gap() {
+        let n = Notifier::default();
+        let t = Instant::now();
+        n.offer("a", t, toast(1));
+        n.offer("a", t + Duration::from_millis(10), toast(2));
+        n.forget("a");
+        assert!(n.take_held("a", t + MIN_GAP).is_none());
+        n.offer("a", t, toast(3));
+        n.release("a");
+        assert!(matches!(
+            n.offer("a", t + Duration::from_millis(10), toast(4)),
+            Offer::Show(_)
+        ));
+    }
+
+    #[test]
+    fn invisible_format_characters_are_dropped() {
+        assert_eq!(
+            clean("a\u{202e}b\u{200b}c\u{feff}d\u{2066}e\u{2069}", 50),
+            "abcde"
+        );
+        assert_eq!(
+            clean("\u{1f468}\u{200d}\u{1f469}", 50),
+            "\u{1f468}\u{200d}\u{1f469}",
+            "emoji joiners stay"
+        );
     }
 
     #[test]

@@ -4,13 +4,7 @@ mod transport_fixture;
 use mnema_private_native_client_broker::{MetadataResource, NativeRequest, Password};
 use serde_json::json;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let path = std::env::var("MNEMA_NATIVE_TRANSPORT_BOOTSTRAP")?;
-    let client = transport_fixture::client()?;
-    let bootstrap: serde_json::Value = serde_json::from_slice(&std::fs::read(path)?)?;
-    let origin = bootstrap["origin"]
-        .as_str()
-        .ok_or("missing origin")?
-        .to_owned();
+    let (client, origin) = transport_fixture::qualified()?;
     let window = client.attach_main_window()?;
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()

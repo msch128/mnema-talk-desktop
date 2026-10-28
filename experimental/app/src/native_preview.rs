@@ -769,16 +769,25 @@ fn native_socket_close(
 }
 #[cfg(feature = "synthetic-transport-fixture")]
 mod transport_fixture;
+/// Report a start-up failure with a non-zero status so qualification runs and
+/// CI can tell it from a normal exit. Only the error class is printed.
+fn startup_failed(stage: &str, error: &dyn std::fmt::Debug) -> ! {
+    eprintln!("native preview start-up failed ({stage}): {error:?}");
+    std::process::exit(1)
+}
 fn main() {
     #[cfg(feature = "synthetic-transport-fixture")]
     let configured = transport_fixture::client();
     #[cfg(not(feature = "synthetic-transport-fixture"))]
     let configured = NativeClient::ephemeral();
-    let Ok(client) = configured else { return };
+    let client = match configured {
+        Ok(client) => client,
+        Err(error) => startup_failed("transport", &error),
+    };
     #[cfg(feature = "synthetic-media-fixture")]
     let media = match media_fixture::configured_actor() {
         Ok(m) => m,
-        Err(_) => return,
+        Err(error) => startup_failed("media", &error),
     };
     let builder = tauri::Builder::default()
         .manage(RuntimeState {
@@ -792,6 +801,31 @@ fn main() {
         .setup(|app| {
             let handle = app.handle().clone();
             let navigation = handle.clone();
+            // The commands of this research host belong to its own page only.
+            // The shipped client's capability for that page (capabilities/main.json)
+            // grants no native command, so they are granted here, in this build only.
+            app.add_capability(
+                tauri::ipc::CapabilityBuilder::new("native-preview-main-only")
+                    .window("main")
+                    .local(true)
+                    .permission("allow-native-context")
+                    .permission("allow-native-connect")
+                    .permission("allow-native-metadata-request")
+                    .permission("allow-native-public-metadata-request")
+                    .permission("allow-native-auth-login")
+                    .permission("allow-native-auth-me")
+                    .permission("allow-native-auth-refresh")
+                    .permission("allow-native-auth-logout")
+                    .permission("allow-native-disconnect")
+                    .permission("allow-native-request-cancel")
+                    .permission("allow-native-socket-open")
+                    .permission("allow-native-socket-send")
+                    .permission("allow-native-socket-close")
+                    .permission("allow-native-personal-metadata-request")
+                    .permission("allow-native-auth-password")
+                    .permission("allow-native-auth-register")
+                    .permission("allow-native-admin-request"),
+            )?;
             #[cfg(feature = "native-crypto")]
             app.add_capability(
                 tauri::ipc::CapabilityBuilder::new("native-core-main-only")

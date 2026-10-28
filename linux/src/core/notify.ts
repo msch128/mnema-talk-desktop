@@ -6,13 +6,14 @@
  */
 export const MAX_TITLE = 100
 export const MAX_BODY = 240
-export const MAX_ID = 64
+const MAX_ID = 64
+/** What the launcher badge and the rail show at most. */
 export const MAX_BADGE = 999
 /** Shortest gap between two toasts. */
 export const MIN_GAP_MS = 300
 
 export function cleanText(text: string, max: number): string {
-  const flat = text.replace(/[\p{Cc}\p{Cf}]/gu, ' ').split(/\s+/u).filter((part) => part !== '').join(' ')
+  const flat = text.replace(/[\p{Cc}\u200E\u200F\u202A-\u202E\u2066-\u2069\uFEFF]/gu, ' ').split(/\s+/u).filter((part) => part !== '').join(' ')
   const chars = Array.from(flat)
   if (chars.length <= max) return flat
   return `${chars.slice(0, Math.max(0, max - 1)).join('')}…`
@@ -22,6 +23,7 @@ export function validId(id: string): boolean {
   return id.length > 0 && id.length <= MAX_ID && /^[A-Za-z0-9-]+$/.test(id)
 }
 
+/** A count as the badge and the rail show it: a whole number from 0 to MAX_BADGE. */
 export function badgeCount(count: number): number {
   return Number.isFinite(count) ? Math.min(MAX_BADGE, Math.max(0, Math.trunc(count))) : 0
 }

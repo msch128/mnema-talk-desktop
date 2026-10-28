@@ -16,7 +16,7 @@ import { PINNED_BUNDLE_KEYS, ROOT_PUB } from './pinned.ts'
 import { Sockets } from './sockets.ts'
 import { compareVersions } from './version.ts'
 import { type Held, type ServerInfo, Store, refusalText } from './store.ts'
-import { TrustError, TrustState, type Statement, rootKey, statementCaps } from './trust.ts'
+import { type Floor, RELEASE_FLOOR, TrustError, TrustState, type Statement, rootKey, statementCaps } from './trust.ts'
 import { checkAndInstall as installNewer, fetchTrust as fetchStatement, updatesDisabled } from './updates.ts'
 
 export function pinnedKeys(): TrustedKey[] {
@@ -36,6 +36,8 @@ export interface TrustedDeps {
   root: string
   pinned: () => TrustedKey[]
   log(message: string): void
+  /** What this release knows of the trust statements; none in tests that use arbitrary serials. */
+  floor?: Floor
 }
 
 export function defaultDeps(vault: Vault | null): TrustedDeps {
@@ -48,7 +50,12 @@ export function defaultDeps(vault: Vault | null): TrustedDeps {
     root: ROOT_PUB,
     pinned: pinnedKeys,
     log: (message) => console.error(`Mnema Desktop: ${message}`),
+    floor: RELEASE_FLOOR,
   }
+}
+
+function errorText(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
 }
 
 export class Trusted {
@@ -68,10 +75,13 @@ export class Trusted {
   private readonly dataDir: string | null
   private readonly deps: TrustedDeps
 
+  /** Whether the last `refresh` looked where it meant to (false: offline or without a fresh statement, to be repeated soon). */
+  reached = true
+
   constructor(dataDir: string | null, builtin: Uint8Array | null, deps: TrustedDeps) {
     this.dataDir = dataDir
     this.deps = deps
-    this.trust = TrustState.load(dataDir ? join(dataDir, 'web-trust') : null, rootKey(deps.root))
+    this.trust = TrustState.load(dataDir ? join(dataDir, 'web-trust') : null, rootKey(deps.root), { floor: deps.floor, log: (m) => deps.log(m) })
     this.keys = this.trust.effectiveKeys(deps.pinned())
     this.store = Store.load(dataDir ? join(dataDir, 'web-bundles') : null, builtin, this.keys)
     this.registry = Registry.restore(dataDir ? loadStored(this.instancesFile()) : emptyStored())
@@ -129,13 +139,11 @@ export class Trusted {
     return dropped
   }
 
-  /**
-   * One trust round with the result of a fetch: applies the statement and
-   * decides whether installs are allowed. Returns whether bundles were dropped.
-   */
-  applyRound(fetched: { doc: Buffer, sig: Buffer } | null, now: number): boolean {
+  /** Applies one fetched pair; the refusal, if any, is returned and not logged. */
+  private attempt(fetched: { doc: Buffer, sig: Buffer } | null, now: number): { dropped: boolean, ok: boolean, refusal: TrustError | null } {
     let dropped = false
     let ok = false
+    let refusal: TrustError | null = null
     // Offline or unreachable: the last good statement stays in force.
     if (fetched) {
       try {
@@ -143,19 +151,71 @@ export class Trusted {
         ok = true
       } catch (error) {
         if (!(error instanceof TrustError)) throw error
-        this.deps.log(`trust statement refused: ${error.message}`)
+        refusal = error
       }
     }
     this.freshRound = ok && this.trust.fresh(now)
+    return { dropped, ok, refusal }
+  }
+
+  /**
+   * One trust round with the result of a fetch: applies the statement and
+   * decides whether installs are allowed. Returns whether bundles were dropped.
+   */
+  applyRound(fetched: { doc: Buffer, sig: Buffer } | null, now: number): boolean {
+    const { dropped, refusal } = this.attempt(fetched, now)
+    if (refusal) this.deps.log(`trust statement refused: ${refusal.message}`)
     return dropped
   }
 
+  /**
+   * Fetches and applies the statement. The pair comes from two requests to a
+   * cached host, so a refused pair is fetched once more before it counts as a
+   * failed round (a statement published between the two requests, or caches
+   * that disagree, heals itself).
+   */
   async trustRound(): Promise<boolean> {
-    let fetched: { doc: Buffer, sig: Buffer } | null = null
-    try {
-      fetched = await this.deps.fetchTrust()
-    } catch { /* offline */ }
-    return this.applyRound(fetched, this.deps.now())
+    const fetch = async () => {
+      try {
+        return await this.deps.fetchTrust()
+      } catch {
+        return null /* offline */
+      }
+    }
+    let result = this.attempt(await fetch(), this.deps.now())
+    if (result.refusal) result = this.attempt(await fetch(), this.deps.now())
+    if (result.refusal) this.deps.log(`trust statement refused: ${result.refusal.message}`)
+    return result.dropped
+  }
+
+  /**
+   * One background round: the trust statement first (a revoked key must stop
+   * counting before anything else is installed), then newer bundles. The
+   * statement is fetched even when the update check is switched off: that
+   * switch spares the release request to GitHub and must not stop a revoked key
+   * from counting. Returns whether pages must move to what is held now (a
+   * bundle was withdrawn, or the first one arrived).
+   */
+  async refresh(first: boolean): Promise<boolean> {
+    this.reached = true
+    const dropped = await this.trustRound()
+    const hadBundle = this.store.newest() !== undefined
+    const due = this.store.checkDue(this.deps.now())
+    let installed: unknown = null
+    if (!updatesDisabled() && (!hadBundle || dropped || due || !first)) {
+      // A round that could not look (no fresh statement, no network) does not use up the interval.
+      this.reached = false
+      // Freeze protection: no new bundles without a fresh trust statement.
+      if (this.fresh()) {
+        try {
+          installed = await this.deps.installNewer(this.store, () => this.keys)
+          // A skipped or failed round did not look: look again next start.
+          this.store.markChecked(this.deps.now())
+          this.reached = true
+        } catch { /* offline or refused */ }
+      }
+    }
+    return dropped || (!hadBundle && installed !== null && installed !== undefined)
   }
 
   /** The running session of a server. */
@@ -181,7 +241,12 @@ export class Trusted {
     if (first.refusal.kind === 'server_newer') {
       if (!this.fresh()) await this.trustRound()
       if (this.fresh() && !updatesDisabled()) {
-        try { await this.deps.installNewer(this.store, () => this.keys) } catch { /* the refusal below says what is missing */ }
+        try {
+          await this.deps.installNewer(this.store, () => this.keys)
+        } catch (error) {
+          // The refusal below says what is missing; this says why it is.
+          this.deps.log(`could not install a newer bundle: ${errorText(error)}`)
+        }
       }
       const again = this.store.select(server)
       if (again.ok) return again.held

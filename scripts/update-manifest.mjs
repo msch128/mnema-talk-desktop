@@ -66,10 +66,22 @@ export function buildManifest({ version, repo, installerName, signature, mac, li
   };
 }
 
+// Every `--name` takes exactly one value, which is never another flag: an empty
+// shell expansion must fail here instead of pairing the flag with its neighbour.
+export function parseArgs(argv) {
+  const args = {};
+  for (let i = 0; i < argv.length; i += 2) {
+    const flag = argv[i];
+    if (!flag.startsWith('--') || flag.length === 2) throw new Error(`Unexpected argument ${flag}.`);
+    const value = argv[i + 1];
+    if (value === undefined || value.startsWith('--')) throw new Error(`${flag} needs a value.`);
+    args[flag.slice(2)] = value;
+  }
+  return args;
+}
+
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  const args = Object.fromEntries(
-    process.argv.slice(2).reduce((pairs, arg, i, all) => (arg.startsWith('--') ? [...pairs, [arg.slice(2), all[i + 1]]] : pairs), [])
-  );
+  const args = parseArgs(process.argv.slice(2));
   const { version, repo, installer, sig, notes, out, mac, 'mac-sig': macSig } = args;
   if (!version || !repo || !installer || !sig || !out) {
     throw new Error('Usage: update-manifest.mjs --version X.Y.Z --repo owner/name --installer <file> --sig <file> [--mac <app.tar.gz> --mac-sig <file>] [--linux-x86_64 <AppImage> --linux-x86_64-sig <file>] [--linux-aarch64 <AppImage> --linux-aarch64-sig <file>] [--linux-x86_64-deb <deb> --linux-x86_64-deb-sig <file>] [--linux-aarch64-deb <deb> --linux-aarch64-deb-sig <file>] [--notes <file>] --out latest.json');

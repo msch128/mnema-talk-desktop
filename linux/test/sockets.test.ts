@@ -5,7 +5,7 @@ import { afterEach, test } from 'node:test'
 import { WebSocketServer } from 'ws'
 import { Jar } from '../src/core/cookies.ts'
 import { Limits } from '../src/core/proxy.ts'
-import { MAX_FRAME, MAX_SOCKETS, Sockets, socketRequest, socketUrl, type WsEvent } from '../src/core/sockets.ts'
+import { MAX_FRAME, MAX_OUTGOING, MAX_SOCKETS, Sockets, socketRequest, socketUrl, type WsEvent } from '../src/core/sockets.ts'
 
 const open: { server: Server, wss: WebSocketServer }[] = []
 afterEach(async () => {
@@ -99,6 +99,26 @@ test('outgoing messages are bounded', async () => {
   await ev.until('open')
   assert.throws(() => sockets.send(id, 'x'.repeat((1 << 20) + 1)), /message too large/)
   sockets.close(id)
+  await ev.until('close')
+})
+
+test('a stalled instance cannot make the host queue frames without bound', async () => {
+  let stalled: import('ws').WebSocket | null = null
+  const instance = await start((socket) => {
+    // The instance stops reading: its side of the connection is paused.
+    stalled = socket
+    ;(socket as unknown as { _socket: { pause(): void } })._socket.pause()
+  })
+  const sockets = new Sockets()
+  const ev = events()
+  const id = sockets.connect(instance, false, ev.emit)
+  await ev.until('open')
+  const frame = 'x'.repeat(MAX_OUTGOING)
+  let sent = 0
+  assert.throws(() => { for (; sent < 2000; sent++) sockets.send(id, frame) }, /backed up/)
+  assert.ok(sent > 0 && sent < 2000, `refused after ${sent} frames`)
+  // The paused peer would never answer a close handshake.
+  ;(stalled as import('ws').WebSocket | null)?.terminate()
   await ev.until('close')
 })
 

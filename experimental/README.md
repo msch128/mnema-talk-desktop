@@ -15,7 +15,8 @@ Normal production instances advertise `web_client_api` and `version` in
 - **Bundle source.** One signed bundle (a release asset of mnema-talk,
   `mnema-web-<version>.zip`) is built into the executable; newer ones are
   downloaded from the mnema-talk GitHub releases (at most every six hours;
-  `MNEMA_DESKTOP_NO_UPDATE_CHECK=1` turns it off) and kept in
+  `MNEMA_DESKTOP_NO_UPDATE_CHECK=1` turns the request off; the signed trust
+  statement that revokes keys is still fetched) and kept in
   `<app data>/web-bundles/` (newest three). Every bundle is verified against
   the Ed25519 key pinned in `app/src/web_bundle.rs` on every start, so a
   modified cached file makes that bundle unusable.

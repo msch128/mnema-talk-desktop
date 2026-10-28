@@ -1,6 +1,7 @@
 {
   "identifier": "gaming-controls",
-  "windows": [
+  "description": "The overlay and the settings page, by webview label (a webview added to their windows gets nothing). The ACL cannot see the action of desktop_gaming_control: the settings page may only close itself, which the command itself enforces.",
+  "webviews": [
     "gaming-overlay",
     "gaming-settings"
   ],

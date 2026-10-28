@@ -69,12 +69,13 @@ mandatory ciphersuites (`join`, `book_code`, ...) passes unchanged.
 
 `cargo audit` cannot scope to a target, so the Linux-only crates showed up as
 warnings forever. The check is now `cargo deny check advisories` with
-`deny.toml`, whose graph is the Windows target. The published Linux client is
-Electron and is not in that graph. Every advisory (vulnerability, unmaintained,
+`deny.toml`, whose graph covers the two Tauri targets that ship: Windows
+(x86_64-pc-windows-msvc) and macOS (aarch64-apple-darwin). The published Linux
+client is Electron and is not in that graph. Every advisory (vulnerability, unmaintained,
 unsound, yanked) fails the check unless it is in the graph; nothing is ignored
 blanket.
 
-- **Linux-only, out of the Windows graph:** `gtk` / `glib` 0.18 (GTK3,
+- **Linux-only, out of the shipped graph:** `gtk` / `glib` 0.18 (GTK3,
   unmaintained; RUSTSEC-2024-0429 is also covered by the reviewed local
   backport), `proc-macro-error` (RUSTSEC-2024-0370, through `glib-macros`).
   `cargo tree -i gtk --target x86_64-pc-windows-msvc` finds no package in

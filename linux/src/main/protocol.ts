@@ -85,9 +85,9 @@ async function proxy(session: Session, request: Request, url: URL): Promise<Resp
   const method = request.method
   let body: Uint8Array = new Uint8Array()
   if (method !== 'GET' && method !== 'HEAD') {
-    const cap = session.instance.limits.requestCap(url.pathname)
+    const { cap, file } = session.instance.limits.bodyLimit(url.pathname)
     const read = await readRequestBody(request, cap)
-    if (!read) return payloadTooLarge(cap)
+    if (!read) return payloadTooLarge(cap, file)
     body = read
   }
   return forward(session.instance, method, url.pathname + url.search, headers, body)

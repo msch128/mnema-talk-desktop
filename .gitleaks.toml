@@ -2,7 +2,9 @@
 #
 # The known-answer vectors and the listed Cargo.lock lines are public
 # upstream material. scripts/check-native-test-vectors.mjs rejects a vector
-# whose bytes differ from the reviewed hashes before this allowlist applies.
+# whose bytes differ from the reviewed hashes before this allowlist applies;
+# the shared test-vectors/ files are exempt by name and the script and
+# check-native-test-vectors.test.mjs keep that list equal to this file.
 
 [extend]
 useDefault = true
@@ -35,5 +37,5 @@ regexes = [
 [[rules.allowlists]]
 description = "Shared test vectors of the Linux client and the Tauri host: public keys, signatures and statements made from throwaway one-byte seeds"
 paths = [
-  '''^test-vectors/[a-z]+\.json$'''
+  '''^test-vectors/(?:bundle|client|minisign|proxy|store|trust)\.json$'''
 ]

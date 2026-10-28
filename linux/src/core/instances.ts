@@ -8,9 +8,11 @@
  * isolation rules can be tested.
  */
 import { createHash, randomBytes } from 'node:crypto'
-import { mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs'
-import { dirname } from 'node:path'
+import { readFileSync, statSync } from 'node:fs'
+import { writeFileAtomic } from './atomic.ts'
 import { parseAddress } from './client.ts'
+import { MAX_BADGE, badgeCount } from './notify.ts'
+import { isLowerHex } from './encoding.ts'
 import type { Instance } from './proxy.ts'
 import type { Sockets } from './sockets.ts'
 import type { Held } from './store.ts'
@@ -18,7 +20,7 @@ import type { Held } from './store.ts'
 /** Ctrl+1 to Ctrl+9 reach the servers, so there are at most nine. */
 export const MAX_INSTANCES = 9
 /** What the badge and the rail show at most. */
-export const MAX_COUNT = 999
+export const MAX_COUNT = MAX_BADGE
 const STORE_VERSION = 1
 const MAX_STORE_BYTES = 16 * 1024
 
@@ -37,10 +39,10 @@ export function idFor(origin: URL): string {
 }
 
 export function validId(id: string): boolean {
-  return /^[0-9a-f]{16}$/.test(id)
+  return isLowerHex(id, 16)
 }
 
-export type Phase =
+type Phase =
   | { kind: 'starting' }
   | { kind: 'ready', session: Session }
   | { kind: 'refused', why: string }
@@ -72,7 +74,7 @@ export class AddError extends Error {
 }
 
 /** What the rail draws for one server (the shape the rail page reads). */
-export interface RailInstance {
+interface RailInstance {
   id: string
   name: string
   initial: string
@@ -103,16 +105,21 @@ function hue(id: string): number {
   return (Number.parseInt(id.slice(0, 4), 16) || 0) % 360
 }
 
-const bound = (n: number) => Math.min(MAX_COUNT, Math.max(0, Math.trunc(Number.isFinite(n) ? n : 0)))
-
 /** The list at rest: addresses only. No session, no name the page chose. */
 export interface Stored {
   servers: URL[]
   active: URL | null
+  /** False when the file was there but could not be read in full (unreadable, too large, unknown version, an address that did not hold up): the list may be shorter than what the person had. */
+  complete?: boolean
 }
 
 export function emptyStored(): Stored {
   return { servers: [], active: null }
+}
+
+/** A list that stands for something lost: nothing may be concluded from what is missing in it. */
+function partial(servers: URL[] = [], active: URL | null = null): Stored {
+  return { servers, active, complete: false }
 }
 
 /** Reads the list. Anything that does not hold up (unknown version, a bad address, a duplicate, too many) is dropped rather than trusted. */
@@ -120,36 +127,35 @@ export function loadStored(file: string | null): Stored {
   if (!file) return emptyStored()
   let raw: unknown
   try {
-    if (statSync(file).size > MAX_STORE_BYTES) return emptyStored()
+    if (statSync(file).size > MAX_STORE_BYTES) return partial()
     raw = JSON.parse(readFileSync(file, 'utf8'))
-  } catch {
-    return emptyStored()
+  } catch (error) {
+    // No file is a list that was never written; any other failure is a list that exists and could not be read.
+    return (error as NodeJS.ErrnoException).code === 'ENOENT' ? emptyStored() : partial()
   }
-  if (typeof raw !== 'object' || raw === null) return emptyStored()
+  if (typeof raw !== 'object' || raw === null) return partial()
   const { version, servers, active } = raw as Record<string, unknown>
-  if (version !== STORE_VERSION || !Array.isArray(servers)) return emptyStored()
+  if (version !== STORE_VERSION || !Array.isArray(servers)) return partial()
   const list: URL[] = []
+  let complete = true
   for (const address of servers) {
-    if (typeof address !== 'string' || list.length >= MAX_INSTANCES) continue
+    if (typeof address !== 'string' || list.length >= MAX_INSTANCES) { complete = false; continue }
     try {
       const origin = parseAddress(address)
       if (!list.some((u) => u.href === origin.href)) list.push(origin)
-    } catch { /* dropped */ }
+    } catch { complete = false }
   }
   let front: URL | null = null
   if (typeof active === 'string') {
     try { front = list.find((u) => u.href === parseAddress(active).href) ?? null } catch { front = null }
   }
-  return { servers: list, active: front }
+  return complete ? { servers: list, active: front } : partial(list, front)
 }
 
 export function saveStored(file: string | null, stored: Stored): void {
   if (!file) return
   try {
-    mkdirSync(dirname(file), { recursive: true })
-    const temporary = `${file}.tmp`
-    writeFileSync(temporary, JSON.stringify({ version: STORE_VERSION, servers: stored.servers.map((u) => u.href), active: stored.active?.href ?? null }), { mode: 0o600 })
-    renameSync(temporary, file)
+    writeFileAtomic(file, Buffer.from(JSON.stringify({ version: STORE_VERSION, servers: stored.servers.map((u) => u.href), active: stored.active?.href ?? null })), { dirMode: 0o700 })
   } catch { /* the list is a convenience; the sessions do not depend on it */ }
 }
 
@@ -161,10 +167,12 @@ export class Registry {
   private slots: Slot[] = []
   private front: string | null = null
   private addingNow = false
-  /** The server that keeps the storage of the single-server client. */
+  /** Whether the list this one was restored from was read in full (see `Stored.complete`). */
+  private loadedInFull = true
 
   static restore(stored: Stored): Registry {
     const registry = new Registry()
+    registry.loadedInFull = stored.complete !== false
     for (const origin of stored.servers) {
       try { registry.add(origin) } catch { /* a duplicate */ }
     }
@@ -176,6 +184,11 @@ export class Registry {
 
   get length(): number {
     return this.slots.length
+  }
+
+  /** False when the list at start may have been shorter than what was saved: what is missing from it proves nothing (it is not a reason to delete a server's data). */
+  get readInFull(): boolean {
+    return this.loadedInFull
   }
 
   contains(id: string): boolean {
@@ -259,8 +272,8 @@ export class Registry {
   report(id: string, unread: number, mentions: number): boolean {
     const slot = this.slot(id)
     if (!slot) return false
-    slot.unread = bound(unread)
-    slot.mentions = bound(mentions)
+    slot.unread = badgeCount(unread)
+    slot.mentions = badgeCount(mentions)
     slot.reported = true
     return true
   }
@@ -270,7 +283,7 @@ export class Registry {
     const slot = this.slot(id)
     if (!slot) return false
     if (slot.reported) return true
-    slot.mentions = bound(count)
+    slot.mentions = badgeCount(count)
     slot.unread = slot.mentions > 0 ? 1 : 0
     return true
   }

@@ -13,7 +13,7 @@ export const PARTITIONS = {
   picker: 'mnema-picker',
 } as const
 
-/** The partition of the single-server client: its browser storage (end-to-end state) is adopted by the first server added after the update. */
+/** The partition of the single-server client: it belongs to no one server, so its browser storage (end-to-end state) is wiped, never handed on. */
 export const LEGACY_PARTITION = 'persist:mnema-instance'
 
 /** The window around the servers: the rail, the page for adding one, and a page per server. */
@@ -25,7 +25,6 @@ export interface Shell {
   pages: Map<string, WebContentsView>
   /** The attachment window a server's page opened, by server id. */
   attachments: Map<string, BrowserWindow>
-  /** The single-server client left storage behind and no list exists yet: the first server added adopts it. */
 }
 
 export interface Context {
@@ -42,7 +41,7 @@ export interface Context {
   readonly windows: Partial<Record<'updater' | 'picker', BrowserWindow>>
 }
 
-export function serverPartition(ctx: Context, id: string): string {
+export function serverPartition(id: string): string {
   return `persist:inst-${id}`
 }
 

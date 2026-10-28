@@ -1,12 +1,12 @@
-//! Bounded Windows input foundation, not a qualified global-hotkey service.
+//! Shortcut bindings and the bounded state machine of the gaming fixture.
 //!
-//! Polls only configured buttons and four modifier classes; no keyboard hook,
-//! input interception, key history, process injection, or native IPC is installed.
-//! Polling can miss short taps. GetAsyncKeyState cannot distinguish every access
-//! failure from an unpressed key. A session owner must supply availability/lock/
-//! Voice policy, keep polling alive, release on suspend/exit, and enforce a media
-//! watchdog independently. This adapter alone must never authorize transmission.
-//! https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getasynckeystate
+//! The shipped client uses only the validation here ([`Binding`], [`Modifiers`]);
+//! its keys arrive event driven from Raw Input (`input.rs`, `input_windows.rs`)
+//! and its state machine is `Gaming::advance` in the host. [`ShortcutState`] and
+//! [`Sample`] belong to the fixture owner (`native_input`), which feeds them from
+//! its own sampling. Nothing in this file reads key state from the system, and no
+//! keyboard hook, input interception, key history or process injection exists.
+//! This adapter alone must never authorize transmission.
 
 use std::time::{Duration, Instant};
 
@@ -218,70 +218,6 @@ impl ShortcutState {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SampleError {
-    UnsupportedHost,
-    ForegroundChanged,
-}
-
-#[cfg(not(windows))]
-pub fn sample_configured(_bindings: Bindings) -> Result<Sample, SampleError> {
-    Err(SampleError::UnsupportedHost)
-}
-
-#[cfg(windows)]
-pub fn sample_configured(bindings: Bindings) -> Result<Sample, SampleError> {
-    use windows_sys::Win32::UI::Input::KeyboardAndMouse::GetAsyncKeyState;
-    use windows_sys::Win32::UI::WindowsAndMessaging::{
-        GetForegroundWindow, GetWindowThreadProcessId,
-    };
-
-    fn down(key: u16) -> bool {
-        // SAFETY: GetAsyncKeyState reads a bounded validated key and takes no
-        // pointers. Only the high bit is used; the "pressed since" bit is racy.
-        unsafe { GetAsyncKeyState(i32::from(key)) < 0 }
-    }
-    fn modifiers() -> Modifiers {
-        Modifiers {
-            alt: down(0x12),
-            control: down(0x11),
-            shift: down(0x10),
-            windows: down(0x5b) || down(0x5c),
-        }
-    }
-    // SAFETY: GetForegroundWindow returns an OS-owned borrowed handle; it is
-    // compared only and never closed or dereferenced by this code.
-    let foreground = unsafe { GetForegroundWindow() };
-    if foreground.is_null() {
-        return Err(SampleError::ForegroundChanged);
-    }
-    let mut pid = 0;
-    // SAFETY: the live local PID output is a valid writable DWORD pointer.
-    if unsafe { GetWindowThreadProcessId(foreground, &mut pid) } == 0 || pid == 0 {
-        return Err(SampleError::ForegroundChanged);
-    }
-    let initial_modifiers = modifiers();
-    let result = Sample {
-        modifiers: initial_modifiers,
-        overlay_down: down(bindings.overlay.key),
-        ptt_down: bindings.ptt.is_some_and(|binding| down(binding.key)),
-    };
-    // A torn sample/focus transition is discarded; callers reset on errors.
-    let final_modifiers = modifiers();
-    // SAFETY: both calls only inspect an OS-owned borrowed window and a valid
-    // local PID output. Checking ownership also rejects recycled HWNDs.
-    let final_foreground = unsafe { GetForegroundWindow() };
-    let mut final_pid = 0;
-    if initial_modifiers != final_modifiers
-        || foreground != final_foreground
-        || unsafe { GetWindowThreadProcessId(final_foreground, &mut final_pid) } == 0
-        || pid != final_pid
-    {
-        return Err(SampleError::ForegroundChanged);
-    }
-    Ok(result)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -449,14 +385,5 @@ mod tests {
             // Re-enabling with the same held keys must still do nothing.
             assert_eq!(state.update(sample, true, true, now), Actions::default());
         }
-    }
-
-    #[cfg(not(windows))]
-    #[test]
-    fn other_hosts_do_not_claim_native_shortcut_samples() {
-        assert!(matches!(
-            sample_configured(Bindings::default()),
-            Err(SampleError::UnsupportedHost)
-        ));
     }
 }

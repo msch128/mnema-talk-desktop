@@ -18,20 +18,31 @@ pub fn candidate(front: &Foreground, own_pid: u32) -> Option<String> {
         return None;
     }
     let name = front.basename();
-    (valid_executable(name)
-        && !game_identify::is_shared_runtime(name)
-        && !game_identify::is_helper(name))
-    .then(|| name.to_owned())
+    refusal(name).is_none().then(|| name.to_owned())
+}
+
+/// Why `name` cannot be a game on the user's list, if it cannot. One rule for the
+/// offered candidate and the typed name, so neither can add an entry that
+/// `identify` would never match. Java is refused here although `identify` honours
+/// a Java entry from an imported list: the bundled list already recognises
+/// Minecraft by its title, so a typed `javaw.exe` would add nothing.
+fn refusal(name: &str) -> Option<&'static str> {
+    if !valid_executable(name) {
+        Some("Enter the game's executable file name, for example MyGame.exe.")
+    } else if game_identify::is_shared_runtime(name) {
+        Some("Java and similar runtimes cannot be added as a game.")
+    } else if game_identify::is_helper(name) {
+        Some("Helper programs such as installers and crash reporters cannot be added as a game.")
+    } else {
+        None
+    }
 }
 
 /// The user's list with `name` added. A name already there (any case) is kept
 /// once; an invalid name or a full list is an error.
 pub fn add_game(games: &[String], name: &str) -> Result<Vec<String>, String> {
-    if !valid_executable(name) {
-        return Err("Enter the game's executable file name, for example MyGame.exe.".into());
-    }
-    if game_identify::is_shared_runtime(name) {
-        return Err("Java and similar runtimes cannot be added as a game.".into());
+    if let Some(why) = refusal(name) {
+        return Err(why.into());
     }
     let mut next = games.to_vec();
     if !next.iter().any(|n| n.eq_ignore_ascii_case(name)) {
@@ -112,6 +123,8 @@ mod tests {
             "javaw.exe",
             "JAVA.EXE",
             ".exe",
+            "unins000.exe",
+            "Crashpad_Handler.exe",
         ] {
             assert!(add_game(&list, bad).is_err(), "{bad}");
         }

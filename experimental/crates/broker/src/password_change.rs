@@ -25,7 +25,7 @@ impl Broker {
                     .ok_or(Error::ReauthRequired)?
                     .grant
                     .clone();
-                if old.access_expires_at <= Utc::now() {
+                if old.is_access_expired() {
                     return Err(Error::Expired);
                 }
                 Ok(old)

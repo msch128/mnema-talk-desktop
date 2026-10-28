@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { afterEach, test } from 'node:test'
 import { verifyBundle } from '../src/core/bundle.ts'
 import { Jar, MAX_COOKIES, type Vault } from '../src/core/cookies.ts'
-import { APP_CSP, LEGACY_APP_CSP, appCsp, LARGE_BODY_BUDGET, Limits, MAX_BODY, SMALL_BODY, forward, inlineSafe, mimeFor, serveBundle, target, type Instance, type Resp } from '../src/core/proxy.ts'
+import { APP_CSP, RANGE_WINDOW, clampRange, LEGACY_APP_CSP, appCsp, LARGE_BODY_BUDGET, Limits, MAX_BODY, SMALL_BODY, forward, inlineSafe, mimeFor, payloadTooLarge, serveBundle, target, type Instance, type Resp } from '../src/core/proxy.ts'
 import { bundle, spec, trusted } from './helpers/fixtures.ts'
 import { reply, serve, type TestServer } from './helpers/server.ts'
 
@@ -212,11 +212,10 @@ test('an answer that could run as a document becomes a download', async () => {
   assert.equal(header(resp, 'content-disposition'), undefined)
 })
 
-test('redirects (every 3xx, as in the Rust host) and unreachable servers become gateway errors', async () => {
+test('redirects (every 3xx but 304, as in the Rust host) and unreachable servers become gateway errors', async () => {
   const { resp } = await call(reply(302, { location: 'https://evil.example/' }, ''), 'GET', '/api/x')
   assert.equal(resp.status, 502)
   assert.equal(header(resp, 'location'), undefined)
-  assert.equal((await call(reply(304, { etag: '"a"' }, ''), 'GET', '/api/x', [['If-None-Match', '"a"']])).resp.status, 502)
   const closed = await serve(reply(200, {}, ''))
   const origin = closed.origin
   await closed.close()
@@ -270,6 +269,42 @@ test('request caps follow the announced upload limit', () => {
   assert.equal(limits.requestCap(UPLOAD), (512 << 20) + OVERHEAD)
   limits.announceUploadMb(2048)
   assert.equal(limits.responseCap(), LARGE_BODY_BUDGET)
+  // A body the memory budget cannot hold is refused, not left waiting.
+  assert.equal(limits.requestCap(UPLOAD), LARGE_BODY_BUDGET)
+})
+
+test('the largest upload the proxy accepts can borrow its memory', async () => {
+  const limits = new Limits(50)
+  limits.announceUploadMb(2048)
+  assert.ok(await limits.lend(limits.requestCap(UPLOAD)))
+  const small = new Limits(50)
+  assert.equal(await small.lend(LARGE_BODY_BUDGET + 1), null)
+})
+
+test('the 413 names a file limit only for files', () => {
+  const said = (r: Resp) => Buffer.from(r.body).toString()
+  assert.match(said(payloadTooLarge(2 << 20, false)), /request too large/)
+  assert.match(said(payloadTooLarge((10 << 20) + OVERHEAD)), /file exceeds the 10 MB limit/)
+  assert.match(said(payloadTooLarge((5 << 20) + OVERHEAD)), /file exceeds the 5 MB limit/)
+})
+
+test('a not-modified answer reaches the page as such', async () => {
+  const { resp } = await call(reply(304, { etag: '"a"', 'cache-control': 'max-age=60' }, ''), 'GET', '/api/x', [['If-None-Match', '"a"']])
+  assert.equal(resp.status, 304)
+  assert.equal(header(resp, 'etag'), '"a"')
+  assert.equal(resp.body.length, 0)
+})
+
+test('an open-ended range reaches the instance as a bounded one', async () => {
+  let seen = ''
+  const { resp } = await call((req, res) => {
+    seen = String(req.headers.range)
+    res.writeHead(206, { 'content-type': 'video/mp4', 'content-range': 'bytes 0-3/9999999999' })
+    res.end('data')
+  }, 'GET', '/api/files/x', [['Range', 'bytes=0-']])
+  assert.equal(seen, `bytes=0-${RANGE_WINDOW - 1}`)
+  assert.equal(resp.status, 206)
+  assert.equal(clampRange('bytes=0-99'), 'bytes=0-99')
 })
 
 test('large bodies borrow memory and wait for each other', async () => {
@@ -327,4 +362,48 @@ test('a download above the in-memory size arrives whole and unknown lengths are 
   }, 'GET', '/api/media/x')
   assert.equal(chunked.resp.status, 502)
   assert.match(Buffer.from(chunked.resp.body).toString(), /cut off or too large/)
+})
+
+test('an unreadable secret store entry is kept, not treated as empty', () => {
+  const path = join(tmp(), 'abc.json')
+  const vault = new Memory()
+  vault.items.set('abc', Buffer.from('[{"name":"s","value":"v","expires":1000}]'))
+  assert.equal(new Jar(path, { vault, account: 'abc' }, 100).header(101), 's=v')
+  // The keyring is locked: the entry exists but cannot be decrypted.
+  const locked: Vault = { load() { throw new Error('keyring locked') }, save() { return true }, remove() { vault.items.delete('abc') } }
+  assert.equal(new Jar(path, { vault: locked, account: 'abc' }, 100).header(101), null)
+  assert.ok(vault.items.has('abc'), 'the stored session survives a locked keyring')
+  assert.equal(new Jar(path, { vault, account: 'abc' }, 200).header(201), 's=v')
+})
+
+test('a huge Max-Age is clamped instead of becoming a cookie lost at restart', () => {
+  const path = join(tmp(), 'jar.json')
+  const jar = new Jar(path, null, 100)
+  jar.store([`s=v; Max-Age=${'9'.repeat(400)}`], true, 100)
+  assert.equal(new Jar(path, null, 200).header(201), 's=v')
+})
+
+test('a refused body reads in whole megabytes, also at the 2 GiB maximum', async () => {
+  const limits = new Limits()
+  limits.announceUploadMb(2048)
+  const upload = '/api/channels/00000000-0000-4000-8000-000000000000/upload'
+  assert.equal(limits.requestCap(upload), LARGE_BODY_BUDGET)
+  assert.match(Buffer.from(payloadTooLarge(2048 * 2 ** 20 + (1 << 20)).body).toString(), /exceeds the 2048 MB limit/)
+  // Above what the memory budget can lend, a retry cannot succeed: 413, not 503.
+  assert.deepEqual(limits.bodyLimit(upload), { cap: LARGE_BODY_BUDGET, file: true })
+  assert.match(Buffer.from(payloadTooLarge(LARGE_BODY_BUDGET).body).toString(), /exceeds the 1023 MB limit/)
+  assert.deepEqual(limits.bodyLimit('/api/channels/x/messages'), { cap: 2 << 20, file: false })
+  assert.doesNotMatch(Buffer.from(payloadTooLarge(2 << 20, false).body).toString(), /file/)
+})
+
+test('a waiter that gives up lets the smaller ones behind it through', async () => {
+  const unit = 64 << 10
+  const small = new Limits(50, 2 * (SMALL_BODY + unit))
+  const first = await small.lend(SMALL_BODY + 1)
+  assert.ok(first)
+  // The head asks for more than is free and gives up soon; the one behind it fits.
+  const head = small.lend(SMALL_BODY + unit * 20)
+  const tail = small.lend(SMALL_BODY + 1)
+  assert.equal(await head, null)
+  assert.ok(await tail, 'the tail is granted when the head times out, not only when the first transfer ends')
 })

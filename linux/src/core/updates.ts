@@ -4,6 +4,7 @@
  * come from decides nothing: a download is installed only if
  * `Store.install` verifies it against the keys in force.
  */
+import { asU64, parseStrictJson } from './json.ts'
 import { LATEST_RELEASE_URL, TRUST_SIG_URL, TRUST_URL } from './pinned.ts'
 import { MAX_STATEMENT } from './trust.ts'
 import { type HttpResponse, readBody, send } from './http.ts'
@@ -24,7 +25,7 @@ export function updatesDisabled(env: NodeJS.ProcessEnv = process.env): boolean {
 export function bundleAsset(json: Uint8Array, allowHttp = false): { version: Version, url: URL } | null {
   let release: unknown
   try {
-    release = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(json))
+    release = parseStrictJson(json)
   } catch {
     return null
   }
@@ -39,8 +40,9 @@ export function bundleAsset(json: Uint8Array, allowHttp = false): { version: Ver
   const listed: { name: string, href: string, size: number }[] = []
   for (const asset of (assets ?? []) as unknown[]) {
     if (typeof asset !== 'object' || asset === null) return null
-    const { name, browser_download_url: href, size = 0 } = asset as { name?: unknown, browser_download_url?: unknown, size?: unknown }
-    if (typeof name !== 'string' || typeof href !== 'string' || typeof size !== 'number' || !Number.isSafeInteger(size) || size < 0) return null
+    const { name, browser_download_url: href, size: rawSize = 0 } = asset as { name?: unknown, browser_download_url?: unknown, size?: unknown }
+    const size = asU64(rawSize)
+    if (typeof name !== 'string' || typeof href !== 'string' || size === null) return null
     listed.push({ name, href, size })
   }
   const asset = listed.find((a) => a.name === wanted && a.size <= MAX_DOWNLOAD)
@@ -125,7 +127,8 @@ export async function checkAndInstall(store: Store, keys: () => readonly Trusted
   const release = await fetchLimited(sources.latest ?? new URL(LATEST_RELEASE_URL), 'application/vnd.github+json', MAX_RELEASE_JSON, sources.fetch)
   const found = bundleAsset(release, sources.fetch?.allowHttp === true)
   if (!found) return null
-  if (store.held().some((h) => compareVersions(h.bundle.version, found.version) >= 0)) return null
+  // Only the exact version is known before the download; `install` decides per web client API.
+  if (store.held().some((h) => compareVersions(h.bundle.version, found.version) === 0)) return null
   const bytes = await fetchLimited(found.url, 'application/octet-stream', MAX_DOWNLOAD, sources.fetch)
   return installCurrent(store, keys, bytes)
 }

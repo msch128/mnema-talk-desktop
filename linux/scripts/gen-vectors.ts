@@ -17,7 +17,7 @@ import { fileURLToPath } from 'node:url'
 import { MAX_FILE, MAX_PATH, parseKey, validPath, verifyBundle } from '../src/core/bundle.ts'
 import { appPath, externalAllowed, inviteCode, parseAddress, parseHealth } from '../src/core/client.ts'
 import { Jar } from '../src/core/cookies.ts'
-import { Limits, inlineSafe, mimeFor, serveBundle, target } from '../src/core/proxy.ts'
+import { Limits, clampRange, inlineSafe, mimeFor, serveBundle, target } from '../src/core/proxy.ts'
 import { Store } from '../src/core/store.ts'
 import { chooseUpdaterKey, minisignKeyId, parseUtc, signatureKeyId, TrustState, rootKey, statementBundleKeys, statementCaps, verifyStatement } from '../src/core/trust.ts'
 import { verifyPackage } from '../src/core/minisign.ts'
@@ -377,6 +377,10 @@ function trustVectors(): Json {
       name: 'an older serial is refused and an equal one changes nothing',
       steps: [signedBy(rootSeed, doc(2, [2], [1])), signedBy(rootSeed, doc(1, [1], [])), signedBy(rootSeed, doc(2, [2], [1])), signedBy(rootSeed, doc(2, [3], [])), signedBy(rootSeed, doc(3, [3], [1]))],
     },
+    {
+      name: 'a later statement cannot allow a revoked key again',
+      steps: [signedBy(rootSeed, doc(2, [2], [1])), signedBy(rootSeed, doc(3, [1, 2], [])), signedBy(rootSeed, doc(4, [2, 3], []))],
+    },
     { name: 'a statement signed by another key never takes hold', steps: [signedBy(8, doc(1, [1], [])), signedBy(rootSeed, doc(1, [1], []))] },
   ].map((seq) => {
     const trust = TrustState.load(null, root)
@@ -395,7 +399,8 @@ function trustVectors(): Json {
   })
 
   const times = ['1970-01-01T00:00:00Z', '2026-11-01T00:00:00Z', '2024-02-29T12:30:45Z', '2000-01-01T00:00:00Z', '2026-11-01 00:00:00Z', '2026-11-01T00:00:00+00:00', '2026-13-01T00:00:00Z', '2026-11-32T00:00:00Z',
-    '2026-11-01T24:00:00Z', '2026-11-01T00:60:00Z', '2026-11-01T00:00:60Z', '2026-1x-01T00:00:00Z', '1969-12-31T23:59:59Z', '2026-00-10T00:00:00Z', '2026-01-00T00:00:00Z', '']
+    '2026-11-01T24:00:00Z', '2026-11-01T00:60:00Z', '2026-11-01T00:00:60Z', '2026-1x-01T00:00:00Z', '1969-12-31T23:59:59Z', '2026-00-10T00:00:00Z', '2026-01-00T00:00:00Z',
+    '2026-02-29T00:00:00Z', '2026-02-31T00:00:00Z', '2026-04-31T00:00:00Z', '2100-02-29T00:00:00Z', '2024-02-30T00:00:00Z', '2000-02-29T00:00:00Z', '2026-04-30T00:00:00Z', '']
     .map((input) => ({ input, secs: parseUtc(input) }))
 
   const sigOf = (m: ReturnType<typeof minisignKey>) => minisignSignature(m, Buffer.from('installer'), '1.0.0')
@@ -445,6 +450,8 @@ function proxyVectors(): Json {
     for (const mb of c.announce) limits.announceUploadMb(mb)
     return { ...c, request_cap: limits.requestCap(c.path), response_cap: limits.responseCap() }
   })
+  const ranges = ['bytes=0-', 'bytes=100-', 'bytes=0-99', 'bytes=0-1073741823', 'bytes=-500', 'bytes=-1073741824', 'bytes=18446744073709551615-', 'bytes=0-1,5-', 'items=0-', 'bytes=a-b', 'bytes=9-3', 'bytes=-', '']
+    .map((input) => ({ input, clamped: clampRange(input) }))
   const mimes = ['index.html', 'a.JS', 'a.mjs', 'a.css', 'a.json', 'a.map', 'a.wasm', 'a.svg', 'a.png', 'a.jpg', 'a.jpeg', 'a.webp', 'a.gif', 'a.ico', 'a.woff2', 'a.woff', 'a.txt', 'a.webmanifest', 'a.mp3', 'a.ogg', 'a.oga', 'a.wav', 'a.bin', 'noext', 'a.tar.gz']
     .map((name) => ({ name, type: mimeFor(name) }))
 
@@ -498,7 +505,7 @@ function proxyVectors(): Json {
     }
   })
 
-  return { inline_safe: types, targets, caps: capSteps, mimes, serve: { trusted: keysOf(7), zip: b64(zip), cases: serveCases }, jars }
+  return { inline_safe: types, targets, caps: capSteps, ranges, mimes, serve: { trusted: keysOf(7), zip: b64(zip), cases: serveCases }, jars }
 }
 
 // ------------------------------------------------------------------ client
@@ -525,7 +532,7 @@ function clientVectors(): Json {
     .map((url) => ({ url, allowed: externalAllowed(new URL(url)) }))
   const ID = '11111111-1111-1111-1111-111111111111'
   const paths = ['', '/', '/index.html', '/login', '/admin', '/admin/users', '/admin/channels', '/admin/invites', '/admin/media', '/admin/system', `/c/${ID}`, `/c/${ID}/m/${ID}`, `/c/${ID}/t/${ID}`, `/v/${ID}`, `/v/${ID}/chat`,
-    `/v/${ID}/chat/m/${ID}`, '/other.html', '/native-media.html', '/admin/unknown', '/admin/users/extra', '/c/not-an-id', '/c/00000000-0000-0000-0000-000000000000', `/c/${ID}/`, `/c/${ID}/m`, `/v/${ID}/chat/t/${ID}`,
+    `/v/${ID}/chat/m/${ID}`, '/c/general', '/c/general-2', `/c/general/m/${ID}`, `/c/general/t/${ID}`, '/c/forum/p/release-notes-1a2b3c4d', '/v/lounge', '/v/lounge/chat', `/v/lounge/chat/m/${ID}`, '/dm/alice', '/dm/a.b_c-d', `/dm/alice/m/${ID}`, '/dm/g/1a2b3c4d', `/dm/g/1a2b3c4d/t/${ID}`, '/other.html', '/native-media.html', '/admin/unknown', '/admin/users/extra', '/c/Not-A-Slug', '/c/under_score', '/c/', `/c/${'a'.repeat(81)}`, '/c/general/p', '/c/general/p/Bad', '/c/general/m/not-an-id', '/v/lounge/chat/t/x', '/dm', '/dm/', '/dm/al%2fice', '/dm/alice/extra', '/dm/g/', '/dm/g/Group', `/dm/${'a'.repeat(65)}`, `/c/${ID}/`, `/c/${ID}/m`, `/v/${ID}/chat/t/${ID}`,
     `/c/${ID}%2fm%2f${ID}`, `//c/${ID}`, '/index.html/extra', '/INDEX.HTML', '/c/AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA', '/c/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', `/${'a'.repeat(201)}`, '/admin/', '/login/',
     '/invite/abc234xyz789', '/invite/Team_Night-2026', '/invite/abc234xyz789/', '/invite', '/invite/', '/invite/abc', '/invite/abc234xyz789/extra', '/INVITE/abc234xyz789', `/invite/${'a'.repeat(65)}`]
     .map((path) => ({ path, ok: appPath(path) }))

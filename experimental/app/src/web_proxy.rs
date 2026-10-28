@@ -4,7 +4,7 @@
 //! code (mnema-talk `doc/desktop-trusted-client.md`).
 use crate::{
     web_bundle::{Bundle, Version},
-    web_vault::Vault,
+    web_vault::{Load, Save, Vault},
 };
 use cookie::Cookie;
 use reqwest::{Client, redirect::Policy};
@@ -13,7 +13,7 @@ use std::{
     path::PathBuf,
     sync::{
         Arc, Mutex,
-        atomic::{AtomicU64, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
     },
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
@@ -104,6 +104,20 @@ impl Resp {
             ],
             body: text.as_bytes().to_vec(),
         }
+    }
+    /// The answer as a document of the page may meet it: whatever produced
+    /// it, a response under `/api/` carries the sandbox policy and no sniffing,
+    /// so no branch (an error, a redirect notice, a new content type) can hand
+    /// the privileged page of a server a document that runs script.
+    pub fn sealed(mut self) -> Resp {
+        self.headers.retain(|(name, _)| {
+            name != "content-security-policy" && name != "x-content-type-options"
+        });
+        self.headers
+            .push(("content-security-policy".into(), DATA_CSP.into()));
+        self.headers
+            .push(("x-content-type-options".into(), "nosniff".into()));
+        self
     }
     /// The server's error envelope, so the app's error handling applies.
     fn error(status: u16, code: &str, message: &str) -> Resp {
@@ -197,16 +211,54 @@ struct Stored {
 
 /// The instance's cookies. The page never sees them.
 pub struct Jar {
+    inner: Arc<JarInner>,
+}
+
+struct JarInner {
     file: Option<PathBuf>,
-    /// The keychain and the account name in it; the file is the fallback.
+    /// The keychain and the account name in it; the file is the fallback for
+    /// systems that have none.
     vault: Option<(Arc<dyn Vault>, String)>,
     cookies: Mutex<Vec<Stored>>,
+    /// Numbers the snapshots taken under the `cookies` lock.
+    generation: AtomicU64,
+    /// The newest snapshot written to rest; held for the whole write, so
+    /// writes never overlap and an older snapshot cannot overwrite a newer one.
+    written: Mutex<u64>,
+    /// Set by `forget`: nothing may be stored for this jar any more.
+    forgotten: AtomicBool,
+}
+
+/// A snapshot of the jar waiting to be written to rest. Writing may block
+/// (the keychain can prompt), so it happens outside the jar's lock.
+pub struct PendingWrite {
+    inner: Arc<JarInner>,
+    snapshot: Vec<Stored>,
+    generation: u64,
+}
+
+impl PendingWrite {
+    pub fn run(self) {
+        let Ok(mut written) = self.inner.written.lock() else {
+            return;
+        };
+        if self.inner.forgotten.load(Ordering::SeqCst) || self.generation < *written {
+            return;
+        }
+        self.inner.persist(&self.snapshot);
+        *written = self.generation;
+    }
 }
 
 pub fn now() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |d| d.as_secs() as i64)
+}
+
+fn read_file(file: &Option<PathBuf>) -> Option<Vec<Stored>> {
+    let raw = std::fs::read(file.as_ref()?).ok()?;
+    serde_json::from_slice(&raw).ok()
 }
 
 impl Jar {
@@ -218,7 +270,8 @@ impl Jar {
 
     /// A jar that rests in the vault under the file's name. A jar left in the
     /// file by an earlier version moves into the vault and the file is
-    /// removed. If the vault refuses, the file keeps working.
+    /// removed. Where the system has no vault the file keeps working; where
+    /// the vault refuses, the session lives in memory only.
     pub fn in_vault(file: Option<PathBuf>, vault: Arc<dyn Vault>, now: i64) -> Jar {
         let account = file
             .as_ref()
@@ -228,72 +281,65 @@ impl Jar {
     }
 
     fn open(file: Option<PathBuf>, vault: Option<(Arc<dyn Vault>, String)>, now: i64) -> Jar {
-        let from_vault = vault
-            .as_ref()
-            .and_then(|(v, account)| v.load(account))
-            .and_then(|raw| serde_json::from_slice::<Vec<Stored>>(&raw).ok());
-        let legacy = from_vault.is_none();
-        let cookies: Vec<Stored> = from_vault.unwrap_or_else(|| {
-            file.as_ref()
-                .and_then(|f| std::fs::read(f).ok())
-                .and_then(|raw| serde_json::from_slice(&raw).ok())
-                .unwrap_or_default()
-        });
+        // `rewrite`: the state at rest may be replaced by what was read. It is
+        // never true after a read that failed or could not be understood, so
+        // a keychain that did not answer cannot lead to its entry being
+        // deleted.
+        let (cookies, rewrite) = match vault.as_ref().map(|(v, account)| v.load(account)) {
+            Some(Load::Found(raw)) => match serde_json::from_slice::<Vec<Stored>>(&raw) {
+                // A leftover file next to a working entry is cleaned up.
+                Ok(cookies) => (cookies, file.as_ref().is_some_and(|f| f.exists())),
+                Err(_) => (Vec::new(), false),
+            },
+            Some(Load::Missing) => match read_file(&file) {
+                Some(cookies) => (cookies, true),
+                None => (Vec::new(), false),
+            },
+            Some(Load::Unavailable) => (read_file(&file).unwrap_or_default(), false),
+            None => (read_file(&file).unwrap_or_default(), false),
+        };
         let live: Vec<Stored> = cookies
             .into_iter()
             .filter(|c| c.expires.is_some_and(|e| e > now))
             .take(MAX_COOKIES)
             .collect();
         let jar = Jar {
-            file,
-            vault,
-            cookies: Mutex::new(live.clone()),
+            inner: Arc::new(JarInner {
+                file,
+                vault,
+                cookies: Mutex::new(live.clone()),
+                generation: AtomicU64::new(0),
+                written: Mutex::new(0),
+                forgotten: AtomicBool::new(false),
+            }),
         };
-        if jar.vault.is_some() && (legacy || jar.file.as_ref().is_some_and(|f| f.exists())) {
-            jar.persist(&live);
+        if rewrite {
+            jar.inner.persist(&live);
         }
         jar
     }
 
-    fn persist(&self, cookies: &[Stored]) {
-        let durable: Vec<&Stored> = cookies.iter().filter(|c| c.expires.is_some()).collect();
-        let Ok(raw) = serde_json::to_vec(&durable) else {
-            return;
-        };
-        if let Some((vault, account)) = &self.vault {
-            if durable.is_empty() {
-                vault.remove(account);
-                if let Some(file) = &self.file {
-                    let _ = std::fs::remove_file(file);
-                }
-                return;
-            } else if vault.save(account, &raw) {
-                if let Some(file) = &self.file {
-                    let _ = std::fs::remove_file(file);
-                }
-                return;
-            }
-        }
-        write_private(&self.file, &raw);
-    }
-
     /// Forgets every cookie, in memory and at rest (the keychain entry and the
-    /// fallback file). Removing a server from the client ends here.
+    /// fallback file). Removing a server from the client ends here; an answer
+    /// still in flight cannot bring the session back.
     pub fn forget(&self) {
-        if let Ok(mut cookies) = self.cookies.lock() {
+        let inner = &self.inner;
+        if let Ok(mut cookies) = inner.cookies.lock() {
             cookies.clear();
+            inner.forgotten.store(true, Ordering::SeqCst);
         }
-        if let Some((vault, account)) = &self.vault {
+        let _writing = inner.written.lock();
+        if let Some((vault, account)) = &inner.vault {
             vault.remove(account);
         }
-        if let Some(file) = &self.file {
+        if let Some(file) = &inner.file {
             let _ = std::fs::remove_file(file);
         }
     }
 
     /// The `Cookie` header for a request, if any cookie applies.
     pub fn header(&self, now: i64) -> Option<String> {
-        let cookies = self.cookies.lock().ok()?;
+        let cookies = self.inner.cookies.lock().ok()?;
         let live: Vec<String> = cookies
             .iter()
             .filter(|c| c.expires.is_none_or(|e| e > now))
@@ -303,11 +349,29 @@ impl Jar {
     }
 
     /// Applies the `Set-Cookie` headers of a response from an HTTPS (or, in
-    /// tests, HTTP) origin.
+    /// tests, HTTP) origin and writes the result to rest.
+    #[cfg(test)]
     pub fn store(&self, set_cookie: &[String], https: bool, now: i64) {
-        let Ok(mut cookies) = self.cookies.lock() else {
-            return;
-        };
+        if let Some(write) = self.apply(set_cookie, https, now) {
+            write.run();
+        }
+    }
+
+    /// `store` for async code: the write to rest (keychain, file) runs on a
+    /// blocking thread, not on the worker that serves other requests.
+    pub async fn store_async(&self, set_cookie: &[String], https: bool, now: i64) {
+        if let Some(write) = self.apply(set_cookie, https, now) {
+            let _ = tokio::task::spawn_blocking(move || write.run()).await;
+        }
+    }
+
+    /// Changes the cookies in memory; the returned write, if any, brings the
+    /// result to rest. The lock is not held while that happens.
+    fn apply(&self, set_cookie: &[String], https: bool, now: i64) -> Option<PendingWrite> {
+        let mut cookies = self.inner.cookies.lock().ok()?;
+        if self.inner.forgotten.load(Ordering::SeqCst) {
+            return None;
+        }
         let mut changed = false;
         for raw in set_cookie {
             let Ok(cookie) = Cookie::parse(raw.as_str()) else {
@@ -341,8 +405,43 @@ impl Jar {
                 });
             }
         }
-        if changed {
-            self.persist(&cookies);
+        changed.then(|| PendingWrite {
+            inner: Arc::clone(&self.inner),
+            snapshot: cookies.clone(),
+            generation: self.inner.generation.fetch_add(1, Ordering::SeqCst) + 1,
+        })
+    }
+}
+
+impl JarInner {
+    fn persist(&self, cookies: &[Stored]) {
+        let durable: Vec<&Stored> = cookies.iter().filter(|c| c.expires.is_some()).collect();
+        let Ok(raw) = serde_json::to_vec(&durable) else {
+            return;
+        };
+        if let Some((vault, account)) = &self.vault {
+            if durable.is_empty() {
+                vault.remove(account);
+                self.remove_file();
+                return;
+            }
+            match vault.save(account, &raw) {
+                Save::Stored => self.remove_file(),
+                // The store exists and said no: the session stays in memory
+                // and the next start asks for a new login, rather than the
+                // cookie landing in a plaintext file. An older entry would be
+                // loaded at the next start, so it goes too.
+                Save::Refused => vault.remove(account),
+                Save::NoStore => write_private(&self.file, &raw),
+            }
+            return;
+        }
+        write_private(&self.file, &raw);
+    }
+
+    fn remove_file(&self) {
+        if let Some(file) = &self.file {
+            let _ = std::fs::remove_file(file);
         }
     }
 }
@@ -350,7 +449,7 @@ impl Jar {
 fn write_private(file: &Option<PathBuf>, raw: &[u8]) {
     let Some(file) = file else { return };
     if let Some(parent) = file.parent() {
-        let _ = std::fs::create_dir_all(parent);
+        create_private_dir(parent);
     }
     let mut options = std::fs::OpenOptions::new();
     options.write(true).create(true).truncate(true);
@@ -360,11 +459,53 @@ fn write_private(file: &Option<PathBuf>, raw: &[u8]) {
         options.mode(0o600);
     }
     if let Ok(mut out) = options.open(file) {
+        // The mode above only applies to a file that is created; one left by
+        // an older client or restored from a backup keeps its own.
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = out.set_permissions(std::fs::Permissions::from_mode(0o600));
+        }
         let _ = std::io::Write::write_all(&mut out, raw);
     }
 }
 
+fn create_private_dir(dir: &std::path::Path) {
+    let mut builder = std::fs::DirBuilder::new();
+    builder.recursive(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        builder.mode(0o700);
+    }
+    let _ = builder.create(dir);
+}
+
 // ----------------------------------------------------------------- proxy
+
+/// The kinds of request body the proxy tells apart.
+enum Route {
+    Avatar,
+    Upload,
+    Json,
+}
+
+impl Route {
+    fn of(path: &str) -> Route {
+        if path == "/api/users/me/avatar" {
+            return Route::Avatar;
+        }
+        let is_upload = path
+            .strip_prefix("/api/channels/")
+            .and_then(|rest| rest.strip_suffix("/upload"))
+            .is_some_and(|id| !id.is_empty() && !id.contains('/'));
+        if is_upload {
+            Route::Upload
+        } else {
+            Route::Json
+        }
+    }
+}
 
 /// What the proxy lets through, following what the instance announces.
 pub struct Limits {
@@ -406,18 +547,35 @@ impl Limits {
     /// have their own small caps. Before any announcement the old fixed cap
     /// applies to uploads.
     pub fn request_cap(&self, path: &str) -> usize {
-        if path == "/api/users/me/avatar" {
-            return MAX_AVATAR_BODY;
+        match Route::of(path) {
+            Route::Avatar => MAX_AVATAR_BODY,
+            Route::Json => MAX_JSON_BODY,
+            // Never above what the memory budget can lend: a larger body
+            // could only wait for permits that do not exist.
+            Route::Upload => self
+                .upload_bytes()
+                .map_or(MAX_BODY, |n| n + MULTIPART_OVERHEAD)
+                .min(LARGE_BODY_BUDGET),
         }
-        let is_upload = path
-            .strip_prefix("/api/channels/")
-            .and_then(|rest| rest.strip_suffix("/upload"))
-            .is_some_and(|id| !id.is_empty() && !id.contains('/'));
-        if !is_upload {
-            return MAX_JSON_BODY;
-        }
-        self.upload_bytes()
-            .map_or(MAX_BODY, |n| n + MULTIPART_OVERHEAD)
+    }
+
+    /// The answer to a request body above the cap `request_cap` gave.
+    fn too_large(&self, path: &str, cap: usize) -> Resp {
+        let message = match Route::of(path) {
+            Route::Json => "request too large".to_owned(),
+            Route::Avatar | Route::Upload => format!(
+                "file exceeds the {} MB limit{}",
+                (cap - MULTIPART_OVERHEAD.min(cap)) >> 20,
+                // The cap can sit below the instance's limit: this client
+                // holds at most LARGE_BODY_BUDGET of a file in memory.
+                if cap == LARGE_BODY_BUDGET {
+                    " of this client"
+                } else {
+                    ""
+                }
+            ),
+        };
+        Resp::error(413, "PAYLOAD_TOO_LARGE", &message)
     }
 
     /// Largest answer the proxy hands to the page: files up to the larger of
@@ -450,13 +608,36 @@ pub struct Instance {
     pub limits: Limits,
 }
 
-pub fn client() -> Result<Client, reqwest::Error> {
+/// The one place an HTTP client of this app starts: no system proxy, a connect
+/// timeout, and TLS 1.2 as the floor (the WebSocket connector sets the same
+/// floor, `web_ws::connect`). Callers add their redirect policy and timeouts.
+pub fn client_builder() -> reqwest::ClientBuilder {
     Client::builder()
-        .redirect(Policy::none())
         .no_proxy()
         .connect_timeout(Duration::from_secs(10))
-        .timeout(Duration::from_secs(600))
-        .build()
+        .min_tls_version(reqwest::tls::Version::TLS_1_2)
+}
+
+/// How long the server may stay silent while the proxy waits for response
+/// headers (GET/HEAD) or for the next piece of any answer. It is not a client
+/// timeout: reqwest's read timeout is armed when the request starts and keeps
+/// running while the body uploads, so it cannot serve here.
+const IDLE_TIMEOUT: Duration = Duration::from_secs(120);
+
+/// Base time for a request that carries a body, on top of the allowance below.
+const UPLOAD_BASE: Duration = Duration::from_secs(600);
+
+/// Slowest uplink an upload is still expected to finish on, in bytes per second.
+const UPLOAD_MIN_RATE: u64 = 64 << 10;
+
+/// Total time for a request with a body: the old 600 s plus what the body
+/// needs at the minimum rate, so a large file on a home uplink can finish.
+fn upload_timeout(body_len: usize) -> Duration {
+    UPLOAD_BASE + Duration::from_secs(body_len as u64 / UPLOAD_MIN_RATE)
+}
+
+pub fn client() -> Result<Client, reqwest::Error> {
+    client_builder().redirect(Policy::none()).build()
 }
 
 const FORWARDED_REQUEST: &[&str] = &[
@@ -522,7 +703,54 @@ fn target(origin: &Url, path_and_query: &str) -> Option<Url> {
     (url.origin() == origin.origin() && url.path().starts_with("/api/")).then_some(url)
 }
 
+/// Largest piece of a file asked for in one `Range` request. The answer is
+/// read whole, so a request for "the rest" of a large video would not fit;
+/// the browser asks for the next piece when it needs it.
+pub const RANGE_WINDOW: u64 = 8 << 20;
+
+/// `value` of a `Range` header with a single byte range cut to
+/// `RANGE_WINDOW`. Anything else (several ranges, another unit, nonsense)
+/// goes through unchanged.
+pub fn clamp_range(value: &str) -> String {
+    let Some(spec) = value.trim().strip_prefix("bytes=") else {
+        return value.to_owned();
+    };
+    let Some((first, last)) = spec.trim().split_once('-') else {
+        return value.to_owned();
+    };
+    let (first, last) = (first.trim(), last.trim());
+    let number = |text: &str| {
+        (!text.is_empty() && text.bytes().all(|b| b.is_ascii_digit()))
+            .then(|| text.parse::<u64>().ok())
+            .flatten()
+    };
+    match (number(first), number(last)) {
+        // "-N": the last N bytes.
+        (None, Some(n)) if first.is_empty() => format!("bytes=-{}", n.min(RANGE_WINDOW)),
+        (Some(start), None) if last.is_empty() => {
+            format!("bytes={start}-{}", start.saturating_add(RANGE_WINDOW - 1))
+        }
+        (Some(start), Some(end)) if end >= start => format!(
+            "bytes={start}-{}",
+            end.min(start.saturating_add(RANGE_WINDOW - 1))
+        ),
+        _ => value.to_owned(),
+    }
+}
+
 pub async fn forward(
+    instance: &Instance,
+    method: &str,
+    path_and_query: &str,
+    headers: &[(String, String)],
+    body: Vec<u8>,
+) -> Resp {
+    forward_unsealed(instance, method, path_and_query, headers, body)
+        .await
+        .sealed()
+}
+
+async fn forward_unsealed(
     instance: &Instance,
     method: &str,
     path_and_query: &str,
@@ -543,14 +771,7 @@ pub async fn forward(
     };
     let cap = instance.limits.request_cap(url.path());
     if body.len() > cap {
-        return Resp::error(
-            413,
-            "PAYLOAD_TOO_LARGE",
-            &format!(
-                "file exceeds the {} MB limit",
-                (cap - MULTIPART_OVERHEAD.min(cap)) >> 20
-            ),
-        );
+        return instance.limits.too_large(url.path(), cap);
     }
     // Held until the answer is complete: the body stays in memory until the
     // instance has read it.
@@ -564,7 +785,10 @@ pub async fn forward(
     let announces_limit = url.path() == "/api/permissions" && method == reqwest::Method::GET;
     let mut request = instance.client.request(method.clone(), url);
     for (name, value) in headers {
-        if FORWARDED_REQUEST.contains(&name.to_ascii_lowercase().as_str()) {
+        let lower = name.to_ascii_lowercase();
+        if lower == "range" {
+            request = request.header("range", clamp_range(value));
+        } else if FORWARDED_REQUEST.contains(&lower.as_str()) {
             request = request.header(name.as_str(), value.as_str());
         }
     }
@@ -574,12 +798,22 @@ pub async fn forward(
     if let Some(cookie) = instance.jar.header(now()) {
         request = request.header("cookie", cookie);
     }
-    if method != reqwest::Method::GET && method != reqwest::Method::HEAD {
-        request = request.body(body);
+    let has_body = method != reqwest::Method::GET && method != reqwest::Method::HEAD;
+    if has_body {
+        // The server answers after it has read the body, so waiting for the
+        // headers is bounded by the upload, not by the idle limit.
+        request = request.timeout(upload_timeout(body.len())).body(body);
     }
-    let mut response = match request.send().await {
-        Ok(response) => response,
-        Err(_) => return Resp::error(502, "UNAVAILABLE", "the server could not be reached"),
+    let sent = if has_body {
+        request.send().await.map_err(|_| ())
+    } else {
+        match tokio::time::timeout(IDLE_TIMEOUT, request.send()).await {
+            Ok(result) => result.map_err(|_| ()),
+            Err(_) => Err(()),
+        }
+    };
+    let Ok(mut response) = sent else {
+        return Resp::error(502, "UNAVAILABLE", "the server could not be reached");
     };
     let status = response.status().as_u16();
     let set_cookie: Vec<String> = response
@@ -590,8 +824,10 @@ pub async fn forward(
         .collect();
     instance
         .jar
-        .store(&set_cookie, instance.origin.scheme() == "https", now());
-    if response.status().is_redirection() {
+        .store_async(&set_cookie, instance.origin.scheme() == "https", now())
+        .await;
+    // 304 answers the conditional request the proxy passes on; it is no redirect.
+    if response.status().is_redirection() && status != 304 {
         return Resp::error(502, "UNAVAILABLE", "the server answered with a redirect");
     }
     let response_cap = instance.limits.response_cap();
@@ -624,9 +860,11 @@ pub async fn forward(
             .map_or(0, |n| (n as usize).min(read_cap)),
     );
     loop {
-        match response.chunk().await {
-            Ok(Some(chunk)) if chunk.len() <= read_cap - out.len() => out.extend_from_slice(&chunk),
-            Ok(None) => break,
+        match tokio::time::timeout(IDLE_TIMEOUT, response.chunk()).await {
+            Ok(Ok(Some(chunk))) if chunk.len() <= read_cap - out.len() => {
+                out.extend_from_slice(&chunk)
+            }
+            Ok(Ok(None)) => break,
             _ => {
                 return Resp::error(
                     502,
@@ -668,8 +906,6 @@ pub async fn forward(
             headers.push(("content-disposition".into(), "attachment".into()));
         }
     }
-    headers.push(("content-security-policy".into(), DATA_CSP.into()));
-    headers.push(("x-content-type-options".into(), "nosniff".into()));
     headers.push(("cross-origin-resource-policy".into(), "same-origin".into()));
     Resp {
         status,
@@ -707,6 +943,14 @@ mod tests {
             .iter()
             .find(|(n, _)| n == name)
             .map(|(_, v)| v.as_str())
+    }
+
+    #[test]
+    fn uploads_get_a_total_timeout_that_grows_with_the_body() {
+        assert_eq!(upload_timeout(0), UPLOAD_BASE);
+        assert!(upload_timeout(1 << 30) > Duration::from_secs(600 + 16000));
+        assert!(upload_timeout(1 << 30) > upload_timeout(1 << 20));
+        assert!(UPLOAD_BASE > IDLE_TIMEOUT);
     }
 
     #[test]
@@ -1007,7 +1251,7 @@ mod tests {
         assert_eq!(jar.header(101).unwrap(), "s=v");
         assert!(!path.exists(), "the plaintext file is gone after the move");
         let account = path.file_stem().unwrap().to_string_lossy().into_owned();
-        assert!(vault.load(&account).is_some());
+        assert!(vault.load(&account).found().is_some());
         // New cookies go to the keychain only.
         jar.store(&["t=w; Max-Age=500".into()], true, 100);
         assert!(!path.exists());
@@ -1015,17 +1259,23 @@ mod tests {
         assert_eq!(again.header(201).unwrap(), "s=v; t=w");
         // Logging out empties it.
         again.store(&["s=; Max-Age=0".into(), "t=; Max-Age=0".into()], true, 200);
-        assert!(vault.load(&account).is_none());
+        assert!(vault.load(&account).found().is_none());
         assert!(!path.exists());
     }
 
+    fn temp_file(tag: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("mnema-jar-{}-{tag}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir.join("account.json")
+    }
+
     #[test]
-    fn a_keychain_that_refuses_leaves_the_private_file_as_the_fallback() {
+    fn a_system_without_a_keychain_keeps_the_private_file_as_the_fallback() {
         use crate::web_vault::fake::Memory;
-        let path = std::env::temp_dir().join(format!("mnema-novault-{}.json", std::process::id()));
-        let _ = std::fs::remove_file(&path);
+        let path = temp_file("novault");
         let vault = Arc::new(Memory {
-            broken: true,
+            no_store: true,
             ..Memory::default()
         });
         let jar = Jar::in_vault(Some(path.clone()), vault.clone(), 100);
@@ -1041,7 +1291,157 @@ mod tests {
         }
         let again = Jar::in_vault(Some(path.clone()), vault, 200);
         assert_eq!(again.header(201).unwrap(), "s=v");
-        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn a_keychain_that_refuses_keeps_the_session_in_memory_and_out_of_any_file() {
+        use crate::web_vault::fake::Memory;
+        let path = temp_file("refusing");
+        let vault = Arc::new(Memory {
+            broken: true,
+            ..Memory::default()
+        });
+        let jar = Jar::in_vault(Some(path.clone()), vault.clone(), 100);
+        jar.store(&["s=v; Max-Age=500".into()], true, 100);
+        assert_eq!(jar.header(101).unwrap(), "s=v");
+        assert!(!path.exists(), "no plaintext copy of the session");
+        assert!(vault.items.lock().unwrap().is_empty());
+        let again = Jar::in_vault(Some(path), vault, 200);
+        assert_eq!(again.header(201), None, "the next start asks for a login");
+    }
+
+    #[test]
+    fn a_keychain_that_does_not_answer_or_holds_something_unreadable_keeps_its_entry() {
+        use crate::web_vault::{Vault, fake::Memory};
+        let path = temp_file("unreadable");
+        let account = "account".to_string();
+        let entry = br#"[{"name":"s","value":"v","expires":1000}]"#.to_vec();
+
+        let vault = Memory {
+            unreadable: true,
+            ..Memory::default()
+        };
+        vault
+            .items
+            .lock()
+            .unwrap()
+            .insert(account.clone(), entry.clone());
+        let vault = Arc::new(vault);
+        let jar = Jar::in_vault(Some(path.clone()), vault.clone(), 100);
+        assert_eq!(jar.header(101), None);
+        assert_eq!(
+            vault.items.lock().unwrap().get(&account),
+            Some(&entry),
+            "a read that failed is not an empty keychain"
+        );
+
+        let garbled = Memory::default();
+        garbled
+            .items
+            .lock()
+            .unwrap()
+            .insert(account.clone(), b"not json".to_vec());
+        let garbled = Arc::new(garbled);
+        let jar = Jar::in_vault(Some(path), garbled.clone(), 100);
+        assert_eq!(jar.header(101), None);
+        assert_eq!(
+            garbled.load(&account),
+            crate::web_vault::Load::Found(b"not json".to_vec()),
+            "an entry that cannot be parsed is left for a person to deal with"
+        );
+    }
+
+    #[test]
+    fn a_response_that_arrives_after_the_server_was_removed_stores_nothing() {
+        use crate::web_vault::fake::Memory;
+        let path = temp_file("forgotten");
+        let vault = Arc::new(Memory::default());
+        let jar = Jar::in_vault(Some(path.clone()), vault.clone(), 100);
+        jar.store(&["s=v; Max-Age=500".into()], true, 100);
+        assert_eq!(vault.items.lock().unwrap().len(), 1);
+        jar.forget();
+        jar.store(&["s=late; Max-Age=500".into()], true, 100);
+        assert_eq!(jar.header(101), None);
+        assert!(vault.items.lock().unwrap().is_empty());
+        assert!(!path.exists());
+    }
+
+    /// A vault whose `save` waits until it is let go.
+    struct Gated {
+        entered: std::sync::mpsc::Sender<()>,
+        release: Mutex<std::sync::mpsc::Receiver<()>>,
+        saved: Mutex<Vec<Vec<u8>>>,
+    }
+
+    impl crate::web_vault::Vault for Gated {
+        fn load(&self, _: &str) -> crate::web_vault::Load {
+            crate::web_vault::Load::Missing
+        }
+        fn save(&self, _: &str, secret: &[u8]) -> crate::web_vault::Save {
+            let _ = self.entered.send(());
+            let _ = self.release.lock().unwrap().recv();
+            self.saved.lock().unwrap().push(secret.to_vec());
+            crate::web_vault::Save::Stored
+        }
+        fn remove(&self, _: &str) {}
+    }
+
+    #[test]
+    fn a_slow_keychain_does_not_hold_up_requests_and_an_older_write_never_wins() {
+        let (entered_tx, entered) = std::sync::mpsc::channel();
+        let (release_tx, release) = std::sync::mpsc::channel();
+        let vault = Arc::new(Gated {
+            entered: entered_tx,
+            release: Mutex::new(release),
+            saved: Mutex::new(Vec::new()),
+        });
+        let path = temp_file("gated");
+        let jar = Arc::new(Jar::in_vault(Some(path), vault.clone(), 100));
+        let first = {
+            let jar = Arc::clone(&jar);
+            std::thread::spawn(move || jar.store(&["a=1; Max-Age=500".into()], true, 100))
+        };
+        entered.recv().unwrap();
+        // The first write is stuck in the keychain; the jar still answers and
+        // takes the next cookie.
+        assert_eq!(jar.header(101).unwrap(), "a=1");
+        let write = jar.apply(&["b=2; Max-Age=500".into()], true, 100).unwrap();
+        assert_eq!(jar.header(101).unwrap(), "a=1; b=2");
+        release_tx.send(()).unwrap();
+        first.join().unwrap();
+        release_tx.send(()).unwrap();
+        write.run();
+        let saved = vault.saved.lock().unwrap();
+        assert_eq!(saved.len(), 2);
+        assert!(String::from_utf8_lossy(&saved[1]).contains("\"b\""));
+        drop(saved);
+
+        // A snapshot that is overtaken is dropped instead of written late.
+        let older = jar.apply(&["c=3; Max-Age=500".into()], true, 100).unwrap();
+        let newer = jar.apply(&["d=4; Max-Age=500".into()], true, 100).unwrap();
+        release_tx.send(()).unwrap();
+        newer.run();
+        older.run();
+        let saved = vault.saved.lock().unwrap();
+        assert_eq!(saved.len(), 3, "the older snapshot was not written");
+        assert!(String::from_utf8_lossy(&saved[2]).contains("\"d\""));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn the_fallback_file_is_private_even_if_an_older_client_left_it_open() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join(format!("mnema-jar-{}-modes", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let file = dir.join("sessions").join("account.json");
+        write_private(&Some(file.clone()), b"[]");
+        let mode = |p: &std::path::Path| std::fs::metadata(p).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode(file.parent().unwrap()), 0o700);
+        std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o644)).unwrap();
+        write_private(&Some(file.clone()), b"[1]");
+        assert_eq!(mode(&file), 0o600);
+        assert_eq!(std::fs::read(&file).unwrap(), b"[1]");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// One-shot HTTP server: returns the raw request text through the channel
@@ -1183,6 +1583,62 @@ mod tests {
         assert_eq!(instance.jar.header(now() + 1).unwrap(), "session=new");
     }
 
+    /// The privileged page of a server may be navigated to a path under
+    /// `/api/`: whichever way the proxy answers, that document is sandboxed.
+    #[tokio::test]
+    async fn every_way_the_proxy_answers_under_api_carries_the_sandbox_policy() {
+        let html = |status: &str, extra: &[&str]| {
+            let mut headers = vec!["content-type: text/html"];
+            headers.extend_from_slice(extra);
+            reply(status, &headers, "<script>1</script>")
+        };
+        let mut answers = Vec::new();
+        for (answer, label) in [
+            (html("200 OK", &[]), "ok"),
+            (html("404 Not Found", &[]), "not found"),
+            (html("302 Found", &["location: /elsewhere"]), "redirect"),
+        ] {
+            let (resp, _, _) =
+                call(answer, "GET", "/api/media/1", &[], b"", Jar::new(None, 0)).await;
+            answers.push((label, resp));
+        }
+        // Refused before the server is asked.
+        let (origin, _request) = serve_once(Vec::new()).await;
+        let instance = Instance {
+            origin,
+            client: client().unwrap(),
+            jar: Jar::new(None, 0),
+            limits: Limits::default(),
+        };
+        answers.push((
+            "method",
+            forward(&instance, "TRACE", "/api/media/1", &[], Vec::new()).await,
+        ));
+        answers.push((
+            "path",
+            forward(&instance, "GET", "/outside", &[], Vec::new()).await,
+        ));
+        for (label, resp) in answers {
+            assert_eq!(
+                header(&resp, "content-security-policy"),
+                Some(DATA_CSP),
+                "{label} {}",
+                resp.status
+            );
+            assert_eq!(
+                header(&resp, "x-content-type-options"),
+                Some("nosniff"),
+                "{label}"
+            );
+            let policies = resp
+                .headers
+                .iter()
+                .filter(|(n, _)| n == "content-security-policy")
+                .count();
+            assert_eq!(policies, 1, "{label}");
+        }
+    }
+
     #[tokio::test]
     async fn an_answer_that_could_run_as_a_document_becomes_a_download() {
         let (resp, _, _) = call(
@@ -1297,6 +1753,106 @@ mod tests {
                 .status,
             413
         );
+    }
+
+    #[tokio::test]
+    async fn a_not_modified_answer_reaches_the_page_as_such() {
+        let (resp, request, _) = call(
+            reply(
+                "304 Not Modified",
+                &["etag: \"v1\"", "cache-control: max-age=60"],
+                "",
+            ),
+            "GET",
+            "/api/x",
+            &[("If-None-Match", "\"v1\"")],
+            b"",
+            Jar::new(None, 0),
+        )
+        .await;
+        assert!(
+            request
+                .to_ascii_lowercase()
+                .contains("if-none-match: \"v1\"")
+        );
+        assert_eq!(resp.status, 304);
+        assert_eq!(header(&resp, "etag"), Some("\"v1\""));
+        assert!(resp.body.is_empty());
+    }
+
+    #[tokio::test]
+    async fn the_413_names_a_file_limit_only_for_files() {
+        let instance = instance_at(Url::parse("http://127.0.0.1:9").unwrap());
+        let said = |resp: Resp| String::from_utf8_lossy(&resp.body).into_owned();
+        let json = forward(&instance, "POST", "/api/x", &[], vec![0; MAX_JSON_BODY + 1]).await;
+        assert_eq!(json.status, 413);
+        assert!(said(json).contains("request too large"));
+        instance.limits.announce_upload_mb(10);
+        let upload = "/api/channels/00000000-0000-4000-8000-000000000000/upload";
+        let file = forward(&instance, "POST", upload, &[], vec![0; (11 << 20) + 1]).await;
+        assert_eq!(file.status, 413);
+        assert!(said(file).contains("file exceeds the 10 MB limit"));
+        let avatar = forward(
+            &instance,
+            "POST",
+            "/api/users/me/avatar",
+            &[],
+            vec![0; MAX_AVATAR_BODY + 1],
+        )
+        .await;
+        assert!(said(avatar).contains("file exceeds the 5 MB limit"));
+    }
+
+    #[test]
+    fn a_range_is_cut_to_a_piece_the_proxy_can_hold() {
+        let window = RANGE_WINDOW;
+        for (asked, sent) in [
+            ("bytes=0-", format!("bytes=0-{}", window - 1)),
+            ("bytes=100-", format!("bytes=100-{}", 100 + window - 1)),
+            ("bytes=0-99", "bytes=0-99".to_owned()),
+            ("bytes=0-1073741823", format!("bytes=0-{}", window - 1)),
+            ("bytes=-500", "bytes=-500".to_owned()),
+            ("bytes=-1073741824", format!("bytes=-{window}")),
+            (
+                "bytes=18446744073709551615-",
+                "bytes=18446744073709551615-18446744073709551615".to_owned(),
+            ),
+            // Left alone: several ranges, other units, nonsense, a backwards range.
+            ("bytes=0-1,5-", "bytes=0-1,5-".to_owned()),
+            ("items=0-", "items=0-".to_owned()),
+            ("bytes=a-b", "bytes=a-b".to_owned()),
+            ("bytes=9-3", "bytes=9-3".to_owned()),
+            ("bytes=-", "bytes=-".to_owned()),
+        ] {
+            assert_eq!(clamp_range(asked), sent, "{asked}");
+        }
+    }
+
+    #[tokio::test]
+    async fn an_open_ended_range_reaches_the_instance_as_a_bounded_one() {
+        let (resp, request, _) = call(
+            reply(
+                "206 Partial Content",
+                &[
+                    "content-type: video/mp4",
+                    "content-range: bytes 0-3/9999999999",
+                ],
+                "data",
+            ),
+            "GET",
+            "/api/files/x",
+            &[("Range", "bytes=0-")],
+            b"",
+            Jar::new(None, 0),
+        )
+        .await;
+        assert!(
+            request
+                .to_ascii_lowercase()
+                .contains(&format!("range: bytes=0-{}", RANGE_WINDOW - 1))
+        );
+        assert_eq!(resp.status, 206);
+        assert_eq!(resp.body, b"data");
     }
 
     #[tokio::test]
@@ -1451,6 +2007,8 @@ mod tests {
         assert_eq!(limits.request_cap(upload), (512 << 20) + MULTIPART_OVERHEAD);
         limits.announce_upload_mb(2048);
         assert_eq!(limits.response_cap(), LARGE_BODY_BUDGET);
+        // A body the memory budget cannot hold is refused, not left waiting.
+        assert_eq!(limits.request_cap(upload), LARGE_BODY_BUDGET);
     }
 
     #[tokio::test]
@@ -1466,6 +2024,25 @@ mod tests {
         assert!(limits.lend(SMALL_BODY + 1).await.is_err());
         drop(first);
         assert!(limits.lend(SMALL_BODY + 1).await.unwrap().is_some());
+    }
+
+    #[tokio::test]
+    async fn the_largest_upload_the_proxy_accepts_can_borrow_its_memory() {
+        let limits = Limits {
+            wait: Duration::from_millis(50),
+            ..Limits::default()
+        };
+        limits.announce_upload_mb(2048);
+        let upload = "/api/channels/00000000-0000-4000-8000-000000000000/upload";
+        assert!(
+            limits
+                .lend(limits.request_cap(upload))
+                .await
+                .unwrap()
+                .is_some()
+        );
+        // One byte more than the pool could never be lent.
+        assert!(limits.lend(LARGE_BODY_BUDGET + 1).await.is_err());
     }
 
     #[tokio::test]
@@ -1588,6 +2165,13 @@ mod shared_vectors {
             assert_eq!(
                 limits.response_cap() as u64,
                 c["response_cap"].as_u64().unwrap(),
+                "{c}"
+            );
+        }
+        for c in v["ranges"].as_array().unwrap() {
+            assert_eq!(
+                clamp_range(c["input"].as_str().unwrap()),
+                c["clamped"].as_str().unwrap(),
                 "{c}"
             );
         }

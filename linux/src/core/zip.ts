@@ -1,4 +1,5 @@
 import { crc32, inflateRawSync } from 'node:zlib'
+import { strictUtf8 } from './encoding.ts'
 
 /**
  * A small, strict ZIP reader for signed bundles. It reads the central
@@ -83,11 +84,7 @@ export class ZipArchive {
 
   /** Names are UTF-8. A name that is not stays unreadable instead of being guessed. */
   private decodeName(from: number, length: number): string | null {
-    try {
-      return new TextDecoder('utf-8', { fatal: true }).decode(this.data.subarray(from, from + length))
-    } catch {
-      return null
-    }
+    return strictUtf8(this.data.subarray(from, from + length))
   }
 
 

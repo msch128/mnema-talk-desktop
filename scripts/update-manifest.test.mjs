@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { LINUX_PLATFORMS, buildManifest } from './update-manifest.mjs';
+import { LINUX_PLATFORMS, buildManifest, parseArgs } from './update-manifest.mjs';
 
 const signature = Buffer.from('untrusted comment: signature from tauri secret key\n'.repeat(3)).toString('base64');
 const ok = { version: '0.2.0', repo: 'msch128/mnema-talk-desktop', installerName: 'Mnema-Desktop-DEV_0.2.0_x64-setup.exe', signature: `${signature}\n`, notes: ' Fixes ', date: new Date('2026-10-17T12:00:00Z') };
@@ -86,4 +86,11 @@ test('adds the .deb entries under their own keys and leaves every other entry by
   assert.match(m.platforms['linux-x86_64-deb'].url, /\/a_amd64\.deb$/);
   assert.throws(() => buildManifest({ ...ok, linux: [{ platform: 'linux-x86_64-deb', name: 'a.AppImage', signature: sig }] }), /\.deb/);
   assert.throws(() => buildManifest({ ...ok, linux: [{ platform: 'linux-x86_64', name: 'a.deb', signature: sig }] }), /AppImage/);
+});
+
+test('argument parser pairs each flag with its own value and rejects a missing one', () => {
+  assert.deepEqual(parseArgs(['--version', '1.2.3', '--out', 'latest.json']), { version: '1.2.3', out: 'latest.json' });
+  assert.throws(() => parseArgs(['--mac', '--mac-sig', 'f.sig']), /--mac needs a value/);
+  assert.throws(() => parseArgs(['--out', 'a.json', '--notes']), /--notes needs a value/);
+  assert.throws(() => parseArgs(['stray', 'x']), /Unexpected argument/);
 });

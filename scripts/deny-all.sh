@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Runs the advisory policy of deny.toml (Windows-target graph, see
+# Runs the advisory policy of deny.toml (Windows and macOS target graph, see
 # doc/security-review-1.2.md) against every Rust lockfile of the repository.
 set -euo pipefail
 cd "$(dirname "$0")/.."

@@ -12,7 +12,7 @@ import { type TrustedKey, parseKey, validPath, verifyBundle } from '../src/core/
 import { appPath, externalAllowed, inviteCode, parseAddress, parseHealth } from '../src/core/client.ts'
 import { Jar } from '../src/core/cookies.ts'
 import { verifyPackage } from '../src/core/minisign.ts'
-import { Limits, inlineSafe, mimeFor, serveBundle, target } from '../src/core/proxy.ts'
+import { Limits, clampRange, inlineSafe, mimeFor, serveBundle, target } from '../src/core/proxy.ts'
 import { Store } from '../src/core/store.ts'
 import { type Statement, TrustState, chooseUpdaterKey, minisignKeyId, parseUtc, rootKey, signatureKeyId, statementBundleKeys, statementCaps, verifyStatement } from '../src/core/trust.ts'
 import { formatVersion, parseVersion } from '../src/core/version.ts'
@@ -126,6 +126,7 @@ test('proxy vectors: media types, targets, caps, mime types, served files and th
     for (const mb of c.announce) limits.announceUploadMb(mb)
     assert.deepEqual([limits.requestCap(c.path), limits.responseCap()], [c.request_cap, c.response_cap], JSON.stringify(c))
   }
+  for (const c of v.ranges) assert.equal(clampRange(c.input), c.clamped, JSON.stringify(c.input))
   for (const c of v.mimes) assert.equal(mimeFor(c.name), c.type, c.name)
   const bundle = verifyBundle(Buffer.from(v.serve.zip, 'base64'), keys(v.serve.trusted))
   for (const c of v.serve.cases) {

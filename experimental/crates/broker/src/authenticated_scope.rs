@@ -122,7 +122,7 @@ impl State {
             return Err(Error::Stale);
         }
         let session = active.session.as_ref().ok_or(Error::ReauthRequired)?;
-        if session.grant.access_expires_at <= Utc::now()
+        if session.grant.is_access_expired()
             || session.grant.family_expires_at <= Utc::now()
             || Instant::now() >= session.access_deadline
         {

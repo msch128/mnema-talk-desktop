@@ -5,18 +5,14 @@ use chrono::DateTime;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-fn id(s: &str) -> bool {
-    Uuid::parse_str(s).is_ok_and(|i| !i.is_nil() && i.hyphenated().to_string() == s)
-}
-fn text(s: &str, max: usize) -> bool {
-    !s.contains('\0') && s.chars().count() <= max
-}
-fn safe<T: Serialize>(v: T) -> Result<Value, Error> {
-    serde_json::to_value(v).map_err(|_| Error::Internal)
-}
+use super::server_wire::{CHANNEL_NAME_CHARS, Category, Channel, canonical_uuid as id, safe, text};
 
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
+#[allow(
+    dead_code,
+    reason = "server fields that are accepted but not forwarded"
+)]
 struct Invite {
     id: String,
     code: String,
@@ -24,10 +20,14 @@ struct Invite {
     uses_count: u64,
     expires_at: Option<DateTime<Utc>>,
     created_at: DateTime<Utc>,
+    #[serde(default, skip_serializing)]
+    weak: bool,
 }
 fn invite(v: &Invite) -> bool {
+    // Old short custom codes stay in the server's list (flagged weak), so only the
+    // alphabet and the upper bound are enforced here.
     id(&v.id)
-        && (6..=64).contains(&v.code.len())
+        && (1..=64).contains(&v.code.len())
         && v.code
             .bytes()
             .all(|b| b.is_ascii_alphanumeric() || b"_-".contains(&b))
@@ -35,6 +35,10 @@ fn invite(v: &Invite) -> bool {
 }
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
+#[allow(
+    dead_code,
+    reason = "server fields that are accepted but not forwarded"
+)]
 struct AdminUser {
     id: String,
     username: String,
@@ -54,8 +58,19 @@ struct AdminUser {
     created_at: DateTime<Utc>,
     disabled: bool,
     last_seen_at: Option<DateTime<Utc>>,
+    #[serde(default, skip_serializing)]
+    role_ids: Vec<String>,
+    #[serde(default, skip_serializing)]
+    banned: bool,
+    #[serde(default, skip_serializing)]
+    timeout_until: Option<DateTime<Utc>>,
+    #[serde(default, skip_serializing)]
+    login_locked: bool,
 }
 fn admin_user(v: AdminUser) -> Result<Value, Error> {
+    if v.role_ids.len() > 4096 || !v.role_ids.iter().all(|r| id(r)) {
+        return Err(Error::Protocol);
+    }
     let disabled = v.disabled;
     let seen = v.last_seen_at;
     let mut raw = safe(v)?;
@@ -68,40 +83,6 @@ fn admin_user(v: AdminUser) -> Result<Value, Error> {
     out["disabled"] = Value::Bool(disabled);
     out["last_seen_at"] = safe(seen)?;
     Ok(out)
-}
-#[derive(Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-struct Channel {
-    id: String,
-    number: i64,
-    category_id: Option<String>,
-    name: String,
-    #[serde(rename = "type")]
-    kind: String,
-    topic: String,
-    sort_order: i32,
-    created_at: DateTime<Utc>,
-    user_limit: u16,
-}
-fn channel(v: &Channel) -> bool {
-    id(&v.id)
-        && v.number > 0
-        && v.category_id.as_ref().is_none_or(|s| id(s))
-        && !v.name.trim().is_empty()
-        && text(&v.name, 64)
-        && text(&v.topic, 255)
-        && ["text", "voice"].contains(&v.kind.as_str())
-        && v.user_limit <= 999
-        && (v.kind == "voice" || v.user_limit == 0)
-}
-#[derive(Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-struct Category {
-    id: String,
-    name: String,
-    sort_order: i32,
-    channels: Vec<Channel>,
-    created_at: DateTime<Utc>,
 }
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -213,7 +194,10 @@ pub(super) fn decode(endpoint: E, body: &crate::http::Body) -> Result<Value, Err
     match endpoint {
         E::Invites => {
             let v: Vec<Invite> = body.decode()?;
-            if v.len() > 4096 || !v.iter().all(invite) {
+            if v.len() > 4096 {
+                return Err(Error::BodyLimit);
+            }
+            if !v.iter().all(invite) {
                 return Err(Error::Protocol);
             }
             safe(v)
@@ -246,12 +230,7 @@ pub(super) fn decode(endpoint: E, body: &crate::http::Body) -> Result<Value, Err
         }
         E::CreateCategory => {
             let v: Category = body.decode()?;
-            if !id(&v.id)
-                || !text(&v.name, 64)
-                || v.name.trim().is_empty()
-                || v.channels.len() > 4096
-                || !v.channels.iter().all(channel)
-            {
+            if !v.valid() {
                 return Err(Error::Protocol);
             }
             safe(v)
@@ -259,7 +238,7 @@ pub(super) fn decode(endpoint: E, body: &crate::http::Body) -> Result<Value, Err
         E::RenameCategory(target) => {
             let v: RenamedCategory = body.decode()?;
             if v.id != target.hyphenated().to_string()
-                || !text(&v.name, 64)
+                || !text(&v.name, CHANNEL_NAME_CHARS)
                 || v.name.trim().is_empty()
             {
                 return Err(Error::Protocol);
@@ -268,9 +247,9 @@ pub(super) fn decode(endpoint: E, body: &crate::http::Body) -> Result<Value, Err
         }
         E::CreateChannel | E::DuplicateChannel(_) | E::UpdateChannel(_) => {
             let v: Channel = body.decode()?;
-            if !channel(&v)
-                || matches!(endpoint,E::UpdateChannel(target) if v.id!=target.hyphenated().to_string())
-                || matches!(endpoint,E::DuplicateChannel(source) if v.id==source.hyphenated().to_string())
+            if !v.valid()
+                || matches!(endpoint,E::UpdateChannel(target) if v.id()!=target.hyphenated().to_string())
+                || matches!(endpoint,E::DuplicateChannel(source) if v.id()==source.hyphenated().to_string())
             {
                 return Err(Error::Protocol);
             }
@@ -309,5 +288,59 @@ pub(super) fn decode(endpoint: E, body: &crate::http::Body) -> Result<Value, Err
             safe(v)
         }
         _ => Err(Error::Protocol),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::http::Body;
+    use serde_json::json;
+    const ID: &str = "22222222-2222-2222-2222-222222222222";
+    const AT: &str = "2026-01-02T03:04:05Z";
+    fn body(v: Value) -> Body {
+        Body::for_test(v.to_string().as_bytes(), 200)
+    }
+    // The channel exactly as Go chat.Channel marshals it.
+    fn server_channel() -> Value {
+        json!({"id":ID,"number":3,"category_id":null,"name":"lounge","type":"voice","topic":"",
+            "sort_order":1,"created_at":AT,"user_limit":4,"slow_mode_seconds":0,"auto_delete_days":7,
+            "is_lobby":false,"is_temp":true,"leader_id":ID,"is_stage":false,"slug":"lounge",
+            "previous_slugs":["old-lounge"]})
+    }
+    #[test]
+    fn current_server_channel_and_category_replies_decode_without_leaking_extra_fields() {
+        let out = decode(E::CreateChannel, &body(server_channel())).unwrap();
+        assert_eq!(out["name"], "lounge");
+        assert!(out.get("slug").is_none() && out.get("leader_id").is_none());
+        let cat = json!({"id":ID,"name":"c","sort_order":0,"created_at":AT,"channels":[server_channel()]});
+        assert!(decode(E::CreateCategory, &body(cat)).is_ok());
+    }
+    #[test]
+    fn current_server_user_and_invite_lists_decode_including_legacy_short_codes() {
+        let user = json!({"id":ID,"username":"fixture-user","display_name":"Fixture User","bio":"","role":"user",
+            "status_text":"","locale":"en","created_at":AT,"role_ids":[ID],"disabled":false,
+            "banned":false,"timeout_until":AT,"last_seen_at":null,"login_locked":true});
+        let out = decode(E::Users, &body(json!([user]))).unwrap();
+        assert_eq!(out[0]["username"], "fixture-user");
+        assert!(out[0].get("banned").is_none());
+        let invite = |code: &str| {
+            json!({"id":ID,"code":code,"max_uses":null,"uses_count":0,
+            "expires_at":null,"created_at":AT,"weak":true})
+        };
+        assert!(
+            decode(
+                E::Invites,
+                &body(json!([invite("abc"), invite("Fixture-Code")]))
+            )
+            .is_ok()
+        );
+        assert!(decode(E::Invites, &body(json!([invite("bad code")]))).is_err());
+    }
+    #[test]
+    fn unknown_fields_are_still_rejected() {
+        let mut ch = server_channel();
+        ch["access_token"] = json!("x");
+        assert!(decode(E::CreateChannel, &body(ch)).is_err());
     }
 }

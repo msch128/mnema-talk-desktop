@@ -5,6 +5,7 @@
  * `experimental/app/src/web_client.rs` and `local_route.rs`; the shared vectors
  * must pass in both.
  */
+import { asU32, parseStrictJson } from './json.ts'
 import { type ServerInfo } from './store.ts'
 import { parseVersion } from './version.ts'
 
@@ -102,13 +103,13 @@ const UPDATE_NEEDED = 'This instance needs an update for the desktop client.'
 export function parseHealth(bytes: Uint8Array): ServerInfo {
   let health: unknown
   try {
-    health = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes))
+    health = parseStrictJson(bytes)
   } catch {
     throw new Error(UPDATE_NEEDED)
   }
   if (typeof health !== 'object' || health === null || Array.isArray(health)) throw new Error(UPDATE_NEEDED)
   const { status, version, web_client_api: api } = health as Record<string, unknown>
-  const apiOk = api === undefined || api === null || (typeof api === 'number' && Number.isInteger(api) && api >= 0 && api <= 0xffffffff)
+  const apiOk = api === undefined || api === null || asU32(api) !== null
   if (typeof status !== 'string' || (version !== undefined && typeof version !== 'string') || !apiOk) throw new Error(UPDATE_NEEDED)
   if (status !== 'ok') throw new Error('This instance is not compatible with this desktop client.')
   if (typeof api !== 'number' || api < 1) throw new Error(UPDATE_NEEDED)
@@ -125,9 +126,13 @@ function isId(value: string): boolean {
 }
 
 /**
- * Closed local SPA routes from the actual bundled Vue lib/router.ts. Admitting
- * a local path grants no channel, admin, voice or content permission.
+ * Closed local SPA routes from the actual bundled Vue lib/router.ts and
+ * lib/routePaths.ts. Admitting a local path grants no channel, admin, voice or
+ * content permission.
  */
+const SLUG = /^[a-z0-9-]{1,80}$/
+const USERNAME = /^[A-Za-z0-9._~-]{1,64}$/
+
 export function appPath(path: string): boolean {
   if (['', '/', '/index.html', '/login'].includes(path)) return true
   if (path.length > 200) return false
@@ -135,12 +140,26 @@ export function appPath(path: string): boolean {
   if (parts[0] !== '') return false
   const [, first, second, third, fourth, fifth] = parts
   const id = (value: string | undefined) => value !== undefined && isId(value)
+  const slug = (value: string | undefined) => value !== undefined && SLUG.test(value)
+  const username = (value: string | undefined) => value !== undefined && USERNAME.test(value)
+  const tail = (kind: string | undefined, value: string | undefined) => (kind === 'm' || kind === 't') && id(value)
   switch (parts.length) {
     case 2: return first === 'admin'
-    case 3: return first === 'invite' ? inviteSegment(second) : first === 'admin' ? ['users', 'channels', 'invites', 'media', 'system'].includes(second as string) : (first === 'c' || first === 'v') && id(second)
-    case 4: return first === 'invite' ? third === '' && inviteSegment(second) : first === 'v' && id(second) && third === 'chat'
-    case 5: return first === 'c' && id(second) && (third === 'm' || third === 't') && id(fourth)
-    case 6: return first === 'v' && id(second) && third === 'chat' && fourth === 'm' && id(fifth)
+    case 3:
+      if (first === 'invite') return inviteSegment(second)
+      if (first === 'admin') return ['users', 'channels', 'invites', 'media', 'system'].includes(second as string)
+      if (first === 'dm') return username(second)
+      return (first === 'c' || first === 'v') && slug(second)
+    case 4:
+      if (first === 'invite') return third === '' && inviteSegment(second)
+      if (first === 'dm') return second === 'g' && slug(third)
+      return first === 'v' && slug(second) && third === 'chat'
+    case 5:
+      if (first === 'dm') return username(second) && tail(third, fourth)
+      return first === 'c' && slug(second) && ((third === 'p' && slug(fourth)) || tail(third, fourth))
+    case 6:
+      if (first === 'dm') return second === 'g' && slug(third) && tail(fourth, fifth)
+      return first === 'v' && slug(second) && third === 'chat' && fourth === 'm' && id(fifth)
     default: return false
   }
 }

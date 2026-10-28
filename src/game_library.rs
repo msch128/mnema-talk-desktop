@@ -54,36 +54,72 @@ const BROAD: &[&str] = &[
     "temp",
 ];
 
-/// Lower-case, `/`-separated, without trailing slash. `None` for anything that
-/// is not an absolute path deeper than a drive root or a known broad folder.
-pub fn normalize_dir(dir: &str) -> Option<String> {
-    let flat = dir.trim().replace('\\', "/").to_lowercase();
-    // UNC (\\host\share) and device (\\?\, \\.\) paths are not game folders.
-    if flat.chars().any(char::is_control) || flat.starts_with("//") {
+/// How an absolute path starts.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Root {
+    /// `X:/`, a drive letter followed by a separator.
+    Drive,
+    /// A leading `/`.
+    Slash,
+}
+
+/// Splits a `/`-separated path into its root and the part after it. The one
+/// place that decides what "absolute and local" means: the root is `X:/` or a
+/// leading `/` (not `//`, which is UNC or a device path, and not the
+/// drive-relative `X:name`), and nothing after it may contain `:` (an
+/// alternate data stream, a second drive or a `\??\c:` device prefix).
+fn split_root(flat: &str) -> Option<(Root, &str)> {
+    if flat.starts_with("//") {
         return None;
     }
-    let (prefix, rest) = if let Some(rest) = flat.strip_prefix('/') {
-        (String::new(), rest)
-    } else if flat.len() > 2
-        && flat.as_bytes()[1] == b':'
-        && flat.as_bytes()[0].is_ascii_alphabetic()
+    let bytes = flat.as_bytes();
+    let (root, rest) = if bytes.len() >= 3
+        && bytes[0].is_ascii_alphabetic()
+        && bytes[1] == b':'
+        && bytes[2] == b'/'
     {
-        (flat[..2].to_owned(), flat[2..].trim_start_matches('/'))
+        (Root::Drive, &flat[2..])
+    } else if flat.starts_with('/') {
+        (Root::Slash, flat)
     } else {
         return None;
     };
-    let parts: Vec<&str> = rest
-        .split('/')
-        .filter(|p| !p.is_empty() && *p != ".")
-        .collect();
-    if parts.contains(&"..") {
+    (!rest.contains(':')).then_some((root, rest))
+}
+
+/// Lower-case root prefix and path components of an absolute path: no empty or
+/// `.` parts, and `None` for control characters, `..` or anything
+/// [`split_root`] refuses.
+fn rooted_parts(path: &str) -> Option<(String, Vec<String>)> {
+    let flat = path.trim().replace('\\', "/").to_lowercase();
+    if flat.is_empty() || flat.chars().any(char::is_control) {
         return None;
     }
+    let (root, rest) = split_root(&flat)?;
+    let parts: Vec<String> = rest
+        .split('/')
+        .filter(|p| !p.is_empty() && *p != ".")
+        .map(str::to_owned)
+        .collect();
+    if parts.iter().any(|p| p == "..") {
+        return None;
+    }
+    let prefix = match root {
+        Root::Drive => flat[..2].to_owned(),
+        Root::Slash => String::new(),
+    };
+    Some((prefix, parts))
+}
+
+/// Lower-case, `/`-separated, without trailing slash. `None` for anything that
+/// is not an absolute path deeper than a drive root or a known broad folder.
+pub fn normalize_dir(dir: &str) -> Option<String> {
+    let (prefix, parts) = rooted_parts(dir)?;
     // A game folder is at least one level below a broad folder.
     let first = parts.first()?;
     if parts.len() < 2
-        || (parts.len() == 2 && BROAD.contains(first))
-        || BROAD.contains(&parts[parts.len() - 1])
+        || (parts.len() == 2 && BROAD.contains(&first.as_str()))
+        || BROAD.contains(&parts[parts.len() - 1].as_str())
     {
         return None;
     }
@@ -92,30 +128,7 @@ pub fn normalize_dir(dir: &str) -> Option<String> {
 
 /// Normalizes an image path like [`normalize_dir`] but without the depth rules.
 fn normalize_image(path: &str) -> Option<String> {
-    let flat = path.trim().replace('\\', "/").to_lowercase();
-    if flat.is_empty() || flat.chars().any(char::is_control) || flat.starts_with("//") {
-        return None;
-    }
-    let (prefix, rest) = if let Some(rest) = flat.strip_prefix('/') {
-        (String::new(), rest.to_owned())
-    } else if flat.len() > 2
-        && flat.as_bytes()[1] == b':'
-        && flat.as_bytes()[0].is_ascii_alphabetic()
-    {
-        (
-            flat[..2].to_owned(),
-            flat[2..].trim_start_matches('/').to_owned(),
-        )
-    } else {
-        return None;
-    };
-    let parts: Vec<&str> = rest
-        .split('/')
-        .filter(|p| !p.is_empty() && *p != ".")
-        .collect();
-    if parts.contains(&"..") {
-        return None;
-    }
+    let (prefix, parts) = rooted_parts(path)?;
     Some(format!("{prefix}/{}", parts.join("/")))
 }
 
@@ -129,22 +142,14 @@ pub fn safe_disk_path_for(path: &str, windows: bool) -> bool {
     let flat = path.trim().replace('\\', "/");
     if flat.is_empty()
         || flat.chars().any(char::is_control)
-        || flat.starts_with("//")
         || flat.split('/').any(|part| part == "..")
     {
         return false;
     }
-    let bytes = flat.as_bytes();
-    let drive =
-        bytes.len() >= 3 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':' && bytes[2] == b'/';
-    let rest = if drive { &flat[2..] } else { &flat[..] };
-    if rest.contains(':') {
-        return false;
-    }
-    if windows {
-        drive
-    } else {
-        drive || flat.starts_with('/')
+    match split_root(&flat) {
+        Some((Root::Drive, _)) => true,
+        Some((Root::Slash, _)) => !windows,
+        None => false,
     }
 }
 
@@ -591,6 +596,35 @@ mod tests {
             InstallIndex::new(vec![])
                 .find(r"\\host\share\a\b.exe")
                 .is_none()
+        );
+    }
+
+    #[test]
+    fn every_path_reader_applies_the_same_root_rule() {
+        // Drive-relative, device-prefixed and stream paths are refused by all three.
+        for bad in [
+            r"D:Games\Foo",
+            r"c:\a:stream\b",
+            "/??/c:/games/foo",
+            r"C:Games\Foo\bin\x.exe",
+        ] {
+            assert!(normalize_dir(bad).is_none(), "{bad}");
+            assert!(normalize_image(bad).is_none(), "{bad}");
+            assert!(!safe_disk_path_for(bad, true), "{bad}");
+            assert!(!safe_disk_path_for(bad, false), "{bad}");
+        }
+        assert!(InstalledGame::new("X", r"D:Games\Foo").is_none());
+        assert_eq!(
+            normalize_dir(r"D:\Games\Foo\").as_deref(),
+            Some("d:/games/foo")
+        );
+        assert_eq!(
+            normalize_image(r"D:\Games\.\Foo\x.exe").as_deref(),
+            Some("d:/games/foo/x.exe")
+        );
+        assert_eq!(
+            normalize_dir("/mnt/games/foo").as_deref(),
+            Some("/mnt/games/foo")
         );
     }
 

@@ -21,11 +21,7 @@ impl Broker {
         let username = username.trim();
         let display_name = display_name.trim();
         let invite_code = invite_code.trim();
-        if username.len() < 3
-            || username.len() > 32
-            || !username
-                .bytes()
-                .all(|b| b.is_ascii_alphanumeric() || b"_.-".contains(&b))
+        if !crate::wire::valid_username(username)
             || display_name.chars().count() > 24
             || display_name.contains('\0')
             || password.text().chars().count() < 10
@@ -100,7 +96,7 @@ impl Broker {
         active.status = Status::Selected;
         // Completed account metadata must not keep HTTP drain custody alive
         // while its IPC delivery waits. Final commit still checks original epoch.
-        state.requests.get_mut(&op.id).ok_or(Error::Stale)?.phase = RequestPhase::Delivered;
+        state.mark_phase(&op, RequestPhase::Delivered)?;
         completion.armed = false;
         Ok(RegistrationDelivery {
             operation: op,

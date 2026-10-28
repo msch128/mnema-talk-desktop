@@ -267,6 +267,11 @@ impl OwnedCredential {
         validate_security(self.mutex.0, &self.user)
     }
 }
+const MUTEX_NAME_PREFIX: &str = "Global\\MnemaTalk.Dev.Vault.v1.";
+/// Prefix, SHA-256 user hash, separator and SHA-256 namespace digest, all hex: the name
+/// has a fixed length and must stay inside the kernel object name limit (MAX_PATH).
+const MUTEX_NAME_UTF16_LEN: usize = MUTEX_NAME_PREFIX.len() + 64 + 1 + 64;
+const _: () = assert!(MUTEX_NAME_UTF16_LEN < 260);
 #[derive(Default)]
 pub struct WindowsCredentialManager;
 impl fmt::Debug for WindowsCredentialManager {
@@ -283,13 +288,11 @@ impl Boundary for WindowsCredentialManager {
         let user_hash: [u8; 32] = Sha256::digest(user_bytes).into();
         // Global user-scoped name covers same-user concurrent Windows logon sessions.
         let name = format!(
-            "Global\\MnemaTalk.Dev.Vault.v1.{}.{}",
+            "{MUTEX_NAME_PREFIX}{}.{}",
             hex(&user_hash),
             hex(&namespace.digest)
         );
-        if name.encode_utf16().count() >= 260 {
-            return Err(Error::InvalidInput);
-        }
+        debug_assert_eq!(name.encode_utf16().count(), MUTEX_NAME_UTF16_LEN);
         let reservation = Reservation::new(name.clone())?;
         let sddl = wide(&format!(
             "O:{}D:P(A;;0x00120001;;;{})",

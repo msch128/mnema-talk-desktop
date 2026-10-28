@@ -6,6 +6,7 @@
 //! sidepeek belong to exactly one: the server that owns the Talk the person is
 //! in. Only that server's page may feed them, and only its page receives what
 //! they send back.
+use crate::web_bundle::write_atomic;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
@@ -46,6 +47,9 @@ mod input;
 #[cfg(windows)]
 #[path = "../../../src/input_windows.rs"]
 mod input_windows;
+#[allow(dead_code)]
+#[path = "../../../src/wide.rs"]
+mod wide;
 #[allow(dead_code)]
 #[path = "../../../src/shortcuts.rs"]
 mod shortcuts;
@@ -208,8 +212,6 @@ pub struct Snapshot {
     input_note: Option<&'static str>,
     /// A game in exclusive fullscreen hides the sidepeek and overlay; suggest borderless windowed.
     exclusive_fullscreen_hint: bool,
-    /// The game in front, when one is detected; never a path or a title.
-    game: Option<String>,
 }
 pub struct Gaming {
     /// The app origin the sessions are bound to (`local_origin` of their pages).
@@ -247,9 +249,6 @@ pub struct Gaming {
     exclusive_hint: bool,
     /// Install folders of the launcher libraries, scanned off the hot path.
     library: std::sync::Arc<game_library_scan::Library>,
-    /// The game in front, by the name the user, a launcher or our list gives it.
-    #[cfg_attr(not(windows), allow(dead_code))]
-    game_name: Option<String>,
     #[cfg(windows)]
     game: Option<GameLease>,
 }
@@ -276,7 +275,6 @@ impl Default for Gaming {
             hint: Default::default(),
             exclusive_hint: false,
             library: Default::default(),
-            game_name: None,
             #[cfg(windows)]
             game: None,
         }
@@ -373,7 +371,6 @@ pub fn desktop_gaming_snapshot(
         detection_note: g.detection_note,
         input_note: g.input_note,
         exclusive_fullscreen_hint: g.exclusive_hint,
-        game: g.game_name.clone().filter(|_| active),
     })
 }
 struct Command {
@@ -506,7 +503,7 @@ fn apply_settings(
         .map_err(|_| "Settings unavailable.")?;
     std::fs::create_dir_all(&dir).map_err(|_| "Cannot save settings.")?;
     let data = serde_json::to_vec(&settings).map_err(|_| "Invalid settings.")?;
-    std::fs::write(dir.join("gaming.json"), data).map_err(|_| "Cannot save settings.")?;
+    write_atomic(&dir.join("gaming.json"), &data).map_err(|_| "Cannot save settings.")?;
     let command = Command::new(g, "ptt-release");
     g.ptt_down = false;
     g.ptt_armed = false;
@@ -574,7 +571,9 @@ pub fn desktop_gaming_add_game(
     state: tauri::State<'_, Mutex<Gaming>>,
     name: String,
 ) -> Result<Vec<String>, String> {
-    change_games(&window, &state, |games| game_candidate::add_game(games, &name))
+    change_games(&window, &state, |games| {
+        game_candidate::add_game(games, &name)
+    })
 }
 /// Takes one game off the list; returns the new list.
 #[tauri::command]
@@ -802,7 +801,6 @@ fn native_sample(
         || window_title(hwnd),
     );
     let detected = identified.is_some();
-    g.game_name = identified.map(|found| found.name);
     if let Some(f) = g.foreground.clone().filter(|_| detected) {
         let mut pid = 0;
         unsafe {
@@ -851,7 +849,7 @@ fn announced_game(
     title: impl FnOnce() -> String,
 ) -> Option<game_identify::Identified> {
     let front = front.filter(|f| window != 0 && f.window == window)?;
-    let title = if front.basename().to_ascii_lowercase().starts_with("java") {
+    let title = if game_identify::is_java(front.basename()) {
         title()
     } else {
         String::new()
@@ -1034,8 +1032,13 @@ fn screen_state() -> fullscreen::ScreenState {
 /// surfaces and the settings.
 fn announce_exclusive_fullscreen(app: &tauri::AppHandle) {
     super::web_notify::host_toast(app, fullscreen::HINT_TITLE, fullscreen::HINT_BODY);
-    if let Ok(dir) = app.path().app_config_dir() {
-        fullscreen::remember_shown(&dir);
+    match app.path().app_config_dir() {
+        Ok(dir) => {
+            if let Err(why) = fullscreen::remember_shown(&dir) {
+                eprintln!("Mnema Desktop: could not remember the fullscreen hint: {why}");
+            }
+        }
+        Err(why) => eprintln!("Mnema Desktop: no config folder to remember the fullscreen hint: {why}"),
     }
 }
 /// Evaluate the gaming state on the main thread soon. Many wake-ups collapse
@@ -1326,6 +1329,21 @@ mod tests {
         let other = front(2, r"D:\Games\Custom.exe");
         let never = || panic!("title read for a non-Java process");
         assert!(announced_game(Some(&other), 2, &["Custom.exe".into()], &empty, never).is_some());
+        let helper = front(3, r"C:\Java\bin\javaws.exe");
+        let never = || panic!("title read for a process that is not a Java runtime");
+        assert!(announced_game(Some(&helper), 3, &[], &empty, never).is_none());
+    }
+    #[test]
+    fn saved_settings_replace_the_file_whole_and_leave_no_temporary() {
+        let dir = std::env::temp_dir().join(format!("mnema-gaming-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("gaming.json");
+        write_atomic(&file, b"{\"old\":1}").unwrap();
+        write_atomic(&file, b"{\"new\":2}").unwrap();
+        assert_eq!(std::fs::read(&file).unwrap(), b"{\"new\":2}");
+        assert!(!file.with_extension("tmp").exists());
+        let _ = std::fs::remove_dir_all(&dir);
     }
     fn ptt_talk() -> Gaming {
         let mut g = Gaming {

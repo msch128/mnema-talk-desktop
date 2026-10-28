@@ -256,6 +256,9 @@ impl Record {
 pub trait Boundary {
     type Guard;
     fn acquire(&self, namespace: &Namespace) -> Result<Self::Guard, Error>;
+    /// Whether the previous owner died holding the lock. Read once, right after
+    /// `acquire`, by `Vault::own`; a session never sees an abandoned guard, and the
+    /// per-operation `read`/`write` checks are what notice a later ownership loss.
     fn abandoned(&self, guard: &Self::Guard) -> bool;
     fn read(&self, guard: &mut Self::Guard) -> Result<Option<SecretBlob>, Error>;
     /// Any uncertain acknowledgement is Err(WriteUncertain), including failure-after-mutation.
@@ -306,8 +309,6 @@ impl<B: Boundary> Session<'_, B> {
     fn ready(&self) -> Result<(), Error> {
         if self.poisoned {
             Err(Error::Poisoned)
-        } else if self.boundary.abandoned(&self.guard) {
-            Err(Error::OwnershipUncertain)
         } else {
             Ok(())
         }

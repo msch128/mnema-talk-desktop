@@ -53,9 +53,16 @@ test('a linux package is wanted only when its libc matches', () => {
   ]);
 });
 
+test('an unknown libc skips libc-tagged packages and keeps the untagged ones', () => {
+  assert.deepEqual(wanted(linuxLock, '@tauri-apps/cli-', 'linux', 'arm', null), [
+    { name: '@tauri-apps/cli-linux-arm-gnueabihf', version: '2.12.4' },
+  ]);
+  assert.deepEqual(wanted(linuxLock, '@tauri-apps/cli-', 'linux', 'x64', null), []);
+});
+
 test('the host libc is named only on linux', () => {
   const libc = hostLibc();
-  if (process.platform === 'linux') assert.ok(libc === 'glibc' || libc === 'musl');
+  if (process.platform === 'linux') assert.ok(libc === 'glibc' || libc === 'musl' || libc === null);
   else assert.equal(libc, null);
 });
 

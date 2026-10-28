@@ -5,20 +5,15 @@ mod transport_fixture;
 use mnema_private_native_client_broker::{NativeOpaqueRelayOperation, NativeRequest, Password};
 use uuid::Uuid;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let path = std::env::var("MNEMA_NATIVE_TRANSPORT_BOOTSTRAP")?;
-    let client = transport_fixture::client()?;
-    let descriptor: serde_json::Value = serde_json::from_slice(&std::fs::read(&path)?)?;
-    let binding: serde_json::Value =
-        serde_json::from_slice(&std::fs::read(format!("{path}.binding.json"))?)?;
-    let origin = descriptor["origin"]
-        .as_str()
-        .ok_or("missing origin")?
-        .to_owned();
-    if binding["origin"] != descriptor["origin"]
-        || binding["community_id"] != descriptor["community_id"]
-    {
-        return Err("fixture binding mismatch".into());
-    }
+    // Refuses to run without the explicit fixture flag; origin and login come
+    // from the one validated bootstrap read, never from a second unchecked read.
+    let transport_fixture::Qualified {
+        client,
+        origin,
+        username,
+        password,
+        binding,
+    } = transport_fixture::qualified()?;
     let channel = Uuid::parse_str(binding["channel_id"].as_str().ok_or("missing channel")?)?;
     let window = client.attach_main_window()?;
     let runtime = tokio::runtime::Builder::new_current_thread()
@@ -26,7 +21,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build()?;
     runtime.block_on(async{
         let connected=client.request(&window,NativeRequest::Connect{address:origin}).await?;client.commit(&window,connected)?;
-        let login=client.request(&window,NativeRequest::Login{username:"relay-user".to_owned(),password:Password::from_native_input("native-preview-fixture-password".to_owned())?}).await?;client.commit(&window,login)?;
+        let login=client.request(&window,NativeRequest::Login{username:username.to_owned(),password:Password::from_native_input(password.to_owned())?}).await?;client.commit(&window,login)?;
         let result=client.request_opaque_relay(&window,client.authenticated_scope(&window)?,NativeOpaqueRelayOperation::Page{channel,after:0}).await?;
         let receipt=result.opaque_relay_receipt().ok_or("missing native receipt")?;
         if !receipt.records().is_empty() || receipt.next_after()!=0 || receipt.is_publish_ack(){return Err("owned fixture is not empty".into())}

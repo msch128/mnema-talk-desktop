@@ -3,8 +3,9 @@
  * selection against a server. A port of `Store` in
  * `experimental/app/src/web_bundle.rs`.
  */
-import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, unlinkSync } from 'node:fs'
 import { join } from 'node:path'
+import { writeFileAtomic } from './atomic.ts'
 import { MAX_ZIP, type Bundle, type TrustedKey, BundleError, verifyBundle } from './bundle.ts'
 import { type Version, ZERO, compareVersions, formatVersion, maxVersion, minVersion, parseVersion } from './version.ts'
 
@@ -13,7 +14,7 @@ const MAX_CACHED_FILES = 16
 const KEEP_CACHED = 3
 export const CHECK_INTERVAL_SECS = 6 * 60 * 60
 
-export type Source = 'builtin' | 'cache'
+type Source = 'builtin' | 'cache'
 
 export interface Held {
   readonly bundle: Bundle
@@ -100,12 +101,6 @@ function cachedFiles(dir: string | null): string[] {
   return files.slice(0, MAX_CACHED_FILES)
 }
 
-function writeAtomic(path: string, bytes: Uint8Array): void {
-  const partial = `${path}.partial`
-  writeFileSync(partial, bytes, { mode: 0o600 })
-  renameSync(partial, path)
-}
-
 export class Store {
   /** Names of cached files that failed verification (diagnostics only). */
   rejected: string[] = []
@@ -187,7 +182,7 @@ export class Store {
     }
     try {
       mkdirSync(this.dir, { recursive: true, mode: 0o700 })
-      writeAtomic(join(this.dir, 'state.json'), Buffer.from(JSON.stringify(state)))
+      writeFileAtomic(join(this.dir, 'state.json'), Buffer.from(JSON.stringify(state)))
     } catch { /* the marks are rebuilt from the held bundles */ }
   }
 
@@ -252,7 +247,12 @@ export class Store {
   install(bytes: Uint8Array, keys: readonly TrustedKey[]): Version {
     const bundle = verifyBundle(bytes, keys)
     const version = bundle.version
-    if (this.heldBundles.some((h) => compareVersions(h.bundle.version, version) >= 0)) {
+    // Per contract: a patch for an older web client API is not shadowed by a
+    // newer bundle of another one. A version is held only once (it names the file).
+    const held = (h: Held) =>
+      compareVersions(h.bundle.version, version) === 0 ||
+      (h.bundle.webClientApi === bundle.webClientApi && compareVersions(h.bundle.version, version) > 0)
+    if (this.heldBundles.some(held)) {
       throw new BundleError('a bundle of this version or newer is already held')
     }
     if (compareVersions(version, maxVersion(this.floorInForce, bundle.securityFloor)) < 0) throw new BundleError('below the security floor')
@@ -263,7 +263,7 @@ export class Store {
         throw new BundleError('cannot create the cache directory')
       }
       try {
-        writeAtomic(join(this.dir, `mnema-web-${formatVersion(version)}.zip`), bytes)
+        writeFileAtomic(join(this.dir, `mnema-web-${formatVersion(version)}.zip`), bytes)
       } catch {
         throw new BundleError('cannot write the bundle')
       }
@@ -367,16 +367,24 @@ export class Store {
     by.set(bundle.keyId, mark === undefined ? bundle.version : maxVersion(mark, bundle.version))
   }
 
-  /** Keeps the built-in bundle and the newest cached ones; removes the files of the rest. */
+  /**
+   * Keeps the built-in bundle and, per web client API, the newest cached ones,
+   * served or shelved; removes the files of the rest.
+   */
   private prune(): void {
-    let cached = 0
     const dropped: Version[] = []
-    this.heldBundles = this.heldBundles.filter((h) => {
-      if (h.source === 'builtin') return true
-      cached += 1
-      if (cached > KEEP_CACHED) { dropped.push(h.bundle.version); return false }
-      return true
-    })
+    const keep = (list: Held[]): Held[] => {
+      const cached = new Map<number, number>()
+      return list.filter((h) => {
+        if (h.source === 'builtin') return true
+        const n = (cached.get(h.bundle.webClientApi) ?? 0) + 1
+        cached.set(h.bundle.webClientApi, n)
+        if (n > KEEP_CACHED) { dropped.push(h.bundle.version); return false }
+        return true
+      })
+    }
+    this.heldBundles = keep(this.heldBundles)
+    this.shelved = keep(this.shelved)
     for (const version of dropped) this.removeCached(version)
   }
 

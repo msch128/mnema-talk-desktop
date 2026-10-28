@@ -338,9 +338,10 @@ jobs:
 
   # Publishing is all or nothing. If the Linux client fails, say so plainly:
   # `publish` is then skipped and the release stays unpublished.
+  # A failed tag check skips the Linux jobs; that is not a Linux failure.
   linux-failed:
-    needs: [linux, linux-sign]
-    if: ${{ always() && (needs.linux.result != 'success' || needs.linux-sign.result != 'success') }}
+    needs: [verify-tag, linux, linux-sign]
+    if: ${{ always() && needs.verify-tag.result == 'success' && (needs.linux.result != 'success' || needs.linux-sign.result != 'success') }}
     runs-on: ubuntu-latest
     steps:
       - name: Say what failed

@@ -959,6 +959,21 @@ async fn deleting_a_refresh_follower_window_does_not_cancel_the_other_owners_lea
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn logout_with_expired_access_token_succeeds_locally_without_a_doomed_request() {
+    let f = Fixture::start();
+    let (b, w) = logged(&f).await;
+    {
+        let mut s = b.inner.state.lock().unwrap();
+        let session = s.active.as_mut().unwrap().session.as_mut().unwrap();
+        Arc::get_mut(&mut session.grant).unwrap().access_expires_at =
+            Utc::now() - chrono::Duration::seconds(5);
+    }
+    b.logout(w).await.unwrap();
+    assert_eq!(b.status().unwrap(), Status::ReauthRequired);
+    assert!(f.calls(LOGOUT).is_empty());
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn logout_epoch_exhaustion_clears_native_authorization_before_error() {
     let f = Fixture::start();
     let (b, w) = logged(&f).await;
@@ -1060,6 +1075,36 @@ async fn actual_fixed_metadata_routes_reject_secret_fields_bounds_and_stale_publ
     ));
 }
 #[tokio::test(flavor = "current_thread")]
+async fn delayed_metadata_401_cannot_revoke_a_rotated_session() {
+    let f = Fixture::start();
+    let (b, w) = logged(&f).await;
+    f.control("/api/native/v1/channels", "hold_unauthorized");
+    let running = b.metadata(w, MetadataResource::Channels);
+    tokio::pin!(running);
+    tokio::select! {r=&mut running=>panic!("held request unexpectedly completed: {}",r.is_ok()),_=f.wait("/api/native/v1/channels",1)=>{}}
+    b.refresh(w).await.unwrap();
+    f.release();
+    assert!(matches!(
+        running.await,
+        Err(Error::Stale | Error::Cancelled)
+    ));
+    assert_eq!(b.status().unwrap(), Status::Authenticated);
+    b.me(w).await.unwrap();
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn websocket_upgrade_401_requires_reauth_instead_of_a_network_retry() {
+    let f = Fixture::start();
+    let (b, w) = logged(&f).await;
+    f.control("/api/native/v1/ws", "unauthorized");
+    assert_eq!(
+        b.open_native_socket(w).await.unwrap_err(),
+        Error::Unauthorized
+    );
+    assert_eq!(b.status().unwrap(), Status::ReauthRequired);
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn actual_actor_owned_socket_channel_ping_refresh_and_logout_drain() {
     use crate::{NativeClient, NativeRequest};
     let f = Fixture::start();
@@ -1115,6 +1160,15 @@ async fn actual_actor_owned_socket_channel_ping_refresh_and_logout_drain() {
         .await
         .unwrap();
     f.wait("WS:ping", 1).await;
+    // Queued commands wake the idle socket instead of waiting for the next
+    // 100 ms poll cycle: a full queue is serviced well below 16 poll cycles.
+    let started = std::time::Instant::now();
+    let burst = futures_util::future::join_all(
+        (0..16).map(|t| c.socket_send(&w, handle, NativeSocketAction::Ping { t })),
+    )
+    .await;
+    assert!(burst.iter().all(Result::is_ok));
+    assert!(started.elapsed() < Duration::from_millis(1000));
     let p = c.request(&w, NativeRequest::Refresh).await.unwrap();
     c.commit(&w, p).unwrap();
     f.wait("WS:native_access_renew", 1).await;
@@ -3016,8 +3070,8 @@ async fn authentication_intent_actual_go_password_new_family_revokes_other_sessi
     let bootstrap: OwnedBootstrap = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
     assert_eq!(bootstrap.protocol, "mnema-native-loopback-fixture-v1");
     assert_eq!(bootstrap.content_authorization, "unavailable");
-    assert_eq!(bootstrap.username, "relay-user");
-    assert_eq!(bootstrap.password, "native-preview-fixture-password");
+    assert_eq!(bootstrap.username, crate::fixture_credentials::USERNAME);
+    assert_eq!(bootstrap.password, crate::fixture_credentials::PASSWORD);
     let origin = url::Url::parse(&bootstrap.origin).unwrap();
     assert_eq!(origin.scheme(), "https");
     assert_eq!(origin.host_str(), Some("127.0.0.1"));

@@ -9,17 +9,23 @@
  * lower serial than the highest one accepted is refused.
  */
 import type { KeyObject } from 'node:crypto'
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
+import { writeFileAtomic } from './atomic.ts'
 import { type TrustedKey, parseKey } from './bundle.ts'
 import { publicKeyFromRaw, verifyEd25519 } from './ed25519.ts'
+import { asU32, asU64, parseStrictJson } from './json.ts'
+import { minisignKeyId, signatureKeyId } from './minisign.ts'
 import { isLowerHex, lossyTrimmed, strictBase64 } from './encoding.ts'
 import { type Version, parseVersion } from './version.ts'
 
 export const MAX_STATEMENT = 64 << 10
 
+/** The pair an older client wrote; read once, then replaced by the state file. */
 const STATEMENT_FILE = 'trust.json'
 const SIGNATURE_FILE = 'trust.json.sig'
+/** Statement, signature and the revocations carried forward, in one file so a crash can never leave a new signature next to an old document. */
+const STATE_FILE = 'trust-state.json'
 /** Longest validity a statement may claim (the signing tool's bound). */
 const MAX_VALIDITY_SECS = 400 * 86400
 
@@ -44,13 +50,18 @@ function fail(message: string): never {
   throw new TrustError(message)
 }
 
-/** Seconds since the epoch for `YYYY-MM-DDTHH:MM:SSZ`, nothing else. */
+function daysInMonth(year: number, month: number): number {
+  if (month === 2) return year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0) ? 29 : 28
+  return [4, 6, 9, 11].includes(month) ? 30 : 31
+}
+
+/** Seconds since the epoch for `YYYY-MM-DDTHH:MM:SSZ` (a real calendar date), nothing else. */
 export function parseUtc(text: string): number | null {
   if (text.length !== 20 || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(text)) return null
   const num = (from: number, to: number) => Number(text.slice(from, to))
   const [y0, m, d] = [num(0, 4), num(5, 7), num(8, 10)]
   const [hh, mm, ss] = [num(11, 13), num(14, 16), num(17, 19)]
-  if (m < 1 || m > 12 || d < 1 || d > 31 || hh > 23 || mm > 59 || ss > 59) return null
+  if (m < 1 || m > 12 || d < 1 || d > daysInMonth(y0, m) || hh > 23 || mm > 59 || ss > 59) return null
   // Days since 1970-01-01 (Howard Hinnant's civil-to-days), as the Rust host does.
   const y = m <= 2 ? y0 - 1 : y0
   const era = Math.floor(y / 400)
@@ -62,9 +73,7 @@ export function parseUtc(text: string): number | null {
   return seconds >= 0 ? seconds : null
 }
 
-function validId(id: string): boolean {
-  return isLowerHex(id, 16)
-}
+const validId = (id: string): boolean => isLowerHex(id, 16)
 
 function stringArray(value: unknown): string[] | null {
   return Array.isArray(value) && value.every((v) => typeof v === 'string') ? (value as string[]) : null
@@ -73,7 +82,7 @@ function stringArray(value: unknown): string[] | null {
 function parseStatement(doc: Uint8Array): Statement | null {
   let raw: unknown
   try {
-    raw = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(doc))
+    raw = parseStrictJson(doc)
   } catch {
     return null
   }
@@ -83,9 +92,10 @@ function parseStatement(doc: Uint8Array): Statement | null {
   if (!keys.every((k) => FIELDS.includes(k))) return null
   // Every field but `max_version` is required.
   if (!FIELDS.filter((f) => f !== 'max_version').every((f) => keys.includes(f))) return null
-  const { schema, serial, issued_at, expires_at } = record
-  if (typeof schema !== 'number' || !Number.isInteger(schema) || schema < 0 || schema > 0xffffffff) return null
-  if (typeof serial !== 'number' || !Number.isSafeInteger(serial) || serial < 0) return null
+  const { issued_at, expires_at } = record
+  const schema = asU32(record.schema)
+  const serial = asU64(record.serial)
+  if (schema === null || serial === null) return null
   if (typeof issued_at !== 'string' || typeof expires_at !== 'string') return null
   const bundleKeys = stringArray(record.bundle_keys)
   const revokedBundleKeys = stringArray(record.revoked_bundle_keys)
@@ -157,34 +167,7 @@ export function statementBundleKeys(s: Statement): TrustedKey[] {
     .filter((k): k is TrustedKey => k !== null && !s.revoked_bundle_keys.includes(k.id))
 }
 
-function decodeText(wrapped: string): string | null {
-  const raw = strictBase64(wrapped.trim())
-  if (!raw) return null
-  try {
-    return new TextDecoder('utf-8', { fatal: true }).decode(raw)
-  } catch {
-    return null
-  }
-}
-
-function secondLine(text: string | null): string | null {
-  // Rust's `str::lines` splits on \n and drops one trailing \r per line.
-  return text === null ? null : (text.split('\n')[1]?.replace(/\r$/, '') ?? null)
-}
-
-/** Key id (8 bytes, hex, file order) of a minisign public key in the form of `tauri.conf.json`: base64 of the `.pub` file. */
-export function minisignKeyId(pubkey: string): string | null {
-  const line = secondLine(decodeText(pubkey))
-  const raw = line === null ? null : strictBase64(line.trim())
-  return raw && raw.length === 42 && raw[0] === 0x45 && raw[1] === 0x64 ? raw.subarray(2, 10).toString('hex') : null
-}
-
-/** Key id named by a minisign signature (base64 of the `.sig` file). */
-export function signatureKeyId(signature: string): string | null {
-  const line = secondLine(decodeText(signature))
-  const raw = line === null ? null : strictBase64(line.trim())
-  return raw && raw.length === 74 && raw[0] === 0x45 && (raw[1] === 0x64 || raw[1] === 0x44) ? raw.subarray(2, 10).toString('hex') : null
-}
+export { minisignKeyId, signatureKeyId }
 
 export type UpdaterRefusal = 'revoked' | 'not_allowed' | 'malformed'
 
@@ -206,29 +189,81 @@ export function chooseUpdaterKey(pinned: string, statement: Statement | null, si
 
 export type Accepted = 'updated' | 'unchanged'
 
+/** What a release knows at build time, so a client with no stored statement (a fresh install, a removed file) cannot be talked back into an older state. */
+export interface Floor {
+  /** Statements with a lower serial are refused. */
+  minSerial: number
+  /** Key ids no statement may allow again. */
+  revokedBundleKeys: readonly string[]
+  revokedUpdaterKeys: readonly string[]
+}
+
+export const NO_FLOOR: Floor = { minSerial: 0, revokedBundleKeys: [], revokedUpdaterKeys: [] }
+
+/**
+ * The floor of this release: the serial of the statement it shipped with
+ * (`experimental/app/fixtures/trust.json`). Raise it, and list the key ids
+ * revoked since, when a later statement revokes a key.
+ */
+export const RELEASE_FLOOR: Floor = { minSerial: 3, revokedBundleKeys: [], revokedUpdaterKeys: [] }
+
+export interface TrustOptions {
+  floor?: Floor
+  log?: (message: string) => void
+}
+
+interface Held { statement: Statement, doc: Buffer, sig: Buffer }
+
 /** The last good statement, persisted next to the bundle cache. */
 export class TrustState {
-  private current: { statement: Statement, doc: Buffer } | null
+  private current: Held | null = null
+  /** Every key id any accepted statement (or the floor) revoked. A later statement can neither allow one again nor drop it from the lists in force. */
+  private readonly revokedBundle: Set<string>
+  private readonly revokedUpdater: Set<string>
+  /** The state in force is on disk. */
+  private stored = true
+  private readonly floor: Floor
+  private readonly log: (message: string) => void
+
+  /** Loads and re-verifies the stored statement; a damaged or foreign file is ignored, which falls back to the compiled-in keys. */
+  static load(dir: string | null, root: KeyObject, options: TrustOptions = {}): TrustState {
+    const state = new TrustState(dir, root, options)
+    if (dir) {
+      try {
+        const { doc, sig, bundle, updater } = readStored(dir)
+        const statement = verifyStatement(doc, sig, root)
+        // A statement below the floor is an older release's.
+        if (statement.serial >= state.floor.minSerial) {
+          bundle.forEach((id) => state.revokedBundle.add(id))
+          updater.forEach((id) => state.revokedUpdater.add(id))
+          state.hold(statement, doc, sig)
+        }
+      } catch { /* ignored: the compiled-in keys apply */ }
+    }
+    return state
+  }
+
   private readonly dir: string | null
   private readonly root: KeyObject
 
-  /** Loads and re-verifies the stored statement; a damaged or foreign file is ignored, which falls back to the compiled-in keys. */
-  static load(dir: string | null, root: KeyObject): TrustState {
-    let current: { statement: Statement, doc: Buffer } | null = null
-    if (dir) {
-      try {
-        const doc = readFileSync(join(dir, STATEMENT_FILE))
-        const sig = readFileSync(join(dir, SIGNATURE_FILE))
-        current = { statement: verifyStatement(doc, sig, root), doc }
-      } catch { /* ignored: the compiled-in keys apply */ }
-    }
-    return new TrustState(dir, root, current)
-  }
-
-  private constructor(dir: string | null, root: KeyObject, current: { statement: Statement, doc: Buffer } | null) {
+  private constructor(dir: string | null, root: KeyObject, options: TrustOptions) {
     this.dir = dir
     this.root = root
-    this.current = current
+    this.floor = options.floor ?? NO_FLOOR
+    this.log = options.log ?? (() => {})
+    this.revokedBundle = new Set(this.floor.revokedBundleKeys)
+    this.revokedUpdater = new Set(this.floor.revokedUpdaterKeys)
+  }
+
+  /** Puts a verified statement in force, with every revocation seen so far. */
+  private hold(statement: Statement, doc: Buffer, sig: Buffer): void {
+    statement.revoked_bundle_keys.forEach((id) => this.revokedBundle.add(id))
+    statement.revoked_updater_keys.forEach((id) => this.revokedUpdater.add(id))
+    this.current = {
+      statement: { ...statement, revoked_bundle_keys: [...this.revokedBundle].sort(), revoked_updater_keys: [...this.revokedUpdater].sort() },
+      doc,
+      sig,
+    }
   }
 
   statement(): Statement | null {
@@ -251,36 +286,67 @@ export class TrustState {
     return s ? statementBundleKeys(s) : pinned
   }
 
-  /** Takes a fetched statement. An expired one is never accepted, lower serials are refused, and the same serial only with identical bytes. */
+  /** Writes the state in force in one atomic step. */
+  private persist(): void {
+    if (!this.dir || !this.current) return
+    const stored = {
+      statement: this.current.doc.toString('base64'),
+      signature: this.current.sig.toString('utf8'),
+      revoked_bundle_keys: [...this.revokedBundle].sort(),
+      revoked_updater_keys: [...this.revokedUpdater].sort(),
+    }
+    writeFileAtomic(join(this.dir, STATE_FILE), Buffer.from(JSON.stringify(stored)), { dirMode: 0o700, sync: true })
+    // The pair an older client wrote must not outlive the state: a stale one would be read back should the state file ever be lost.
+    for (const name of [STATEMENT_FILE, SIGNATURE_FILE]) rmSync(join(this.dir, name), { force: true })
+  }
+
+  private store(): void {
+    try {
+      this.persist()
+      this.stored = true
+    } catch {
+      this.stored = false
+      this.log('cannot store the trust statement; it applies until restart')
+    }
+  }
+
+  /**
+   * Takes a fetched statement. An expired one is never accepted, lower serials
+   * are refused, and the same serial only with identical bytes. A key an
+   * earlier statement revoked cannot be allowed again. The statement applies as
+   * soon as it verified; failing to store it is logged and retried with the
+   * next identical fetch.
+   */
   accept(doc: Uint8Array, sig: Uint8Array, now: number): Accepted {
     const statement = verifyStatement(doc, sig, this.root)
     if (statementExpired(statement, now)) fail('trust statement has expired')
+    if (statement.serial < this.floor.minSerial) fail(`trust statement ${statement.serial} is older than this release accepts`)
     if (this.current) {
       const held = this.current.statement
       if (statement.serial < held.serial) fail(`trust statement ${statement.serial} is older than the ${held.serial} already accepted`)
       if (statement.serial === held.serial) {
-        if (Buffer.compare(this.current.doc, doc) === 0) return 'unchanged'
-        fail('a different trust statement with the same serial')
+        if (Buffer.compare(this.current.doc, doc) !== 0) fail('a different trust statement with the same serial')
+        if (!this.stored) this.store()
+        return 'unchanged'
       }
     }
-    if (this.dir) {
-      try {
-        mkdirSync(this.dir, { recursive: true, mode: 0o700 })
-        const write = (name: string, bytes: Uint8Array) => {
-          const partial = join(this.dir as string, `${name}.partial`)
-          writeFileSync(partial, bytes, { mode: 0o600 })
-          renameSync(partial, join(this.dir as string, name))
-        }
-        // A torn pair fails verification at load and is ignored.
-        write(SIGNATURE_FILE, sig)
-        write(STATEMENT_FILE, doc)
-      } catch {
-        fail('cannot store the trust statement')
-      }
-    }
-    this.current = { statement, doc: Buffer.from(doc) }
+    if (statement.bundle_keys.some((raw) => { const key = parseKey(raw); return key !== null && this.revokedBundle.has(key.id) })) fail('a revoked bundle key is allowed again')
+    if (statement.updater_keys.some((raw) => { const id = minisignKeyId(raw); return id !== null && this.revokedUpdater.has(id) })) fail('a revoked updater key is allowed again')
+    this.hold(statement, Buffer.from(doc), Buffer.from(sig))
+    this.store()
     return 'updated'
   }
+}
+
+/** The stored bytes: the state file, else the pair an older client wrote. */
+function readStored(dir: string): { doc: Buffer, sig: Buffer, bundle: string[], updater: string[] } {
+  let raw: Buffer | null = null
+  try { raw = readFileSync(join(dir, STATE_FILE)) } catch { /* no state file yet */ }
+  if (raw === null) return { doc: readFileSync(join(dir, STATEMENT_FILE)), sig: readFileSync(join(dir, SIGNATURE_FILE)), bundle: [], updater: [] }
+  const stored = JSON.parse(raw.toString('utf8')) as Record<string, unknown>
+  if (typeof stored.statement !== 'string' || typeof stored.signature !== 'string') throw new Error('unreadable trust state')
+  const ids = (value: unknown): string[] => (Array.isArray(value) ? value.filter((id): id is string => typeof id === 'string' && validId(id)) : [])
+  return { doc: Buffer.from(stored.statement, 'base64'), sig: Buffer.from(stored.signature, 'utf8'), bundle: ids(stored.revoked_bundle_keys), updater: ids(stored.revoked_updater_keys) }
 }
 
 export function rootKey(rawHex: string): KeyObject {

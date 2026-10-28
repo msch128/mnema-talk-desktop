@@ -172,6 +172,8 @@ class Handler(BaseHTTPRequestHandler):
  def websocket(self,mode,control):
   if mode=='redirect':
    self.send_response(307);self.send_header('Location',control.get('location','/api/native/v1/ws'));self.send_header('Content-Length','0');self.end_headers();return
+  if mode=='unauthorized':
+   self.send_response(401);self.send_header('Content-Length','0');self.end_headers();return
   if self.headers.get('Authorization')!='Bearer '+token(41+sequence*10):
    self.send_response(401);self.send_header('Content-Length','0');self.end_headers();return
   key=self.headers.get('Sec-WebSocket-Key','');accept=base64.b64encode(hashlib.sha1((key+'258EAFA5-E914-47DA-95CA-C5AB0DC85B11').encode()).digest()).decode()

@@ -1,7 +1,8 @@
 //! The WebSocket of the selected instance, opened by the host for the app.
 //! The page cannot do it itself: its origin is the host's, so the instance
 //! would see the wrong `Origin` and no session cookie. Only `/api/ws` can be
-//! opened, text frames are relayed both ways, and everything stays bounded.
+//! opened, text frames are relayed both ways, and everything stays bounded:
+//! sockets, queued messages and the time a write may take.
 use crate::web_proxy::{Instance, now};
 use futures_util::{SinkExt, StreamExt};
 use serde::Serialize;
@@ -13,7 +14,7 @@ use std::{
     },
     time::Duration,
 };
-use tokio::sync::mpsc;
+use tokio::sync::{Notify, mpsc};
 use tokio_tungstenite::tungstenite::{
     Message, client::IntoClientRequest, http::HeaderValue, protocol::WebSocketConfig,
 };
@@ -21,6 +22,16 @@ use tokio_tungstenite::tungstenite::{
 pub const MAX_FRAME: usize = 1 << 20;
 const MAX_SOCKETS: usize = 4;
 const MAX_OUTGOING: usize = 1 << 20;
+/// Messages waiting to be written to one socket; a page that outruns its
+/// connection gets an error from `send` instead of growing the queue.
+const MAX_QUEUED: usize = 32;
+/// How long writing a frame or the close handshake may take before the socket
+/// is dropped, so a stalled peer cannot hold one of the few slots.
+const WRITE_TIMEOUT: Duration = if cfg!(test) {
+    Duration::from_millis(300)
+} else {
+    Duration::from_secs(5)
+};
 
 #[derive(Serialize, Clone, Debug, PartialEq)]
 #[serde(tag = "kind", rename_all = "lowercase")]
@@ -30,15 +41,18 @@ pub enum WsEvent {
     Close { id: u64 },
 }
 
-enum Outgoing {
-    Text(String),
-    Close,
+/// What the page can do to an open socket: queue text, ask it to close.
+#[derive(Clone)]
+struct Handle {
+    queue: mpsc::Sender<String>,
+    /// Closing does not go through the queue, which may be full.
+    close: Arc<Notify>,
 }
 
 #[derive(Default)]
 pub struct Sockets {
     next: AtomicU64,
-    open: Mutex<HashMap<u64, mpsc::UnboundedSender<Outgoing>>>,
+    open: Mutex<HashMap<u64, Handle>>,
 }
 
 impl Sockets {
@@ -46,26 +60,38 @@ impl Sockets {
         if text.len() > MAX_OUTGOING {
             return Err("message too large".into());
         }
-        self.sender(id)?
-            .send(Outgoing::Text(text))
-            .map_err(|_| "socket closed".to_owned())
+        self.handle(id)?.queue.try_send(text).map_err(|e| match e {
+            mpsc::error::TrySendError::Full(_) => "socket busy".to_owned(),
+            mpsc::error::TrySendError::Closed(_) => "socket closed".to_owned(),
+        })
     }
 
     pub fn close(&self, id: u64) {
-        if let Ok(tx) = self.sender(id) {
-            let _ = tx.send(Outgoing::Close);
+        if let Ok(handle) = self.handle(id) {
+            handle.close.notify_one();
         }
     }
 
     pub fn close_all(&self) {
         if let Ok(open) = self.open.lock() {
-            for tx in open.values() {
-                let _ = tx.send(Outgoing::Close);
+            for handle in open.values() {
+                handle.close.notify_one();
             }
         }
     }
 
-    fn sender(&self, id: u64) -> Result<mpsc::UnboundedSender<Outgoing>, String> {
+    /// The page that opened the sockets is gone (reload, navigation): they
+    /// close, and their slots are free at once for the page that follows,
+    /// however long a stalled peer takes to let go.
+    pub fn document_replaced(&self) {
+        if let Ok(mut open) = self.open.lock() {
+            for (_, handle) in open.drain() {
+                handle.close.notify_one();
+            }
+        }
+    }
+
+    fn handle(&self, id: u64) -> Result<Handle, String> {
         self.open
             .lock()
             .map_err(|_| "busy")?
@@ -152,11 +178,18 @@ pub fn open(
             return Err("too many sockets".into());
         }
         let id = sockets.next.fetch_add(1, Ordering::Relaxed) + 1;
-        let (tx, rx) = mpsc::unbounded_channel();
-        open.insert(id, tx);
+        let (queue, rx) = mpsc::channel(MAX_QUEUED);
+        let close = Arc::new(Notify::new());
+        open.insert(
+            id,
+            Handle {
+                queue,
+                close: Arc::clone(&close),
+            },
+        );
         let sockets = Arc::clone(sockets);
         tauri::async_runtime::spawn(async move {
-            run(id, &instance, dm, rx, &emit).await;
+            run(id, &instance, dm, rx, &close, &emit).await;
             if let Ok(mut open) = sockets.open.lock() {
                 open.remove(&id);
             }
@@ -171,7 +204,8 @@ async fn run(
     id: u64,
     instance: &Instance,
     dm: bool,
-    mut rx: mpsc::UnboundedReceiver<Outgoing>,
+    mut rx: mpsc::Receiver<String>,
+    close: &Notify,
     emit: &impl Fn(WsEvent) -> bool,
 ) {
     let Ok(mut ws) = connect(instance, dm).await else {
@@ -180,30 +214,34 @@ async fn run(
     if !emit(WsEvent::Open { id }) {
         return;
     }
-    loop {
+    // `true` when this side ends the connection and should say goodbye.
+    let goodbye = loop {
         tokio::select! {
             incoming = ws.next() => match incoming {
                 Some(Ok(Message::Text(text))) => {
                     if !emit(WsEvent::Message { id, data: text.as_str().to_owned() }) {
-                        break;
+                        break true;
                     }
                 }
                 // Pings are answered by the library; the app only speaks text.
                 Some(Ok(Message::Ping(_) | Message::Pong(_) | Message::Binary(_) | Message::Frame(_))) => {}
-                Some(Ok(Message::Close(_))) | Some(Err(_)) | None => break,
+                Some(Ok(Message::Close(_))) | Some(Err(_)) | None => break false,
             },
             outgoing = rx.recv() => match outgoing {
-                Some(Outgoing::Text(text)) => {
-                    if ws.send(Message::text(text)).await.is_err() {
-                        break;
+                Some(text) => {
+                    let sent = tokio::time::timeout(WRITE_TIMEOUT, ws.send(Message::text(text))).await;
+                    if !matches!(sent, Ok(Ok(()))) {
+                        break false;
                     }
                 }
-                Some(Outgoing::Close) | None => {
-                    let _ = ws.close(None).await;
-                    break;
-                }
+                None => break true,
             },
+            () = close.notified() => break true,
         }
+    };
+    // A peer that never answers the handshake is not waited for.
+    if goodbye {
+        let _ = tokio::time::timeout(WRITE_TIMEOUT, ws.close(None)).await;
     }
 }
 
@@ -301,11 +339,20 @@ mod tests {
         assert!(sockets.send(1, "x".into()).is_err());
         sockets.close(1);
         sockets.close_all();
-        let (tx, _rx) = mpsc::unbounded_channel();
-        sockets.open.lock().unwrap().insert(1, tx);
+        let (queue, _rx) = mpsc::channel(MAX_QUEUED);
+        let close = Arc::new(Notify::new());
+        sockets
+            .open
+            .lock()
+            .unwrap()
+            .insert(1, Handle { queue, close });
         assert!(sockets.send(1, "x".repeat(MAX_OUTGOING + 1)).is_err());
-        assert!(sockets.send(1, "ok".into()).is_ok());
         assert_eq!(sockets.count(), 1);
+        // The queue is bounded: a page that outruns the socket is told so.
+        for _ in 0..MAX_QUEUED {
+            assert!(sockets.send(1, "ok".into()).is_ok());
+        }
+        assert_eq!(sockets.send(1, "more".into()), Err("socket busy".into()));
     }
 
     #[tokio::test]
@@ -450,6 +497,73 @@ mod tests {
                 closed += 1;
             }
         }
+    }
+
+    /// A server that accepts WebSockets and then never reads or answers again.
+    async fn stalled_server(listener: TcpListener) {
+        tokio::spawn(async move {
+            loop {
+                let (stream, _) = listener.accept().await.unwrap();
+                tokio::spawn(async move {
+                    let _ws = tokio_tungstenite::accept_async(stream).await.unwrap();
+                    tokio::time::sleep(Duration::from_secs(60)).await;
+                });
+            }
+        });
+    }
+
+    #[tokio::test]
+    async fn a_reloaded_page_frees_the_slots_of_the_one_before() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let instance = instance_with(listener, false).await;
+        stalled_server(TcpListener::bind(addr).await.unwrap()).await;
+        let sockets = Arc::new(Sockets::default());
+        let (emit, mut events) = collector();
+        let emit = Arc::new(emit);
+        for _ in 0..MAX_SOCKETS {
+            let emit = Arc::clone(&emit);
+            open(&sockets, Arc::clone(&instance), false, move |e| emit(e)).unwrap();
+        }
+        assert!(open(&sockets, Arc::clone(&instance), false, |_| true).is_err());
+        let mut opened = 0;
+        while opened < MAX_SOCKETS {
+            if matches!(next(&mut events).await, WsEvent::Open { .. }) {
+                opened += 1;
+            }
+        }
+        // The page reloads: its sockets are gone and the new page can open its own.
+        sockets.document_replaced();
+        assert_eq!(sockets.count(), 0);
+        assert!(open(&sockets, Arc::clone(&instance), false, |_| true).is_ok());
+        let mut closed = 0;
+        while closed < MAX_SOCKETS {
+            if matches!(next(&mut events).await, WsEvent::Close { .. }) {
+                closed += 1;
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn a_peer_that_stops_reading_does_not_hold_the_socket_for_ever() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let instance = instance_with(listener, false).await;
+        stalled_server(TcpListener::bind(addr).await.unwrap()).await;
+        let sockets = Arc::new(Sockets::default());
+        let (emit, mut events) = collector();
+        let id = open(&sockets, instance, false, emit).unwrap();
+        assert_eq!(next(&mut events).await, WsEvent::Open { id });
+        // Fill the connection until writes stall, then ask to close; the
+        // handshake is never answered and the timeouts let go.
+        for _ in 0..MAX_QUEUED {
+            if sockets.send(id, "x".repeat(MAX_OUTGOING)).is_err() {
+                break;
+            }
+        }
+        sockets.close(id);
+        assert_eq!(next(&mut events).await, WsEvent::Close { id });
+        assert_eq!(sockets.count(), 0);
     }
 
     /// Against a real server (MNEMA_TEST_INSTANCE, MNEMA_TEST_USER,

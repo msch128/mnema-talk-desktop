@@ -26,10 +26,12 @@ if ($null -eq $pgBin) { throw 'A preinstalled PostgreSQL 17 or 18 fixture toolch
 $pgBin = Join-Path $pgBin.FullName 'bin'
 $data = Join-Path $directory 'pg-data'
 $dbName = "mnema_desktop_$nonce"
-$listener = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, 0)
-$listener.Start()
-$port = $listener.LocalEndpoint.Port
-$listener.Stop()
+# The port is only a candidate: another process can take it before postgres binds,
+# so the start below retries with a fresh one.
+function Get-FreePort {
+  $listener = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, 0)
+  try { $listener.Start(); return $listener.LocalEndpoint.Port } finally { $listener.Stop() }
+}
 $goExecutable = Join-Path $directory 'server-fixture.test.exe'
 $env:CGO_ENABLED = '0'
 go test -c -tags=integration -o $goExecutable ./internal/server
@@ -58,6 +60,12 @@ function Get-FixtureFailureLabel([string]$Directory) {
     'fixture server key failed',
     'fixture server certificate failed'
   )
+  # A fixture that writes its own label to FAILURE.txt is the single source of truth.
+  $labelFile = Join-Path $Directory 'FAILURE.txt'
+  if (Test-Path $labelFile) {
+    try { $written = ([IO.File]::ReadAllText($labelFile)).Trim() } catch { $written = '' }
+    if ($written -match '^[A-Za-z0-9 /:,.()-]{1,120}$') { return $written }
+  }
   foreach ($name in @('server.log', 'server-error.log')) {
     $path = Join-Path $Directory $name
     if (!(Test-Path $path)) { continue }
@@ -78,6 +86,15 @@ function Get-FixtureFailureLabel([string]$Directory) {
       if ([regex]::IsMatch($contents, $pattern)) { return $failure.Label }
     }
   }
+  # No known label matched (a renamed or moved fatal text): name only the failing
+  # source position, never the message, so the log stays actionable and private.
+  foreach ($name in @('server.log', 'server-error.log')) {
+    $path = Join-Path $Directory $name
+    if (!(Test-Path $path)) { continue }
+    try { $contents = [IO.File]::ReadAllText($path) } catch { continue }
+    $location = [regex]::Match($contents, '(?m)^\s+([A-Za-z0-9_]+_test\.go):([0-9]+): ')
+    if ($location.Success) { return 'unclassified fixture process failure at ' + $location.Groups[1].Value + ':' + $location.Groups[2].Value }
+  }
   return 'unclassified fixture process failure'
 }
 $server = $null
@@ -90,8 +107,15 @@ try {
   if ($LASTEXITCODE -ne 0) { throw 'Owned PostgreSQL cluster initialization failed' }
   $clusterInitialized = $true
   [IO.File]::WriteAllText((Join-Path $data '.mnema-owner'), $nonce)
-  & (Join-Path $pgBin 'pg_ctl.exe') -D $data -l (Join-Path $directory 'postgres.log') -o "-h 127.0.0.1 -p $port" -w -t 30 start
-  if ($LASTEXITCODE -ne 0) { throw 'Owned PostgreSQL cluster startup failed' }
+  $port = 0
+  for ($attempt = 1; $attempt -le 3; $attempt++) {
+    $port = Get-FreePort
+    & (Join-Path $pgBin 'pg_ctl.exe') -D $data -l (Join-Path $directory 'postgres.log') -o "-h 127.0.0.1 -p $port" -w -t 30 start
+    if ($LASTEXITCODE -eq 0) { break }
+    if ($attempt -eq 3) { throw 'Owned PostgreSQL cluster startup failed' }
+    Write-Host "Fixture phase: PostgreSQL start attempt $attempt failed, retrying on another port"
+    Start-Sleep -Seconds 1
+  }
   Write-Host 'Fixture phase: creating the owned database'
   & (Join-Path $pgBin 'createdb.exe') -h 127.0.0.1 -p $port -U desktop_fixture $dbName
   if ($LASTEXITCODE -ne 0) { throw 'Fresh fixture database creation failed' }
@@ -124,6 +148,8 @@ try {
   $rootCertificate = [Security.Cryptography.X509Certificates.X509Certificate2]::new($rootBytes)
   $constraints = $rootCertificate.Extensions['2.5.29.19']
   if ($rootCertificate.Subject -ne 'CN=Mnema disposable GUI fixture' -or $rootCertificate.Issuer -ne $rootCertificate.Subject -or $rootCertificate.HasPrivateKey -or $null -eq $constraints -or !$constraints.CertificateAuthority -or $rootCertificate.NotAfter -le [DateTime]::Now) { throw 'Invalid owned fixture CA' }
+  # A machine-wide trust anchor must be short lived, in case cleanup is ever skipped.
+  if ($rootCertificate.NotAfter -gt [DateTime]::Now.AddHours(24) -or $rootCertificate.NotBefore -lt [DateTime]::Now.AddHours(-24)) { throw 'Fixture CA validity window exceeds 24 hours' }
   $candidateThumbprint = $rootCertificate.Thumbprint
   if ($candidateThumbprint -notmatch '^[A-F0-9]{40}$' -or (Test-Path "$rootStorePath\$candidateThumbprint")) { throw 'Refusing a pre-existing fixture CA' }
   # Record cleanup ownership before any import, including partially failed imports.

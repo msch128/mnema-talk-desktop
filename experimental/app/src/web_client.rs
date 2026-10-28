@@ -8,9 +8,9 @@ use crate::instances::{
 };
 use crate::web_bundle::{Held, Refusal, ServerInfo, Store, TrustedKey, Version, trusted_keys};
 use crate::web_proxy::{Resp, forward, now, serve_bundle};
-use crate::web_trust::{Accepted, TrustState, root_key};
+use crate::web_trust::{Accepted, RELEASE_FLOOR, TrustState, root_key};
 use crate::web_ws::WsEvent;
-use reqwest::{Client, redirect::Policy};
+use reqwest::redirect::Policy;
 use serde::Deserialize;
 use std::{
     borrow::Cow,
@@ -75,7 +75,16 @@ pub struct Trusted {
     /// had a session here.
     adoptable: std::sync::atomic::AtomicBool,
     data_dir: Option<std::path::PathBuf>,
+    /// The list of servers exists but could not be read (see `Stored`): the
+    /// storage of the servers on it must not be taken for orphaned.
+    list_unreadable: bool,
+    /// One network round (trust statement, then bundle check) at a time. Holds
+    /// when the last round ended, so servers that start together share it.
+    round: tokio::sync::Mutex<Option<std::time::Instant>>,
 }
+
+/// How long the outcome of a round stands for servers that start right after.
+const ROUND_REUSE: Duration = Duration::from_secs(60);
 
 /// Something an earlier client leaves in its data directory, and the list of
 /// servers (written by this one) does not exist yet.
@@ -90,9 +99,10 @@ impl Trusted {
     pub(crate) fn new(data_dir: Option<std::path::PathBuf>, builtin: Option<&[u8]>) -> Trusted {
         // Before anything of this run is written: what is there is the old client's.
         let adoptable = data_dir.as_deref().is_some_and(old_client_left_data);
-        let trust = TrustState::load(
+        let trust = TrustState::load_with(
             data_dir.as_ref().map(|d| d.join("web-trust")).as_deref(),
             root_key(),
+            RELEASE_FLOOR,
         );
         crate::web_trust::publish(trust.statement());
         let keys = trust.effective_keys(trusted_keys());
@@ -101,10 +111,10 @@ impl Trusted {
             builtin,
             &keys,
         );
-        let registry = Registry::restore(&Stored::load(
-            data_dir.as_ref().map(|d| d.join(INSTANCES_FILE)).as_deref(),
-        ));
+        let stored = Stored::load(data_dir.as_ref().map(|d| d.join(INSTANCES_FILE)).as_deref());
+        let registry = Registry::restore(&stored);
         Trusted {
+            list_unreadable: stored.unreadable(),
             store: Mutex::new(store),
             keys: Mutex::new(keys),
             fresh: std::sync::atomic::AtomicBool::new(false),
@@ -112,6 +122,7 @@ impl Trusted {
             registry: Mutex::new(registry),
             adoptable: std::sync::atomic::AtomicBool::new(adoptable),
             data_dir,
+            round: tokio::sync::Mutex::new(None),
         }
     }
 
@@ -186,11 +197,7 @@ impl Trusted {
             let Some(session) = registry.session(&id) else {
                 continue;
             };
-            let held = store.held().iter().any(|h| {
-                h.bundle.key_id == session.held.bundle.key_id
-                    && h.bundle.version == session.held.bundle.version
-            });
-            if !held {
+            if !holds(store, &session.held) {
                 session.sockets.close_all();
                 if let Some(slot) = registry.slot_mut(&id) {
                     slot.phase = Phase::Refused(WITHDRAWN.into());
@@ -198,6 +205,28 @@ impl Trusted {
             }
         }
         dropped
+    }
+
+    /// Ends a session that was registered on a bundle withdrawn in the
+    /// meantime. `enforce` only sees sessions already in the registry, so a
+    /// server that was still starting when the key was revoked has to look
+    /// again once it is registered. Either `enforce` ran before (the store no
+    /// longer holds the bundle) or it runs after (it finds the session).
+    /// Returns whether the session may run.
+    pub(crate) fn keep_if_held(&self, id: &str, session: &Session) -> bool {
+        let held = self
+            .store
+            .lock()
+            .is_ok_and(|store| holds(&store, &session.held));
+        if !held {
+            session.sockets.close_all();
+            if let Ok(mut registry) = self.registry.lock()
+                && let Some(slot) = registry.slot_mut(id)
+            {
+                slot.phase = Phase::Refused(WITHDRAWN.into());
+            }
+        }
+        held
     }
 
     /// One trust round with the result of a fetch: applies the statement,
@@ -263,9 +292,17 @@ impl Trusted {
 
     /// Writes the list of servers down (addresses only).
     pub(crate) fn save_instances(&self) {
-        if let Ok(registry) = self.registry.lock() {
-            registry.stored().save(self.instances_file().as_deref());
+        if let Ok(registry) = self.registry.lock()
+            && let Err(why) = registry.stored().save(self.instances_file().as_deref())
+        {
+            eprintln!("Mnema Desktop: the list of servers could not be saved: {why}");
         }
+    }
+
+    /// Whether the list of servers was unusable at start, so that the storage
+    /// of servers missing from it may still belong to the person's servers.
+    pub(crate) fn list_unreadable(&self) -> bool {
+        self.list_unreadable
     }
 
     #[cfg_attr(target_os = "macos", allow(dead_code))]
@@ -284,8 +321,15 @@ impl Trusted {
     }
 }
 
+/// Whether the store still holds the very bundle (key and version) a session runs.
+fn holds(store: &Store, running: &Held) -> bool {
+    store.held().iter().any(|h| {
+        h.bundle.key_id == running.bundle.key_id && h.bundle.version == running.bundle.version
+    })
+}
+
 /// Why a server's tab stopped when its bundle was withdrawn.
-const WITHDRAWN: &str =
+pub(crate) const WITHDRAWN: &str =
     "The web app of this server was withdrawn. Restart the client to get a current one.";
 
 /// What this host offers the page beyond the common surface. The web app
@@ -467,9 +511,8 @@ fn parse_health(bytes: &[u8]) -> Result<ServerInfo, String> {
 }
 
 pub(crate) async fn discover(origin: &Url) -> Result<ServerInfo, String> {
-    let client = Client::builder()
+    let client = crate::web_proxy::client_builder()
         .redirect(Policy::none())
-        .no_proxy()
         .timeout(Duration::from_secs(10))
         .build()
         .map_err(|_| "Unable to initialize HTTPS.")?;
@@ -507,18 +550,32 @@ pub(crate) async fn choose(trusted: &Trusted, server: &ServerInfo) -> Result<Hel
     match first {
         Ok(held) => Ok(held),
         Err(Refusal::ServerNewer) => {
-            if !trusted.fresh() {
-                trusted.trust_round().await;
+            // Servers that start together queue here for one round. Whoever
+            // comes next first looks at what the round before it brought, and
+            // does not fetch again within `ROUND_REUSE`, offline or not.
+            let mut last = trusted.round.lock().await;
+            let select = || {
+                trusted
+                    .store
+                    .lock()
+                    .map_err(|_| "busy".to_owned())?
+                    .select(server)
+                    .map_err(|refusal| refusal.to_string())
+            };
+            if let Ok(held) = select() {
+                return Ok(held);
             }
-            if trusted.fresh() {
-                let _ = crate::web_updates::check_and_install(&trusted.store, &trusted.keys).await;
+            if last.is_none_or(|at| at.elapsed() >= ROUND_REUSE) {
+                if !trusted.fresh() {
+                    trusted.trust_round().await;
+                }
+                if trusted.fresh() {
+                    let _ =
+                        crate::web_updates::check_and_install(&trusted.store, &trusted.keys).await;
+                }
+                *last = Some(std::time::Instant::now());
             }
-            trusted
-                .store
-                .lock()
-                .map_err(|_| "busy")?
-                .select(server)
-                .map_err(|refusal| refusal.to_string())
+            select()
         }
         Err(refusal) => Err(refusal.to_string()),
     }
@@ -560,11 +617,16 @@ fn unavailable(trusted: &Trusted, id: &str) -> Resp {
 /// go to that server with that server's cookies, and its files come from the
 /// bundle that server was matched with. No other server is reachable from here.
 async fn page_request(trusted: &Trusted, id: &str, request: tauri::http::Request<Vec<u8>>) -> Resp {
+    let path = request.uri().path().to_owned();
     let Some(session) = trusted.session(id) else {
-        return unavailable(trusted, id);
+        let answer = unavailable(trusted, id);
+        return if path == "/api" || path.starts_with("/api/") {
+            answer.sealed()
+        } else {
+            answer
+        };
     };
     let method = request.method().as_str().to_owned();
-    let path = request.uri().path().to_owned();
     if path == "/api" || path.starts_with("/api/") {
         let path_and_query = request
             .uri()
@@ -738,14 +800,22 @@ fn refresh_in_background(app: &tauri::AppHandle) {
     });
 }
 
+/// Whether a round really looked for a bundle. A round that was skipped
+/// (no fresh trust statement) or failed (offline, refused) did not, and must
+/// not postpone the next check.
+fn looked(result: Option<&Result<Option<Version>, String>>) -> bool {
+    result.is_some_and(Result::is_ok)
+}
+
 /// One round: the trust statement first (a revoked key must stop counting
-/// before anything else is installed), then newer bundles.
+/// before anything else is installed), then newer bundles. The statement is
+/// fetched even when the update check is switched off: that switch spares the
+/// release request to GitHub, and must not stop a revoked key from counting.
 async fn refresh_once(app: &tauri::AppHandle, first: bool) {
     let trusted = app.state::<Trusted>();
-    if crate::web_updates::disabled() {
-        return;
-    }
+    let mut last = trusted.round.lock().await;
     let dropped = trusted.trust_round().await;
+    let updates = !crate::web_updates::disabled();
     let had_bundle = trusted
         .store
         .lock()
@@ -756,21 +826,27 @@ async fn refresh_once(app: &tauri::AppHandle, first: bool) {
         .lock()
         .map(|s| s.check_due(now() as u64))
         .unwrap_or(false);
-    if had_bundle && !dropped && !(due || !first) {
-        return;
-    }
-    // Freeze protection: no new bundles without a fresh trust statement.
-    let installed = if trusted.fresh() {
-        crate::web_updates::check_and_install(&trusted.store, &trusted.keys).await
+    let installed = if updates && (!had_bundle || dropped || due || !first) {
+        // Freeze protection: no new bundles without a fresh trust statement.
+        let result = if trusted.fresh() {
+            Some(crate::web_updates::check_and_install(&trusted.store, &trusted.keys).await)
+        } else {
+            None
+        };
+        if looked(result.as_ref())
+            && let Ok(mut store) = trusted.store.lock()
+        {
+            store.mark_checked(now() as u64);
+        }
+        *last = Some(std::time::Instant::now());
+        result
     } else {
-        Ok(None)
+        None
     };
-    if let Ok(mut store) = trusted.store.lock() {
-        store.mark_checked(now() as u64);
-    }
+    drop(last);
     // Pages that were showing a withdrawn bundle, or none, move to the newly
     // installed one, or show why there is none.
-    if dropped || (!had_bundle && matches!(installed, Ok(Some(_)))) {
+    if dropped || (!had_bundle && matches!(installed, Some(Ok(Some(_))))) {
         super::web_shell::bundles_changed(app);
     }
 }
@@ -848,34 +924,36 @@ pub(super) fn run() {
             refresh_in_background(app.handle());
             Ok(())
         })
-        .run(tauri::generate_context!());
+        .build(tauri::generate_context!())
+        .map(|app| {
+            app.run(|app, event| {
+                // The Dock icon brings back a window that was closed on macOS.
+                #[cfg(target_os = "macos")]
+                if let tauri::RunEvent::Reopen { .. } = &event {
+                    super::web_shell::reopen(app);
+                }
+                let _ = (app, event);
+            });
+        });
     if result.is_err() {
         startup_error();
     }
 }
 
+/// What the person is told when the window system cannot start, and what to
+/// check first on this platform.
+fn startup_message() -> String {
+    #[cfg(windows)]
+    let hint = "Check that Microsoft Edge WebView2 Runtime is installed.";
+    #[cfg(not(windows))]
+    let hint = "Check that macOS is up to date and that the data folder of the app is writable.";
+    format!("{APP_TITLE} could not start.\n{hint}\nPlease report this startup failure.")
+}
+
 fn startup_error() {
-    eprintln!(
-        "Mnema Desktop DEV could not start. Check that Microsoft Edge WebView2 Runtime is installed."
-    );
-    #[cfg(target_os = "windows")]
-    {
-        #[link(name = "user32")]
-        unsafe extern "system" {
-            fn MessageBoxW(
-                hwnd: *mut std::ffi::c_void,
-                text: *const u16,
-                caption: *const u16,
-                flags: u32,
-            ) -> i32;
-        }
-        let text: Vec<u16> = "Mnema Desktop DEV could not start.\nCheck that Microsoft Edge WebView2 Runtime is installed.\nPlease report this startup failure.".encode_utf16().chain(Some(0)).collect();
-        let title: Vec<u16> = "Mnema Desktop DEV".encode_utf16().chain(Some(0)).collect();
-        // SAFETY: both strings are NUL-terminated and live throughout the call.
-        unsafe {
-            MessageBoxW(std::ptr::null_mut(), text.as_ptr(), title.as_ptr(), 0x10);
-        }
-    }
+    let message = startup_message();
+    eprintln!("{}", message.replace('\n', " "));
+    show_dialog(Dialog::Error, &message);
 }
 
 fn external_allowed(url: &Url) -> bool {
@@ -886,48 +964,136 @@ fn external_allowed(url: &Url) -> bool {
         && url.as_str().len() <= 4096
 }
 
+/// Asks before a link leaves the app, then hands it to the system browser.
 pub(super) fn open_external(url: &Url) {
-    let allowed = external_allowed(url);
-    #[cfg(not(target_os = "windows"))]
-    let _ = allowed;
+    if !external_allowed(url) {
+        return;
+    }
+    #[cfg(target_os = "windows")]
+    if show_dialog(Dialog::Confirm, &confirm_text(url)) {
+        windows_dialog::open(url.as_str());
+    }
+    // The dialog waits for an answer: not on the thread that runs the window.
+    #[cfg(target_os = "macos")]
+    {
+        let url = url.clone();
+        std::thread::spawn(move || {
+            if show_dialog(Dialog::Confirm, &confirm_text(&url)) {
+                let _ = std::process::Command::new("/usr/bin/open")
+                    .arg(url.as_str())
+                    .status();
+            }
+        });
+    }
+}
+
+fn confirm_text(url: &Url) -> String {
+    format!("Open this link in your browser?\n\n{}", url.as_str())
+}
+
+/// The name the host shows in its own dialogs.
+const APP_TITLE: &str = "Mnema Desktop DEV";
+
+#[derive(Clone, Copy)]
+enum Dialog {
+    /// Something went wrong; one button.
+    Error,
+    /// A question; the default answer is no. Returns whether it was yes.
+    Confirm,
+}
+
+/// A modal dialog of the platform. `true` unless a question was answered no
+/// (or could not be asked).
+fn show_dialog(kind: Dialog, text: &str) -> bool {
     #[cfg(target_os = "windows")]
     {
-        if !allowed {
-            return;
+        windows_dialog::show(kind, text)
+    }
+    #[cfg(target_os = "macos")]
+    {
+        // The text goes in as an argument of the script, never into its source.
+        let status = std::process::Command::new("/usr/bin/osascript")
+            .args(osascript_args(kind, text))
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status();
+        match kind {
+            Dialog::Error => true,
+            Dialog::Confirm => status.is_ok_and(|s| s.success()),
         }
-        #[link(name = "user32")]
-        unsafe extern "system" {
-            fn MessageBoxW(
-                hwnd: *mut std::ffi::c_void,
-                text: *const u16,
-                caption: *const u16,
-                flags: u32,
-            ) -> i32;
+    }
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    {
+        let _ = (kind, text);
+        false
+    }
+}
+
+/// The argument vector of `osascript` for a dialog: the script lines, then the
+/// text and the title as its `argv`. Cancel makes `osascript` fail.
+#[cfg_attr(not(any(target_os = "macos", test)), allow(dead_code))]
+fn osascript_args(kind: Dialog, text: &str) -> Vec<String> {
+    let line = match kind {
+        Dialog::Error => "display alert (item 2 of argv) message (item 1 of argv) as critical",
+        Dialog::Confirm => {
+            "display dialog (item 1 of argv) with title (item 2 of argv) buttons {\"Cancel\", \"Open\"} default button \"Cancel\" cancel button \"Cancel\" with icon caution"
         }
-        #[link(name = "shell32")]
-        unsafe extern "system" {
-            fn ShellExecuteW(
-                hwnd: *mut std::ffi::c_void,
-                operation: *const u16,
-                file: *const u16,
-                parameters: *const u16,
-                directory: *const u16,
-                show: i32,
-            ) -> *mut std::ffi::c_void;
-        }
-        let text: Vec<u16> = format!("Open this link in your browser?\n\n{}", url.as_str())
-            .encode_utf16()
-            .chain(Some(0))
-            .collect();
-        let title: Vec<u16> = "Mnema Desktop DEV".encode_utf16().chain(Some(0)).collect();
-        // SAFETY: NUL-terminated buffers live throughout the synchronous dialog.
+    };
+    ["-e", "on run argv", "-e", line, "-e", "end run"]
+        .into_iter()
+        .map(str::to_owned)
+        .chain([text.to_owned(), APP_TITLE.to_owned()])
+        .collect()
+}
+
+#[cfg(target_os = "windows")]
+mod windows_dialog {
+    use super::{APP_TITLE, Dialog};
+
+    #[link(name = "user32")]
+    unsafe extern "system" {
+        fn MessageBoxW(
+            hwnd: *mut std::ffi::c_void,
+            text: *const u16,
+            caption: *const u16,
+            flags: u32,
+        ) -> i32;
+    }
+    #[link(name = "shell32")]
+    unsafe extern "system" {
+        fn ShellExecuteW(
+            hwnd: *mut std::ffi::c_void,
+            operation: *const u16,
+            file: *const u16,
+            parameters: *const u16,
+            directory: *const u16,
+            show: i32,
+        ) -> *mut std::ffi::c_void;
+    }
+
+    /// NUL-terminated UTF-16.
+    fn wide(text: &str) -> Vec<u16> {
+        text.encode_utf16().chain(Some(0)).collect()
+    }
+
+    pub(super) fn show(kind: Dialog, text: &str) -> bool {
+        // MB_OK | MB_ICONERROR; MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON2.
+        let flags = match kind {
+            Dialog::Error => 0x10,
+            Dialog::Confirm => 0x124,
+        };
+        let (text, title) = (wide(text), wide(APP_TITLE));
+        // SAFETY: both strings are NUL-terminated and live throughout the call.
         let answer =
-            unsafe { MessageBoxW(std::ptr::null_mut(), text.as_ptr(), title.as_ptr(), 0x124) };
-        if answer != 6 {
-            return;
+            unsafe { MessageBoxW(std::ptr::null_mut(), text.as_ptr(), title.as_ptr(), flags) };
+        match kind {
+            Dialog::Error => true,
+            Dialog::Confirm => answer == 6,
         }
-        let operation: Vec<u16> = "open".encode_utf16().chain(Some(0)).collect();
-        let target: Vec<u16> = url.as_str().encode_utf16().chain(Some(0)).collect();
+    }
+
+    pub(super) fn open(target: &str) {
+        let (operation, target) = (wide("open"), wide(target));
         // SAFETY: the target is a bounded HTTPS URL without credentials; no
         // executable arguments or command shell are supplied. Buffers stay live.
         unsafe {
@@ -1110,11 +1276,20 @@ mod tests {
         }
         assert!(bundled(&app(&format!("/c/{id}"))));
         assert!(bundled(&app(&format!("/v/{id}/chat"))));
+        // Channels and conversations are addressed by slug and name.
+        for path in [
+            "/c/general",
+            "/v/lounge/chat",
+            "/dm/alice",
+            "/dm/g/1a2b3c4d",
+        ] {
+            assert!(bundled(&app(path)), "{path}");
+        }
         for path in [
             "/other.html",
             "/api/health",
             "/admin/unknown",
-            "/c/not-an-id",
+            "/c/Not-A-Slug",
             "/invite/abc",
             "/invite/abc234xyz789/extra",
         ] {
@@ -1243,6 +1418,92 @@ mod tests {
         drop(registry);
         // Its sockets went with it (none were open, and none may be opened).
         assert!(session.sockets.send(1, "x".into()).is_err());
+    }
+
+    #[test]
+    fn dialogs_pass_their_text_as_arguments_and_name_the_platforms_own_dependency() {
+        let link = url("https://example.invalid/a?q=\"x\"&r='y'");
+        let text = confirm_text(&link);
+        for kind in [Dialog::Error, Dialog::Confirm] {
+            let args = osascript_args(kind, &text);
+            // The text is data for the script, never part of its source.
+            assert_eq!(
+                &args[args.len() - 2..],
+                [text.clone(), APP_TITLE.to_owned()]
+            );
+            assert!(
+                args[..args.len() - 2]
+                    .iter()
+                    .all(|a| !a.contains("example.invalid"))
+            );
+        }
+        let message = startup_message();
+        assert!(message.starts_with(APP_TITLE));
+        assert_eq!(message.contains("WebView2"), cfg!(windows));
+    }
+
+    #[test]
+    fn a_round_that_did_not_look_for_a_bundle_is_not_a_completed_check() {
+        assert!(
+            !looked(None),
+            "no fresh trust statement: nothing was checked"
+        );
+        assert!(!looked(Some(&Err("unreachable".to_owned()))));
+        assert!(looked(Some(&Ok(None))));
+        assert!(looked(Some(&Ok(Some(Version(1, 0, 0))))));
+    }
+
+    #[test]
+    fn a_session_registered_after_its_bundle_was_withdrawn_is_ended() {
+        use crate::web_bundle::fixture::{Spec, bundle, trusted as keys};
+        let trusted = Trusted::new(None, None);
+        // The bundle was chosen while key 7 was in force; the store lost it
+        // (revoked) before the session reached the registry.
+        let held = held_of("0.9.0", 7);
+        *trusted.store.lock().unwrap() =
+            Store::load(None, Some(&bundle(&Spec::new("0.9.0"))), &keys(8));
+        let (id, session) = run_server(&trusted, "late.example", held);
+        assert!(!trusted.keep_if_held(&id, &session));
+        assert!(trusted.session(&id).is_none());
+        let registry = trusted.registry.lock().unwrap();
+        let Phase::Refused(why) = &registry.slot(&id).unwrap().phase else {
+            panic!("the tab must say why it stopped")
+        };
+        assert_eq!(why, WITHDRAWN);
+        drop(registry);
+        assert!(session.sockets.send(1, "x".into()).is_err());
+        // A held bundle stays.
+        *trusted.store.lock().unwrap() =
+            Store::load(None, Some(&bundle(&Spec::new("0.9.0"))), &keys(7));
+        let (other, running) = run_server(&trusted, "ok.example", held_of("0.9.0", 7));
+        assert!(trusted.keep_if_held(&other, &running));
+        assert!(trusted.session(&other).is_some());
+    }
+
+    #[tokio::test]
+    async fn servers_that_start_together_share_one_network_round() {
+        use crate::web_bundle::fixture::{Spec, bundle, trusted as keys};
+        let trusted = Trusted::new(None, None);
+        *trusted.store.lock().unwrap() =
+            Store::load(None, Some(&bundle(&Spec::new("0.9.0"))), &keys(7));
+        let newer = ServerInfo {
+            version: Version::parse("9.0.0"),
+            web_client_api: 99,
+        };
+        assert!(trusted.store.lock().unwrap().select(&newer).is_err());
+        // A round ended a moment ago: nobody fetches again, offline or not.
+        let at = std::time::Instant::now();
+        *trusted.round.lock().await = Some(at);
+        let started = std::time::Instant::now();
+        let (a, b, c) = tokio::join!(
+            choose(&trusted, &newer),
+            choose(&trusted, &newer),
+            choose(&trusted, &newer)
+        );
+        assert!(a.is_err() && b.is_err() && c.is_err());
+        assert_eq!(*trusted.round.lock().await, Some(at));
+        assert!(!trusted.fresh(), "no trust fetch ran");
+        assert!(started.elapsed() < Duration::from_secs(5));
     }
 
     #[test]
@@ -1459,6 +1720,77 @@ mod tests {
         assert!(!Trusted::new(None, None).take_old_storage_wipe());
         let _ = std::fs::remove_dir_all(dir);
         let _ = std::fs::remove_dir_all(none);
+    }
+
+    /// What the shipped client's capabilities grant is exactly what it
+    /// registers: a permission without a handler in this build is a grant
+    /// nobody reviewed, and a handler list that grows later must grow the
+    /// capability files on purpose. Webviews are named by label, never by window.
+    #[test]
+    fn every_granted_permission_has_a_handler_in_this_build_and_no_capability_names_a_window() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let source = include_str!("web_client.rs");
+        let start = source.find("tauri::generate_handler![").unwrap();
+        let handlers = &source[start..start + source[start..].find("])").unwrap()];
+        let registered: Vec<&str> = handlers
+            .lines()
+            .skip(1)
+            .map(|l| l.trim().trim_end_matches(',').rsplit("::").next().unwrap())
+            .filter(|n| !n.is_empty())
+            .collect();
+        assert!(registered.contains(&"desktop_open_instance"));
+        let config: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(root.join("tauri.conf.json")).unwrap())
+                .unwrap();
+        let listed: Vec<&str> = config["app"]["security"]["capabilities"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|c| c.as_str())
+            .collect();
+        for entry in std::fs::read_dir(root.join("capabilities")).unwrap() {
+            let path = entry.unwrap().path();
+            let json: serde_json::Value =
+                serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+            let id = json["identifier"].as_str().unwrap();
+            assert!(listed.contains(&id), "{id} is not in tauri.conf.json");
+            assert!(json.get("windows").is_none(), "{id} names windows");
+            for permission in json["permissions"].as_array().unwrap() {
+                let command = permission
+                    .as_str()
+                    .unwrap()
+                    .strip_prefix("allow-")
+                    .unwrap()
+                    .replace('-', "_");
+                assert!(
+                    registered.contains(&command.as_str()),
+                    "{id} grants {command}, which this build does not register"
+                );
+            }
+        }
+        assert_eq!(
+            listed.len(),
+            std::fs::read_dir(root.join("capabilities"))
+                .unwrap()
+                .count()
+        );
+    }
+
+    #[test]
+    fn an_unusable_list_of_servers_stops_the_sweep_of_their_storage() {
+        let dir = std::env::temp_dir().join(format!("mnema-list-bad-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        assert!(!Trusted::new(Some(dir.clone()), None).list_unreadable());
+        std::fs::write(
+            dir.join(INSTANCES_FILE),
+            r#"{"version":2,"servers":[],"active":null}"#,
+        )
+        .unwrap();
+        let trusted = Trusted::new(Some(dir.clone()), None);
+        assert!(trusted.list_unreadable());
+        assert!(trusted.registry.lock().unwrap().ids().is_empty());
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]

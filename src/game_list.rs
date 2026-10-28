@@ -191,6 +191,16 @@ mod tests {
                     .contains(&stem.as_str()),
                     "{exe}"
                 );
+                // The rule is about kinds of program, not only the exact generic names.
+                for tool in [
+                    "launcher",
+                    "crashhandler",
+                    "crashreport",
+                    "server",
+                    "editor",
+                ] {
+                    assert!(!stem.contains(tool), "{exe} is a {tool}, not a game");
+                }
             }
         }
     }

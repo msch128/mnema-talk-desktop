@@ -6,7 +6,7 @@ import { afterEach, test } from 'node:test'
 import { readFileSync } from 'node:fs'
 import { appApi, bundled, localOrigin, pickerUi, updateUi } from '../src/core/origin.ts'
 import { Trusted, type TrustedDeps, WITHDRAWN, defaultDeps, pinnedKeys } from '../src/core/trusted.ts'
-import { parseUtc } from '../src/core/trust.ts'
+import { NO_FLOOR, parseUtc } from '../src/core/trust.ts'
 import { ROOT_PUB } from '../src/core/pinned.ts'
 import { bundle, spec, testKey, trusted as keysFor } from './helpers/fixtures.ts'
 import { reply, serve, type TestServer } from './helpers/server.ts'
@@ -25,7 +25,7 @@ afterEach(async () => {
 const tmp = () => { const d = mkdtempSync(join(tmpdir(), 'mnema-trusted-')); dirs.push(d); return d }
 
 function deps(change: Partial<TrustedDeps> = {}): TrustedDeps {
-  return { ...defaultDeps(null), now: () => NOW, log: () => {}, ...change }
+  return { ...defaultDeps(null), now: () => NOW, log: () => {}, floor: NO_FLOOR, ...change }
 }
 
 const url = (raw: string) => new URL(raw)
@@ -42,8 +42,8 @@ async function run(t: Trusted, address: string) {
 test('only the hosts own origin and its routes are app pages', () => {
   const id = '11111111-1111-1111-1111-111111111111'
   const app = (path: string) => new URL(path, 'mnema://localhost/')
-  for (const path of ['', '/', '/index.html', '/login', '/admin/users', `/c/${id}`, `/v/${id}/chat`]) assert.ok(bundled(app(path)), path)
-  for (const path of ['/other.html', '/api/health', '/admin/unknown', '/c/not-an-id']) assert.ok(!bundled(app(path)), path)
+  for (const path of ['', '/', '/index.html', '/login', '/admin/users', `/c/${id}`, `/v/${id}/chat`, '/c/general', '/v/lounge/chat', '/dm/alice', '/dm/g/1a2b3c4d']) assert.ok(bundled(app(path)), path)
+  for (const path of ['/other.html', '/api/health', '/admin/unknown', '/c/Not-A-Slug']) assert.ok(!bundled(app(path)), path)
   for (const raw of ['https://community.example/', 'tauri://localhost/', 'http://tauri.localhost/', 'mnema://localhost:9000/', 'mnema://user@localhost/', 'mnema://evil/', 'https://mnema.localhost.evil.example/', 'https://mnema.localhost/']) {
     assert.ok(!bundled(url(raw)), raw)
   }
@@ -108,6 +108,41 @@ test('installs need a fresh statement and a successful fetch in this round', () 
   t.applyRound({ doc, sig }, expiry + 1)
   assert.equal(t.fresh(), false)
   assert.equal(t.keysInForce().length, count)
+})
+
+test('a background round only counts as a check when it really looked, and the update switch keeps the revocation fetch', async () => {
+  let fetched = 0
+  let installs = 0
+  const make = (online: boolean) => new Trusted(null, null, deps({
+    fetchTrust: () => { fetched += 1; return online ? Promise.resolve({ doc, sig }) : Promise.reject(new Error('offline')) },
+    installNewer: () => { installs += 1; return Promise.resolve(null) },
+  }))
+  // Offline: no fresh statement, nothing looked, so the next start still checks.
+  const offline = make(false)
+  assert.equal(await offline.refresh(true), false)
+  assert.equal(installs, 0)
+  assert.equal(offline.store.checkDue(NOW), true)
+  // Online: the check ran and is recorded.
+  const online = make(true)
+  await online.refresh(true)
+  assert.equal(installs, 1)
+  assert.equal(online.store.checkDue(NOW), false)
+  // The switch spares the release request, never the trust statement.
+  const before = process.env.MNEMA_DESKTOP_NO_UPDATE_CHECK
+  process.env.MNEMA_DESKTOP_NO_UPDATE_CHECK = '1'
+  try {
+    fetched = 0
+    installs = 0
+    const switchedOff = make(true)
+    await switchedOff.refresh(false)
+    assert.equal(fetched, 1)
+    assert.equal(installs, 0)
+    assert.equal(switchedOff.fresh(), true)
+    assert.equal(switchedOff.store.checkDue(NOW), true, 'no release check happened')
+  } finally {
+    if (before === undefined) delete process.env.MNEMA_DESKTOP_NO_UPDATE_CHECK
+    else process.env.MNEMA_DESKTOP_NO_UPDATE_CHECK = before
+  }
 })
 
 test('a client without any bundle says so instead of loading server code', () => {
@@ -182,4 +217,37 @@ test('opening an instance picks the verified bundle by the server health and nev
   const down = await serve(reply(503, {}, 'x'))
   servers.push(down)
   await assert.rejects(t.connect(down.origin.href), /unavailable or redirects/)
+})
+
+test('a torn pair of statement and signature is fetched once more before the round counts as failed', async () => {
+  const torn = Buffer.from(sig)
+  torn[3] = torn[3] === 0x41 ? 0x42 : 0x41
+  let fetches = 0
+  const messages: string[] = []
+  const t = new Trusted(null, null, deps({ fetchTrust: async () => { fetches += 1; return { doc, sig: fetches === 1 ? torn : sig } }, log: (m: string) => { messages.push(m) } }))
+  await t.trustRound()
+  assert.equal(fetches, 2)
+  assert.equal(t.fresh(), true)
+  assert.equal(messages.length, 0)
+  // A pair that stays wrong is refused after the one retry and logged once.
+  const bad = new Trusted(null, null, deps({ fetchTrust: async () => { fetches += 1; return { doc, sig: torn } }, log: (m: string) => { messages.push(m) } }))
+  fetches = 0
+  await bad.trustRound()
+  assert.equal(fetches, 2)
+  assert.equal(bad.fresh(), false)
+  assert.equal(messages.length, 1)
+  assert.match(messages[0] as string, /trust statement refused/)
+})
+
+test('a failed bundle install is logged, not swallowed', async () => {
+  const newer = await health({ status: 'ok', version: '1.0.0', web_client_api: 2 })
+  const messages: string[] = []
+  const t = new Trusted(null, bundle(spec('0.8.0')), deps({
+    pinned: () => keysFor(7),
+    fetchTrust: async () => ({ doc, sig }),
+    installNewer: async () => { throw new Error('unreachable') },
+    log: (m: string) => { messages.push(m) },
+  }))
+  await assert.rejects(t.connect(newer.origin.href))
+  assert.ok(messages.some((m) => /could not install a newer bundle: unreachable/.test(m)), messages.join('|'))
 })

@@ -27,12 +27,70 @@ impl Foreground {
     }
 }
 
-/// The last path component, split on either separator.
+/// The last path component, split on either separator. Empty for a path that
+/// ends in a separator.
 pub fn basename(path: &str) -> &str {
     path.rsplit(['\\', '/']).next().unwrap_or(path)
 }
 
+/// [`basename`], or `None` when there is no file name (an empty path or one
+/// that ends in a separator). The one rule every file-name match goes through.
+pub fn file_name(path: &str) -> Option<&str> {
+    Some(basename(path)).filter(|name| !name.is_empty())
+}
+
 pub type Notify = Box<dyn Fn(Foreground) + Send + Sync + 'static>;
+
+/// A process-wide home for a [`Notify`], for system callbacks that carry no user
+/// data. At most one source holds it; the holder owns a [`SinkClaim`] and the
+/// slot empties exactly when that claim is dropped, so a source that never got
+/// the slot cannot clear it for the one that did.
+pub struct SinkSlot(std::sync::Mutex<Option<std::sync::Arc<Notify>>>);
+
+impl SinkSlot {
+    pub const fn new() -> Self {
+        Self(std::sync::Mutex::new(None))
+    }
+
+    /// Takes the slot, or `AlreadyRunning` when another source holds it.
+    pub fn claim(&'static self, notify: Notify) -> Result<SinkClaim, SourceError> {
+        let mut slot = self.lock();
+        if slot.is_some() {
+            return Err(SourceError::AlreadyRunning);
+        }
+        *slot = Some(std::sync::Arc::new(notify));
+        Ok(SinkClaim(self))
+    }
+
+    /// The current notify, if a source holds the slot.
+    pub fn current(&self) -> Option<std::sync::Arc<Notify>> {
+        self.lock().clone()
+    }
+
+    fn lock(&self) -> std::sync::MutexGuard<'_, Option<std::sync::Arc<Notify>>> {
+        // A poisoned lock still holds a valid Option; refusing it would leave
+        // game detection unable to start for the rest of the session.
+        self.0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+}
+
+impl Default for SinkSlot {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Proof that its holder owns the [`SinkSlot`]. Dropping it empties the slot.
+#[must_use]
+pub struct SinkClaim(&'static SinkSlot);
+
+impl Drop for SinkClaim {
+    fn drop(&mut self) {
+        *self.0.lock() = None;
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SourceError {
@@ -139,6 +197,15 @@ mod tests {
     }
 
     #[test]
+    fn file_name_is_none_without_a_file() {
+        assert_eq!(file_name(r"C:\Games\Foo\foo.exe"), Some("foo.exe"));
+        assert_eq!(file_name("foo.exe"), Some("foo.exe"));
+        assert_eq!(file_name(""), None);
+        assert_eq!(file_name(r"C:\Games\Foo\"), None);
+        assert_eq!(file_name("/opt/games/"), None);
+    }
+
+    #[test]
     fn source_delivers_the_initial_foreground_then_each_change() {
         let seen = Arc::new(Mutex::new(Vec::new()));
         let mut source = FakeSource::with_initial(fg(1, "a.exe"));
@@ -172,6 +239,29 @@ mod tests {
         source.stop();
         source.emit(fg(2, "y"));
         assert_eq!(*count.lock().unwrap(), 1);
+    }
+
+    #[test]
+    fn a_source_that_never_got_the_slot_cannot_empty_it() {
+        static SLOT: SinkSlot = SinkSlot::new();
+        let count = Arc::new(Mutex::new(0));
+        let c = count.clone();
+        let first = SLOT
+            .claim(Box::new(move |_| *c.lock().unwrap() += 1))
+            .unwrap();
+        // A second claimant is refused, and dropping nothing it owns changes nothing.
+        assert!(matches!(
+            SLOT.claim(Box::new(|_| {})),
+            Err(SourceError::AlreadyRunning)
+        ));
+        (SLOT.current().expect("still held"))(fg(1, "a.exe"));
+        assert_eq!(*count.lock().unwrap(), 1);
+        drop(first);
+        assert!(SLOT.current().is_none(), "the owner's drop empties it");
+        assert!(
+            SLOT.claim(Box::new(|_| {})).is_ok(),
+            "and it can be claimed again"
+        );
     }
 
     #[test]

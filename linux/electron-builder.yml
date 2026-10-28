@@ -56,10 +56,9 @@ linux:
       Comment: Mnema Talk
       Categories: Network;Chat;InstantMessaging;
       StartupWMClass: mnema-desktop-dev
+# Updates come from the signed feed of this client, not from AppImageUpdate.
 appImage:
   artifactName: Mnema-Desktop-DEV_${version}_${arch}.${ext}
-  # Updates come from the signed feed of this client, not from AppImageUpdate.
-  category: Network
 deb:
   artifactName: Mnema-Desktop-DEV_${version}_${arch}.${ext}
   packageName: mnema-desktop-dev

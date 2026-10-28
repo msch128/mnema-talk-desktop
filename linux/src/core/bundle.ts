@@ -10,15 +10,16 @@
  */
 import type { KeyObject } from 'node:crypto'
 import { isEd25519Point, publicKeyFromRaw, sha256Prefix, verifyEd25519 } from './ed25519.ts'
+import { asU32, asU64, parseStrictJson } from './json.ts'
 import { isLowerHex, lossyTrimmed, sha256Hex, strictBase64 } from './encoding.ts'
 import { type Version, compareVersions, parseVersion } from './version.ts'
 import { ZipArchive, ZipError } from './zip.ts'
 
 export const MAX_ENTRIES = 4000
 export const MAX_FILE = 64 << 20
-export const MAX_TOTAL = 256 << 20
+const MAX_TOTAL = 256 << 20
 export const MAX_MANIFEST = 4 << 20
-export const MAX_SIGNATURE = 1024
+const MAX_SIGNATURE = 1024
 export const MAX_PATH = 512
 /** A cached bundle larger than this is not even read. */
 export const MAX_ZIP = 96 << 20
@@ -78,32 +79,27 @@ function exactFields(value: Record<string, unknown>, fields: string[]): boolean 
   return keys.length === fields.length && fields.every((f) => keys.includes(f))
 }
 
-function u32(value: unknown): value is number {
-  return typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= 0xffffffff
-}
-
-function u64(value: unknown): value is number {
-  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
-}
-
 /** serde's `deny_unknown_fields` and typed fields, by hand. */
 function parseManifest(bytes: Uint8Array): Manifest | null {
   let raw: unknown
   try {
-    raw = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes))
+    raw = parseStrictJson(bytes)
   } catch {
     return null
   }
   if (!isRecord(raw) || !exactFields(raw, MANIFEST_FIELDS)) return null
-  const { schema, name, version, web_client_api, min_server_version, security_floor, commit, key_id, files } = raw
-  if (!u32(schema) || typeof name !== 'string' || typeof version !== 'string' || !u32(web_client_api)) return null
+  const { name, version, min_server_version, security_floor, commit, key_id, files } = raw
+  const schema = asU32(raw.schema)
+  const web_client_api = asU32(raw.web_client_api)
+  if (schema === null || typeof name !== 'string' || typeof version !== 'string' || web_client_api === null) return null
   if (typeof min_server_version !== 'string' || typeof security_floor !== 'string' || typeof commit !== 'string' || typeof key_id !== 'string') return null
   if (!Array.isArray(files)) return null
   const parsed: FileEntry[] = []
   for (const file of files) {
     if (!isRecord(file) || !exactFields(file, FILE_FIELDS)) return null
-    if (typeof file.path !== 'string' || typeof file.sha256 !== 'string' || !u64(file.size)) return null
-    parsed.push({ path: file.path, sha256: file.sha256, size: file.size })
+    const size = asU64(file.size)
+    if (typeof file.path !== 'string' || typeof file.sha256 !== 'string' || size === null) return null
+    parsed.push({ path: file.path, sha256: file.sha256, size })
   }
   return { schema, name, version, web_client_api, min_server_version, security_floor, commit, key_id, files: parsed }
 }
@@ -181,7 +177,7 @@ export function verifyBundle(data: Uint8Array, keys: readonly TrustedKey[]): Bun
 
   const manifest = parseManifest(manifestBytes)
   if (!manifest) fail('unreadable manifest')
-  const version = checkManifest(manifest, signer.id)
+  const { version, min, floor } = checkManifest(manifest, signer.id)
   if (index.size !== manifest.files.length + 2) fail('zip entries do not match the manifest')
   const files = new Map<string, Uint8Array>()
   for (const file of manifest.files) {
@@ -195,15 +191,16 @@ export function verifyBundle(data: Uint8Array, keys: readonly TrustedKey[]): Bun
   return new Bundle({
     version,
     webClientApi: manifest.web_client_api,
-    minServerVersion: parseVersion(manifest.min_server_version) ?? fail('min_server_version'),
-    securityFloor: parseVersion(manifest.security_floor) ?? fail('security_floor'),
+    minServerVersion: min,
+    securityFloor: floor,
     keyId: manifest.key_id,
     commit: manifest.commit,
     files,
   })
 }
 
-function checkManifest(m: Manifest, signer: string): Version {
+/** Checks the signed manifest; returns the versions it parsed so they are read once. */
+function checkManifest(m: Manifest, signer: string): { version: Version, min: Version, floor: Version } {
   if (m.schema !== 1 || m.name !== 'mnema-web') fail('unsupported manifest')
   if (m.key_id !== signer) fail('manifest key_id does not match the signing key')
   const version = parseVersion(m.version) ?? fail('invalid version')
@@ -222,5 +219,5 @@ function checkManifest(m: Manifest, signer: string): Version {
   }
   if (!seen.has('index.html')) fail('index.html is missing')
   if (total > MAX_TOTAL) fail('bundle exceeds the size limit')
-  return version
+  return { version, min, floor }
 }

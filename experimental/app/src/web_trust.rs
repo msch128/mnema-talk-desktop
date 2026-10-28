@@ -6,12 +6,12 @@
 //! are revoked. Where the bytes come from decides nothing: the signature is
 //! checked before anything is parsed, and a statement with a lower serial than
 //! the highest one accepted is refused.
-use crate::web_bundle::{TrustedKey, Version, parse_key};
+use crate::web_bundle::{TrustedKey, Version, is_hex_id16, parse_key, write_atomic};
 use base64::{Engine, engine::general_purpose::STANDARD};
 use ed25519_dalek::{Signature, VerifyingKey};
 use serde::Deserialize;
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     path::{Path, PathBuf},
     sync::Mutex,
 };
@@ -52,7 +52,17 @@ pub struct Statement {
     pub max_version: BTreeMap<String, String>,
 }
 
-/// Seconds since the epoch for `YYYY-MM-DDTHH:MM:SSZ`, nothing else.
+fn days_in_month(year: i64, month: i64) -> i64 {
+    match month {
+        2 if year % 4 == 0 && (year % 100 != 0 || year % 400 == 0) => 29,
+        2 => 28,
+        4 | 6 | 9 | 11 => 30,
+        _ => 31,
+    }
+}
+
+/// Seconds since the epoch for `YYYY-MM-DDTHH:MM:SSZ` (a real calendar date),
+/// nothing else.
 pub fn parse_utc(text: &str) -> Option<u64> {
     let b = text.as_bytes();
     if b.len() != 20
@@ -78,7 +88,7 @@ pub fn parse_utc(text: &str) -> Option<u64> {
     };
     let (y, m, d) = (num(0, 4)?, num(5, 7)?, num(8, 10)?);
     let (hh, mm, ss) = (num(11, 13)?, num(14, 16)?, num(17, 19)?);
-    if !(1..=12).contains(&m) || !(1..=31).contains(&d) || hh > 23 || mm > 59 || ss > 59 {
+    if !(1..=12).contains(&m) || d < 1 || d > days_in_month(y, m) || hh > 23 || mm > 59 || ss > 59 {
         return None;
     }
     // Days since 1970-01-01 (Howard Hinnant's civil-to-days).
@@ -93,13 +103,6 @@ pub fn parse_utc(text: &str) -> Option<u64> {
 
 /// Longest validity a statement may claim (the signing tool's bound).
 const MAX_VALIDITY_SECS: u64 = 400 * 86400;
-
-fn valid_id(id: &str) -> bool {
-    id.len() == 16
-        && id
-            .bytes()
-            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
-}
 
 /// Verifies the signature over the exact bytes, then parses and validates.
 pub fn verify_statement(doc: &[u8], sig: &[u8], root: &VerifyingKey) -> Result<Statement, String> {
@@ -139,8 +142,8 @@ impl Statement {
         if self.bundle_keys.is_empty() {
             return Err("trust statement lists no bundle key".into());
         }
-        if !self.revoked_bundle_keys.iter().all(|id| valid_id(id))
-            || !self.revoked_updater_keys.iter().all(|id| valid_id(id))
+        if !self.revoked_bundle_keys.iter().all(|id| is_hex_id16(id))
+            || !self.revoked_updater_keys.iter().all(|id| is_hex_id16(id))
         {
             return Err("invalid revoked key id".into());
         }
@@ -259,32 +262,143 @@ pub enum Accepted {
     Unchanged,
 }
 
+/// What a release knows at build time, so a client with no stored statement
+/// (a fresh install, a removed file) cannot be talked back into an older state.
+#[derive(Debug, Clone, Copy)]
+pub struct Floor {
+    /// Statements with a lower serial are refused.
+    pub min_serial: u64,
+    /// Key ids no statement may allow again.
+    pub revoked_bundle_keys: &'static [&'static str],
+    pub revoked_updater_keys: &'static [&'static str],
+}
+
+impl Floor {
+    #[cfg(test)]
+    pub const NONE: Floor = Floor {
+        min_serial: 0,
+        revoked_bundle_keys: &[],
+        revoked_updater_keys: &[],
+    };
+}
+
+/// The floor of this release: the serial of the statement it shipped with
+/// (`fixtures/trust.json`). Raise it, and list the key ids revoked since, when
+/// a later statement revokes a key.
+pub const RELEASE_FLOOR: Floor = Floor {
+    min_serial: 3,
+    revoked_bundle_keys: &[],
+    revoked_updater_keys: &[],
+};
+
+/// Statement, signature and the revocations carried forward, in one file so a
+/// crash can never leave a new signature next to an old document.
+const STATE_FILE: &str = "trust-state.json";
+
+#[derive(serde::Serialize, Deserialize)]
+struct Stored {
+    statement: String,
+    signature: String,
+    #[serde(default)]
+    revoked_bundle_keys: Vec<String>,
+    #[serde(default)]
+    revoked_updater_keys: Vec<String>,
+}
+
+struct Held {
+    statement: Statement,
+    doc: Vec<u8>,
+    sig: Vec<u8>,
+}
+
 /// The last good statement, persisted next to the bundle cache.
 pub struct TrustState {
     dir: Option<PathBuf>,
     root: VerifyingKey,
-    current: Option<(Statement, Vec<u8>)>,
+    floor: Floor,
+    current: Option<Held>,
+    /// Every key id any accepted statement (or the floor) revoked. A later
+    /// statement can neither allow one again nor drop it from the lists in force.
+    revoked_bundle: BTreeSet<String>,
+    revoked_updater: BTreeSet<String>,
+    /// The state in force is on disk.
+    stored: bool,
 }
 
 impl TrustState {
     /// Loads and re-verifies the stored statement; a damaged or foreign file is
     /// ignored, which falls back to the compiled-in keys.
+    #[cfg(test)]
     pub fn load(dir: Option<&Path>, root: VerifyingKey) -> TrustState {
-        let current = dir.and_then(|d| {
-            let doc = std::fs::read(d.join(STATEMENT_FILE)).ok()?;
-            let sig = std::fs::read(d.join(SIGNATURE_FILE)).ok()?;
-            let statement = verify_statement(&doc, &sig, &root).ok()?;
-            Some((statement, doc))
-        });
-        TrustState {
+        Self::load_with(dir, root, Floor::NONE)
+    }
+
+    pub fn load_with(dir: Option<&Path>, root: VerifyingKey, floor: Floor) -> TrustState {
+        let mut state = TrustState {
             dir: dir.map(Path::to_path_buf),
             root,
-            current,
+            floor,
+            current: None,
+            revoked_bundle: floor
+                .revoked_bundle_keys
+                .iter()
+                .map(|s| (*s).to_owned())
+                .collect(),
+            revoked_updater: floor
+                .revoked_updater_keys
+                .iter()
+                .map(|s| (*s).to_owned())
+                .collect(),
+            stored: true,
+        };
+        if let Some((doc, sig, extra_bundle, extra_updater)) =
+            dir.and_then(|d| state.read_stored(d))
+            && let Ok(statement) = verify_statement(&doc, &sig, &state.root)
+            // A statement below the floor is an older release's.
+            && statement.serial >= floor.min_serial
+        {
+            state.revoked_bundle.extend(extra_bundle);
+            state.revoked_updater.extend(extra_updater);
+            state.hold(statement, doc, sig);
         }
+        state
+    }
+
+    /// The stored bytes: the state file, else the pair an older client wrote.
+    #[allow(clippy::type_complexity)]
+    fn read_stored(&self, dir: &Path) -> Option<(Vec<u8>, Vec<u8>, Vec<String>, Vec<String>)> {
+        if let Ok(raw) = std::fs::read(dir.join(STATE_FILE)) {
+            let stored: Stored = serde_json::from_slice(&raw).ok()?;
+            let ids = |list: Vec<String>| list.into_iter().filter(|id| is_hex_id16(id)).collect();
+            return Some((
+                STANDARD.decode(stored.statement).ok()?,
+                stored.signature.into_bytes(),
+                ids(stored.revoked_bundle_keys),
+                ids(stored.revoked_updater_keys),
+            ));
+        }
+        let doc = std::fs::read(dir.join(STATEMENT_FILE)).ok()?;
+        let sig = std::fs::read(dir.join(SIGNATURE_FILE)).ok()?;
+        Some((doc, sig, vec![], vec![]))
+    }
+
+    /// Puts a verified statement in force, with every revocation seen so far.
+    fn hold(&mut self, mut statement: Statement, doc: Vec<u8>, sig: Vec<u8>) {
+        self.revoked_bundle
+            .extend(statement.revoked_bundle_keys.iter().cloned());
+        self.revoked_updater
+            .extend(statement.revoked_updater_keys.iter().cloned());
+        statement.revoked_bundle_keys = self.revoked_bundle.iter().cloned().collect();
+        statement.revoked_updater_keys = self.revoked_updater.iter().cloned().collect();
+        self.current = Some(Held {
+            statement,
+            doc,
+            sig,
+        });
     }
 
     pub fn statement(&self) -> Option<&Statement> {
-        self.current.as_ref().map(|(s, _)| s)
+        self.current.as_ref().map(|h| &h.statement)
     }
 
     /// A statement is in force and has not expired. An expired one still
@@ -302,41 +416,86 @@ impl TrustState {
         }
     }
 
+    /// Writes the state in force in one atomic step.
+    fn persist(&self) -> std::io::Result<()> {
+        let (Some(dir), Some(held)) = (&self.dir, &self.current) else {
+            return Ok(());
+        };
+        std::fs::create_dir_all(dir)?;
+        let stored = Stored {
+            statement: STANDARD.encode(&held.doc),
+            signature: String::from_utf8_lossy(&held.sig).into_owned(),
+            revoked_bundle_keys: self.revoked_bundle.iter().cloned().collect(),
+            revoked_updater_keys: self.revoked_updater.iter().cloned().collect(),
+        };
+        write_atomic(&dir.join(STATE_FILE), &serde_json::to_vec(&stored)?)?;
+        // The pair an older client wrote must not outlive the state: a stale
+        // one would be read back should the state file ever be lost.
+        for name in [STATEMENT_FILE, SIGNATURE_FILE] {
+            let _ = std::fs::remove_file(dir.join(name));
+        }
+        Ok(())
+    }
+
+    fn store(&mut self) {
+        self.stored = self.persist().is_ok();
+        if !self.stored {
+            eprintln!("Mnema Desktop: cannot store the trust statement; it applies until restart");
+        }
+    }
+
     /// Takes a fetched statement. An expired one is never accepted, lower
-    /// serials are refused, and the same serial only with identical bytes.
+    /// serials are refused, and the same serial only with identical bytes. A
+    /// key an earlier statement revoked cannot be allowed again. The statement
+    /// applies as soon as it verified; failing to store it is logged and
+    /// retried with the next identical fetch.
     pub fn accept(&mut self, doc: &[u8], sig: &[u8], now: u64) -> Result<Accepted, String> {
         let statement = verify_statement(doc, sig, &self.root)?;
         if statement.expired(now) {
             return Err("trust statement has expired".into());
         }
-        if let Some((held, held_doc)) = &self.current {
-            if statement.serial < held.serial {
+        if statement.serial < self.floor.min_serial {
+            return Err(format!(
+                "trust statement {} is older than this release accepts",
+                statement.serial
+            ));
+        }
+        if let Some(held) = &self.current {
+            if statement.serial < held.statement.serial {
                 return Err(format!(
                     "trust statement {} is older than the {} already accepted",
-                    statement.serial, held.serial
+                    statement.serial, held.statement.serial
                 ));
             }
-            if statement.serial == held.serial {
-                return if held_doc == doc {
+            if statement.serial == held.statement.serial {
+                return if held.doc == doc {
+                    if !self.stored {
+                        self.store();
+                    }
                     Ok(Accepted::Unchanged)
                 } else {
                     Err("a different trust statement with the same serial".into())
                 };
             }
         }
-        if let Some(dir) = &self.dir {
-            std::fs::create_dir_all(dir).map_err(|_| "cannot create the trust directory")?;
-            let write = |name: &str, bytes: &[u8]| {
-                let partial = dir.join(format!("{name}.partial"));
-                std::fs::write(&partial, bytes)
-                    .and_then(|()| std::fs::rename(&partial, dir.join(name)))
-            };
-            // A torn pair fails verification at load and is ignored.
-            write(SIGNATURE_FILE, sig)
-                .and_then(|()| write(STATEMENT_FILE, doc))
-                .map_err(|_| "cannot store the trust statement")?;
+        if statement
+            .bundle_keys
+            .iter()
+            .filter_map(|raw| parse_key(raw))
+            .any(|k| self.revoked_bundle.contains(&k.id))
+        {
+            return Err("a revoked bundle key is allowed again".into());
         }
-        self.current = Some((statement, doc.to_vec()));
+        if statement
+            .updater_keys
+            .iter()
+            .filter_map(|k| minisign_key_id(k))
+            .any(|id| self.revoked_updater.contains(&id))
+        {
+            return Err("a revoked updater key is allowed again".into());
+        }
+        self.hold(statement, doc.to_vec(), sig.to_vec());
+        self.store();
         Ok(Accepted::Updated)
     }
 }
@@ -519,12 +678,170 @@ mod tests {
         );
         let mut edited = doc_bytes.clone();
         edited[5] ^= 1;
-        std::fs::write(d.join(STATEMENT_FILE), edited).unwrap();
+        let mut stored: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(d.join(STATE_FILE)).unwrap()).unwrap();
+        stored["statement"] = STANDARD.encode(edited).into();
+        std::fs::write(d.join(STATE_FILE), stored.to_string()).unwrap();
         assert!(
             TrustState::load(Some(&d), root(9).verifying_key())
                 .statement()
                 .is_none()
         );
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn the_statement_and_its_signature_are_stored_as_one_file() {
+        let d = dir("one-file");
+        let (doc_bytes, sig) = signed(&root(9), &doc(3, &[2], &[1]));
+        let mut trust = TrustState::load(Some(&d), root(9).verifying_key());
+        trust.accept(&doc_bytes, &sig, NOW).unwrap();
+        let mut names: Vec<_> = std::fs::read_dir(&d)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().into_string().unwrap())
+            .collect();
+        names.sort();
+        assert_eq!(
+            names,
+            [STATE_FILE],
+            "no second file that could be torn from it"
+        );
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn the_pair_an_older_client_stored_is_read_and_replaced() {
+        let d = dir("legacy");
+        let (doc_bytes, sig) = signed(&root(9), &doc(2, &[2], &[1]));
+        std::fs::create_dir_all(&d).unwrap();
+        std::fs::write(d.join(STATEMENT_FILE), &doc_bytes).unwrap();
+        std::fs::write(d.join(SIGNATURE_FILE), &sig).unwrap();
+        let mut trust = TrustState::load(Some(&d), root(9).verifying_key());
+        assert_eq!(trust.statement().unwrap().serial, 2);
+        let (next_doc, next_sig) = signed(&root(9), &doc(3, &[2], &[1]));
+        trust.accept(&next_doc, &next_sig, NOW).unwrap();
+        assert!(!d.join(STATEMENT_FILE).exists() && !d.join(SIGNATURE_FILE).exists());
+        let again = TrustState::load(Some(&d), root(9).verifying_key());
+        assert_eq!(again.statement().unwrap().serial, 3);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_verified_statement_applies_even_when_it_cannot_be_stored() {
+        let d = dir("unwritable");
+        std::fs::create_dir_all(d.parent().unwrap()).unwrap();
+        // A file where the directory should be: nothing can be stored.
+        std::fs::write(&d, b"in the way").unwrap();
+        let (doc_bytes, sig) = signed(&root(9), &doc(2, &[2], &[1]));
+        let mut trust = TrustState::load(Some(&d), root(9).verifying_key());
+        assert_eq!(trust.accept(&doc_bytes, &sig, NOW), Ok(Accepted::Updated));
+        assert_eq!(trust.statement().unwrap().serial, 2);
+        assert!(
+            trust
+                .effective_keys(trusted(1))
+                .iter()
+                .all(|k| k.id != trusted(1)[0].id),
+            "the revocation is enforced in this process"
+        );
+        // Once the directory works, the same fetch stores it.
+        std::fs::remove_file(&d).unwrap();
+        assert_eq!(trust.accept(&doc_bytes, &sig, NOW), Ok(Accepted::Unchanged));
+        let again = TrustState::load(Some(&d), root(9).verifying_key());
+        assert_eq!(again.statement().unwrap().serial, 2);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_later_statement_cannot_allow_a_revoked_key_again() {
+        let mut trust = state(9);
+        let (d2, s2) = signed(&root(9), &doc(2, &[2], &[1]));
+        trust.accept(&d2, &s2, NOW).unwrap();
+        // Serial 3 was signed without carrying the revocation forward.
+        let (d3, s3) = signed(&root(9), &doc(3, &[1, 2], &[]));
+        assert!(
+            trust
+                .accept(&d3, &s3, NOW)
+                .unwrap_err()
+                .contains("allowed again")
+        );
+        assert_eq!(trust.statement().unwrap().serial, 2);
+        // One that merely forgets to list it keeps the key revoked.
+        let (d4, s4) = signed(&root(9), &doc(4, &[2, 3], &[]));
+        trust.accept(&d4, &s4, NOW).unwrap();
+        assert!(
+            trust
+                .effective_keys(trusted(1))
+                .iter()
+                .all(|k| k.id != key_id_of(1))
+        );
+        assert!(
+            trust
+                .statement()
+                .unwrap()
+                .revoked_bundle_keys
+                .contains(&key_id_of(1))
+        );
+    }
+
+    #[test]
+    fn revocations_survive_a_restart_and_apply_to_updater_keys() {
+        let d = dir("cumulative");
+        let (old, old_pair) = pair();
+        let (new, _) = pair();
+        let old_id = minisign_key_id(&old).unwrap();
+        let with_updaters = |serial: u64, allowed: &[&str], revoked: &[&str]| {
+            let mut v: serde_json::Value = serde_json::from_str(&doc(serial, &[2], &[])).unwrap();
+            v["updater_keys"] = allowed.to_vec().into();
+            v["revoked_updater_keys"] = revoked.to_vec().into();
+            v.to_string()
+        };
+        let mut trust = TrustState::load(Some(&d), root(9).verifying_key());
+        let (d1, s1) = signed(&root(9), &with_updaters(1, &[&new], &[&old_id]));
+        trust.accept(&d1, &s1, NOW).unwrap();
+        let (d2, s2) = signed(&root(9), &with_updaters(2, &[&old, &new], &[]));
+        let mut again = TrustState::load(Some(&d), root(9).verifying_key());
+        assert!(again.accept(&d2, &s2, NOW).is_err());
+        let (d3, s3) = signed(&root(9), &with_updaters(3, &[&new], &[]));
+        again.accept(&d3, &s3, NOW).unwrap();
+        assert_eq!(
+            choose_updater_key(&old, again.statement(), &sig_by(&old_pair)),
+            Err(UpdaterRefusal::Revoked),
+            "serial 3 did not list the revocation, it still holds"
+        );
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn the_floor_of_a_release_refuses_old_statements_and_revoked_keys() {
+        let floor = Floor {
+            min_serial: 3,
+            revoked_bundle_keys: &["0123456789abcdef"],
+            revoked_updater_keys: &[],
+        };
+        let fresh = || TrustState::load_with(None, root(9).verifying_key(), floor);
+        // No stored statement: a replayed old one is not taken.
+        let (d2, s2) = signed(&root(9), &doc(2, &[2], &[1]));
+        assert!(
+            fresh()
+                .accept(&d2, &s2, NOW)
+                .unwrap_err()
+                .contains("this release")
+        );
+        let (d3, s3) = signed(&root(9), &doc(3, &[2], &[1]));
+        assert_eq!(fresh().accept(&d3, &s3, NOW), Ok(Accepted::Updated));
+        // A key the release dropped stays out of every statement and every list.
+        let mut revoked_at_build = fresh();
+        assert!(revoked_at_build.revoked_bundle.contains("0123456789abcdef"));
+        revoked_at_build.revoked_bundle.insert(key_id_of(1));
+        let (d4, s4) = signed(&root(9), &doc(4, &[1], &[]));
+        assert!(revoked_at_build.accept(&d4, &s4, NOW).is_err());
+        // Stored below the floor (an older release's file): ignored.
+        let d = dir("floor");
+        TrustState::load(Some(&d), root(9).verifying_key())
+            .accept(&d2, &s2, NOW)
+            .unwrap();
+        let held = TrustState::load_with(Some(&d), root(9).verifying_key(), floor);
+        assert!(held.statement().is_none());
         let _ = std::fs::remove_dir_all(&d);
     }
 
@@ -631,11 +948,18 @@ mod tests {
         assert_eq!(parse_utc("1970-01-01T00:00:00Z"), Some(0));
         assert_eq!(parse_utc("2026-11-01T00:00:00Z"), Some(NOW));
         assert_eq!(parse_utc("2024-02-29T12:30:45Z"), Some(1_709_209_845));
+        assert_eq!(parse_utc("2000-02-29T00:00:00Z"), Some(951_782_400));
+        assert!(parse_utc("2026-04-30T00:00:00Z").is_some());
         for bad in [
             "2026-11-01 00:00:00Z",
             "2026-11-01T00:00:00+00:00",
             "2026-13-01T00:00:00Z",
             "2026-11-32T00:00:00Z",
+            "2026-02-29T00:00:00Z",
+            "2026-02-31T00:00:00Z",
+            "2026-04-31T00:00:00Z",
+            "2100-02-29T00:00:00Z",
+            "2024-02-30T00:00:00Z",
             "2026-11-01T24:00:00Z",
             "2026-11-01T00:60:00Z",
             "2026-11-01T00:00:60Z",

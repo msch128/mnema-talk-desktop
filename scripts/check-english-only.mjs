@@ -21,15 +21,23 @@ const LIMIT = Number(process.env.ENGLISH_ONLY_LIMIT || 200)
 
 // Words that are German and not English. Short words that are also English
 // (die, der, was, war, an, in, so) are left out on purpose.
-const GERMAN_WORDS = [
+// Function words are matched lowercase or with a capital first letter, so a
+// sentence that starts with one ("Nicht gefunden") is caught too. All caps
+// stays out: MIT and OR are licence names.
+const GERMAN_FUNCTION_WORDS = [
   'und', 'oder', 'nicht', 'ist', 'wird', 'für', 'mit', 'auf', 'bei', 'noch', 'schon', 'eine', 'einen', 'einem',
-  'werden', 'kann', 'aber', 'wenn', 'dass', 'auch', 'sind', 'Datei', 'Konto', 'Hallo', 'hallo', 'bitte', 'wurde', 'diese',
+  'werden', 'kann', 'aber', 'wenn', 'dass', 'auch', 'sind',
+]
+const GERMAN_WORDS = [
+  'Datei', 'Konto', 'Hallo', 'hallo', 'bitte', 'wurde', 'diese',
   'dieser', 'keine', 'ohne', 'über', 'nach', 'Kanal', 'Kanäle', 'Nachricht', 'Nachrichten', 'Benutzer',
   'Einstellungen', 'Fehler', 'Deutschland', 'Passwort', 'Rolle', 'Rollen', 'Einladung', 'allgemein', 'Allgemein',
   'zusammen', 'Auszeit', 'Willkommen', 'Löschen', 'Speichern', 'Abbrechen', 'Schließen', 'Bearbeiten',
 ]
 const umlaut = /[äöüÄÖÜß]/
-const word = new RegExp(`(?<![\\p{L}\\p{N}_])(${GERMAN_WORDS.join('|')})(?![\\p{L}\\p{N}_])`, 'u')
+const wordPattern = (words, flags) => new RegExp(`(?<![\\p{L}\\p{N}_])(${words.join('|')})(?![\\p{L}\\p{N}_])`, flags)
+const word = wordPattern(GERMAN_WORDS, 'u')
+const functionWord = wordPattern(GERMAN_FUNCTION_WORDS.map((w) => `[${w[0]}${w[0].toUpperCase()}]${w.slice(1)}`), 'u')
 const skipExt = /\.(png|jpe?g|gif|webp|ico|svg|wasm|woff2?|ttf|otf|mp3|ogg|wav|webm|mp4|pdf|zip|gz|lock|sum|onnx|bin|tgz|icns)$/i
 
 export function parseAllowlist(text) {
@@ -55,11 +63,14 @@ function globToRegExp(glob) {
   return new RegExp(`^${body}$`)
 }
 
-export function germanLines(content, texts = []) {
+// JSON strings can spell an umlaut as \uXXXX; for .json files the decoded text is checked.
+const decodeEscapes = (line) => line.replace(/\\u([0-9a-fA-F]{4})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
+
+export function germanLines(content, texts = [], { decode = false } = {}) {
   const hits = []
   content.split(/\r?\n/).forEach((raw, i) => {
-    const line = texts.reduce((l, re) => l.replace(re, ' '), raw)
-    if (umlaut.test(line) || word.test(line)) hits.push([i + 1, raw.trim().slice(0, 140)])
+    const line = texts.reduce((l, re) => l.replace(re, ' '), decode ? decodeEscapes(raw) : raw)
+    if (umlaut.test(line) || word.test(line) || functionWord.test(line)) hits.push([i + 1, raw.trim().slice(0, 140)])
   })
   return hits
 }
@@ -77,7 +88,7 @@ function main() {
     let buf
     try { buf = readFileSync(join(root, file)) } catch { continue }
     if (buf.includes(0)) continue
-    for (const [n, text] of germanLines(buf.toString('utf8'), texts)) problems.push(`${file}:${n}: ${text}`)
+    for (const [n, text] of germanLines(buf.toString('utf8'), texts, { decode: file.endsWith('.json') })) problems.push(`${file}:${n}: ${text}`)
   }
   const unused = paths.map((_, i) => i).filter((i) => !used.has(i))
   if (unused.length > 0) {

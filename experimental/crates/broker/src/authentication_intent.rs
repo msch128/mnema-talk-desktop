@@ -58,28 +58,27 @@ impl Drop for InvocationTicket {
     }
 }
 impl State {
+    /// `expected_authentication` when a profile is active; with none active only
+    /// an absent selector matches.
+    fn check_expected_authentication(&self, expected: Option<Uuid>) -> Result<(), Error> {
+        if self.active.is_some() {
+            self.expected_authentication(expected).map(|_| ())
+        } else if expected.is_some() {
+            Err(Error::Stale)
+        } else {
+            Ok(())
+        }
+    }
     fn expected_authentication(&self, expected: Option<Uuid>) -> Result<&Active, Error> {
         if expected.is_some_and(|id| id.is_nil()) {
             return Err(Error::InvalidInput);
         }
         let active = self.active.as_ref().ok_or(Error::NoProfile)?;
-        if active.pending_invocation.is_some()
-            || matches!(
-                active.status,
-                Status::SigningIn | Status::ChangingCredentials | Status::Registering
-            )
-        {
+        if active.is_transitioning() {
             return Err(Error::Busy);
         }
-        let live = active.session.is_some()
-            && matches!(active.status, Status::Authenticated | Status::Rotating);
-        if live {
-            if active
-                .session
-                .as_ref()
-                .map(|session| session.authentication_identity)
-                != expected
-            {
+        if let Some(session) = active.live_session() {
+            if Some(session.authentication_identity) != expected {
                 return Err(Error::Stale);
             }
         } else if let Some(expected) = expected {
@@ -101,24 +100,12 @@ impl Broker {
         let Some(active) = state.active.as_ref() else {
             return Ok(None);
         };
-        if active.pending_invocation.is_some()
-            || matches!(
-                active.status,
-                Status::SigningIn | Status::ChangingCredentials | Status::Registering
-            )
-        {
+        if active.is_transitioning() {
             return Err(Error::Busy);
         }
-        if active.session.is_some()
-            && matches!(active.status, Status::Authenticated | Status::Rotating)
-        {
-            Ok(active
-                .session
-                .as_ref()
-                .map(|session| session.authentication_identity))
-        } else {
-            Ok(None)
-        }
+        Ok(active
+            .live_session()
+            .map(|session| session.authentication_identity))
     }
 
     /// Atomic nonsecret selection/authentication descriptor. The caller holds
@@ -137,22 +124,12 @@ impl Broker {
             .profiles
             .profile(active.handle)
             .map_err(|_| Error::Stale)?;
-        if active.pending_invocation.is_some()
-            || matches!(
-                active.status,
-                Status::SigningIn | Status::ChangingCredentials | Status::Registering
-            )
-        {
+        if active.is_transitioning() {
             return Err(Error::Busy);
         }
-        let authentication = if matches!(active.status, Status::Authenticated | Status::Rotating) {
-            active
-                .session
-                .as_ref()
-                .map(|session| session.authentication_identity)
-        } else {
-            None
-        };
+        let authentication = active
+            .live_session()
+            .map(|session| session.authentication_identity);
         Ok((Some(active.native_identity), authentication))
     }
 
@@ -164,11 +141,7 @@ impl Broker {
     ) -> Result<T, Error> {
         let state = self.inner.state.lock().map_err(|_| Error::Internal)?;
         state.main(self.inner.owner, owner)?;
-        if state.active.is_some() {
-            state.expected_authentication(expected)?;
-        } else if expected.is_some() {
-            return Err(Error::Stale);
-        }
+        state.check_expected_authentication(expected)?;
         Ok(publish())
     }
     pub(super) fn invalidate_with_authentication(
@@ -179,11 +152,7 @@ impl Broker {
     ) -> Result<(), Error> {
         let mut state = self.inner.state.lock().map_err(|_| Error::Internal)?;
         state.main(self.inner.owner, owner)?;
-        if state.active.is_some() {
-            state.expected_authentication(expected)?;
-        } else if expected.is_some() {
-            return Err(Error::Stale);
-        }
+        state.check_expected_authentication(expected)?;
         // Native custody retirement is bounded/non-reentrant. Exact comparison,
         // retirement and profile destruction are one admission under State.
         retire();
@@ -249,6 +218,7 @@ impl Broker {
             active.pending_invocation = Some(id);
         }
         let active = state.active.as_ref().unwrap();
+        let (authentication, authority_revision) = active.ticket_identities();
         let ticket = InvocationTicket {
             inner: self.inner.clone(),
             id,
@@ -256,15 +226,8 @@ impl Broker {
             window: owner,
             profile: active.native_identity,
             epoch: active.epoch,
-            authentication: active
-                .session
-                .as_ref()
-                .map(|session| session.authentication_identity)
-                .or(active.last_authentication_identity),
-            authority_revision: active
-                .session
-                .as_ref()
-                .map(|session| session.native_identity),
+            authentication,
+            authority_revision,
             kind,
             retained_scope,
             consumed: AtomicBool::new(false),
@@ -305,21 +268,13 @@ impl Broker {
             state.check_authenticated(self.inner.owner, owner, scope)?;
         }
         let active = state.active.as_mut().ok_or(Error::Stale)?;
+        let (authentication, authority_revision) = active.ticket_identities();
         if owner != ticket.window
             || ticket.kind != kind
             || ticket.profile != active.native_identity
             || ticket.epoch != active.epoch
-            || ticket.authentication
-                != active
-                    .session
-                    .as_ref()
-                    .map(|session| session.authentication_identity)
-                    .or(active.last_authentication_identity)
-            || ticket.authority_revision
-                != active
-                    .session
-                    .as_ref()
-                    .map(|session| session.native_identity)
+            || ticket.authentication != authentication
+            || ticket.authority_revision != authority_revision
             || (kind.is_transition() && active.pending_invocation != Some(ticket.id))
             || (!kind.is_transition() && active.pending_invocation.is_some())
             || ticket.consumed.swap(true, Ordering::AcqRel)

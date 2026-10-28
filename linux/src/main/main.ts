@@ -9,10 +9,12 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import tls from 'node:tls'
-import { BaseWindow, app, dialog, protocol } from 'electron'
+import { app, dialog, protocol } from 'electron'
 import { APP_SCHEME, PICKER_PREFIX, UI_PREFIX } from '../core/origin.ts'
+import { passwordStoreSwitch } from '../core/osvault.ts'
+import { TITLE } from '../core/title.ts'
 import { Trusted, defaultDeps } from '../core/trusted.ts'
-import { checkAndInstall, updatesDisabled } from '../core/updates.ts'
+import { updatesDisabled } from '../core/updates.ts'
 import { CHECK_INTERVAL_SECS } from '../core/store.ts'
 import { loadAssets } from './assets.ts'
 import { PARTITIONS, type Context } from './context.ts'
@@ -21,7 +23,7 @@ import { buildMenu } from './menu.ts'
 import { HOST_PAGE_CSP, assetHandler } from './protocol.ts'
 import { registerRailIpc } from './rail.ts'
 import { prepare } from './sessions.ts'
-import { bundlesChanged, createShell, legacyStorageWaits, wipeLegacyStorage } from './shell.ts'
+import { bundlesChanged, createShell, legacyStorageWaits, raiseWindow, wipeLegacyStorage } from './shell.ts'
 import { SANDBOX_MESSAGE, debuggingAccepted, debuggingRequested, sandboxAccepted, sandboxDisabled } from './sandbox.ts'
 import { createUpdater, scheduleChecks } from './updater.ts'
 import { osVault } from './vault.ts'
@@ -34,6 +36,9 @@ app.setPath('userData', process.env.MNEMA_DESKTOP_DATA_DIR || join(app.getPath('
 // Wayland where the session is Wayland (screen capture then goes through the PipeWire portal).
 app.commandLine.appendSwitch('ozone-platform-hint', 'auto')
 app.commandLine.appendSwitch('enable-features', 'WebRTCPipeWireCapturer')
+// Window-manager-only sessions (sway, i3, Hyprland) would get Chromium's plaintext password store even with a secret service running.
+const passwordStore = passwordStoreSwitch(process.env, (name) => app.commandLine.hasSwitch(name))
+if (passwordStore) app.commandLine.appendSwitch('password-store', passwordStore)
 // No app.enableSandbox(): it also removes --no-sandbox from the command line, which the start check below must see.
 // Every window sets sandbox: true itself.
 
@@ -47,10 +52,13 @@ function useSystemCertificates(): void {
   } catch { /* the bundled roots stay in force */ }
 }
 
+/** The context once the program has started; a second launch can come before that. */
+let running: Context | null = null
+
 async function start(): Promise<void> {
   if (sandboxDisabled((name) => app.commandLine.hasSwitch(name), process.env) && !sandboxAccepted(process.env)) {
     console.error(SANDBOX_MESSAGE)
-    dialog.showErrorBox('Mnema Desktop DEV', SANDBOX_MESSAGE)
+    dialog.showErrorBox(TITLE, SANDBOX_MESSAGE)
     app.exit(1)
     return
   }
@@ -66,12 +74,15 @@ async function start(): Promise<void> {
     builtin = readFileSync(join(app.getAppPath(), 'bundle', 'builtin.zip'))
     if (builtin.length === 0) builtin = null
   } catch { /* a build without a bundle has to download one */ }
-  const trusted = new Trusted(dataDir, builtin, defaultDeps(osVault(dataDir)))
+  const vault = osVault(dataDir)
+  if (!vault && !process.env.MNEMA_DESKTOP_NO_VAULT) console.warn('Mnema Desktop: no secret service was found, so sessions rest in a private file (mode 0600) instead of the keyring.')
+  const trusted = new Trusted(dataDir, builtin, defaultDeps(vault))
   for (const name of trusted.store.rejected) {
     console.error(`Mnema Desktop: refused web bundle ${name}: it does not verify against the pinned keys.`)
   }
   const shell = { window: null, rail: null, selector: null, pages: new Map(), attachments: new Map() }
   const ctx: Context = { trusted, updater: null, debug, roles: new Map(), servers: new Map(), prepared: new Set(), shell, windows: {} }
+  running = ctx
   // The single-server client kept every server in one partition and recorded none of them: it belongs to no one server and is never handed on. Wiped once (the partition is gone afterwards).
   if (legacyStorageWaits(ctx)) void wipeLegacyStorage(ctx)
 
@@ -92,6 +103,9 @@ async function start(): Promise<void> {
   refreshInBackground(ctx)
 }
 
+/** How long to wait before a background round that found no network is repeated. */
+const RETRY_MS = 10 * 60 * 1000
+
 /**
  * Verifies updates in the background: the trust statement first (a revoked key
  * must stop counting before anything is installed), then newer bundles. A
@@ -101,25 +115,23 @@ async function start(): Promise<void> {
 function refreshInBackground(ctx: Context): void {
   const { trusted } = ctx
   let first = true
-  const once = async () => {
-    if (updatesDisabled()) return
-    const dropped = await trusted.trustRound()
-    const hadBundle = trusted.store.newest() !== undefined
-    const now = Math.floor(Date.now() / 1000)
-    const due = trusted.store.checkDue(now)
-    if (hadBundle && !dropped && !(due || !first)) return
-    let installed = null
-    // Freeze protection: no new bundles without a fresh trust statement.
-    if (trusted.fresh()) {
-      installed = await checkAndInstall(trusted.store, () => trusted.keysInForce()).catch(() => null)
-    }
-    trusted.store.markChecked(Math.floor(Date.now() / 1000))
+  // A round that could not reach the network does not use up the interval: it is tried again soon.
+  const once = async (): Promise<boolean> => {
     // Pages that were showing a withdrawn bundle, or none, move to the newly installed one, or show why there is none.
-    if (dropped || (!hadBundle && installed !== null)) bundlesChanged(ctx)
+    if (await trusted.refresh(first)) bundlesChanged(ctx)
+    return trusted.reached
   }
+  let retry: NodeJS.Timeout | null = null
   const loop = async () => {
-    await once().catch((error: unknown) => console.error(`Mnema Desktop: update round failed: ${String(error)}`))
+    const reached = await once().catch((error: unknown) => {
+      console.error(`Mnema Desktop: update round failed: ${String(error)}`)
+      return false
+    })
     first = false
+    if (!reached && retry === null) {
+      retry = setTimeout(() => { retry = null; void loop() }, RETRY_MS)
+      retry.unref()
+    }
   }
   void loop()
   setInterval(() => { void loop() }, CHECK_INTERVAL_SECS * 1000).unref()
@@ -129,13 +141,15 @@ if (!app.requestSingleInstanceLock()) {
   app.quit()
 } else {
   app.on('second-instance', () => {
-    const win = BaseWindow.getAllWindows().find((w) => w.isVisible())
-    win?.show()
-    win?.focus()
+    // The window of the shell, also when it is minimized: not whichever window happens to be visible.
+    if (running) raiseWindow(running)
   })
   app.on('window-all-closed', () => app.quit())
   void app.whenReady().then(start).catch((error: unknown) => {
-    console.error(`Mnema Desktop could not start: ${String(error)}`)
+    const message = `Mnema Desktop could not start: ${String(error)}`
+    console.error(message)
+    // A program started from a launcher has no terminal: the person must be told why nothing appears.
+    dialog.showErrorBox(TITLE, message)
     app.exit(1)
   })
 }

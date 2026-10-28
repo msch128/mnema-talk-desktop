@@ -5,7 +5,7 @@
 //! only ever reads the finished index, so a slow disk or a huge library never
 //! delays game detection.
 //!
-//! Supported (Windows only for now): Steam, Epic Games Store, GOG Galaxy and the
+//! Supported (Windows only): Steam, Epic Games Store, GOG Galaxy and the
 //! EA app (Windows registry). Battle.net is not read: its install list
 //! lives in a binary database (`product.db`) that has no public format, and
 //! reading it would mean depending on private details. Games from Battle.net
@@ -127,6 +127,7 @@ impl Launcher for Epic {
 #[cfg(windows)]
 mod registry {
     //! Read-only registry access for launcher install lists.
+    use super::super::wide::wide;
     use windows_sys::Win32::{
         Foundation::ERROR_SUCCESS,
         System::Registry::{
@@ -134,10 +135,6 @@ mod registry {
             RegQueryValueExW,
         },
     };
-
-    fn wide(text: &str) -> Vec<u16> {
-        text.encode_utf16().chain(std::iter::once(0)).collect()
-    }
 
     pub struct Key(HKEY);
 

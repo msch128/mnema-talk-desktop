@@ -1,8 +1,12 @@
 //! Minimal foreground-only inspection. Never enumerate processes, expose full
 //! executable paths, inject into games, or equate monitor coverage with exclusivity.
 //! A matching basename is a user-selected candidate, not authenticated executable identity.
+#[cfg(windows)]
+use super::foreground::file_name;
+use super::{game_candidate::MAX_GAMES, game_list::valid_executable};
 use serde::Serialize;
-/// The probe's one-shot check by file name: the user's names and the bundled list.
+/// The probe's one-shot check: the user's names and the bundled list. `name` is a
+/// file name or an image path; only its last component is looked at.
 /// (The shared client resolves games with `game_identify` on foreground events.)
 #[cfg(any(windows, test))]
 fn approved_game(names: &[String], name: &str, title: &str) -> Option<String> {
@@ -17,43 +21,21 @@ fn approved_game(names: &[String], name: &str, title: &str) -> Option<String> {
     .map(|found| found.name)
 }
 
-/// The user-approved game name for a foreground image path, if any. Only the
-/// basename is looked at; the path itself never leaves the caller. Java
-/// runtimes additionally need `title`, see [`approved_game`].
-#[cfg(any(windows, test))]
-pub fn approved_image(names: &[String], image: &str, title: &str) -> Option<String> {
-    if !names.is_empty() && !valid_game_names(names) {
-        return None;
-    }
-    let name = image.rsplit(['\\', '/']).next().filter(|n| !n.is_empty())?;
-    approved_game(names, name, title)
-}
-
 #[derive(Debug, Serialize)]
 pub struct GameProbe {
-    /// Local identity of the exact validated foreground observation; never IPC data.
-    #[serde(skip)]
-    pub native_identity: Option<(usize, u32)>,
     pub platform: &'static str,
     pub game: Option<String>,
     pub covers_monitor: bool,
+    /// Always false: this probe never proves exclusive fullscreen. The field is
+    /// part of the probe window's data contract and stays so the page keeps its shape.
     pub exclusive_fullscreen_verified: bool,
 }
 
+/// The user's game list as the settings accept it: non-empty, bounded, and every
+/// name a valid bare executable name (the rules the add button and the bundled
+/// list use, see `game_list::valid_executable`).
 pub fn valid_game_names(names: &[String]) -> bool {
-    !names.is_empty()
-        && names.len() <= 32
-        && names.iter().all(|name| {
-            let lower = name.to_ascii_lowercase();
-            name.len() <= 128
-                && lower.ends_with(".exe")
-                && name.len() > 4
-                && name.as_bytes()[0].is_ascii_alphanumeric()
-                && name
-                    .bytes()
-                    .all(|c| c.is_ascii_alphanumeric() || b"-_. !".contains(&c))
-                && !name.contains("..")
-        })
+    !names.is_empty() && names.len() <= MAX_GAMES && names.iter().all(|name| valid_executable(name))
 }
 
 #[cfg(any(windows, test))]
@@ -77,7 +59,6 @@ fn covers_monitor(window: [i32; 4], monitor: [i32; 4]) -> bool {
 #[cfg(not(windows))]
 pub fn inspect_foreground(_names: &[String]) -> GameProbe {
     GameProbe {
-        native_identity: None,
         platform: "unsupported_probe_host",
         game: None,
         covers_monitor: false,
@@ -110,7 +91,6 @@ pub fn inspect_foreground(names: &[String]) -> GameProbe {
         }
     }
     let mut result = GameProbe {
-        native_identity: None,
         platform: "windows",
         game: None,
         covers_monitor: false,
@@ -146,7 +126,7 @@ pub fn inspect_foreground(names: &[String]) -> GameProbe {
         let Ok(path) = String::from_utf16(&buffer[..length as usize]) else {
             return result;
         };
-        let Some(name) = path.rsplit(['\\', '/']).next() else {
+        let Some(name) = file_name(&path) else {
             return result;
         };
         let title = if matches!(name.to_ascii_lowercase().as_str(), "javaw.exe" | "java.exe") {
@@ -201,7 +181,6 @@ pub fn inspect_foreground(names: &[String]) -> GameProbe {
         }
         // Only the user-approved basename leaves this function; no full paths/titles.
         result.game = Some(approved);
-        result.native_identity = Some((window as usize, pid));
     }
     result
 }
@@ -223,23 +202,24 @@ mod tests {
     #[test]
     fn image_paths_match_by_basename_only() {
         let own = ["Custom.exe".to_string()];
+        let matched = |image: &str| approved_game(&own, image, "");
         assert_eq!(
-            approved_image(&own, r"D:\Games\X\custom.exe", "").as_deref(),
+            matched(r"D:\Games\X\custom.exe").as_deref(),
             Some("custom.exe")
         );
-        assert!(approved_image(&own, r"D:\Games\X\other.exe", "").is_none());
-        assert!(approved_image(&own, "", "").is_none());
-        assert!(approved_image(&own, r"D:\Games\custom.exe\", "").is_none());
+        assert!(matched(r"D:\Games\X\other.exe").is_none());
+        assert!(matched("").is_none());
+        assert!(matched(r"D:\Games\custom.exe\").is_none());
         // A game-looking directory is not a game.
-        assert!(approved_image(&[], r"C:\wow.exe\tool.exe", "").is_none());
-        assert!(approved_image(&["../x.exe".into()], r"C:\x.exe", "").is_none());
+        assert!(approved_game(&[], r"C:\wow.exe\tool.exe", "").is_none());
     }
 
     #[test]
     fn allowlist_only_accepts_bounded_executable_names() {
         assert!(valid_game_names(&[
             "Wow.exe".into(),
-            "GenshinImpact.exe".into()
+            "GenshinImpact.exe".into(),
+            "Game!.exe".into()
         ]));
         for names in [
             vec![],
@@ -249,11 +229,30 @@ mod tests {
             vec!["Wow".into()],
             vec![".exe".into()],
             vec![" Wow.exe".into()],
-            vec!["Wow.exe".into(); 33],
+            vec!["Wow.exe".into(); MAX_GAMES + 1],
             vec![format!("{}.exe", "a".repeat(129))],
         ] {
             assert!(!valid_game_names(&names));
         }
+    }
+
+    #[test]
+    fn the_settings_and_the_add_button_share_one_name_rule_and_one_bound() {
+        for name in [
+            "Wow.exe",
+            "a b.exe",
+            "x(1).exe",
+            "caf\u{e9}.exe",
+            "a:b.exe",
+            "a..b.exe",
+        ] {
+            assert_eq!(
+                valid_game_names(&[name.to_string()]),
+                valid_executable(name),
+                "{name}"
+            );
+        }
+        assert!(valid_game_names(&vec!["Wow.exe".to_string(); MAX_GAMES]));
     }
 
     #[test]

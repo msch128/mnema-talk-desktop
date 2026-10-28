@@ -8,32 +8,33 @@
 //! record). It drives the real window and the real webviews: it adds both
 //! servers, checks that storage, cookies, counters and sockets of one are not
 //! those of the other, switches, and removes one. The line format (`ok <name>`,
-//! `fail <name>: <why>`, `done`) is the contract with that script.
+//! `fail <name>: <why>`, `total <checks run>`, `done`) is the contract with that script.
 use crate::{
     instances::{Phase, id_for, instance_label},
     web_client::Trusted,
     web_shell,
-    web_vault::{Os, Vault},
+    web_vault::{Os, Save, Vault},
 };
-use std::{io::Write, sync::Arc, time::Duration};
+use std::{
+    sync::{
+        Arc,
+        atomic::{AtomicU32, Ordering},
+    },
+    time::Duration,
+};
 use tauri::Manager;
 use tokio::sync::oneshot;
 use url::Url;
 
 fn record(line: &str) {
-    let Some(path) = std::env::var_os("MNEMA_MULTI_SELFTEST") else {
-        return;
-    };
-    if let Ok(mut file) = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(path)
-    {
-        let _ = writeln!(file, "{line}");
-    }
+    crate::web_permissions::append_log_line("MNEMA_MULTI_SELFTEST", line);
 }
 
+/// How many checks ran, so the script compares the passes with the host's own count.
+static CHECKS: AtomicU32 = AtomicU32::new(0);
+
 fn check(name: &str, good: bool, detail: impl std::fmt::Display) {
+    CHECKS.fetch_add(1, Ordering::Relaxed);
     if good {
         record(&format!("ok {name}"));
     } else {
@@ -136,6 +137,7 @@ pub fn start(app: &tauri::AppHandle) {
         } else {
             record("fail setup: two addresses are needed");
         }
+        record(&format!("total {}", CHECKS.load(Ordering::Relaxed)));
         record("done");
         app.exit(0);
     });
@@ -393,7 +395,14 @@ async fn sockets(app: &tauri::AppHandle, trusted: &Trusted, a: &str, b: &str) {
 async fn removal(app: &tauri::AppHandle, trusted: &Trusted, a: &str, b: &str, second: &str) {
     let origin_b = Url::parse(&format!("{second}/")).unwrap();
     let stored = trusted.jar_file(&origin_b);
-    let had_session = Os.load(b).is_some() || stored.as_ref().is_some_and(|f| f.exists());
+    // A keychain that exists but refuses (a locked one on a headless runner)
+    // keeps the session in memory on purpose: it never goes to a file.
+    let probe = format!("{b}-probe");
+    let refused = Os.save(&probe, b"probe") == Save::Refused;
+    Os.remove(&probe);
+    let had_session = Os.load(b).found().is_some()
+        || stored.as_ref().is_some_and(|f| f.exists())
+        || refused;
     check(
         "B's session is stored",
         had_session,
@@ -416,7 +425,7 @@ async fn removal(app: &tauri::AppHandle, trusted: &Trusted, a: &str, b: &str, se
     );
     check(
         "B's stored session is wiped",
-        Os.load(b).is_none() && !stored.as_ref().is_some_and(|f| f.exists()),
+        Os.load(b).found().is_none() && !stored.as_ref().is_some_and(|f| f.exists()),
         "still stored",
     );
     check(

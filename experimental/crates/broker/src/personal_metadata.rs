@@ -49,10 +49,10 @@ impl PersonalMetadataOperation {
     fn prepare(self) -> Result<Prepared, Error> {
         let (endpoint, body, target) = match self {
             Self::User { user_id } => {
-                let id = Uuid::parse_str(&user_id).map_err(|_| Error::InvalidInput)?;
-                if id.is_nil() || id.hyphenated().to_string() != user_id {
+                if !super::server_wire::canonical_uuid(&user_id) {
                     return Err(Error::InvalidInput);
                 }
+                let id = Uuid::parse_str(&user_id).map_err(|_| Error::InvalidInput)?;
                 (Endpoint::User(id), None, Some(id))
             }
             Self::Profile { display_name, bio } => {
@@ -104,10 +104,10 @@ impl Broker {
         {
             let mut s = self.inner.state.lock().map_err(|_| Error::Internal)?;
             s.current(self.inner.owner, &op)?;
-            s.requests.get_mut(&op.id).ok_or(Error::Stale)?.phase = RequestPhase::Running;
+            s.mark_phase(&op, RequestPhase::Running)?;
         }
         let grant = op.grant.as_ref().ok_or(Error::Unauthorized)?;
-        if grant.access_expires_at <= Utc::now() {
+        if grant.is_access_expired() {
             return Err(Error::Expired);
         }
         let body = match self
@@ -122,21 +122,12 @@ impl Broker {
             Err(Error::Unauthorized) => {
                 let mut s = self.inner.state.lock().map_err(|_| Error::Internal)?;
                 // A delayed old401 cannot clear a newly selected/login session.
-                s.current(self.inner.owner, &op)?;
-                s.cancel_requests(None);
-                if let Some(a) = s.active.as_mut() {
-                    a.cancel.cancel();
-                    a.status = Status::ReauthRequired;
-                    a.session = None;
-                    if let Some(f) = a.flight.take() {
-                        f.finish(Err(Error::Unauthorized));
-                    }
-                }
+                s.revoke_after_unauthorized(self.inner.owner, &op)?;
                 return Err(Error::Unauthorized);
             }
             result => result?,
         };
-        if grant.access_expires_at <= Utc::now() {
+        if grant.is_access_expired() {
             return Err(Error::Expired);
         }
         let user: User = body.decode()?;
@@ -147,7 +138,7 @@ impl Broker {
         {
             let mut s = self.inner.state.lock().map_err(|_| Error::Internal)?;
             s.current(self.inner.owner, &op)?;
-            s.requests.get_mut(&op.id).ok_or(Error::Stale)?.phase = RequestPhase::Delivered;
+            s.mark_phase(&op, RequestPhase::Delivered)?;
         }
         Ok(MeDelivery {
             operation: op,

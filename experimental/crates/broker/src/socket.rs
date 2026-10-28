@@ -134,9 +134,7 @@ impl fmt::Debug for NativeSocket {
         f.write_str("NativeSocket(REDACTED)")
     }
 }
-fn canonical_id(value: &str) -> bool {
-    Uuid::parse_str(value).is_ok_and(|id| !id.is_nil() && id.hyphenated().to_string() == value)
-}
+use super::server_wire::canonical_uuid as canonical_id;
 fn metadata(envelope: Envelope) -> Result<Option<MetadataEvent>, Error> {
     fn decode<T: serde::de::DeserializeOwned>(value: serde_json::Value) -> Result<T, Error> {
         serde_json::from_value(value).map_err(|_| Error::Protocol)
@@ -257,7 +255,7 @@ impl Broker {
                 .ok_or(Error::ReauthRequired)?
                 .grant
                 .clone();
-            if grant.access_expires_at <= Utc::now() {
+            if grant.is_access_expired() {
                 return Err(Error::Expired);
             }
             let op = self.reserve_checked(&mut s, owner, RequestPhase::Running)?;
@@ -298,7 +296,14 @@ impl Broker {
                 builder.build().map_err(|_| Error::Network)?,
             ))
         };
-        let result = tokio::select! {biased;_=op.cancelled()=>Err(Error::Cancelled),r=tokio::time::timeout(Duration::from_secs(8),tokio_tungstenite::connect_async_tls_with_config(request,Some(config),false,connector))=>r.map_err(|_|Error::Network)?.map_err(|_|Error::Network)};
+        let result = tokio::select! {biased;_=op.cancelled()=>Err(Error::Cancelled),r=tokio::time::timeout(Duration::from_secs(8),tokio_tungstenite::connect_async_tls_with_config(request,Some(config),false,connector))=>r.map_err(|_|Error::Network)?.map_err(|e|match e{
+        // A revoked or expired access token is answered at the upgrade.
+        tokio_tungstenite::tungstenite::Error::Http(r) if r.status()==tokio_tungstenite::tungstenite::http::StatusCode::UNAUTHORIZED=>Error::Unauthorized,
+        _=>Error::Network})};
+        if matches!(result, Err(Error::Unauthorized)) {
+            let mut s = self.inner.state.lock().map_err(|_| Error::Internal)?;
+            s.revoke_after_unauthorized(self.inner.owner, &op)?;
+        }
         let (stream, response) = result?;
         self.verify(&op)?;
         if response.headers().contains_key("Set-Cookie")
@@ -343,7 +348,7 @@ impl Broker {
         {
             return Err(Error::Stale);
         }
-        if socket.lease.access_expires_at <= Utc::now() || grant.family_expires_at <= Utc::now() {
+        if socket.lease.is_access_expired() || grant.family_expires_at <= Utc::now() {
             return Err(Error::Expired);
         }
         Ok(grant)
@@ -400,6 +405,18 @@ impl Broker {
         &self,
         socket: &mut NativeSocket,
     ) -> Result<Option<MetadataEvent>, Error> {
+        self.socket_poll_idle(socket, tokio::time::sleep(Duration::from_millis(100)))
+            .await
+            .map(|(event, _)| event)
+    }
+    /// `socket_poll` with a caller-chosen idle wait. When `idle` completes before
+    /// a frame arrives, its output is returned next to a `None` event; dropping the
+    /// wait there is cancel-safe because nothing of the socket is in flight.
+    pub(crate) async fn socket_poll_idle<T>(
+        &self,
+        socket: &mut NativeSocket,
+        idle: impl std::future::Future<Output = T>,
+    ) -> Result<(Option<MetadataEvent>, Option<T>), Error> {
         let grant = self.socket_grant(socket)?;
         if socket
             .pending
@@ -424,7 +441,7 @@ impl Broker {
                 deadline: Instant::now() + Duration::from_secs(4),
             });
         }
-        let next = tokio::select! {biased;_=socket.op.cancel.cancelled()=>return Err(Error::Cancelled),_=socket.op.window_cancel.cancelled()=>return Err(Error::Stale),_=tokio::time::sleep(Duration::from_millis(100))=>return Ok(None),r=socket.stream.next()=>r};
+        let next = tokio::select! {biased;_=socket.op.cancel.cancelled()=>return Err(Error::Cancelled),_=socket.op.window_cancel.cancelled()=>return Err(Error::Stale),idle=idle=>return Ok((None,Some(idle))),r=socket.stream.next()=>r};
         let message = next.ok_or(Error::Network)?.map_err(|_| Error::Network)?;
         let current = self.socket_grant(socket)?;
         match message {
@@ -476,13 +493,13 @@ impl Broker {
                     if let Some(event) = metadata(e)? {
                         return self
                             .commit_socket_event(socket.op.window, socket, event)
-                            .map(Some);
+                            .map(|event| (Some(event), None));
                     }
                 }
             }
             _ => return Err(Error::Protocol),
         }
-        Ok(None)
+        Ok((None, None))
     }
     pub(crate) fn socket_needs_refresh(&self, socket: &NativeSocket) -> Result<bool, Error> {
         let current = self.socket_grant(socket)?;
