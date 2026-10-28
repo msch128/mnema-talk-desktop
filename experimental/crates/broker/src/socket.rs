@@ -255,7 +255,7 @@ impl Broker {
                 .ok_or(Error::ReauthRequired)?
                 .grant
                 .clone();
-            if grant.access_expires_at <= Utc::now() {
+            if grant.is_access_expired() {
                 return Err(Error::Expired);
             }
             let op = self.reserve_checked(&mut s, owner, RequestPhase::Running)?;
@@ -341,7 +341,7 @@ impl Broker {
         {
             return Err(Error::Stale);
         }
-        if socket.lease.access_expires_at <= Utc::now() || grant.family_expires_at <= Utc::now() {
+        if socket.lease.is_access_expired() || grant.family_expires_at <= Utc::now() {
             return Err(Error::Expired);
         }
         Ok(grant)
@@ -398,6 +398,18 @@ impl Broker {
         &self,
         socket: &mut NativeSocket,
     ) -> Result<Option<MetadataEvent>, Error> {
+        self.socket_poll_idle(socket, tokio::time::sleep(Duration::from_millis(100)))
+            .await
+            .map(|(event, _)| event)
+    }
+    /// `socket_poll` with a caller-chosen idle wait. When `idle` completes before
+    /// a frame arrives, its output is returned next to a `None` event; dropping the
+    /// wait there is cancel-safe because nothing of the socket is in flight.
+    pub(crate) async fn socket_poll_idle<T>(
+        &self,
+        socket: &mut NativeSocket,
+        idle: impl std::future::Future<Output = T>,
+    ) -> Result<(Option<MetadataEvent>, Option<T>), Error> {
         let grant = self.socket_grant(socket)?;
         if socket
             .pending
@@ -422,7 +434,7 @@ impl Broker {
                 deadline: Instant::now() + Duration::from_secs(4),
             });
         }
-        let next = tokio::select! {biased;_=socket.op.cancel.cancelled()=>return Err(Error::Cancelled),_=socket.op.window_cancel.cancelled()=>return Err(Error::Stale),_=tokio::time::sleep(Duration::from_millis(100))=>return Ok(None),r=socket.stream.next()=>r};
+        let next = tokio::select! {biased;_=socket.op.cancel.cancelled()=>return Err(Error::Cancelled),_=socket.op.window_cancel.cancelled()=>return Err(Error::Stale),idle=idle=>return Ok((None,Some(idle))),r=socket.stream.next()=>r};
         let message = next.ok_or(Error::Network)?.map_err(|_| Error::Network)?;
         let current = self.socket_grant(socket)?;
         match message {
@@ -474,13 +486,13 @@ impl Broker {
                     if let Some(event) = metadata(e)? {
                         return self
                             .commit_socket_event(socket.op.window, socket, event)
-                            .map(Some);
+                            .map(|event| (Some(event), None));
                     }
                 }
             }
             _ => return Err(Error::Protocol),
         }
-        Ok(None)
+        Ok((None, None))
     }
     pub(crate) fn socket_needs_refresh(&self, socket: &NativeSocket) -> Result<bool, Error> {
         let current = self.socket_grant(socket)?;
