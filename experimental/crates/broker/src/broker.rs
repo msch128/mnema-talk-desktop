@@ -1226,6 +1226,8 @@ use registration::RegistrationDelivery;
 pub(crate) mod admin_metadata;
 #[path = "admin_wire.rs"]
 mod admin_wire;
+#[path = "server_wire.rs"]
+mod server_wire;
 pub use admin_metadata::{
     AdminCategoryOrder, AdminChannelKind, AdminChannelPlacement, AdminDelivery,
     AdminMetadataOperation, AdminReply,

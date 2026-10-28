@@ -134,9 +134,7 @@ impl fmt::Debug for NativeSocket {
         f.write_str("NativeSocket(REDACTED)")
     }
 }
-fn canonical_id(value: &str) -> bool {
-    Uuid::parse_str(value).is_ok_and(|id| !id.is_nil() && id.hyphenated().to_string() == value)
-}
+use super::server_wire::canonical_uuid as canonical_id;
 fn metadata(envelope: Envelope) -> Result<Option<MetadataEvent>, Error> {
     fn decode<T: serde::de::DeserializeOwned>(value: serde_json::Value) -> Result<T, Error> {
         serde_json::from_value(value).map_err(|_| Error::Protocol)

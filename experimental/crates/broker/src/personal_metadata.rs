@@ -49,10 +49,10 @@ impl PersonalMetadataOperation {
     fn prepare(self) -> Result<Prepared, Error> {
         let (endpoint, body, target) = match self {
             Self::User { user_id } => {
-                let id = Uuid::parse_str(&user_id).map_err(|_| Error::InvalidInput)?;
-                if id.is_nil() || id.hyphenated().to_string() != user_id {
+                if !super::server_wire::canonical_uuid(&user_id) {
                     return Err(Error::InvalidInput);
                 }
+                let id = Uuid::parse_str(&user_id).map_err(|_| Error::InvalidInput)?;
                 (Endpoint::User(id), None, Some(id))
             }
             Self::Profile { display_name, bio } => {

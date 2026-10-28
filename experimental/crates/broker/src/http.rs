@@ -104,6 +104,10 @@ impl fmt::Debug for Body {
     }
 }
 impl Body {
+    #[cfg(test)]
+    pub(crate) fn for_test(bytes: &[u8], status: u16) -> Self {
+        Self(Zeroizing::new(bytes.to_vec()), status)
+    }
     pub(crate) fn status(&self) -> u16 {
         self.1
     }

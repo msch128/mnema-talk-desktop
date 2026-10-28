@@ -162,10 +162,10 @@ impl AdminEndpoint {
     }
 }
 fn id(s: &str) -> Result<Uuid, Error> {
-    Uuid::parse_str(s)
-        .ok()
-        .filter(|i| !i.is_nil() && i.hyphenated().to_string() == s)
-        .ok_or(Error::InvalidInput)
+    if !super::server_wire::canonical_uuid(s) {
+        return Err(Error::InvalidInput);
+    }
+    Uuid::parse_str(s).map_err(|_| Error::InvalidInput)
 }
 fn text(s: &str, max: usize, required: bool) -> bool {
     !s.contains('\0') && s.trim().chars().count() <= max && (!required || !s.trim().is_empty())

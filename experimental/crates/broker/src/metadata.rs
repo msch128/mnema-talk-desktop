@@ -39,29 +39,6 @@ impl MetadataResource {
 }
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-struct Channel {
-    id: String,
-    number: i64,
-    category_id: Option<String>,
-    name: String,
-    #[serde(rename = "type")]
-    kind: String,
-    topic: String,
-    sort_order: i32,
-    created_at: chrono::DateTime<Utc>,
-    user_limit: i32,
-}
-#[derive(Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-struct Category {
-    id: String,
-    name: String,
-    sort_order: i32,
-    created_at: chrono::DateTime<Utc>,
-    channels: Vec<Channel>,
-}
-#[derive(Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
 struct Hierarchy {
     categories: Vec<Category>,
     uncategorized: Vec<Channel>,
@@ -95,25 +72,7 @@ struct Legal {
     update_check: bool,
     legal_version: String,
 }
-fn id(s: &str) -> bool {
-    Uuid::parse_str(s).is_ok_and(|i| !i.is_nil() && i.hyphenated().to_string() == s)
-}
-fn text(s: &str, max: usize) -> bool {
-    s.len() <= max && !s.chars().any(|c| c == '\0')
-}
-fn channel(c: &Channel) -> bool {
-    id(&c.id)
-        && c.number > 0
-        && c.category_id.as_ref().is_none_or(|s| id(s))
-        && !c.name.is_empty()
-        && text(&c.name, 256)
-        && text(&c.topic, 1024)
-        && ["text", "voice"].contains(&c.kind.as_str())
-        && (0..=999).contains(&c.user_limit)
-}
-fn safe<T: Serialize>(value: T) -> Result<serde_json::Value, Error> {
-    serde_json::to_value(value).map_err(|_| Error::Internal)
-}
+use super::server_wire::{Category, Channel, canonical_uuid as id, safe, text};
 fn decode(
     resource: MetadataResource,
     body: &crate::http::Body,
@@ -123,14 +82,8 @@ fn decode(
             let v: Hierarchy = body.decode()?;
             if v.categories.len() > 4096
                 || v.uncategorized.len() > 4096
-                || !v.uncategorized.iter().all(channel)
-                || v.categories.iter().any(|c| {
-                    !id(&c.id)
-                        || c.name.is_empty()
-                        || !text(&c.name, 256)
-                        || c.channels.len() > 4096
-                        || !c.channels.iter().all(channel)
-                })
+                || !v.uncategorized.iter().all(Channel::valid)
+                || !v.categories.iter().all(Category::valid)
             {
                 return Err(Error::Protocol);
             }
@@ -299,5 +252,27 @@ impl Broker {
             return Err(Error::Expired);
         }
         Ok(delivery.value)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::http::Body;
+    use serde_json::json;
+    const ID: &str = "22222222-2222-2222-2222-222222222222";
+    #[test]
+    fn channels_list_accepts_current_server_channels_including_forums() {
+        let ch = |kind: &str| {
+            json!({"id":ID,"number":1,"category_id":null,"name":"general","type":kind,"topic":"",
+            "sort_order":0,"created_at":"2026-01-02T03:04:05Z","user_limit":0,"slow_mode_seconds":5,
+            "auto_delete_days":0,"is_lobby":false,"is_temp":false,"is_stage":false,"slug":"general",
+            "previous_slugs":[]})
+        };
+        let v = json!({"categories":[],"uncategorized":[ch("text"), ch("forum")]});
+        let body = Body::for_test(v.to_string().as_bytes(), 200);
+        let out = decode(MetadataResource::Channels, &body).unwrap();
+        assert_eq!(out["uncategorized"][1]["type"], "forum");
+        assert!(out["uncategorized"][0].get("slug").is_none());
     }
 }
