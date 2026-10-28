@@ -5,7 +5,9 @@ use mnema_crypto_adapter_candidate::Scope;
 use mnema_crypto_enrollment_prototype::{Device, NativeAdmissionIntent, NativeSecrets};
 use mnema_crypto_sdk_prototype::{Core, Error, NativeBootstrap, Result, Sdk};
 use mnema_private_first_community_bootstrap::{FreshCommunity, NativeAdminSubject};
-use mnema_private_native_client_broker::{MetadataResource, NativeClient, NativeRequest, Password};
+use mnema_private_native_client_broker::{
+    MetadataResource, NativeClient, NativeRequest, Password, fixture_credentials,
+};
 use mnema_private_native_crypto_owner::{
     ChatEventClaim, ChatOperation, NativeChatOwner, NativeTypedChatChange, PendingFirstRoot,
     binding_for_current_native_scope,
@@ -52,7 +54,7 @@ fn descriptor(
         || d.community_id != "native-relay-fixture"
         || d.content_authorization != "unavailable"
         || d.username != username
-        || d.password != "native-preview-fixture-password"
+        || d.password != fixture_credentials::PASSWORD
     {
         return Err("unrecognized owned fixture".into());
     }
@@ -78,7 +80,10 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     let peer_desc = if same_account {
         descriptor(&bootstrap.join("admin-bootstrap.json"), "relay-admin")?
     } else {
-        descriptor(&bootstrap.join("bootstrap.json"), "relay-user")?
+        descriptor(
+            &bootstrap.join("bootstrap.json"),
+            fixture_credentials::USERNAME,
+        )?
     };
     if root_desc.origin != peer_desc.origin
         || root_desc.community_id != peer_desc.community_id

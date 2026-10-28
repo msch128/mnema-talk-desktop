@@ -3040,8 +3040,8 @@ async fn authentication_intent_actual_go_password_new_family_revokes_other_sessi
     let bootstrap: OwnedBootstrap = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
     assert_eq!(bootstrap.protocol, "mnema-native-loopback-fixture-v1");
     assert_eq!(bootstrap.content_authorization, "unavailable");
-    assert_eq!(bootstrap.username, "relay-user");
-    assert_eq!(bootstrap.password, "native-preview-fixture-password");
+    assert_eq!(bootstrap.username, crate::fixture_credentials::USERNAME);
+    assert_eq!(bootstrap.password, crate::fixture_credentials::PASSWORD);
     let origin = url::Url::parse(&bootstrap.origin).unwrap();
     assert_eq!(origin.scheme(), "https");
     assert_eq!(origin.host_str(), Some("127.0.0.1"));
