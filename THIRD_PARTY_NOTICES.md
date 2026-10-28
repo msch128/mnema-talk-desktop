@@ -8,7 +8,9 @@ Generated from `experimental/app/Cargo.lock` and
 `cargo metadata --locked --features shell,web-client`.
 This conservative inventory includes optional platform and build-time dependencies;
 it does not claim every entry is linked into every platform binary.
-Full verbatim license and attribution texts accompany this inventory in
+Full verbatim license and attribution texts accompany this inventory in the
+`licenses/` folder next to this file in every download and install (the Windows
+installer and portable ZIP, where this file is named `HOST_THIRD_PARTY_NOTICES.md`, the macOS app and disk image); in the repository it is
 [experimental/licenses/](experimental/licenses/README.md), with package-to-text mapping and SHA-256 hashes
 in [experimental/licenses/manifest.json](experimental/licenses/manifest.json). Distribute that complete
 directory and the project's root `LICENSE` with any binary. Development builds
