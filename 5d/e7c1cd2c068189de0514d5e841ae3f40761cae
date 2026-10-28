@@ -1,0 +1,33 @@
+experimental/crates/broker/src/admin_metadata.rs
+  s_06fcde5dbef956::t_cca37c7a6c920a 165-168
+experimental/crates/broker/src/admin_wire.rs
+  s_06fcde5dbef956::t_5eef9fc6420ef9 8,12-15,23-24,27-28,30,38-41,61-68,71-73,197-200,233,241,250-252,293-346
+experimental/crates/broker/src/broker.rs
+  s_06fcde5dbef956::t_9d7149fe34e320 1229-1230
+experimental/crates/broker/src/http.rs
+  s_06fcde5dbef956::t_dda96026491773 107-110
+experimental/crates/broker/src/metadata.rs
+  s_06fcde5dbef956::t_ab0a12f8679b38 75,85-86,257-278
+experimental/crates/broker/src/personal_metadata.rs
+  s_06fcde5dbef956::t_153d70435a0a6b 52,55
+experimental/crates/broker/src/server_wire.rs
+  s_06fcde5dbef956::t_8f289a238b4453 1-100
+experimental/crates/broker/src/socket.rs
+  s_06fcde5dbef956::t_347cee5b0dbb1d 137
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5de7c1cd2c068189de0514d5e841ae3f40761cae",
+  "prompts": {},
+  "sessions": {
+    "s_06fcde5dbef956": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "94b73314-95fe-4e96-8c43-d20b0f28358d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}
