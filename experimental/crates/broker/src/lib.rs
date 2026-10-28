@@ -8,6 +8,14 @@ pub use broker::{Broker, CancelHandle, MeDelivery, Operation, Status, WindowOwne
 pub use secret::Password;
 use std::fmt;
 pub use wire::User;
+/// Login of the owned loopback fixture. One definition for the examples, the
+/// qualification tests and the Go fixture generator's contract.
+#[cfg(feature = "synthetic-transport-fixture")]
+#[doc(hidden)]
+pub mod fixture_credentials {
+    pub const USERNAME: &str = "relay-user";
+    pub const PASSWORD: &str = "native-preview-fixture-password";
+}
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Error {
     InvalidInput,

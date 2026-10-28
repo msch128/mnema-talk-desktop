@@ -36,6 +36,21 @@ pub(super) struct SocketControl {
     pub cancel: CancellationToken,
     pub sender: mpsc::Sender<SocketCommand>,
 }
+impl SocketControl {
+    /// The one lookup and ownership rule for every handle-addressed call: an
+    /// unknown handle is Stale, another window's handle is Denied.
+    fn owned<'a>(
+        sockets: &'a HashMap<Uuid, SocketControl>,
+        lease: &NativeWindowLease,
+        handle: Uuid,
+    ) -> Result<&'a SocketControl, Error> {
+        let entry = sockets.get(&handle).ok_or(Error::Stale)?;
+        if entry.lease.context != lease.context || entry.lease.owner != lease.owner {
+            return Err(Error::Denied);
+        }
+        Ok(entry)
+    }
+}
 pub(super) struct SocketCommand {
     action: NativeSocketAction,
     answer: oneshot::Sender<Result<(), Error>>,
@@ -90,10 +105,7 @@ impl NativeClient {
                 return Err(Error::Stale);
             }
             let sockets = self.shared.sockets.lock().map_err(|_| Error::Internal)?;
-            let entry = sockets.get(&handle).ok_or(Error::Stale)?;
-            if entry.lease.context != lease.context || entry.lease.owner != lease.owner {
-                return Err(Error::Denied);
-            }
+            let entry = SocketControl::owned(&sockets, lease, handle)?;
             if entry.intent == 0
                 || self.shared.intent.load(Ordering::Acquire) != entry.intent
                 || self.shared.ready.load(Ordering::Acquire) != entry.intent
@@ -120,10 +132,7 @@ impl NativeClient {
         let cancel =
             self.with_selected_authentication(lease, profile, Some(authentication), || {
                 let sockets = self.shared.sockets.lock().map_err(|_| Error::Internal)?;
-                let entry = sockets.get(&handle).ok_or(Error::Stale)?;
-                if entry.lease.context != lease.context || entry.lease.owner != lease.owner {
-                    return Err(Error::Stale);
-                }
+                let entry = SocketControl::owned(&sockets, lease, handle)?;
                 entry
                     .sender
                     .try_send(SocketCommand { action, answer })
@@ -141,22 +150,18 @@ impl NativeClient {
     ) -> Result<(), Error> {
         self.with_selected_authentication(lease, profile, Some(authentication), || {
             let sockets = self.shared.sockets.lock().map_err(|_| Error::Internal)?;
-            let entry = sockets.get(&handle).ok_or(Error::Stale)?;
-            if entry.lease.context != lease.context || entry.lease.owner != lease.owner {
-                return Err(Error::Stale);
-            }
-            entry.cancel.cancel();
+            SocketControl::owned(&sockets, lease, handle)?
+                .cancel
+                .cancel();
             Ok::<_, Error>(())
         })?
     }
     pub fn socket_close(&self, lease: &NativeWindowLease, handle: Uuid) -> Result<(), Error> {
         self.shared.current(lease)?;
         let sockets = self.shared.sockets.lock().map_err(|_| Error::Internal)?;
-        let entry = sockets.get(&handle).ok_or(Error::Stale)?;
-        if entry.lease.context != lease.context || entry.lease.owner != lease.owner {
-            return Err(Error::Denied);
-        }
-        entry.cancel.cancel();
+        SocketControl::owned(&sockets, lease, handle)?
+            .cancel
+            .cancel();
         Ok(())
     }
 }
@@ -301,17 +306,22 @@ async fn drive(
                 tokio::select!{biased;_=cancel.cancelled()=>return Err(Error::Cancelled),_=lease.cancel.cancelled()=>return Err(Error::Stale),r=shared.broker.refresh(lease.owner)=>r?};
             }
             let scope=shared.broker.selected_publication_scope(lease.owner)?;last_scope=scope;
+            let mut queued:Option<SocketCommand>;
             tokio::select!{biased;
                 _=cancel.cancelled()=>return Err(Error::Cancelled),
                 _=lease.cancel.cancelled()=>return Err(Error::Stale),
 
-                event=shared.broker.socket_poll(custody.socket.as_mut().unwrap())=>{if let Some(event)=event?{
-                    shared.broker.commit_socket_event(lease.owner,custody.socket.as_ref().unwrap(),event.clone())?;
+                polled=shared.broker.socket_poll_idle(custody.socket.as_mut().unwrap(),next_command(&mut receive))=>{
+                    let (event,command)=polled?;
+                    queued=command.flatten();
+                    // socket_poll_idle already committed the event against the live grant.
+                    if let Some(event)=event{
                     let payload=serde_json::to_value(event).map_err(|_|Error::Internal)?;
                     notify(scope,&mut seq,"message",payload)?;
                 }}
             }
-            if let Ok(command)=receive.try_recv(){
+            if queued.is_none(){queued=receive.try_recv().ok();}
+            if let Some(command)=queued.take(){
                 custody.answer=Some(command.answer);
                 let result=tokio::select!{biased;_=cancel.cancelled()=>return Err(Error::Cancelled),_=lease.cancel.cancelled()=>return Err(Error::Stale),r=shared.broker.socket_send(lease.owner,custody.socket.as_mut().unwrap(),command.action)=>r};
                 result?;
@@ -341,5 +351,18 @@ async fn drive(
             "closed",
             serde_json::json!({"code":"NATIVE_SOCKET_CLOSED"}),
         );
+    }
+}
+/// Idle wait of the socket poll: wakes as soon as a command is queued, and after
+/// at most 100 ms so lifecycle, refresh and cancellation are re-checked.
+async fn next_command(receive: &mut mpsc::Receiver<SocketCommand>) -> Option<SocketCommand> {
+    tokio::select! {
+        command = receive.recv() => {
+            if command.is_none() {
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
+            command
+        }
+        _ = tokio::time::sleep(Duration::from_millis(100)) => None,
     }
 }

@@ -1,7 +1,7 @@
 //! Explicit compile-time private transport qualification fixture, never default.
 //! No certificate bypass, OS trust mutation, renderer setup, production secrets,
 //! auto-login or arbitrary trusted origins. Account expectation stays native.
-use mnema_private_native_client_broker::{Error, NativeClient};
+use mnema_private_native_client_broker::{Error, NativeClient, fixture_credentials};
 use serde::Deserialize;
 use std::path::Path;
 #[cfg(unix)]
@@ -70,22 +70,36 @@ fn read_owned(path: &Path) -> Result<Vec<u8>, Error> {
 fn read_owned(_: &Path) -> Result<Vec<u8>, Error> {
     Err(Error::QualificationRequired)
 }
-pub fn client() -> Result<NativeClient, Error> {
+/// The validated fixture: the client plus exactly what the bootstrap vouched for.
+/// Callers must not re-read the bootstrap file.
+pub struct Qualified {
+    pub client: NativeClient,
+    pub origin: String,
+    pub username: &'static str,
+    pub password: &'static str,
+    /// The `{bootstrap}.binding.json` document, read with the same ownership checks.
+    pub binding: serde_json::Value,
+}
+pub fn qualified() -> Result<Qualified, Error> {
     if std::env::var("MNEMA_SYNTHETIC_TRANSPORT_FIXTURE")
         .ok()
         .as_deref()
         != Some("1")
     {
-        return NativeClient::ephemeral();
+        return Err(Error::QualificationRequired);
     }
     let path = std::env::var_os("MNEMA_NATIVE_TRANSPORT_BOOTSTRAP").ok_or(Error::Denied)?;
     let bytes = read_owned(Path::new(&path))?;
+    let mut binding_path = path.clone();
+    binding_path.push(".binding.json");
+    let binding: serde_json::Value = serde_json::from_slice(&read_owned(Path::new(&binding_path))?)
+        .map_err(|_| Error::Protocol)?;
     let d: Bootstrap = serde_json::from_slice(&bytes).map_err(|_| Error::Protocol)?;
     if d.protocol != "mnema-native-loopback-fixture-v1"
         || d.content_authorization != "unavailable"
         || d.community_id != "native-relay-fixture"
-        || d.username != "relay-user"
-        || d.password != "native-preview-fixture-password"
+        || d.username != fixture_credentials::USERNAME
+        || d.password != fixture_credentials::PASSWORD
         || d.public_ca_pem.len() > 16384
     {
         return Err(Error::Denied);
@@ -106,10 +120,20 @@ pub fn client() -> Result<NativeClient, Error> {
     if id.is_nil() || id.hyphenated().to_string() != d.user_id {
         return Err(Error::Protocol);
     }
-    NativeClient::qualification_fixture(
+    if binding["origin"] != d.origin || binding["community_id"] != d.community_id {
+        return Err(Error::Denied);
+    }
+    let client = NativeClient::qualification_fixture(
         origin.as_str().to_owned(),
         d.community_id,
         id,
         d.public_ca_pem.into_bytes(),
-    )
+    )?;
+    Ok(Qualified {
+        client,
+        origin: d.origin,
+        username: fixture_credentials::USERNAME,
+        password: fixture_credentials::PASSWORD,
+        binding,
+    })
 }
