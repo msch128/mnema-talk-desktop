@@ -924,7 +924,17 @@ pub(super) fn run() {
             refresh_in_background(app.handle());
             Ok(())
         })
-        .run(tauri::generate_context!());
+        .build(tauri::generate_context!())
+        .map(|app| {
+            app.run(|app, event| {
+                // The Dock icon brings back a window that was closed on macOS.
+                #[cfg(target_os = "macos")]
+                if let tauri::RunEvent::Reopen { .. } = &event {
+                    super::web_shell::reopen(app);
+                }
+                let _ = (app, event);
+            });
+        });
     if result.is_err() {
         startup_error();
     }
