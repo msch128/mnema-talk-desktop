@@ -1,0 +1,20 @@
+experimental/app/src/rail_notify.rs
+  h_0ff4f4713441f4 61,101-103
+experimental/app/src/web_gaming.rs
+  h_0ff4f4713441f4 577-579
+experimental/app/src/web_proxy.rs
+  h_0ff4f4713441f4 418-420,553-561,607-610,613-624,626,775-779,781-790,837-841,924-931
+experimental/app/src/web_shell.rs
+  h_0ff4f4713441f4 971-973,975-977
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d938b020d0bbb936934d475f456a0e78064c57be",
+  "prompts": {},
+  "humans": {
+    "h_0ff4f4713441f4": {
+      "author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}
