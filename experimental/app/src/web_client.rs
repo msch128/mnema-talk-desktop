@@ -75,6 +75,9 @@ pub struct Trusted {
     /// had a session here.
     adoptable: std::sync::atomic::AtomicBool,
     data_dir: Option<std::path::PathBuf>,
+    /// The list of servers exists but could not be read (see `Stored`): the
+    /// storage of the servers on it must not be taken for orphaned.
+    list_unreadable: bool,
 }
 
 /// Something an earlier client leaves in its data directory, and the list of
@@ -101,10 +104,10 @@ impl Trusted {
             builtin,
             &keys,
         );
-        let registry = Registry::restore(&Stored::load(
-            data_dir.as_ref().map(|d| d.join(INSTANCES_FILE)).as_deref(),
-        ));
+        let stored = Stored::load(data_dir.as_ref().map(|d| d.join(INSTANCES_FILE)).as_deref());
+        let registry = Registry::restore(&stored);
         Trusted {
+            list_unreadable: stored.unreadable(),
             store: Mutex::new(store),
             keys: Mutex::new(keys),
             fresh: std::sync::atomic::AtomicBool::new(false),
@@ -263,9 +266,17 @@ impl Trusted {
 
     /// Writes the list of servers down (addresses only).
     pub(crate) fn save_instances(&self) {
-        if let Ok(registry) = self.registry.lock() {
-            registry.stored().save(self.instances_file().as_deref());
+        if let Ok(registry) = self.registry.lock()
+            && let Err(why) = registry.stored().save(self.instances_file().as_deref())
+        {
+            eprintln!("Mnema Desktop: the list of servers could not be saved: {why}");
         }
+    }
+
+    /// Whether the list of servers was unusable at start, so that the storage
+    /// of servers missing from it may still belong to the person's servers.
+    pub(crate) fn list_unreadable(&self) -> bool {
+        self.list_unreadable
     }
 
     #[cfg_attr(target_os = "macos", allow(dead_code))]
@@ -559,11 +570,16 @@ fn unavailable(trusted: &Trusted, id: &str) -> Resp {
 /// go to that server with that server's cookies, and its files come from the
 /// bundle that server was matched with. No other server is reachable from here.
 async fn page_request(trusted: &Trusted, id: &str, request: tauri::http::Request<Vec<u8>>) -> Resp {
+    let path = request.uri().path().to_owned();
     let Some(session) = trusted.session(id) else {
-        return unavailable(trusted, id);
+        let answer = unavailable(trusted, id);
+        return if path == "/api" || path.starts_with("/api/") {
+            answer.sealed()
+        } else {
+            answer
+        };
     };
     let method = request.method().as_str().to_owned();
-    let path = request.uri().path().to_owned();
     if path == "/api" || path.starts_with("/api/") {
         let path_and_query = request
             .uri()
@@ -1458,6 +1474,77 @@ mod tests {
         assert!(!Trusted::new(None, None).take_old_storage_wipe());
         let _ = std::fs::remove_dir_all(dir);
         let _ = std::fs::remove_dir_all(none);
+    }
+
+    /// What the shipped client's capabilities grant is exactly what it
+    /// registers: a permission without a handler in this build is a grant
+    /// nobody reviewed, and a handler list that grows later must grow the
+    /// capability files on purpose. Webviews are named by label, never by window.
+    #[test]
+    fn every_granted_permission_has_a_handler_in_this_build_and_no_capability_names_a_window() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let source = include_str!("web_client.rs");
+        let start = source.find("tauri::generate_handler![").unwrap();
+        let handlers = &source[start..start + source[start..].find("])").unwrap()];
+        let registered: Vec<&str> = handlers
+            .lines()
+            .skip(1)
+            .map(|l| l.trim().trim_end_matches(',').rsplit("::").next().unwrap())
+            .filter(|n| !n.is_empty())
+            .collect();
+        assert!(registered.contains(&"desktop_open_instance"));
+        let config: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(root.join("tauri.conf.json")).unwrap())
+                .unwrap();
+        let listed: Vec<&str> = config["app"]["security"]["capabilities"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|c| c.as_str())
+            .collect();
+        for entry in std::fs::read_dir(root.join("capabilities")).unwrap() {
+            let path = entry.unwrap().path();
+            let json: serde_json::Value =
+                serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+            let id = json["identifier"].as_str().unwrap();
+            assert!(listed.contains(&id), "{id} is not in tauri.conf.json");
+            assert!(json.get("windows").is_none(), "{id} names windows");
+            for permission in json["permissions"].as_array().unwrap() {
+                let command = permission
+                    .as_str()
+                    .unwrap()
+                    .strip_prefix("allow-")
+                    .unwrap()
+                    .replace('-', "_");
+                assert!(
+                    registered.contains(&command.as_str()),
+                    "{id} grants {command}, which this build does not register"
+                );
+            }
+        }
+        assert_eq!(
+            listed.len(),
+            std::fs::read_dir(root.join("capabilities"))
+                .unwrap()
+                .count()
+        );
+    }
+
+    #[test]
+    fn an_unusable_list_of_servers_stops_the_sweep_of_their_storage() {
+        let dir = std::env::temp_dir().join(format!("mnema-list-bad-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        assert!(!Trusted::new(Some(dir.clone()), None).list_unreadable());
+        std::fs::write(
+            dir.join(INSTANCES_FILE),
+            r#"{"version":2,"servers":[],"active":null}"#,
+        )
+        .unwrap();
+        let trusted = Trusted::new(Some(dir.clone()), None);
+        assert!(trusted.list_unreadable());
+        assert!(trusted.registry.lock().unwrap().ids().is_empty());
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]

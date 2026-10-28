@@ -801,6 +801,31 @@ fn main() {
         .setup(|app| {
             let handle = app.handle().clone();
             let navigation = handle.clone();
+            // The commands of this research host belong to its own page only.
+            // The shipped client's capability for that page (capabilities/main.json)
+            // grants no native command, so they are granted here, in this build only.
+            app.add_capability(
+                tauri::ipc::CapabilityBuilder::new("native-preview-main-only")
+                    .window("main")
+                    .local(true)
+                    .permission("allow-native-context")
+                    .permission("allow-native-connect")
+                    .permission("allow-native-metadata-request")
+                    .permission("allow-native-public-metadata-request")
+                    .permission("allow-native-auth-login")
+                    .permission("allow-native-auth-me")
+                    .permission("allow-native-auth-refresh")
+                    .permission("allow-native-auth-logout")
+                    .permission("allow-native-disconnect")
+                    .permission("allow-native-request-cancel")
+                    .permission("allow-native-socket-open")
+                    .permission("allow-native-socket-send")
+                    .permission("allow-native-socket-close")
+                    .permission("allow-native-personal-metadata-request")
+                    .permission("allow-native-auth-password")
+                    .permission("allow-native-auth-register")
+                    .permission("allow-native-admin-request"),
+            )?;
             #[cfg(feature = "native-crypto")]
             app.add_capability(
                 tauri::ipc::CapabilityBuilder::new("native-core-main-only")
