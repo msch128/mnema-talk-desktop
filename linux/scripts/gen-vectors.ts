@@ -274,6 +274,11 @@ function zipVectors(): Json {
  * not something a JSON string can carry. The first case of each list is the
  * control and must be accepted.
  */
+/** The document with `fields` (written as `{...,`) opened in front of its first member. */
+function first(doc: string, fields: string): string {
+  return `${fields}${doc.slice(1)}`
+}
+
 function jsonVectors(): Json {
   const bom = Buffer.from([0xef, 0xbb, 0xbf])
   const text = (s: string) => Buffer.from(s)
@@ -281,8 +286,8 @@ function jsonVectors(): Json {
     ['a plain document', text(doc)],
     ['spaces and newlines around the document', text(`\n \t${doc}\r\n `)],
     ['a byte order mark', Buffer.concat([bom, text(doc)])],
-    ['a repeated key', text(doc.replace('{', `{${fields.dup},`))],
-    ['an unknown field', text(doc.replace('{', `{${fields.unknown},`))],
+    ['a repeated key', text(first(doc, `{${fields.dup},`))],
+    ['an unknown field', text(first(doc, `{${fields.unknown},`))],
     ['a second document', text(`${doc}${doc}`)],
     ['a character after the document', text(`${doc}x`)],
     ['a null byte after the document', Buffer.concat([text(doc), Buffer.alloc(1)])],
@@ -331,12 +336,12 @@ function jsonVectors(): Json {
     ['the manifest as an array of its values', text(JSON.stringify(Object.values(manifestOf(base))))],
     ['a file as an array of its values', edited((m) => { (m.files as unknown[])[0] = Object.values((m.files as Record<string, unknown>[])[0] as Record<string, unknown>) })],
     ['an escaped key', text(manifest.replace('"schema"', '"sch\\u0065ma"'))],
-    ['a repeated key written two ways', text(manifest.replace('{', '{"sch\\u0065ma":1,'))],
+    ['a repeated key written two ways', text(first(manifest, '{"sch\\u0065ma":1,'))],
     ['an escaped value', text(manifest.replace('"mnema-web"', '"mnema\\u002dweb"'))],
     ['a lone surrogate', text(manifest.replace('"test"', '"\\ud800"'))],
     ['a control character in a string', Buffer.from(manifest.replace('"test"', '"te\u0001st"'))],
     ['a tab character in a string', Buffer.from(manifest.replace('"test"', '"te\tst"'))],
-    ['a deeply nested unknown value', text(manifest.replace('{', `{"surprise":${'['.repeat(300)}${']'.repeat(300)},`))],
+    ['a deeply nested unknown value', text(first(manifest, `{"surprise":${'['.repeat(300)}${']'.repeat(300)},`))],
     ['NaN', raw('"schema":NaN')], ['a number with a leading dot', raw('"schema":.5')],
   ]
 
@@ -391,9 +396,9 @@ function jsonVectors(): Json {
     ['version as a number', text(health.replace('"0.7.17"', '17'))], ['version null', text(health.replace('"0.7.17"', 'null'))],
     ['an escaped value', text(health.replace('"ok"', '"o\\u006b"'))],
     ['the document as an array of its values', text(JSON.stringify(Object.values(JSON.parse(health))))],
-    ['a repeated key inside an unknown field', text(health.replace('{', '{"surprise":{"a":1,"a":2},'))],
-    ['a repeated key inside an unknown array', text(health.replace('{', '{"surprise":[{"a":1,"a":2}],'))],
-    ...[100, 120, 125, 126, 127, 128, 129, 200].map((depth): [string, Buffer] => [`an unknown field nested ${depth} deep`, text(health.replace('{', `{"surprise":${'['.repeat(depth)}${']'.repeat(depth)},`))]),
+    ['a repeated key inside an unknown field', text(first(health, '{"surprise":{"a":1,"a":2},'))],
+    ['a repeated key inside an unknown array', text(first(health, '{"surprise":[{"a":1,"a":2}],'))],
+    ...[100, 120, 125, 126, 127, 128, 129, 200].map((depth): [string, Buffer] => [`an unknown field nested ${depth} deep`, text(first(health, `{"surprise":${'['.repeat(depth)}${']'.repeat(depth)},`))]),
   ]
   const healths = healthInputs.map(([name, bytes]) => {
     let result: Json
@@ -426,7 +431,7 @@ function jsonVectors(): Json {
     ['an escaped value', text(release.replace('"v0.8.1"', '"v0.8.\\u0031"'))],
     ['the document as an array of its values', text(JSON.stringify(Object.values(JSON.parse(release))))],
     ['an asset as an array of its values', text(release.replace(/\{"name".*\}\]/, '["mnema-web-0.8.1.zip","' + url + '",1000]]'))],
-    ['a repeated key inside an unknown field', text(release.replace('{', '{"surprise":{"a":1,"a":2},'))],
+    ['a repeated key inside an unknown field', text(first(release, '{"surprise":{"a":1,"a":2},'))],
     ['a repeated key inside an unknown field of an asset', text(release.replace('{"name"', '{"surprise":[{"a":1,"a":2}],"name"'))],
   ]
   const releases = releaseInputs.map(([name, bytes]) => {
