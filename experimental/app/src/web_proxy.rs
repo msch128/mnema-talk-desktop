@@ -105,6 +105,20 @@ impl Resp {
             body: text.as_bytes().to_vec(),
         }
     }
+    /// The answer as a document of the page may meet it: whatever produced
+    /// it, a response under `/api/` carries the sandbox policy and no sniffing,
+    /// so no branch (an error, a redirect notice, a new content type) can hand
+    /// the privileged page of a server a document that runs script.
+    pub fn sealed(mut self) -> Resp {
+        self.headers.retain(|(name, _)| {
+            name != "content-security-policy" && name != "x-content-type-options"
+        });
+        self.headers
+            .push(("content-security-policy".into(), DATA_CSP.into()));
+        self.headers
+            .push(("x-content-type-options".into(), "nosniff".into()));
+        self
+    }
     /// The server's error envelope, so the app's error handling applies.
     fn error(status: u16, code: &str, message: &str) -> Resp {
         Resp {
@@ -529,6 +543,18 @@ pub async fn forward(
     headers: &[(String, String)],
     body: Vec<u8>,
 ) -> Resp {
+    forward_unsealed(instance, method, path_and_query, headers, body)
+        .await
+        .sealed()
+}
+
+async fn forward_unsealed(
+    instance: &Instance,
+    method: &str,
+    path_and_query: &str,
+    headers: &[(String, String)],
+    body: Vec<u8>,
+) -> Resp {
     let Some(url) = target(&instance.origin, path_and_query) else {
         return Resp::error(400, "INVALID_INPUT", "unsupported path");
     };
@@ -668,8 +694,6 @@ pub async fn forward(
             headers.push(("content-disposition".into(), "attachment".into()));
         }
     }
-    headers.push(("content-security-policy".into(), DATA_CSP.into()));
-    headers.push(("x-content-type-options".into(), "nosniff".into()));
     headers.push(("cross-origin-resource-policy".into(), "same-origin".into()));
     Resp {
         status,
@@ -1181,6 +1205,62 @@ mod tests {
         assert_eq!(header(&resp, "x-content-type-options"), Some("nosniff"));
         // The cookie the server set went to the jar, not to the page.
         assert_eq!(instance.jar.header(now() + 1).unwrap(), "session=new");
+    }
+
+    /// The privileged page of a server may be navigated to a path under
+    /// `/api/`: whichever way the proxy answers, that document is sandboxed.
+    #[tokio::test]
+    async fn every_way_the_proxy_answers_under_api_carries_the_sandbox_policy() {
+        let html = |status: &str, extra: &[&str]| {
+            let mut headers = vec!["content-type: text/html"];
+            headers.extend_from_slice(extra);
+            reply(status, &headers, "<script>1</script>")
+        };
+        let mut answers = Vec::new();
+        for (answer, label) in [
+            (html("200 OK", &[]), "ok"),
+            (html("404 Not Found", &[]), "not found"),
+            (html("302 Found", &["location: /elsewhere"]), "redirect"),
+        ] {
+            let (resp, _, _) =
+                call(answer, "GET", "/api/media/1", &[], b"", Jar::new(None, 0)).await;
+            answers.push((label, resp));
+        }
+        // Refused before the server is asked.
+        let (origin, _request) = serve_once(Vec::new()).await;
+        let instance = Instance {
+            origin,
+            client: client().unwrap(),
+            jar: Jar::new(None, 0),
+            limits: Limits::default(),
+        };
+        answers.push((
+            "method",
+            forward(&instance, "TRACE", "/api/media/1", &[], Vec::new()).await,
+        ));
+        answers.push((
+            "path",
+            forward(&instance, "GET", "/outside", &[], Vec::new()).await,
+        ));
+        for (label, resp) in answers {
+            assert_eq!(
+                header(&resp, "content-security-policy"),
+                Some(DATA_CSP),
+                "{label} {}",
+                resp.status
+            );
+            assert_eq!(
+                header(&resp, "x-content-type-options"),
+                Some("nosniff"),
+                "{label}"
+            );
+            let policies = resp
+                .headers
+                .iter()
+                .filter(|(n, _)| n == "content-security-policy")
+                .count();
+            assert_eq!(policies, 1, "{label}");
+        }
     }
 
     #[tokio::test]
