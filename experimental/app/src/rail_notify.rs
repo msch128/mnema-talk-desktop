@@ -58,8 +58,7 @@ pub fn level_is_valid(level: &str) -> bool {
 
 /// Whether the server's health answer lists the server-wide level.
 pub fn supports(health: &[u8]) -> bool {
-    serde_json::from_slice::<Health>(health)
-        .is_ok_and(|h| h.features.iter().any(|f| f == FEATURE))
+    serde_json::from_slice::<Health>(health).is_ok_and(|h| h.features.iter().any(|f| f == FEATURE))
 }
 
 /// The member's current server-wide level. The server reports an expired mute
@@ -99,7 +98,9 @@ mod tests {
 
     #[test]
     fn only_a_server_listing_the_feature_is_supported() {
-        assert!(supports(br#"{"status":"ok","features":["x","notify.levels.v2"]}"#));
+        assert!(supports(
+            br#"{"status":"ok","features":["x","notify.levels.v2"]}"#
+        ));
         assert!(!supports(br#"{"features":["notify.levels"]}"#));
         assert!(!supports(br#"{"status":"ok"}"#));
         assert!(!supports(b"not json"));

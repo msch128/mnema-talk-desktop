@@ -16,7 +16,7 @@ use base64::Engine as _;
 use serde::{Deserialize, Serialize};
 use std::{
     path::{Path, PathBuf},
-    sync::Mutex,
+    sync::{Arc, Mutex},
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use tauri::{AppHandle, Manager, Runtime, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
@@ -30,6 +30,9 @@ const CHECK_TIMEOUT: Duration = Duration::from_secs(30);
 const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(15 * 60);
 const START_TIMEOUT: Duration = Duration::from_secs(8);
 const NOTES_MAX: usize = 2000;
+/// The plugin buffers the whole installer in memory before its signature can
+/// be checked, so a download beyond this is abandoned.
+const MAX_INSTALLER: u64 = 512 * 1024 * 1024;
 const STATE_FILE: &str = "native-update.json";
 const PENDING_FILE: &str = "native-update.pending";
 const WINDOW: &str = "updater";
@@ -249,13 +252,22 @@ impl Source {
 }
 
 /// Sets the text of one menu entry (every window has its own menu).
-type MenuText = Box<dyn Fn(&str) + Send + Sync>;
+type MenuText = Arc<dyn Fn(&str) + Send + Sync>;
+
+/// The menu entries and the text they show now. Setting a text is a round
+/// trip to the main thread, so it is only done when the text changes and never
+/// with the lock held.
+#[derive(Default)]
+struct Menu {
+    items: Vec<MenuText>,
+    shown: Option<&'static str>,
+}
 
 pub struct NativeUpdates {
     inner: Mutex<Inner>,
     dir: Option<PathBuf>,
     source: Source,
-    menu: Mutex<Vec<MenuText>>,
+    menu: Mutex<Menu>,
 }
 
 fn now() -> u64 {
@@ -299,7 +311,7 @@ impl NativeUpdates {
             }),
             dir,
             source,
-            menu: Mutex::new(Vec::new()),
+            menu: Mutex::new(Menu::default()),
         }
     }
 
@@ -329,10 +341,15 @@ impl NativeUpdates {
 
     fn refresh_menu(&self) {
         let text = menu_text(self.snapshot().phase);
-        if let Ok(items) = self.menu.lock() {
-            for set in items.iter() {
-                set(text);
+        let items = match self.menu.lock() {
+            Ok(mut menu) if menu.shown != Some(text) => {
+                menu.shown = Some(text);
+                menu.items.clone()
             }
+            _ => return,
+        };
+        for set in items {
+            set(text);
         }
     }
 
@@ -359,8 +376,8 @@ pub fn menu_item<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<tauri::menu::M
         None::<&str>,
     )?;
     let handle = item.clone();
-    if let Ok(mut items) = state.menu.lock() {
-        items.push(Box::new(move |text| {
+    if let Ok(mut menu) = state.menu.lock() {
+        menu.items.push(Arc::new(move |text| {
             let _ = handle.set_text(text);
         }));
     }
@@ -380,6 +397,12 @@ fn classify(error: &tauri_plugin_updater::Error) -> Failure {
         E::Reqwest(_) | E::Network(_) | E::ReleaseNotFound | E::Io(_) => Failure::Offline,
         _ => Failure::Unknown,
     }
+}
+
+/// Whether an installer download is already beyond what is accepted, by its
+/// announced length or by what has arrived.
+pub fn over_cap(received: u64, total: Option<u64>) -> bool {
+    received > MAX_INSTALLER || total.is_some_and(|t| t > MAX_INSTALLER)
 }
 
 /// Whether a fresh trust statement allows installing anything new. A host
@@ -427,7 +450,11 @@ async fn fetch<R: Runtime>(app: &AppHandle<R>, source: &Source) -> Result<Option
         }
         again
     };
-    Ok(Some(update).filter(|u| !source.github_only || download_url_ok(&u.download_url)))
+    if source.github_only && !download_url_ok(&update.download_url) {
+        // Not "nothing newer": that would also discard a kept installer.
+        return Err(Failure::Verify);
+    }
+    Ok(Some(update))
 }
 
 async fn check_with<R: Runtime>(
@@ -481,8 +508,11 @@ async fn look<R: Runtime>(app: &AppHandle<R>, manual: bool) -> bool {
     let mut announce = false;
     state.with(|i| {
         i.busy = false;
-        i.persisted.last_check = now();
         let current = i.snapshot.current.clone();
+        // A failed check is not a check: the next poll tries again.
+        if found.is_ok() {
+            i.persisted.last_check = now();
+        }
         match found {
             Ok(Some(update)) if offerable(&current, &update.version).is_some() => {
                 let version = update.version.clone();
@@ -569,22 +599,32 @@ pub async fn install<R: Runtime>(app: &AppHandle<R>, mode: Mode) {
     let downloaded = if let Some(bytes) = held {
         Ok(bytes)
     } else {
-        update
-            .download(
-                move |chunk, total| {
-                    let state = progress.state::<NativeUpdates>();
-                    state.with(|i| {
-                        i.snapshot.received += chunk as u64;
-                        i.snapshot.total = total;
-                    });
-                },
-                || {},
-            )
-            .await
+        let too_big = Arc::new(tokio::sync::Notify::new());
+        let signal = too_big.clone();
+        let download = update.download(
+            move |chunk, total| {
+                // The phase does not change while bytes arrive, so the menu
+                // is left alone.
+                let state = progress.state::<NativeUpdates>();
+                if let Ok(mut i) = state.inner.lock() {
+                    i.snapshot.received += chunk as u64;
+                    i.snapshot.total = total;
+                    if over_cap(i.snapshot.received, i.snapshot.total) {
+                        signal.notify_one();
+                    }
+                }
+            },
+            || {},
+        );
+        // Dropping the download stops it.
+        tokio::select! {
+            result = download => result.map_err(|e| classify(&e)),
+            () = too_big.notified() => Err(Failure::Verify),
+        }
     };
     let bytes = match downloaded {
         Ok(bytes) => bytes,
-        Err(error) => return fail(&state, classify(&error)),
+        Err(failure) => return fail(&state, failure),
     };
     match mode {
         Mode::Later => {
@@ -659,7 +699,7 @@ pub fn skip<R: Runtime>(app: &AppHandle<R>) {
 /// An installer kept for this start, checked against a freshly fetched
 /// manifest: it must be the newest release and still verify. Bounded in time
 /// so that start is never held up by the network.
-pub fn prepare_pending<R: Runtime>(app: &AppHandle<R>) -> Option<(Update, Vec<u8>)> {
+pub async fn prepare_pending<R: Runtime>(app: &AppHandle<R>) -> Option<(Update, Vec<u8>)> {
     // Kept for later when no fresh trust statement is in force.
     if !installs_allowed(app) {
         return None;
@@ -670,9 +710,7 @@ pub fn prepare_pending<R: Runtime>(app: &AppHandle<R>) -> Option<(Update, Vec<u8
         Err(_) => return None,
     };
     let source = state.source.clone();
-    let found = tauri::async_runtime::block_on(async {
-        tokio::time::timeout(START_TIMEOUT, fetch(app, &source)).await
-    });
+    let found = tokio::time::timeout(START_TIMEOUT, fetch(app, &source)).await;
     let update = match found {
         Ok(Ok(Some(u))) if u.version == pending.version => u,
         // Newer release or none: the held installer is stale.
@@ -698,7 +736,7 @@ pub fn prepare_pending<R: Runtime>(app: &AppHandle<R>) -> Option<(Update, Vec<u8
     Some((update, bytes?))
 }
 
-fn apply_pending<R: Runtime>(app: &AppHandle<R>) {
+async fn apply_pending<R: Runtime>(app: &AppHandle<R>) {
     if disabled() {
         return;
     }
@@ -713,12 +751,9 @@ fn apply_pending<R: Runtime>(app: &AppHandle<R>) {
         && !installs_allowed(app)
         && let Some(trusted) = app.try_state::<crate::web_client::Trusted>()
     {
-        let _ = tauri::async_runtime::block_on(tokio::time::timeout(
-            START_TIMEOUT,
-            trusted.trust_round(),
-        ));
+        let _ = tokio::time::timeout(START_TIMEOUT, trusted.trust_round()).await;
     }
-    let Some((update, bytes)) = prepare_pending(app) else {
+    let Some((update, bytes)) = prepare_pending(app).await else {
         return;
     };
     state.with(|i| {
@@ -726,9 +761,11 @@ fn apply_pending<R: Runtime>(app: &AppHandle<R>) {
         i.snapshot.version = Some(update.version.clone());
     });
     let _ = open_window(app, false);
-    match update.install(&bytes) {
-        Ok(()) => app.restart(),
-        Err(_) => {
+    // On macOS this may ask for the administrator password.
+    let installed = tauri::async_runtime::spawn_blocking(move || update.install(&bytes)).await;
+    match installed {
+        Ok(Ok(())) => app.restart(),
+        _ => {
             discard_pending(&state);
             fail(&state, Failure::Install);
         }
@@ -761,12 +798,13 @@ pub fn setup<R: Runtime>(app: &AppHandle<R>) {
     let dir = app.path().app_local_data_dir().ok();
     let current = app.package_info().version.to_string();
     app.manage(NativeUpdates::new(current, dir, source));
-    apply_pending(app);
     if disabled() {
         return;
     }
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
+        // Off the main thread: the trust and manifest fetches may take a while.
+        apply_pending(&app).await;
         // A check at every start, then whenever the interval has passed.
         check(&app, false).await;
         loop {
