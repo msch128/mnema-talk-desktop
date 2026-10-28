@@ -1,8 +1,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-#[cfg(not(feature = "web-client"))]
-include!("native_preview.rs");
-
 #[cfg(feature = "web-client")]
 mod instances;
 #[cfg(feature = "web-client")]
