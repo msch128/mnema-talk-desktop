@@ -13,6 +13,13 @@ test('toast text is flattened to plain, bounded text', () => {
   assert.equal(cleanText('\u{1F600}'.repeat(30), 5), `${'\u{1F600}'.repeat(4)}…`)
 })
 
+test('format characters that belong to words stay, bidi controls go', () => {
+  const family = '\u{1F468}\u200D\u{1F469}\u200D\u{1F467}'
+  assert.equal(cleanText(family, 50), family)
+  assert.equal(cleanText('\u0645\u06CC\u200C\u062E\u0648\u0627\u0647\u0645', 50), '\u0645\u06CC\u200C\u062E\u0648\u0627\u0647\u0645')
+  assert.equal(cleanText('a\u202Eb\u2066c\u200Fd\uFEFFe', 50), 'a b c d e')
+})
+
 test('only plain identifiers may name the message of a toast', () => {
   assert.ok(validId('0b1e2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d'))
   for (const bad of ['', 'a b', '../x', 'a;b', 'a'.repeat(65), 'é']) assert.equal(validId(bad), false, bad)
