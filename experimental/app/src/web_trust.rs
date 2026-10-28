@@ -6,7 +6,7 @@
 //! are revoked. Where the bytes come from decides nothing: the signature is
 //! checked before anything is parsed, and a statement with a lower serial than
 //! the highest one accepted is refused.
-use crate::web_bundle::{TrustedKey, Version, is_hex_id16, parse_key};
+use crate::web_bundle::{TrustedKey, Version, is_hex_id16, parse_key, write_atomic};
 use base64::{Engine, engine::general_purpose::STANDARD};
 use ed25519_dalek::{Signature, VerifyingKey};
 use serde::Deserialize;
@@ -325,16 +325,6 @@ pub struct TrustState {
     stored: bool,
 }
 
-fn write_atomically(dir: &Path, name: &str, bytes: &[u8]) -> std::io::Result<()> {
-    use std::io::Write;
-    let partial = dir.join(format!("{name}.partial"));
-    let mut file = std::fs::File::create(&partial)?;
-    file.write_all(bytes)?;
-    file.sync_all()?;
-    drop(file);
-    std::fs::rename(&partial, dir.join(name))
-}
-
 impl TrustState {
     /// Loads and re-verifies the stored statement; a damaged or foreign file is
     /// ignored, which falls back to the compiled-in keys.
@@ -438,7 +428,7 @@ impl TrustState {
             revoked_bundle_keys: self.revoked_bundle.iter().cloned().collect(),
             revoked_updater_keys: self.revoked_updater.iter().cloned().collect(),
         };
-        write_atomically(dir, STATE_FILE, &serde_json::to_vec(&stored)?)?;
+        write_atomic(&dir.join(STATE_FILE), &serde_json::to_vec(&stored)?)?;
         // The pair an older client wrote must not outlive the state: a stale
         // one would be read back should the state file ever be lost.
         for name in [STATEMENT_FILE, SIGNATURE_FILE] {

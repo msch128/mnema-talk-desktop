@@ -3,8 +3,9 @@
  * small `SecretStorage` (Electron's `safeStorage` satisfies it) so that its
  * failure modes can be tested without Electron. See `main/vault.ts`.
  */
-import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
+import { writeFileAtomic } from './atomic.ts'
 import type { Vault } from './cookies.ts'
 
 /** The part of Electron's `safeStorage` the vault uses. */
@@ -64,15 +65,11 @@ export function createVault(dir: string, storage: SecretStorage): Vault {
     save(account, secret) {
       const path = file(account)
       if (!path) return false
-      const partial = `${path}.partial`
       try {
-        mkdirSync(join(dir, 'vault'), { recursive: true, mode: 0o700 })
-        writeFileSync(partial, storage.encryptString(secret.toString('utf8')), { mode: 0o600 })
-        renameSync(partial, path)
+        // No encrypted blob is left behind by a failed save.
+        writeFileAtomic(path, storage.encryptString(secret.toString('utf8')), { dirMode: 0o700 })
         return true
       } catch {
-        // No encrypted blob is left behind by a failed save.
-        try { rmSync(partial, { force: true }) } catch { /* nothing more to do */ }
         return false
       }
     },

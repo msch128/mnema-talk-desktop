@@ -16,7 +16,6 @@ use crate::{
     web_vault::{Os, Vault},
 };
 use std::{
-    io::Write,
     sync::{
         Arc,
         atomic::{AtomicU32, Ordering},
@@ -28,16 +27,7 @@ use tokio::sync::oneshot;
 use url::Url;
 
 fn record(line: &str) {
-    let Some(path) = std::env::var_os("MNEMA_MULTI_SELFTEST") else {
-        return;
-    };
-    if let Ok(mut file) = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(path)
-    {
-        let _ = writeln!(file, "{line}");
-    }
+    crate::web_permissions::append_log_line("MNEMA_MULTI_SELFTEST", line);
 }
 
 /// How many checks ran, so the script compares the passes with the host's own count.

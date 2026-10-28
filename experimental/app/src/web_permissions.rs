@@ -223,12 +223,10 @@ fn from_hex(byte: u8) -> Option<u8> {
     }
 }
 
-fn emit(line: &str) {
-    static LOCK: Mutex<()> = Mutex::new(());
-    let _guard = LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-    eprintln!("{line}");
-    let _ = std::io::stderr().flush();
-    let Some(path) = std::env::var_os("MNEMA_WEBVIEW_PROBE_LOG") else {
+/// Appends `line` to the file the environment variable `var` names, when it is
+/// set. The probe and the self-tests log through this.
+pub(crate) fn append_log_line(var: &str, line: &str) {
+    let Some(path) = std::env::var_os(var) else {
         return;
     };
     if let Ok(mut file) = std::fs::OpenOptions::new()
@@ -238,6 +236,14 @@ fn emit(line: &str) {
     {
         let _ = writeln!(file, "{line}");
     }
+}
+
+fn emit(line: &str) {
+    static LOCK: Mutex<()> = Mutex::new(());
+    let _guard = LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    eprintln!("{line}");
+    let _ = std::io::stderr().flush();
+    append_log_line("MNEMA_WEBVIEW_PROBE_LOG", line);
 }
 
 #[cfg(test)]

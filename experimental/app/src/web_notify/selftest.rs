@@ -6,23 +6,14 @@
 //! app, that a toast reaches the operating system; the line format is the
 //! contract with `scripts/test-windows-notify.ps1` and the macOS check.
 use super::{Click, apply_badge, deliver, platform};
-use std::{io::Write, time::Duration};
+use std::time::Duration;
 use tauri::Manager;
 
 pub const CHANNEL: &str = "00000000-0000-4000-8000-000000000001";
 pub const MESSAGE: &str = "00000000-0000-4000-8000-000000000002";
 
 fn record(line: &str) {
-    let Some(path) = std::env::var_os("MNEMA_NOTIFY_SELFTEST") else {
-        return;
-    };
-    if let Ok(mut file) = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(path)
-    {
-        let _ = writeln!(file, "{line}");
-    }
+    crate::web_permissions::append_log_line("MNEMA_NOTIFY_SELFTEST", line);
 }
 
 static CLICKS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);

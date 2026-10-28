@@ -6,6 +6,7 @@
 //! sidepeek belong to exactly one: the server that owns the Talk the person is
 //! in. Only that server's page may feed them, and only its page receives what
 //! they send back.
+use crate::web_bundle::write_atomic;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
@@ -487,13 +488,6 @@ pub fn desktop_gaming_control(
     drop(g);
     command.dispatch(window.app_handle());
     Ok(())
-}
-/// Writes through a temporary file and a rename, so a crash mid-save leaves the
-/// previous file instead of a truncated one that `setup` would discard.
-fn write_atomic(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()> {
-    let tmp = path.with_extension("tmp");
-    std::fs::write(&tmp, bytes)?;
-    std::fs::rename(&tmp, path)
 }
 /// Saves `settings` and makes them current. The command to release push-to-talk
 /// is returned for the caller to send after it lets go of the lock.

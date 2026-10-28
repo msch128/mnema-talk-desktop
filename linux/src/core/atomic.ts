@@ -1,4 +1,4 @@
-import { mkdirSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { closeSync, fsyncSync, mkdirSync, openSync, renameSync, rmSync, writeSync } from 'node:fs'
 import { dirname } from 'node:path'
 
 export interface AtomicOptions {
@@ -6,6 +6,8 @@ export interface AtomicOptions {
   mode?: number
   /** Create the parent directory with this mode when given. */
   dirMode?: number
+  /** Flush the file to disk before the rename. */
+  sync?: boolean
 }
 
 /**
@@ -18,7 +20,13 @@ export function writeFileAtomic(path: string, bytes: Uint8Array, options: Atomic
   if (options.dirMode !== undefined) mkdirSync(dirname(path), { recursive: true, mode: options.dirMode })
   const partial = `${path}.partial`
   try {
-    writeFileSync(partial, bytes, { mode: options.mode ?? 0o600 })
+    const fd = openSync(partial, 'w', options.mode ?? 0o600)
+    try {
+      writeSync(fd, bytes)
+      if (options.sync) fsyncSync(fd)
+    } finally {
+      closeSync(fd)
+    }
     renameSync(partial, path)
   } catch (error) {
     rmSync(partial, { force: true })

@@ -9,8 +9,9 @@
  * lower serial than the highest one accepted is refused.
  */
 import type { KeyObject } from 'node:crypto'
-import { closeSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, writeSync } from 'node:fs'
+import { readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
+import { writeFileAtomic } from './atomic.ts'
 import { type TrustedKey, parseKey } from './bundle.ts'
 import { publicKeyFromRaw, verifyEd25519 } from './ed25519.ts'
 import { asU32, asU64, parseStrictJson } from './json.ts'
@@ -213,18 +214,6 @@ export interface TrustOptions {
 
 interface Held { statement: Statement, doc: Buffer, sig: Buffer }
 
-function writeAtomically(dir: string, name: string, bytes: Uint8Array): void {
-  const partial = join(dir, `${name}.partial`)
-  const fd = openSync(partial, 'w', 0o600)
-  try {
-    writeSync(fd, bytes)
-    fsyncSync(fd)
-  } finally {
-    closeSync(fd)
-  }
-  renameSync(partial, join(dir, name))
-}
-
 /** The last good statement, persisted next to the bundle cache. */
 export class TrustState {
   private current: Held | null = null
@@ -300,14 +289,13 @@ export class TrustState {
   /** Writes the state in force in one atomic step. */
   private persist(): void {
     if (!this.dir || !this.current) return
-    mkdirSync(this.dir, { recursive: true, mode: 0o700 })
     const stored = {
       statement: this.current.doc.toString('base64'),
       signature: this.current.sig.toString('utf8'),
       revoked_bundle_keys: [...this.revokedBundle].sort(),
       revoked_updater_keys: [...this.revokedUpdater].sort(),
     }
-    writeAtomically(this.dir, STATE_FILE, Buffer.from(JSON.stringify(stored)))
+    writeFileAtomic(join(this.dir, STATE_FILE), Buffer.from(JSON.stringify(stored)), { dirMode: 0o700, sync: true })
     // The pair an older client wrote must not outlive the state: a stale one would be read back should the state file ever be lost.
     for (const name of [STATEMENT_FILE, SIGNATURE_FILE]) rmSync(join(this.dir, name), { force: true })
   }

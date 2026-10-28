@@ -400,15 +400,21 @@ struct State {
     last_check: u64,
 }
 
-/// Writes through a temporary file and a rename, so a crash leaves either the
-/// old or the new content and never a torn file.
+/// Writes through a synced `.partial` file and a rename, so a crash leaves
+/// either the old or the new content and never a torn file.
 pub(crate) fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    let tmp = path.with_extension("tmp");
-    std::fs::write(&tmp, bytes)?;
-    std::fs::rename(&tmp, path)
+    let mut partial = path.as_os_str().to_owned();
+    partial.push(".partial");
+    let partial = PathBuf::from(partial);
+    let mut file = std::fs::File::create(&partial)?;
+    file.write_all(bytes)?;
+    file.sync_all()?;
+    drop(file);
+    std::fs::rename(&partial, path)
 }
 
 const STATE_FILE: &str = "state.json";
@@ -692,10 +698,7 @@ impl Store {
         }
         if let Some(dir) = &self.dir {
             std::fs::create_dir_all(dir).map_err(|_| "cannot create the cache directory")?;
-            let target = dir.join(format!("mnema-web-{version}.zip"));
-            let partial = dir.join(format!("mnema-web-{version}.zip.partial"));
-            std::fs::write(&partial, bytes)
-                .and_then(|()| std::fs::rename(&partial, &target))
+            write_atomic(&dir.join(format!("mnema-web-{version}.zip")), bytes)
                 .map_err(|_| "cannot write the bundle")?;
         }
         self.trusted = keys.iter().map(|k| k.id.clone()).collect();
@@ -1717,7 +1720,7 @@ mod tests {
         store
             .install(&bundle(&Spec::new("0.8.5")), &trusted(7))
             .unwrap();
-        assert!(!d.join("state.tmp").exists());
+        assert!(!d.join("state.json.partial").exists());
         // A torn write, and the bundles that carried the floor are gone.
         std::fs::write(d.join("state.json"), b"{\"floors\":").unwrap();
         for v in ["0.8.4", "0.8.5"] {
