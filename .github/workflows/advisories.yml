@@ -16,6 +16,7 @@ on:
       - experimental/**/Cargo.lock
       - experimental/licenses/**
       - experimental/scripts/collect-licenses.mjs
+      - scripts/license-bundle.mjs
 
 permissions:
   contents: read

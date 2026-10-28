@@ -1,10 +1,15 @@
 #!/usr/bin/env node
-// Gitleaks allowances apply only to these byte-identical public known-answer vectors.
-// Changes require an explicit provenance/security review and new reviewed hashes.
+// The vendored OpenMLS/SFrame known-answer vectors are pinned by hash: gitleaks
+// allows their hexadecimal fields only while the bytes are identical.
+// The shared test-vectors/*.json files of both clients are edited with the
+// code, so they are pinned by name instead: .gitleaks.toml exempts exactly the
+// files listed in SHARED_VECTORS, and a new file must be added here and there.
+// check-native-test-vectors.test.mjs keeps .gitleaks.toml and these lists equal.
 import { createHash } from 'node:crypto';
 import { readFileSync, lstatSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
-const expected = Object.fromEntries([
+import { fileURLToPath } from 'node:url';
+export const expected = Object.fromEntries([
   [
     "experimental/vendor/openmls/openmls/test_vectors/crypto-basics.json",
     "e42d1ad35b6b863ae5f23093515e34abc24d8008c55336fd978c35fbcf7f9572"
@@ -66,12 +71,19 @@ const expected = Object.fromEntries([
     "b8d35efd41749567427cb9ae52d9a7362904154978ff6a5fb20c0258a8ffdec1"
   ]
 ]);
-const args = process.argv.slice(2);
-if (args.some(arg => arg !== '--staged') || args.length > 1) throw new Error('Usage: check-native-test-vectors.mjs [--staged]');
-const staged = args.includes('--staged');
-for (const [path, hash] of Object.entries(expected)) {
-  const bytes = staged ? execFileSync('git', ['show', `:${path}`], { maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] })
-    : (() => { if (!lstatSync(path).isFile() || lstatSync(path).isSymbolicLink()) throw new Error(`Not a regular test-vector file: ${path}`); return readFileSync(path); })();
-  if (createHash('sha256').update(bytes).digest('hex') !== hash) throw new Error(`Pinned public test-vector bytes changed: ${path}`);
+export const SHARED_VECTORS = ['bundle', 'client', 'minisign', 'proxy', 'store', 'trust'].map(name => `test-vectors/${name}.json`);
+function main() {
+  const args = process.argv.slice(2);
+  if (args.some(arg => arg !== '--staged') || args.length > 1) throw new Error('Usage: check-native-test-vectors.mjs [--staged]');
+  const staged = args.includes('--staged');
+  for (const [path, hash] of Object.entries(expected)) {
+    const bytes = staged ? execFileSync('git', ['show', `:${path}`], { maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] })
+      : (() => { if (!lstatSync(path).isFile() || lstatSync(path).isSymbolicLink()) throw new Error(`Not a regular test-vector file: ${path}`); return readFileSync(path); })();
+    if (createHash('sha256').update(bytes).digest('hex') !== hash) throw new Error(`Pinned public test-vector bytes changed: ${path}`);
+  }
+  const tracked = execFileSync('git', ['ls-files', 'test-vectors']).toString('utf8').split('\n').filter(f => /^test-vectors\/[a-z]+\.json$/.test(f)).sort();
+  if (JSON.stringify(tracked) !== JSON.stringify([...SHARED_VECTORS].sort())) throw new Error(`test-vectors/*.json does not match SHARED_VECTORS: ${tracked.join(', ')}`);
+  console.log(`Verified ${Object.keys(expected).length} pinned public test-vector files (${staged ? 'index' : 'working tree'}).`);
 }
-console.log(`Verified ${Object.keys(expected).length} pinned public test-vector files (${staged ? 'index' : 'working tree'}).`);
+
+if (process.argv[1] === fileURLToPath(import.meta.url)) main();
