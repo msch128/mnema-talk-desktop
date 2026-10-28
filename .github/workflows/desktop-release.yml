@@ -212,7 +212,21 @@ jobs:
           ditto "$app" "$RUNNER_TEMP/dmg/Mnema Desktop DEV.app"
           ln -s /Applications "$RUNNER_TEMP/dmg/Applications"
           cp LICENSE THIRD_PARTY_NOTICES.md "$RUNNER_TEMP/dmg/"
-          hdiutil create -volname "Mnema Desktop DEV" -srcfolder "$RUNNER_TEMP/dmg" -ov -format UDZO "$out/$name.dmg"
+          # GitHub's macOS runners often answer the first create with
+          # "Resource busy". A failed attempt must not abort under set -e.
+          dmg="$out/$name.dmg"
+          created=0
+          for attempt in 1 2 3 4 5; do
+            if hdiutil create -volname "Mnema Desktop DEV" -srcfolder "$RUNNER_TEMP/dmg" -ov -format UDZO "$dmg"; then
+              created=1
+              break
+            fi
+            echo "::warning::hdiutil create failed (attempt ${attempt})"
+            rm -f "$dmg"
+            hdiutil detach "/Volumes/Mnema Desktop DEV" >/dev/null 2>&1 || true
+            sleep $((attempt * 5))
+          done
+          [ "$created" = 1 ] || { echo '::error::hdiutil create failed'; exit 1; }
       # What an updated client ends up with is the archive's app: unpack it the
       # way the updater does and run that.
       - name: The app is arm64 only, ad-hoc signed, asks for the devices and starts
