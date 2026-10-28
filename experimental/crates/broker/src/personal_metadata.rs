@@ -122,16 +122,7 @@ impl Broker {
             Err(Error::Unauthorized) => {
                 let mut s = self.inner.state.lock().map_err(|_| Error::Internal)?;
                 // A delayed old401 cannot clear a newly selected/login session.
-                s.current(self.inner.owner, &op)?;
-                s.cancel_requests(None);
-                if let Some(a) = s.active.as_mut() {
-                    a.cancel.cancel();
-                    a.status = Status::ReauthRequired;
-                    a.session = None;
-                    if let Some(f) = a.flight.take() {
-                        f.finish(Err(Error::Unauthorized));
-                    }
-                }
+                s.revoke_after_unauthorized(self.inner.owner, &op)?;
                 return Err(Error::Unauthorized);
             }
             result => result?,

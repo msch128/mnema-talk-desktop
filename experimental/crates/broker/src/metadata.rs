@@ -57,6 +57,10 @@ struct ReadState {
 struct Health {
     status: String,
     version: String,
+    #[serde(default)]
+    web_client_api: i64,
+    #[serde(default)]
+    features: Vec<String>,
 }
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -118,6 +122,9 @@ fn decode(
         MetadataResource::Health => {
             let v: Health = body.decode()?;
             if v.status != "ok"
+                || v.web_client_api < 0
+                || v.features.len() > 256
+                || !v.features.iter().all(|f| text(f, 64))
                 || v.version.len() > 64
                 || v.version.is_empty()
                 || !v
@@ -206,16 +213,7 @@ impl Broker {
         {
             Err(Error::Unauthorized) => {
                 let mut s = self.inner.state.lock().map_err(|_| Error::Internal)?;
-                s.current(self.inner.owner, &op)?;
-                s.cancel_requests(None);
-                if let Some(a) = s.active.as_mut() {
-                    a.cancel.cancel();
-                    a.status = Status::ReauthRequired;
-                    a.session = None;
-                    if let Some(f) = a.flight.take() {
-                        f.finish(Err(Error::Unauthorized));
-                    }
-                }
+                s.revoke_after_unauthorized(self.inner.owner, &op)?;
                 return Err(Error::Unauthorized);
             }
             r => r?,
@@ -274,5 +272,68 @@ mod tests {
         let out = decode(MetadataResource::Channels, &body).unwrap();
         assert_eq!(out["uncategorized"][1]["type"], "forum");
         assert!(out["uncategorized"][0].get("slug").is_none());
+    }
+}
+#[cfg(test)]
+mod contract_tests {
+    use super::*;
+    use crate::http::Body;
+    const CHANNEL: &str = r#"{"id":"22222222-2222-2222-2222-222222222222","number":3,"category_id":null,"name":"general","type":"text","topic":"","sort_order":0,"created_at":"2026-01-01T00:00:00Z","user_limit":0,"slow_mode_seconds":30,"auto_delete_days":7,"is_lobby":false,"is_temp":true,"leader_id":"33333333-3333-3333-3333-333333333333","is_stage":false,"slug":"general","previous_slugs":["old-general"]}"#;
+    #[test]
+    fn channels_decode_every_field_the_server_sends() {
+        let body = Body::test_json(&format!(
+            r#"{{"categories":[],"uncategorized":[{CHANNEL}]}}"#
+        ));
+        let value = decode(MetadataResource::Channels, &body).unwrap();
+        let channel = &value["uncategorized"][0];
+        // Accepted, not forwarded: the client does not use them.
+        assert_eq!(channel["name"], "general");
+        assert!(channel.get("slow_mode_seconds").is_none());
+        assert!(channel.get("slug").is_none());
+    }
+    #[test]
+    fn channels_still_decode_the_early_shape_and_reject_unknown_fields() {
+        let early = CHANNEL.replace(
+            r#","slow_mode_seconds":30,"auto_delete_days":7,"is_lobby":false,"is_temp":true,"leader_id":"33333333-3333-3333-3333-333333333333","is_stage":false,"slug":"general","previous_slugs":["old-general"]"#,
+            "",
+        );
+        let body = Body::test_json(&format!(r#"{{"categories":[],"uncategorized":[{early}]}}"#));
+        assert!(decode(MetadataResource::Channels, &body).is_ok());
+        let extra = CHANNEL.replace(r#""number":3,"#, r#""number":3,"secret":"x","#);
+        let body = Body::test_json(&format!(r#"{{"categories":[],"uncategorized":[{extra}]}}"#));
+        assert_eq!(
+            decode(MetadataResource::Channels, &body).unwrap_err(),
+            Error::Protocol
+        );
+        let bad = CHANNEL.replace(r#""slow_mode_seconds":30"#, r#""slow_mode_seconds":-1"#);
+        let body = Body::test_json(&format!(r#"{{"categories":[],"uncategorized":[{bad}]}}"#));
+        assert_eq!(
+            decode(MetadataResource::Channels, &body).unwrap_err(),
+            Error::Protocol
+        );
+    }
+    #[test]
+    fn health_decodes_the_contract_version_and_feature_list() {
+        let body = Body::test_json(
+            r#"{"status":"ok","version":"1.2.0","web_client_api":1,"features":["blocks","dm"]}"#,
+        );
+        let value = decode(MetadataResource::Health, &body).unwrap();
+        assert_eq!(value["web_client_api"], 1);
+        assert_eq!(value["features"][1], "dm");
+        let old = Body::test_json(r#"{"status":"ok","version":"1.0.0"}"#);
+        assert!(decode(MetadataResource::Health, &old).is_ok());
+    }
+    #[test]
+    fn members_decode_users_with_every_optional_server_field() {
+        let body = Body::test_json(
+            r#"[{"id":"11111111-1111-1111-1111-111111111111","username":"fixture","display_name":"F","bio":"","role":"user","avatar_url":"/api/media/x","banner_url":"/api/media/y","status_text":"","status_expires_at":"2026-12-01T10:00:00Z","presence":"online","voice_seconds":1,"message_count":2,"rules_pending":true,"locale":"en","created_at":"2026-01-01T00:00:00Z"}]"#,
+        );
+        assert!(decode(MetadataResource::Members, &body).is_ok());
+    }
+    #[test]
+    fn one_text_rule_counts_characters_not_bytes() {
+        assert!(text(&"\u{e4}".repeat(200), 256));
+        assert!(!text(&"a".repeat(257), 256));
+        assert!(!text("a\0b", 256));
     }
 }

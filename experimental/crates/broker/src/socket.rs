@@ -296,7 +296,14 @@ impl Broker {
                 builder.build().map_err(|_| Error::Network)?,
             ))
         };
-        let result = tokio::select! {biased;_=op.cancelled()=>Err(Error::Cancelled),r=tokio::time::timeout(Duration::from_secs(8),tokio_tungstenite::connect_async_tls_with_config(request,Some(config),false,connector))=>r.map_err(|_|Error::Network)?.map_err(|_|Error::Network)};
+        let result = tokio::select! {biased;_=op.cancelled()=>Err(Error::Cancelled),r=tokio::time::timeout(Duration::from_secs(8),tokio_tungstenite::connect_async_tls_with_config(request,Some(config),false,connector))=>r.map_err(|_|Error::Network)?.map_err(|e|match e{
+        // A revoked or expired access token is answered at the upgrade.
+        tokio_tungstenite::tungstenite::Error::Http(r) if r.status()==tokio_tungstenite::tungstenite::http::StatusCode::UNAUTHORIZED=>Error::Unauthorized,
+        _=>Error::Network})};
+        if matches!(result, Err(Error::Unauthorized)) {
+            let mut s = self.inner.state.lock().map_err(|_| Error::Internal)?;
+            s.revoke_after_unauthorized(self.inner.owner, &op)?;
+        }
         let (stream, response) = result?;
         self.verify(&op)?;
         if response.headers().contains_key("Set-Cookie")

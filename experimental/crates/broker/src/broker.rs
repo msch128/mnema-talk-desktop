@@ -379,6 +379,28 @@ impl State {
         }
         self.mark_phase(op, phase)
     }
+    /// Tears the session down after the server answered 401 to `op`. A delayed
+    /// 401 of an older request must never revoke a session that replaced the
+    /// one the request started under (a refresh or a new login on the same
+    /// profile), so the operation has to belong to the current session.
+    fn revoke_after_unauthorized(&mut self, broker: u64, op: &Operation) -> Result<(), Error> {
+        self.current(broker, op)?;
+        if let (Some(revision), Some(active)) = (op.auth_revision, self.active.as_ref())
+            && active.session.as_ref().map(|s| s.native_identity) != Some(revision)
+        {
+            return Err(Error::Stale);
+        }
+        self.cancel_requests(None);
+        if let Some(active) = self.active.as_mut() {
+            active.cancel.cancel();
+            active.status = Status::ReauthRequired;
+            active.session = None;
+            if let Some(flight) = active.flight.take() {
+                flight.finish(Err(Error::Unauthorized));
+            }
+        }
+        Ok(())
+    }
     fn cancel_requests(&mut self, owner: Option<WindowOwner>) {
         self.requests.retain(|_, request| {
             if owner.is_none_or(|o| o == request.window) {
@@ -777,12 +799,7 @@ impl Broker {
         username: &str,
         password: Password,
     ) -> Result<LoginDelivery, Error> {
-        if username.len() < 3
-            || username.len() > 32
-            || !username
-                .bytes()
-                .all(|b| b.is_ascii_alphanumeric() || b"_.-".contains(&b))
-        {
+        if !crate::wire::valid_username(username) {
             return Err(Error::InvalidInput);
         }
         let (op, instance) = {
@@ -956,16 +973,7 @@ impl Broker {
         {
             Err(Error::Unauthorized) => {
                 let mut s = self.inner.state.lock().map_err(|_| Error::Internal)?;
-                s.current(self.inner.owner, &op)?;
-                s.cancel_requests(None);
-                if let Some(active) = s.active.as_mut() {
-                    active.cancel.cancel();
-                    active.status = Status::ReauthRequired;
-                    active.session = None;
-                    if let Some(flight) = active.flight.take() {
-                        flight.finish(Err(Error::Unauthorized));
-                    }
-                }
+                s.revoke_after_unauthorized(self.inner.owner, &op)?;
                 return Err(Error::Unauthorized);
             }
             result => result?,

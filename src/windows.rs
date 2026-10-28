@@ -218,7 +218,8 @@ mod tests {
     fn allowlist_only_accepts_bounded_executable_names() {
         assert!(valid_game_names(&[
             "Wow.exe".into(),
-            "GenshinImpact.exe".into()
+            "GenshinImpact.exe".into(),
+            "Game!.exe".into()
         ]));
         for names in [
             vec![],

@@ -167,11 +167,7 @@ struct WirePage {
     next_after: i64,
 }
 fn uuid(value: &str) -> Result<Uuid, Error> {
-    let id = Uuid::parse_str(value).map_err(|_| Error::Protocol)?;
-    if id.is_nil() || id.hyphenated().to_string() != value {
-        return Err(Error::Protocol);
-    }
-    Ok(id)
+    crate::wire::canonical_uuid(value).ok_or(Error::Protocol)
 }
 fn decode(value: &str, max: usize) -> Result<Zeroizing<Vec<u8>>, Error> {
     if value.is_empty() || value.len() > max.div_ceil(3) * 4 {
@@ -270,15 +266,7 @@ impl Broker {
                 // Current scope must still match; an older401 never revokes a
                 // replacement identity/rotation, even on the same profile.
                 state.check_authenticated(self.inner.owner, owner, &scope)?;
-                state.cancel_requests(None);
-                if let Some(active) = state.active.as_mut() {
-                    active.cancel.cancel();
-                    active.status = Status::ReauthRequired;
-                    active.session = None;
-                    if let Some(flight) = active.flight.take() {
-                        flight.finish(Err(Error::Unauthorized));
-                    }
-                }
+                state.revoke_after_unauthorized(self.inner.owner, &op)?;
                 return Err(Error::Unauthorized);
             }
             result => result?,
@@ -301,7 +289,7 @@ impl Broker {
             }
             NativeOpaqueRelayOperation::Page { .. } => {
                 let page = response.decode::<WirePage>()?;
-                if page.events.len() > 10 || page.next_after < after {
+                if page.events.len() > crate::http::OPAQUE_PAGE_LIMIT || page.next_after < after {
                     return Err(Error::Protocol);
                 }
                 let mut records = Vec::with_capacity(page.events.len());

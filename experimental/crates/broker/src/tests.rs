@@ -1075,6 +1075,36 @@ async fn actual_fixed_metadata_routes_reject_secret_fields_bounds_and_stale_publ
     ));
 }
 #[tokio::test(flavor = "current_thread")]
+async fn delayed_metadata_401_cannot_revoke_a_rotated_session() {
+    let f = Fixture::start();
+    let (b, w) = logged(&f).await;
+    f.control("/api/native/v1/channels", "hold_unauthorized");
+    let running = b.metadata(w, MetadataResource::Channels);
+    tokio::pin!(running);
+    tokio::select! {r=&mut running=>panic!("held request unexpectedly completed: {}",r.is_ok()),_=f.wait("/api/native/v1/channels",1)=>{}}
+    b.refresh(w).await.unwrap();
+    f.release();
+    assert!(matches!(
+        running.await,
+        Err(Error::Stale | Error::Cancelled)
+    ));
+    assert_eq!(b.status().unwrap(), Status::Authenticated);
+    b.me(w).await.unwrap();
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn websocket_upgrade_401_requires_reauth_instead_of_a_network_retry() {
+    let f = Fixture::start();
+    let (b, w) = logged(&f).await;
+    f.control("/api/native/v1/ws", "unauthorized");
+    assert_eq!(
+        b.open_native_socket(w).await.unwrap_err(),
+        Error::Unauthorized
+    );
+    assert_eq!(b.status().unwrap(), Status::ReauthRequired);
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn actual_actor_owned_socket_channel_ping_refresh_and_logout_drain() {
     use crate::{NativeClient, NativeRequest};
     let f = Fixture::start();
