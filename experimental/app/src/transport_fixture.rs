@@ -68,6 +68,8 @@ fn read_owned(path: &Path) -> Result<Vec<u8>, Error> {
 fn read_owned(_: &Path) -> Result<Vec<u8>, Error> {
     Err(Error::QualificationRequired)
 }
+// The qualification example only needs `qualified`.
+#[allow(dead_code)]
 pub fn client() -> Result<NativeClient, Error> {
     if std::env::var("MNEMA_SYNTHETIC_TRANSPORT_FIXTURE")
         .ok()
@@ -76,6 +78,12 @@ pub fn client() -> Result<NativeClient, Error> {
     {
         return NativeClient::ephemeral();
     }
+    qualified().map(|(client, _)| client)
+}
+
+/// The client of the fixture bootstrap, and the origin that bootstrap names
+/// (read and checked once, here).
+pub fn qualified() -> Result<(NativeClient, String), Error> {
     let path = std::env::var_os("MNEMA_NATIVE_TRANSPORT_BOOTSTRAP").ok_or(Error::Denied)?;
     let bytes = read_owned(Path::new(&path))?;
     let d: Bootstrap = serde_json::from_slice(&bytes).map_err(|_| Error::Protocol)?;
@@ -107,10 +115,11 @@ pub fn client() -> Result<NativeClient, Error> {
     if id.is_nil() || id.hyphenated().to_string() != d.user_id {
         return Err(Error::Protocol);
     }
-    NativeClient::qualification_fixture(
+    let client = NativeClient::qualification_fixture(
         origin.as_str().to_owned(),
         d.community_id,
         id,
         d.public_ca_pem.into_bytes(),
-    )
+    )?;
+    Ok((client, origin.as_str().to_owned()))
 }

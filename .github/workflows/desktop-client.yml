@@ -548,6 +548,8 @@ jobs:
           node scripts/checked-glib.mjs
           cargo test --locked --manifest-path experimental/app/Cargo.toml --features shell,web-client,custom-protocol
           cargo clippy --locked --manifest-path experimental/app/Cargo.toml --features shell,web-client,custom-protocol --all-targets -- -D warnings
+          # The transport qualification example is run by hand against a private fixture; here it only has to keep compiling.
+          cargo build --locked --manifest-path experimental/app/Cargo.toml --example metadata_fixture --features synthetic-transport-fixture
       # Two servers side by side (see windows-multi-instance): the data stores
       # of WKWebView keep their storage apart from macOS 14 on.
       - name: Two servers side by side, isolated from each other
