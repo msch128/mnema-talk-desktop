@@ -1,6 +1,6 @@
 {
   "identifier": "gaming-surfaces",
-  "windows": [
+  "webviews": [
     "sidepeek",
     "gaming-overlay",
     "gaming-settings"
