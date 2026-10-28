@@ -1,0 +1,20 @@
+.github/workflows/desktop-release.yml
+  h_0ff4f4713441f4 11-14,71-73,104-123,127-128,201-203,229-242,247-248,347-349,371-384,389-390,480-492,499
+README.md
+  h_0ff4f4713441f4 227-229
+scripts/verify-updater-signatures.mjs
+  h_0ff4f4713441f4 6-8,45-47,85-88
+scripts/verify-updater-signatures.test.mjs
+  h_0ff4f4713441f4 50-59
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c26237050a748d950aa4530cdbbb78a3baadfe37",
+  "prompts": {},
+  "humans": {
+    "h_0ff4f4713441f4": {
+      "author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}
