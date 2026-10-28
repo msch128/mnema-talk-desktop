@@ -1,0 +1,21 @@
+.github/workflows/desktop-client.yml
+  s_06fcde5dbef956::t_d9d252e94a0577 551-552
+experimental/app/examples/metadata_fixture.rs
+  s_06fcde5dbef956::t_bbe9f75118eb9e 7
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8a34893abbee31ce84ad62112861a826fdeb3f1b",
+  "prompts": {},
+  "sessions": {
+    "s_06fcde5dbef956": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "94b73314-95fe-4e96-8c43-d20b0f28358d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}
