@@ -82,6 +82,9 @@ pub struct Slot {
     pub id: String,
     pub origin: Url,
     pub phase: Phase,
+    /// A start (discover, choose, build the session) is under way for this
+    /// slot; a second one must not begin.
+    pub connecting: bool,
     /// Channels with unread messages that may notify, and unread mentions,
     /// as the page last reported them.
     pub unread: u32,
@@ -103,6 +106,7 @@ impl Slot {
             id: id_for(&origin),
             origin,
             phase: Phase::Starting,
+            connecting: false,
             unread: 0,
             mentions: 0,
             reported: false,
@@ -127,6 +131,18 @@ impl Slot {
         self.reported = false;
         self.clicks = None;
         self.generation = uuid::Uuid::new_v4().simple().to_string();
+    }
+
+    /// Puts a new phase in place. A session it replaces is closed first, so
+    /// its sockets cannot outlive the slot's hold on it.
+    pub fn settle(&mut self, phase: Phase) {
+        if let Phase::Ready(old) = &self.phase
+            && !matches!(&phase, Phase::Ready(new) if Arc::ptr_eq(old, new))
+        {
+            old.sockets.close_all();
+        }
+        self.connecting = false;
+        self.phase = phase;
     }
 
     fn session(&self) -> Option<Arc<Session>> {
@@ -228,6 +244,19 @@ impl Registry {
 
     pub fn slot(&self, id: &str) -> Option<&Slot> {
         self.slots.iter().find(|s| s.id == id)
+    }
+
+    /// Claims the right to start a server: its address and its place in the
+    /// list, or `None` when the server is gone or a start is already running.
+    pub fn claim_start(&mut self, id: &str) -> Option<(Url, usize)> {
+        let position = self.slots.iter().position(|s| s.id == id)?;
+        let slot = &mut self.slots[position];
+        if slot.connecting {
+            return None;
+        }
+        slot.settle(Phase::Starting);
+        slot.connecting = true;
+        Some((slot.origin.clone(), position))
     }
 
     pub fn slot_mut(&mut self, id: &str) -> Option<&mut Slot> {
@@ -781,6 +810,39 @@ mod tests {
         assert!(vault.load(&id("b.example")).is_some());
         // The label of the removed server leads nowhere.
         assert!(registry.session(&id("a.example")).is_none());
+    }
+
+    #[test]
+    fn a_server_that_is_starting_cannot_be_started_again() {
+        let mut registry = registry(&["a.example"]);
+        let a = id("a.example");
+        let (origin, position) = registry.claim_start(&a).expect("first claim");
+        assert_eq!((origin, position), (url("https://a.example/"), 0));
+        assert!(registry.claim_start(&a).is_none(), "second start refused");
+        registry
+            .slot_mut(&a)
+            .unwrap()
+            .settle(Phase::Refused("no".into()));
+        assert!(
+            registry.claim_start(&a).is_some(),
+            "free again once settled"
+        );
+        assert!(registry.claim_start("0000000000000000").is_none());
+    }
+
+    #[test]
+    fn settling_a_slot_replaces_its_phase_and_ends_the_claim() {
+        let mut registry = registry(&["a.example"]);
+        let a = id("a.example");
+        let vault = Arc::new(Memory::default());
+        let first = session(&registry, &a, &vault, 0);
+        let second = session(&registry, &a, &vault, 0);
+        registry.claim_start(&a);
+        let slot = registry.slot_mut(&a).unwrap();
+        slot.settle(Phase::Ready(Arc::clone(&first)));
+        assert!(!slot.connecting);
+        slot.settle(Phase::Ready(Arc::clone(&second)));
+        assert!(Arc::ptr_eq(&registry.session(&a).unwrap(), &second));
     }
 
     #[test]

@@ -106,18 +106,23 @@ fn storage_isolated() -> bool {
     #[cfg(target_os = "macos")]
     {
         static MAJOR: std::sync::OnceLock<Option<u32>> = std::sync::OnceLock::new();
-        MAJOR
-            .get_or_init(|| {
-                let out = std::process::Command::new("sw_vers")
-                    .arg("-productVersion")
-                    .output()
-                    .ok()?;
-                macos_major(&String::from_utf8_lossy(&out.stdout))
-            })
-            .is_some_and(|major| major >= 14)
+        data_stores_available(*MAJOR.get_or_init(|| {
+            let out = std::process::Command::new("sw_vers")
+                .arg("-productVersion")
+                .output()
+                .ok()?;
+            macos_major(&String::from_utf8_lossy(&out.stdout))
+        }))
     }
     #[cfg(not(target_os = "macos"))]
     true
+}
+
+/// WKWebView's data store API (creating, listing and removing stores) exists
+/// from macOS 14. An unknown version is treated as too old.
+#[cfg_attr(not(any(target_os = "macos", test)), allow(dead_code))]
+fn data_stores_available(major: Option<u32>) -> bool {
+    major.is_some_and(|major| major >= 14)
 }
 
 #[cfg_attr(not(any(target_os = "macos", test)), allow(dead_code))]
@@ -127,7 +132,11 @@ fn macos_major(version: &str) -> Option<u32> {
 
 /// May one more server run next to those that do? The first always may.
 fn room_for(running: usize) -> bool {
-    running == 0 || storage_isolated()
+    room_with(running, storage_isolated())
+}
+
+fn room_with(running: usize, isolated: bool) -> bool {
+    running == 0 || isolated
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -161,43 +170,43 @@ fn host_identifier() -> [u8; 16] {
     store_identifier(HOST_PROFILE)
 }
 
-#[cfg(target_os = "macos")]
-pub fn host_profile(
-    builder: WebviewBuilder<tauri::Wry>,
-    _app: &tauri::AppHandle,
-) -> WebviewBuilder<tauri::Wry> {
-    builder.data_store_identifier(host_identifier())
+/// Puts a builder of a host page on the host's storage: the same policy for a
+/// webview and for a window, whose builders share no trait. Where the folder
+/// cannot be prepared the page falls back to the engine's default storage,
+/// which is said on stderr rather than left silent.
+macro_rules! on_host_storage {
+    ($builder:expr, $app:expr) => {{
+        #[cfg(target_os = "macos")]
+        {
+            let _ = $app;
+            $builder.data_store_identifier(host_identifier())
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            match profile_dir($app, HOST_PROFILE) {
+                Ok(dir) => $builder.data_directory(dir),
+                Err(why) => {
+                    eprintln!("Mnema Desktop: host pages use the default storage: {why}");
+                    $builder
+                }
+            }
+        }
+    }};
 }
 
-#[cfg(not(target_os = "macos"))]
 pub fn host_profile(
     builder: WebviewBuilder<tauri::Wry>,
     app: &tauri::AppHandle,
 ) -> WebviewBuilder<tauri::Wry> {
-    match profile_dir(app, HOST_PROFILE) {
-        Ok(dir) => builder.data_directory(dir),
-        Err(_) => builder,
-    }
+    on_host_storage!(builder, app)
 }
 
 /// The same for a window of the host.
-#[cfg(target_os = "macos")]
-pub fn host_profile_window<'a>(
-    builder: WebviewWindowBuilder<'a, tauri::Wry, tauri::AppHandle>,
-    _app: &tauri::AppHandle,
-) -> WebviewWindowBuilder<'a, tauri::Wry, tauri::AppHandle> {
-    builder.data_store_identifier(host_identifier())
-}
-
-#[cfg(not(target_os = "macos"))]
 pub fn host_profile_window<'a>(
     builder: WebviewWindowBuilder<'a, tauri::Wry, tauri::AppHandle>,
     app: &tauri::AppHandle,
 ) -> WebviewWindowBuilder<'a, tauri::Wry, tauri::AppHandle> {
-    match profile_dir(app, HOST_PROFILE) {
-        Ok(dir) => builder.data_directory(dir),
-        Err(_) => builder,
-    }
+    on_host_storage!(builder, app)
 }
 
 /// Gives the page of a server browser storage of its own. Every server gets
@@ -220,13 +229,22 @@ fn isolate(
 
 /// Removes what a server's page stored in the browser engine. The webview is
 /// already closed; the engine may hold its files a moment longer, so this
-/// tries again for a while, in the background.
+/// tries again for a while, in the background. A server that joins the list
+/// again meanwhile (same address, same storage) ends the wipe.
 fn wipe_storage(app: &tauri::AppHandle, id: &str) {
+    #[cfg(target_os = "macos")]
+    if !storage_isolated() {
+        // Below macOS 14 there is no store of the server's own to remove.
+        return;
+    }
     let app = app.clone();
     let id = id.to_owned();
     tauri::async_runtime::spawn(async move {
         #[cfg(target_os = "macos")]
         for _ in 0..WIPE_ATTEMPTS {
+            if readded(&app, &id) {
+                break;
+            }
             if app.remove_data_store(store_identifier(&id)).await.is_ok() {
                 break;
             }
@@ -239,6 +257,9 @@ fn wipe_storage(app: &tauri::AppHandle, id: &str) {
                 .data_dir()
                 .map(|d| d.join(PROFILES).join(&id));
             for _ in 0..WIPE_ATTEMPTS {
+                if readded(&app, &id) {
+                    break;
+                }
                 match &dir {
                     Some(dir) if dir.exists() && std::fs::remove_dir_all(dir).is_err() => {
                         tokio::time::sleep(Duration::from_millis(500)).await;
@@ -248,6 +269,26 @@ fn wipe_storage(app: &tauri::AppHandle, id: &str) {
             }
         }
     });
+}
+
+/// Whether the server is on the list again.
+fn readded(app: &tauri::AppHandle, id: &str) -> bool {
+    registry_ids(app).iter().any(|i| i == id)
+}
+
+/// The ids of the list, in order.
+fn registry_ids(app: &tauri::AppHandle) -> Vec<String> {
+    app.state::<Trusted>()
+        .registry
+        .lock()
+        .map(|r| r.ids())
+        .unwrap_or_default()
+}
+
+/// Starts a server in the background.
+fn spawn_start(app: &tauri::AppHandle, id: String) {
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move { start_server(&app, &id).await });
 }
 
 /// Wipes the engine's default storage: where the single-server client kept
@@ -296,12 +337,7 @@ pub(crate) async fn open_default_page(
 /// Storage of servers that are no longer in the list (a removal that was cut
 /// short by the end of the program) goes at the next start.
 fn sweep_orphans(app: &tauri::AppHandle) {
-    let known = app
-        .state::<Trusted>()
-        .registry
-        .lock()
-        .map(|r| r.ids())
-        .unwrap_or_default();
+    let known = registry_ids(app);
     #[cfg(not(target_os = "macos"))]
     if let Some(dir) = app.state::<Trusted>().data_dir().map(|d| d.join(PROFILES))
         && let Ok(entries) = std::fs::read_dir(dir)
@@ -314,7 +350,7 @@ fn sweep_orphans(app: &tauri::AppHandle) {
         }
     }
     #[cfg(target_os = "macos")]
-    {
+    if storage_isolated() {
         let app = app.clone();
         tauri::async_runtime::spawn(async move {
             let keep: Vec<[u8; 16]> = known
@@ -737,6 +773,15 @@ pub fn create(app: &tauri::AppHandle) -> tauri::Result<()> {
             layout(&events);
         }
         tauri::WindowEvent::Focused(true) => on_window_focused(&events),
+        // macOS keeps the program running behind a closed window (a call, the
+        // Dock badge and the toasts go on); the Dock icon brings it back.
+        #[cfg(target_os = "macos")]
+        tauri::WindowEvent::CloseRequested { api, .. } => {
+            api.prevent_close();
+            if let Some(shell) = events.get_window(SHELL) {
+                let _ = shell.hide();
+            }
+        }
         tauri::WindowEvent::Destroyed => shut_down(&events),
         _ => {}
     });
@@ -750,21 +795,23 @@ pub fn create(app: &tauri::AppHandle) -> tauri::Result<()> {
         });
     }
     sweep_orphans(app);
-    let ids = app
-        .state::<Trusted>()
-        .registry
-        .lock()
-        .map(|r| r.ids())
-        .unwrap_or_default();
-    for id in ids {
-        let app = app.clone();
-        tauri::async_runtime::spawn(async move { start_server(&app, &id).await });
+    for id in registry_ids(app) {
+        spawn_start(app, id);
     }
     layout(app);
     push_rail(app);
     #[cfg(feature = "multi-selftest")]
     crate::selftest_multi::start(app);
     Ok(())
+}
+
+/// The Dock icon was clicked while the window is hidden.
+#[cfg(target_os = "macos")]
+pub fn reopen(app: &tauri::AppHandle) {
+    if let Some(shell) = app.get_window(SHELL) {
+        let _ = shell.show();
+        let _ = shell.set_focus();
+    }
 }
 
 fn menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
@@ -775,8 +822,20 @@ fn menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     #[cfg(not(target_os = "macos"))]
     let menu = Menu::new(app)?;
     menu.append(&servers)?;
-    menu.append(&gaming)?;
-    menu.append(&update)?;
+    // A main menu on macOS holds submenus only: the updater goes into the
+    // application menu, and the gaming overlay does not exist there.
+    #[cfg(target_os = "macos")]
+    {
+        let _ = gaming;
+        if let Some(application) = menu.items()?.iter().find_map(|i| i.as_submenu()) {
+            application.append(&update)?;
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        menu.append(&gaming)?;
+        menu.append(&update)?;
+    }
     Ok(menu)
 }
 
@@ -820,16 +879,16 @@ fn make_session(
 /// why in its own tab.
 async fn start_server(app: &tauri::AppHandle, id: &str) {
     let trusted = app.state::<Trusted>();
+    // One start at a time per server: a second caller (the bundle arriving, a
+    // click on Reconnect) finds the first one running and leaves it be.
     let (origin, position) = {
         let Ok(mut registry) = trusted.registry.lock() else {
             return;
         };
-        let position = registry.ids().iter().position(|i| i == id).unwrap_or(0);
-        let Some(slot) = registry.slot_mut(id) else {
+        let Some(claim) = registry.claim_start(id) else {
             return;
         };
-        slot.phase = Phase::Starting;
-        (slot.origin.clone(), position)
+        claim
     };
     push_rail(app);
     let outcome = if room_for(position) {
@@ -846,7 +905,7 @@ async fn start_server(app: &tauri::AppHandle, id: &str) {
                 .and_then(|mut r| {
                     r.slot_mut(id).map(|slot| {
                         slot.restart();
-                        slot.phase = Phase::Ready(Arc::clone(&session));
+                        slot.settle(Phase::Ready(Arc::clone(&session)));
                     })
                 })
                 .is_some();
@@ -856,7 +915,7 @@ async fn start_server(app: &tauri::AppHandle, id: &str) {
             if let Ok(mut registry) = trusted.registry.lock()
                 && let Some(slot) = registry.slot_mut(id)
             {
-                slot.phase = Phase::Refused(why);
+                slot.settle(Phase::Refused(why));
             }
             None
         }
@@ -866,7 +925,7 @@ async fn start_server(app: &tauri::AppHandle, id: &str) {
         && let Ok(mut registry) = trusted.registry.lock()
         && let Some(slot) = registry.slot_mut(id)
     {
-        slot.phase = Phase::Refused(why);
+        slot.settle(Phase::Refused(why));
     }
     refresh_pages(app, id);
     push_rail(app);
@@ -906,8 +965,7 @@ pub fn bundles_changed(app: &tauri::AppHandle) {
         })
         .unwrap_or_default();
     for id in unready {
-        let app = app.clone();
-        tauri::async_runtime::spawn(async move { start_server(&app, &id).await });
+        spawn_start(app, id);
     }
     push_rail(app);
 }
@@ -973,7 +1031,70 @@ fn page_builder(
     } else {
         builder
     };
+    // WKWebView saves nothing unless the app takes the download; WebView2
+    // has a download UI of its own.
+    #[cfg(target_os = "macos")]
+    let builder = {
+        let downloads = app.clone();
+        builder.on_download(move |_, event| save_download(&downloads, event))
+    };
     isolate(builder, app, id)
+}
+
+/// Takes a download of the app's own API into the Downloads folder, under a
+/// name that cannot leave it and does not overwrite anything.
+#[cfg(target_os = "macos")]
+fn save_download(app: &tauri::AppHandle, event: tauri::webview::DownloadEvent<'_>) -> bool {
+    use tauri::webview::DownloadEvent::{Finished, Requested};
+    match event {
+        Requested { url, destination } => {
+            let Some(dir) = app.path().download_dir().ok().filter(|_| app_api(&url)) else {
+                return false;
+            };
+            let suggested = destination
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            *destination = download_target(&dir, &suggested, |p| p.exists());
+            true
+        }
+        Finished { .. } => true,
+        _ => false,
+    }
+}
+
+/// Where a download goes in `dir`: the suggested name reduced to a plain file
+/// name, with " (2)", " (3)" and so on before the extension while `taken`.
+#[cfg_attr(not(any(target_os = "macos", test)), allow(dead_code))]
+fn download_target(
+    dir: &std::path::Path,
+    suggested: &str,
+    taken: impl Fn(&std::path::Path) -> bool,
+) -> std::path::PathBuf {
+    let name: String = suggested
+        .rsplit(['/', '\\'])
+        .next()
+        .unwrap_or_default()
+        .chars()
+        .filter(|c| !c.is_control())
+        .collect();
+    let name = name.trim().trim_start_matches('.');
+    let name = if name.is_empty() { "download" } else { name };
+    let path = std::path::Path::new(name);
+    let stem = path
+        .file_stem()
+        .map_or_else(|| name.to_owned(), |s| s.to_string_lossy().into_owned());
+    let extension = path
+        .extension()
+        .map(|e| format!(".{}", e.to_string_lossy()))
+        .unwrap_or_default();
+    let mut target = dir.join(name);
+    let mut n = 2;
+    while taken(&target) {
+        target = dir.join(format!("{stem} ({n}){extension}"));
+        n += 1;
+    }
+    target
 }
 
 /// A link of a server's page: attachments and downloads open in a window of
@@ -998,18 +1119,19 @@ fn new_window(
     }
     // Reuse the opener's browser environment without granting native
     // capabilities: the child gets no identity script.
-    let child = super::web_permissions::with_probe_args(
-        app,
-        &label,
-        WebviewWindowBuilder::new(app, &label, WebviewUrl::CustomProtocol(url))
-            .use_https_scheme(true)
-            .window_features(features)
-            .title("Mnema Desktop DEV \u{2014} Attachment")
-            .on_navigation(app_api)
-            .on_new_window(|_, _| Deny)
-            .on_permission_request(crate::web_client::allow_permission),
-    )
-    .build();
+    let builder = WebviewWindowBuilder::new(app, &label, WebviewUrl::CustomProtocol(url))
+        .use_https_scheme(true)
+        .window_features(features)
+        .title("Mnema Desktop DEV \u{2014} Attachment")
+        .on_navigation(app_api)
+        .on_new_window(|_, _| Deny)
+        .on_permission_request(crate::web_client::allow_permission);
+    #[cfg(target_os = "macos")]
+    let builder = {
+        let downloads = app.clone();
+        builder.on_download(move |_, event| save_download(&downloads, event))
+    };
+    let child = super::web_permissions::with_probe_args(app, &label, builder).build();
     match child {
         Ok(window) => Create { window },
         Err(_) => Deny,
@@ -1055,17 +1177,28 @@ pub async fn add_server(
     let server = discover(&origin).await?;
     let held = choose(state, &server).await?;
     let session = make_session(state, &id, origin.clone(), held)?;
-    {
+    let won = {
         let mut registry = state.registry.lock().map_err(|_| "busy")?;
         match registry.add(origin) {
-            Ok(_) | Err(AddError::Known(_)) => {}
+            Ok(_) => {
+                if let Some(slot) = registry.slot_mut(&id) {
+                    slot.restart();
+                    slot.settle(Phase::Ready(Arc::clone(&session)));
+                }
+                registry.activate(&id);
+                true
+            }
+            // An overlapping call for the same address got in first and owns
+            // the slot; this session is the spare.
+            Err(AddError::Known(_)) => false,
             Err(full) => return Err(full.to_string()),
         }
-        if let Some(slot) = registry.slot_mut(&id) {
-            slot.restart();
-            slot.phase = Phase::Ready(Arc::clone(&session));
-        }
-        registry.activate(&id);
+    };
+    if !won {
+        session.sockets.close_all();
+        offer_invite(&app, &id, invite.as_deref());
+        bring_forward(&app, &id);
+        return Ok(());
     }
     let existed = app.get_webview(&instance_label(&id)).is_some();
     if let Err(why) = open_page(&app, &id, &session, invite.as_deref()).await {
@@ -1410,9 +1543,39 @@ mod tests {
     }
 
     #[test]
+    fn the_data_store_api_needs_macos_14() {
+        assert!(!data_stores_available(Some(12)));
+        assert!(!data_stores_available(Some(13)));
+        assert!(data_stores_available(Some(14)));
+        assert!(data_stores_available(Some(26)));
+        assert!(!data_stores_available(None));
+    }
+
+    #[test]
+    fn a_download_keeps_to_the_folder_and_to_free_names() {
+        let dir = std::path::Path::new("/dl");
+        let free = |_: &std::path::Path| false;
+        assert_eq!(download_target(dir, "a.zip", free), dir.join("a.zip"));
+        assert_eq!(
+            download_target(dir, "../../etc/x.bin", free),
+            dir.join("x.bin")
+        );
+        assert_eq!(download_target(dir, "..\\y.txt", free), dir.join("y.txt"));
+        assert_eq!(download_target(dir, ".hidden", free), dir.join("hidden"));
+        assert_eq!(download_target(dir, "", free), dir.join("download"));
+        let taken = [dir.join("a.zip"), dir.join("a (2).zip")];
+        assert_eq!(
+            download_target(dir, "a.zip", |p| taken.iter().any(|t| t == p)),
+            dir.join("a (3).zip")
+        );
+    }
+
+    #[test]
     fn the_first_server_always_runs_and_more_need_separate_storage() {
         assert!(room_for(0));
-        assert_eq!(room_for(1), storage_isolated());
+        assert!(room_with(0, false));
+        assert!(!room_with(1, false));
+        assert!(room_with(1, true));
     }
 
     #[test]
