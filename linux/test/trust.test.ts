@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, test } from 'node:test'
 import { PINNED_BUNDLE_KEYS, ROOT_PUB, UPDATER_PUBKEY } from '../src/core/pinned.ts'
 import { parseKey } from '../src/core/bundle.ts'
-import { type Statement, TrustState, chooseUpdaterKey, minisignKeyId, parseUtc, rootKey, signatureKeyId, statementBundleKeys, statementCaps, statementExpired, verifyStatement } from '../src/core/trust.ts'
+import { type Floor, type Statement, TrustState, chooseUpdaterKey, minisignKeyId, parseUtc, rootKey, signatureKeyId, statementBundleKeys, statementCaps, statementExpired, verifyStatement } from '../src/core/trust.ts'
 import { minisignKey, minisignSignature, signText, statementText, testKey, trusted, type StatementSpec } from './helpers/fixtures.ts'
 
 const NOW = 1_793_491_200 // 2026-11-01T00:00:00Z
@@ -133,8 +133,93 @@ test('the last good statement survives a restart and a damaged file is ignored',
   assert.equal(state(8, d).statement(), null)
   const edited = Buffer.from(docBytes)
   edited[5] ^= 1
-  writeFileSync(join(d, 'trust.json'), edited)
+  const stored = JSON.parse(readFileSync(join(d, 'trust-state.json'), 'utf8')) as Record<string, string>
+  stored.statement = edited.toString('base64')
+  writeFileSync(join(d, 'trust-state.json'), JSON.stringify(stored))
   assert.equal(state(9, d).statement(), null)
+})
+
+test('the statement and its signature are stored as one file', () => {
+  const d = dir()
+  const [docBytes, sig] = signed(9, doc(3, [2], [1]))
+  state(9, d).accept(docBytes, sig, NOW)
+  assert.deepEqual(readdirSync(d), ['trust-state.json'], 'no second file that could be torn from it')
+})
+
+test('the pair an older client stored is read and replaced', () => {
+  const d = dir()
+  const [docBytes, sig] = signed(9, doc(2, [2], [1]))
+  writeFileSync(join(d, 'trust.json'), docBytes)
+  writeFileSync(join(d, 'trust.json.sig'), sig)
+  const trust = state(9, d)
+  assert.equal(trust.statement()?.serial, 2)
+  trust.accept(...signed(9, doc(3, [2], [1])), NOW)
+  assert.ok(!existsSync(join(d, 'trust.json')) && !existsSync(join(d, 'trust.json.sig')))
+  assert.equal(state(9, d).statement()?.serial, 3)
+})
+
+test('a verified statement applies even when it cannot be stored', () => {
+  const d = join(dir(), 'trust')
+  writeFileSync(d, 'in the way') // a file where the directory should be: nothing can be stored
+  const logs: string[] = []
+  const trust = TrustState.load(d, root(9), { log: (m) => logs.push(m) })
+  const [docBytes, sig] = signed(9, doc(2, [2], [1]))
+  assert.equal(trust.accept(docBytes, sig, NOW), 'updated')
+  assert.equal(trust.statement()?.serial, 2)
+  assert.ok(trust.effectiveKeys(trusted(1)).every((k) => k.id !== trusted(1)[0]?.id), 'the revocation is enforced in this process')
+  assert.equal(logs.length, 1)
+  // Once the directory works, the same fetch stores it.
+  rmSync(d)
+  assert.equal(trust.accept(docBytes, sig, NOW), 'unchanged')
+  assert.equal(state(9, d).statement()?.serial, 2)
+})
+
+test('a later statement cannot allow a revoked key again', () => {
+  const trust = state(9)
+  trust.accept(...signed(9, doc(2, [2], [1])), NOW)
+  // Serial 3 was signed without carrying the revocation forward.
+  assert.throws(() => trust.accept(...signed(9, doc(3, [1, 2], [])), NOW), /allowed again/)
+  assert.equal(trust.statement()?.serial, 2)
+  // One that merely forgets to list it keeps the key revoked.
+  trust.accept(...signed(9, doc(4, [2, 3], [])), NOW)
+  assert.ok(trust.effectiveKeys(trusted(1)).every((k) => k.id !== testKey(1).id))
+  assert.ok(trust.statement()?.revoked_bundle_keys.includes(testKey(1).id))
+})
+
+test('revocations survive a restart and apply to updater keys', () => {
+  const d = dir()
+  const old = minisignKey(3)
+  const next = minisignKey(4)
+  const withUpdaters = (serial: number, allowed: string[], revoked: string[]) => statementText({
+    serial,
+    issued_at: '2026-10-17T10:00:00Z',
+    expires_at: '2027-01-15T10:00:00Z',
+    bundle_keys: [testKey(2).hex],
+    revoked_bundle_keys: [],
+    updater_keys: allowed,
+    revoked_updater_keys: revoked,
+  })
+  state(9, d).accept(...signed(9, withUpdaters(1, [next.pubkey], [old.idHex])), NOW)
+  const again = state(9, d)
+  assert.throws(() => again.accept(...signed(9, withUpdaters(2, [old.pubkey, next.pubkey], [])), NOW), /allowed again/)
+  again.accept(...signed(9, withUpdaters(3, [next.pubkey], [])), NOW)
+  assert.deepEqual(chooseUpdaterKey(old.pubkey, again.statement(), minisignSignature(old, Buffer.from('installer'), '1.0.0')), { ok: false, refusal: 'revoked' }, 'serial 3 did not list the revocation, it still holds')
+})
+
+test('the floor of a release refuses old statements and revoked keys', () => {
+  const floor: Floor = { minSerial: 3, revokedBundleKeys: ['0123456789abcdef'], revokedUpdaterKeys: [] }
+  const fresh = (d: string | null = null) => TrustState.load(d, root(9), { floor })
+  // No stored statement: a replayed old one is not taken.
+  const old = signed(9, doc(2, [2], [1]))
+  assert.throws(() => fresh().accept(...old, NOW), /this release/)
+  assert.equal(fresh().accept(...signed(9, doc(3, [2], [1])), NOW), 'updated')
+  // A key the release dropped stays out of every statement.
+  const withDropped = TrustState.load(null, root(9), { floor: { ...floor, revokedBundleKeys: [testKey(1).id] } })
+  assert.throws(() => withDropped.accept(...signed(9, doc(4, [1], [])), NOW), /allowed again/)
+  // Stored below the floor (an older release's file): ignored.
+  const d = dir()
+  state(9, d).accept(...old, NOW)
+  assert.equal(fresh(d).statement(), null)
 })
 
 test('minisign key ids are read from keys and signatures', () => {
@@ -182,8 +267,11 @@ test('times are parsed strictly to unix seconds', () => {
   assert.equal(parseUtc('1970-01-01T00:00:00Z'), 0)
   assert.equal(parseUtc('2026-11-01T00:00:00Z'), NOW)
   assert.equal(parseUtc('2024-02-29T12:30:45Z'), 1_709_209_845)
+  assert.equal(parseUtc('2000-02-29T00:00:00Z'), 951_782_400)
+  assert.notEqual(parseUtc('2026-04-30T00:00:00Z'), null)
   for (const bad of ['2026-11-01 00:00:00Z', '2026-11-01T00:00:00+00:00', '2026-13-01T00:00:00Z', '2026-11-32T00:00:00Z', '2026-11-01T24:00:00Z',
-    '2026-11-01T00:60:00Z', '2026-11-01T00:00:60Z', '2026-1x-01T00:00:00Z', '1969-12-31T23:59:59Z', '']) {
+    '2026-11-01T00:60:00Z', '2026-11-01T00:00:60Z', '2026-1x-01T00:00:00Z', '1969-12-31T23:59:59Z', '',
+    '2026-02-29T00:00:00Z', '2026-02-31T00:00:00Z', '2026-04-31T00:00:00Z', '2100-02-29T00:00:00Z', '2024-02-30T00:00:00Z']) {
     assert.equal(parseUtc(bad), null, bad)
   }
 })

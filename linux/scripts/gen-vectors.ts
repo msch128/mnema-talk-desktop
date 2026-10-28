@@ -377,6 +377,10 @@ function trustVectors(): Json {
       name: 'an older serial is refused and an equal one changes nothing',
       steps: [signedBy(rootSeed, doc(2, [2], [1])), signedBy(rootSeed, doc(1, [1], [])), signedBy(rootSeed, doc(2, [2], [1])), signedBy(rootSeed, doc(2, [3], [])), signedBy(rootSeed, doc(3, [3], [1]))],
     },
+    {
+      name: 'a later statement cannot allow a revoked key again',
+      steps: [signedBy(rootSeed, doc(2, [2], [1])), signedBy(rootSeed, doc(3, [1, 2], [])), signedBy(rootSeed, doc(4, [2, 3], []))],
+    },
     { name: 'a statement signed by another key never takes hold', steps: [signedBy(8, doc(1, [1], [])), signedBy(rootSeed, doc(1, [1], []))] },
   ].map((seq) => {
     const trust = TrustState.load(null, root)
@@ -395,7 +399,8 @@ function trustVectors(): Json {
   })
 
   const times = ['1970-01-01T00:00:00Z', '2026-11-01T00:00:00Z', '2024-02-29T12:30:45Z', '2000-01-01T00:00:00Z', '2026-11-01 00:00:00Z', '2026-11-01T00:00:00+00:00', '2026-13-01T00:00:00Z', '2026-11-32T00:00:00Z',
-    '2026-11-01T24:00:00Z', '2026-11-01T00:60:00Z', '2026-11-01T00:00:60Z', '2026-1x-01T00:00:00Z', '1969-12-31T23:59:59Z', '2026-00-10T00:00:00Z', '2026-01-00T00:00:00Z', '']
+    '2026-11-01T24:00:00Z', '2026-11-01T00:60:00Z', '2026-11-01T00:00:60Z', '2026-1x-01T00:00:00Z', '1969-12-31T23:59:59Z', '2026-00-10T00:00:00Z', '2026-01-00T00:00:00Z',
+    '2026-02-29T00:00:00Z', '2026-02-31T00:00:00Z', '2026-04-31T00:00:00Z', '2100-02-29T00:00:00Z', '2024-02-30T00:00:00Z', '2000-02-29T00:00:00Z', '2026-04-30T00:00:00Z', '']
     .map((input) => ({ input, secs: parseUtc(input) }))
 
   const sigOf = (m: ReturnType<typeof minisignKey>) => minisignSignature(m, Buffer.from('installer'), '1.0.0')

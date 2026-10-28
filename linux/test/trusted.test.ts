@@ -6,7 +6,7 @@ import { afterEach, test } from 'node:test'
 import { readFileSync } from 'node:fs'
 import { appApi, bundled, localOrigin, pickerUi, updateUi } from '../src/core/origin.ts'
 import { Trusted, type TrustedDeps, WITHDRAWN, defaultDeps, pinnedKeys } from '../src/core/trusted.ts'
-import { parseUtc } from '../src/core/trust.ts'
+import { NO_FLOOR, parseUtc } from '../src/core/trust.ts'
 import { ROOT_PUB } from '../src/core/pinned.ts'
 import { bundle, spec, testKey, trusted as keysFor } from './helpers/fixtures.ts'
 import { reply, serve, type TestServer } from './helpers/server.ts'
@@ -25,7 +25,7 @@ afterEach(async () => {
 const tmp = () => { const d = mkdtempSync(join(tmpdir(), 'mnema-trusted-')); dirs.push(d); return d }
 
 function deps(change: Partial<TrustedDeps> = {}): TrustedDeps {
-  return { ...defaultDeps(null), now: () => NOW, log: () => {}, ...change }
+  return { ...defaultDeps(null), now: () => NOW, log: () => {}, floor: NO_FLOOR, ...change }
 }
 
 const url = (raw: string) => new URL(raw)

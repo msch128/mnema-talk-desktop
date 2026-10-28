@@ -61,6 +61,15 @@ pub fn key_id(raw: &[u8; 32]) -> String {
     hex::encode(&Sha256::digest(raw)[..8])
 }
 
+/// Whether `id` has the shape of a key or instance id: the first 8 bytes of a
+/// SHA-256 as 16 lowercase hex characters (see [`key_id`], `instances::id_for`).
+pub(crate) fn is_hex_id16(id: &str) -> bool {
+    id.len() == 16
+        && id
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+}
+
 /// `MAJOR.MINOR.PATCH`, nothing else.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct Version(pub u32, pub u32, pub u32);
