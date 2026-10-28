@@ -8,8 +8,10 @@ name: Desktop release
 # the same jobs and steps for vX.Y.Z, then uploads the files the release would
 # carry, the feed and the checksums as the workflow artifact
 # `mnema-desktop-rehearsal`. It creates no release and moves no tag. It can run
-# on any branch of this repository, so a change can be rehearsed before merge;
-# the signing environment must allow that branch.
+# on any branch of this repository. It does not enter the protected signing
+# environment and cannot read the real signing key: every signing job makes a
+# throwaway key, signs with it, and the feed is verified against the throwaway
+# public keys (rehearsal-updater-*.pub, in the artifact) instead of the pinned one.
 #
 # Linux here is the Electron client. The Tauri host on Linux stays off: its
 # WebKitGTK has no WebRTC, and resuming it needs Tauri's move to GTK4
@@ -66,8 +68,9 @@ jobs:
     runs-on: windows-2025
     # The build and signing take about a minute, the install check seconds.
     timeout-minutes: 20
-    # The signing key exists only in this protected environment (tags v*).
-    environment: desktop-updater-signing
+    # The signing key exists only in this protected environment (tags v*). A
+    # rehearsal does not enter it: it signs with a throwaway key made in the run.
+    environment: ${{ github.event_name == 'push' && 'desktop-updater-signing' || '' }}
     env:
       RUST_VERSION: 1.99.1
       CARGO_TARGET_DIR: ${{ github.workspace }}/experimental/app/target
@@ -98,11 +101,31 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'CLI install failed' }
           node ../scripts/ensure-npm-optional.mjs .
           if ($LASTEXITCODE -ne 0) { throw 'Tauri CLI platform package missing' }
+      # A rehearsal signs with a key made here, used by this job only; only its
+      # public half leaves the job, in the artifact.
+      - name: Rehearsal, make a throwaway updater key
+        if: github.event_name != 'push'
+        working-directory: ui
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $password = node -e "console.log(require('crypto').randomBytes(16).toString('hex'))"
+          Write-Host "::add-mask::$password"
+          $keyFile = Join-Path $env:RUNNER_TEMP 'rehearsal.key'
+          node node_modules/@tauri-apps/cli/tauri.js signer generate --ci -w $keyFile -p $password | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw 'Key generation failed' }
+          $key = (Get-Content -Raw $keyFile).Trim()
+          Write-Host "::add-mask::$key"
+          Add-Content -Path $env:GITHUB_ENV -Value "REHEARSAL_KEY=$key"
+          Add-Content -Path $env:GITHUB_ENV -Value "REHEARSAL_KEY_PASSWORD=$password"
+          $out = Join-Path $env:RUNNER_TEMP 'installer'
+          New-Item -ItemType Directory -Path $out -Force | Out-Null
+          Copy-Item "$keyFile.pub" (Join-Path $out 'rehearsal-updater-windows.pub')
       - name: Build and sign the installer from the tested executable
         shell: pwsh
         env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ github.event_name == 'push' && secrets.TAURI_SIGNING_PRIVATE_KEY || env.REHEARSAL_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ github.event_name == 'push' && secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || env.REHEARSAL_KEY_PASSWORD }}
         working-directory: experimental/app
         run: |
           $ErrorActionPreference = 'Stop'
@@ -175,8 +198,9 @@ jobs:
     needs: [verify-tag, build]
     runs-on: macos-15
     timeout-minutes: 40
-    # The signing key exists only in this protected environment (tags v*).
-    environment: desktop-updater-signing
+    # The signing key exists only in this protected environment (tags v*). A
+    # rehearsal does not enter it: it signs with a throwaway key made in the run.
+    environment: ${{ github.event_name == 'push' && 'desktop-updater-signing' || '' }}
     env:
       RUST_VERSION: 1.99.1
       CARGO_TARGET_DIR: ${{ github.workspace }}/experimental/app/target
@@ -202,12 +226,26 @@ jobs:
         run: |
           npm ci --ignore-scripts --no-audit --no-fund
           node ../scripts/ensure-npm-optional.mjs .
+      # A rehearsal signs with a key made here, used by this job only; only its
+      # public half leaves the job, in the artifact.
+      - name: Rehearsal, make a throwaway updater key
+        if: github.event_name != 'push'
+        run: |
+          set -euo pipefail
+          password="$(openssl rand -hex 16)"
+          echo "::add-mask::$password"
+          node ui/node_modules/@tauri-apps/cli/tauri.js signer generate --ci -w "$RUNNER_TEMP/rehearsal.key" -p "$password" >/dev/null
+          key="$(cat "$RUNNER_TEMP/rehearsal.key")"
+          echo "::add-mask::$key"
+          { echo "REHEARSAL_KEY=$key"; echo "REHEARSAL_KEY_PASSWORD=$password"; } >> "$GITHUB_ENV"
+          mkdir -p "$RUNNER_TEMP/macos"
+          cp "$RUNNER_TEMP/rehearsal.key.pub" "$RUNNER_TEMP/macos/rehearsal-updater-macos.pub"
       # The executable is the tested one; the bundle step only wraps it, signs
       # the app ad hoc (tauri.macos.conf.json) and signs the updater archive.
       - name: Bundle the app from the tested executable
         env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ github.event_name == 'push' && secrets.TAURI_SIGNING_PRIVATE_KEY || env.REHEARSAL_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ github.event_name == 'push' && secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || env.REHEARSAL_KEY_PASSWORD }}
         working-directory: experimental/app
         run: |
           set -euo pipefail
@@ -306,8 +344,9 @@ jobs:
     needs: [verify-tag, linux]
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    # The signing key exists only in this protected environment (tags v*).
-    environment: desktop-updater-signing
+    # The signing key exists only in this protected environment (tags v*). A
+    # rehearsal does not enter it: it signs with a throwaway key made in the run.
+    environment: ${{ github.event_name == 'push' && 'desktop-updater-signing' || '' }}
     env:
       TAG: ${{ needs.verify-tag.outputs.tag }}
     steps:
@@ -329,12 +368,26 @@ jobs:
         run: |
           npm ci --ignore-scripts --no-audit --no-fund
           node ../scripts/ensure-npm-optional.mjs .
+      # A rehearsal signs with a key made here, used by this job only; only its
+      # public half leaves the job, in the artifact.
+      - name: Rehearsal, make a throwaway updater key
+        if: github.event_name != 'push'
+        run: |
+          set -euo pipefail
+          password="$(openssl rand -hex 16)"
+          echo "::add-mask::$password"
+          node ui/node_modules/@tauri-apps/cli/tauri.js signer generate --ci -w "$RUNNER_TEMP/rehearsal.key" -p "$password" >/dev/null
+          key="$(cat "$RUNNER_TEMP/rehearsal.key")"
+          echo "::add-mask::$key"
+          { echo "REHEARSAL_KEY=$key"; echo "REHEARSAL_KEY_PASSWORD=$password"; } >> "$GITHUB_ENV"
+          mkdir -p "linux-release"
+          cp "$RUNNER_TEMP/rehearsal.key.pub" "linux-release/rehearsal-updater-linux.pub"
       # The AppImages and .debs are the tested ones; they are only signed here,
       # with the version bound into the signature, exactly as the other platforms.
       - name: Sign the AppImages and .debs for the updater
         env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ github.event_name == 'push' && secrets.TAURI_SIGNING_PRIVATE_KEY || env.REHEARSAL_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ github.event_name == 'push' && secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || env.REHEARSAL_KEY_PASSWORD }}
         run: |
           set -euo pipefail
           version="${TAG#v}"
@@ -424,14 +477,26 @@ jobs:
             --linux-x86_64-deb "$deb_x64" --linux-x86_64-deb-sig "$deb_x64.sig" \
             --linux-aarch64-deb "$deb_arm64" --linux-aarch64-deb-sig "$deb_arm64.sig" --out release/latest.json
           # Every platform of the feed must verify against the key pinned in the app.
-          node scripts/verify-updater-signatures.mjs release/latest.json release windows-x86_64 darwin-aarch64 linux-x86_64 linux-aarch64 linux-x86_64-deb linux-aarch64-deb
+          platforms="windows-x86_64 darwin-aarch64 linux-x86_64 linux-aarch64 linux-x86_64-deb linux-aarch64-deb"
+          if [ "$EVENT" = push ]; then
+            # shellcheck disable=SC2086
+            node scripts/verify-updater-signatures.mjs release/latest.json release $platforms
+          else
+            # A rehearsal is signed with throwaway keys: check against those.
+            keys=""
+            for pub in release/rehearsal-updater-*.pub; do keys="$keys $(cat "$pub")"; done
+            read -ra found <<< "$keys"
+            [ "${#found[@]}" = 3 ] || { echo '::error::expected three rehearsal public keys'; exit 1; }
+            # shellcheck disable=SC2086
+            UPDATER_PUBKEYS="$keys" node scripts/verify-updater-signatures.mjs release/latest.json release $platforms
+          fi
           (cd portable && zip -qr "../release/Mnema-Desktop-DEV-${TAG}-windows-x64-portable.zip" .)
           (cd release && sha256sum -- *.exe *.zip *.dmg *.app.tar.gz *.AppImage *.deb > SHA256SUMS)
           if [ "$EVENT" != push ]; then
             # Rehearsal: keep what a release would carry, publish nothing.
             mkdir rehearsal
             cp release/*.exe release/*.exe.sig release/*.zip release/*.dmg release/*.app.tar.gz release/*.app.tar.gz.sig \
-              release/*.AppImage release/*.AppImage.sig release/*.deb release/*.deb.sig release/latest.json release/SHA256SUMS rehearsal/
+              release/*.AppImage release/*.AppImage.sig release/*.deb release/*.deb.sig release/latest.json release/SHA256SUMS release/rehearsal-updater-*.pub rehearsal/
             echo "Rehearsal for $TAG: no release created, no tag moved."
             exit 0
           fi

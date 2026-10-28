@@ -224,7 +224,9 @@ To rehearse a release without publishing, run `desktop-release.yml` by hand
 (`gh workflow run desktop-release.yml --ref main -f version=X.Y.Z`). It runs
 the same jobs and checks for that version, creates no release and moves no tag,
 and uploads the files, `latest.json` and `SHA256SUMS` as the artifact
-`mnema-desktop-rehearsal`.
+`mnema-desktop-rehearsal`. It never enters the signing environment: each signing
+job makes a throwaway key, and the artifact carries only their public halves
+(`rehearsal-updater-*.pub`), which the feed is verified against.
 
 ### Rotating or revoking the updater key
 
