@@ -9,7 +9,7 @@
 # nothing), so no advisory about them is ignored. Building the Tauri host on
 # Linux means adding the Linux target here AND moving to Tauri's GTK4 stack.
 [graph]
-targets = ["x86_64-pc-windows-msvc"]
+targets = ["x86_64-pc-windows-msvc", "aarch64-apple-darwin"]
 all-features = true
 # Test-only crates are not shipped.
 exclude-dev = true

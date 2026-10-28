@@ -65,10 +65,10 @@ jobs:
           node-version: '26'
       - name: Install pinned Rust toolchain
         run: rustup toolchain install 1.99.1 --profile minimal
-      # Scoped to the Windows target (deny.toml): the Linux client is Electron,
-      # and the Linux-only GTK3 crates are not in the Windows build. One documented
+      # Scoped to the shipped Tauri targets, Windows and macOS (deny.toml): the Linux
+      # client is Electron, and the Linux-only GTK3 crates are not in those builds. One documented
       # exception, see doc/security-review-1.2.md.
-      - name: Rust advisory scan (pinned tool, Windows graph)
+      - name: Rust advisory scan (pinned tool, Windows and macOS graph)
         run: |
           set -euo pipefail
           cargo +1.99.1 install cargo-deny --version "$CARGO_DENY_VERSION" --locked

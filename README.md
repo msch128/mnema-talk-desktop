@@ -403,8 +403,8 @@ Distribute the complete `licenses/` directory, this notice file and the root
 `LICENSE` beside a development binary. Checksums are not publisher signatures;
 receipts explicitly remain ineligible for the updater.
 
-The Rust advisory scan (`cargo deny`, `deny.toml`) is scoped to the Windows
-target. The published Linux client is Electron and is not in that graph. The
+The Rust advisory scan (`cargo deny`, `deny.toml`) is scoped to the shipped
+Tauri targets, Windows and macOS. The published Linux client is Electron and is not in that graph. The
 Linux-only GTK3 crates (`gtk`, `glib` 0.18, `proc-macro-error`) stay out of it;
 the Tauri host on Linux is not built. Details and the exception:
 [doc/security-review-1.2.md](doc/security-review-1.2.md).
