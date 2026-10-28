@@ -7,13 +7,17 @@
 //! installed in any process, and no other process is touched: Raw Input is the
 //! documented, passive way to receive device input.
 //!
-//! Only the key identity and the up/down flag are read out of each report. The
-//! lock screen cannot be seen by Raw Input, so a session lock clears all keys
-//! (`WM_WTSSESSION_CHANGE`) instead of leaving a key stuck down.
+//! Only the key identity and the up/down flag are read out of each report (the
+//! decoding is `input::decode_keyboard`). Raw Input cannot see key-ups that
+//! happen on another desktop or session, or while the machine sleeps: a session
+//! lock or unlock, a console or remote disconnect, a logoff and a suspend or
+//! resume therefore clear all keys instead of leaving one stuck down.
 
 use super::input::{
-    InputError, InputEvent, InputSource, KeyEvent, Sink, VK_XBUTTON1, VK_XBUTTON2, side_specific,
+    InputError, InputEvent, InputSource, KeyReport, RI_MOUSE_EXTRA_BUTTONS, Sink, decode_keyboard,
+    decode_mouse_buttons, power_change_loses_keys, session_change_loses_keys,
 };
+use super::wide::wide;
 use std::{
     cell::RefCell,
     mem::{size_of, zeroed},
@@ -34,25 +38,17 @@ use windows_sys::Win32::{
     UI::{
         Input::{
             GetRawInputData, GetRegisteredRawInputDevices, HRAWINPUT, RAWINPUT, RAWINPUTDEVICE,
-            RAWINPUTHEADER, RID_INPUT, RIDEV_INPUTSINK, RIDEV_REMOVE, RIM_TYPEKEYBOARD,
-            RIM_TYPEMOUSE, RegisterRawInputDevices,
+            RAWINPUTHEADER, RAWKEYBOARD, RAWMOUSE, RID_INPUT, RIDEV_INPUTSINK, RIDEV_REMOVE,
+            RIM_TYPEKEYBOARD, RIM_TYPEMOUSE, RegisterRawInputDevices,
         },
         WindowsAndMessaging::{
             CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetMessageW, MSG,
             PostThreadMessageW, RegisterClassW, TranslateMessage, UnregisterClassW, WM_INPUT,
-            WM_QUIT, WM_WTSSESSION_CHANGE, WNDCLASSW, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_POPUP,
+            WM_POWERBROADCAST, WM_QUIT, WM_WTSSESSION_CHANGE, WNDCLASSW, WS_EX_NOACTIVATE,
+            WS_EX_TOOLWINDOW, WS_POPUP,
         },
     },
 };
-
-// winuser.h and wtsapi32.h constants that are macros, not typed API metadata.
-const RI_KEY_BREAK: u16 = 0x1;
-const RI_KEY_E0: u16 = 0x2;
-const RI_MOUSE_BUTTON_4_DOWN: u32 = 0x40;
-const RI_MOUSE_BUTTON_4_UP: u32 = 0x80;
-const RI_MOUSE_BUTTON_5_DOWN: u32 = 0x100;
-const RI_MOUSE_BUTTON_5_UP: u32 = 0x200;
-const WTS_SESSION_LOCK: u32 = 0x7;
 
 const CLASS: &str = "MnemaInputSink";
 const USAGE_PAGE_GENERIC: u16 = 1;
@@ -65,10 +61,6 @@ thread_local! {
     static SINK: RefCell<Option<Arc<Sink>>> = const { RefCell::new(None) };
 }
 
-fn wide(text: &str) -> Vec<u16> {
-    text.encode_utf16().chain(std::iter::once(0)).collect()
-}
-
 fn emit(event: InputEvent) {
     SINK.with(|slot| {
         if let Some(sink) = slot.borrow().as_ref() {
@@ -77,8 +69,8 @@ fn emit(event: InputEvent) {
     });
 }
 
-/// Reads one `WM_INPUT` report. Returns the change it describes, if any.
-unsafe fn read_report(handle: HRAWINPUT) -> Vec<KeyEvent> {
+/// Reads one `WM_INPUT` report. Returns the changes it describes, if any.
+unsafe fn read_report(handle: HRAWINPUT) -> Vec<InputEvent> {
     let header = size_of::<RAWINPUTHEADER>() as u32;
     let mut size = 0u32;
     // SAFETY: the first call only asks for the size.
@@ -88,8 +80,11 @@ unsafe fn read_report(handle: HRAWINPUT) -> Vec<KeyEvent> {
     {
         return Vec::new();
     }
-    // u64 backing keeps the buffer aligned for RAWINPUT.
-    let mut buffer = vec![0u64; (size as usize).div_ceil(8)];
+    // Zeroed u64 backing keeps the buffer aligned for RAWINPUT, and it is never
+    // smaller than the type even when the report is (a keyboard report is
+    // shorter than the mouse member of the union), so the reference below is valid.
+    let bytes = (size as usize).max(size_of::<RAWINPUT>());
+    let mut buffer = vec![0u64; bytes.div_ceil(8)];
     // SAFETY: `buffer` holds at least `size` bytes.
     let read = unsafe {
         GetRawInputData(
@@ -103,35 +98,28 @@ unsafe fn read_report(handle: HRAWINPUT) -> Vec<KeyEvent> {
     if read == u32::MAX || (read as usize) < size_of::<RAWINPUTHEADER>() {
         return Vec::new();
     }
-    // SAFETY: Windows filled a RAWINPUT into an aligned buffer of sufficient size.
+    // SAFETY: the zeroed, aligned buffer is at least size_of::<RAWINPUT>() bytes
+    // and every field of RAWINPUT is valid for any bit pattern.
     let raw = unsafe { &*buffer.as_ptr().cast::<RAWINPUT>() };
     match raw.header.dwType {
-        RIM_TYPEKEYBOARD => {
+        RIM_TYPEKEYBOARD
+            if read as usize >= size_of::<RAWINPUTHEADER>() + size_of::<RAWKEYBOARD>() =>
+        {
             // SAFETY: dwType says the keyboard member is the active one.
             let keyboard = unsafe { raw.data.keyboard };
-            // 0xff is the "fake" key Windows sends around some sequences.
-            if keyboard.VKey == 0xff || keyboard.VKey == 0 {
-                return Vec::new();
+            match decode_keyboard(keyboard.VKey, keyboard.MakeCode, keyboard.Flags) {
+                KeyReport::Key(event) => vec![InputEvent::Key(event)],
+                KeyReport::Ignore => Vec::new(),
+                KeyReport::Reset => vec![InputEvent::Reset],
             }
-            let extended = keyboard.Flags & RI_KEY_E0 != 0;
-            vec![KeyEvent {
-                key: side_specific(keyboard.VKey, keyboard.MakeCode, extended),
-                down: keyboard.Flags & RI_KEY_BREAK == 0,
-            }]
         }
-        RIM_TYPEMOUSE => {
+        RIM_TYPEMOUSE if read as usize >= size_of::<RAWINPUTHEADER>() + size_of::<RAWMOUSE>() => {
             // SAFETY: dwType says the mouse member is the active one.
             let buttons = unsafe { raw.data.mouse.Anonymous.Anonymous.usButtonFlags };
-            [
-                (RI_MOUSE_BUTTON_4_DOWN, VK_XBUTTON1, true),
-                (RI_MOUSE_BUTTON_4_UP, VK_XBUTTON1, false),
-                (RI_MOUSE_BUTTON_5_DOWN, VK_XBUTTON2, true),
-                (RI_MOUSE_BUTTON_5_UP, VK_XBUTTON2, false),
-            ]
-            .into_iter()
-            .filter(|(flag, _, _)| u32::from(buttons) & flag != 0)
-            .map(|(_, key, down)| KeyEvent { key, down })
-            .collect()
+            if buttons & RI_MOUSE_EXTRA_BUTTONS == 0 {
+                return Vec::new();
+            }
+            decode_mouse_buttons(buttons).map(InputEvent::Key).collect()
         }
         _ => Vec::new(),
     }
@@ -147,10 +135,11 @@ unsafe extern "system" fn window_proc(
         WM_INPUT => {
             // SAFETY: lparam is the HRAWINPUT of this message.
             for event in unsafe { read_report(lparam as HRAWINPUT) } {
-                emit(InputEvent::Key(event));
+                emit(event);
             }
         }
-        WM_WTSSESSION_CHANGE if wparam as u32 == WTS_SESSION_LOCK => emit(InputEvent::Reset),
+        WM_WTSSESSION_CHANGE if session_change_loses_keys(wparam as u32) => emit(InputEvent::Reset),
+        WM_POWERBROADCAST if power_change_loses_keys(wparam as u32) => emit(InputEvent::Reset),
         _ => {}
     }
     // WM_INPUT must reach DefWindowProc so the system can clean up the report.
@@ -219,7 +208,9 @@ pub struct RawInputSource {
 impl InputSource for RawInputSource {
     fn start(&mut self, sink: Sink) -> Result<(), InputError> {
         if self.running.is_some() {
-            return Ok(());
+            // The running thread keeps its own sink; say so instead of
+            // silently dropping this one.
+            return Err(InputError::Conflict("Input is already running."));
         }
         let (ready, started) = mpsc::channel();
         let handle = std::thread::Builder::new()

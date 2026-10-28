@@ -1,4 +1,7 @@
 //! Dedicated hidden-window input owner. No rendering, capture, hooks or injection.
+use super::super::input::{
+    KeyReport, RI_MOUSE_EXTRA_BUTTONS, decode_keyboard, decode_mouse_buttons,
+};
 use super::{
     Availability, BoundedInput, Config, SafetyGate, SessionEvent, StampedActions, WATCHDOG_INTERVAL,
 };
@@ -265,66 +268,36 @@ impl Context {
                 if read >= (size_of::<RAWINPUTHEADER>() + size_of::<RAWKEYBOARD>()) as u32 =>
             {
                 let keyboard = unsafe { raw.data.keyboard };
-                if keyboard.VKey == 0xff
-                    || keyboard.MakeCode == 0xff
-                    || keyboard.Flags & !(RI_KEY_BREAK | RI_KEY_E0 | RI_KEY_E1) as u16 != 0
+                let event = match decode_keyboard(keyboard.VKey, keyboard.MakeCode, keyboard.Flags)
                 {
-                    self.clear();
-                    return;
-                }
-                let key = match keyboard.VKey {
-                    0x10 => match keyboard.MakeCode {
-                        0x2a => 0xa0,
-                        0x36 => 0xa1,
-                        _ => {
-                            self.clear();
-                            return;
-                        }
-                    },
-                    0x11 => {
-                        if keyboard.Flags & RI_KEY_E0 as u16 != 0 {
-                            0xa3
-                        } else {
-                            0xa2
-                        }
+                    KeyReport::Key(event) => event,
+                    KeyReport::Ignore => return,
+                    KeyReport::Reset => {
+                        self.clear();
+                        return;
                     }
-                    0x12 => {
-                        if keyboard.Flags & RI_KEY_E0 as u16 != 0 {
-                            0xa5
-                        } else {
-                            0xa4
-                        }
-                    }
-                    key => key,
                 };
-                if !self.input.interested(key) {
+                if !self.input.interested(event.key) {
                     return;
                 }
                 if !self.source(RIM_TYPEKEYBOARD, raw.header.hDevice) {
                     return;
                 }
-                self.key(key, keyboard.Flags & RI_KEY_BREAK as u16 == 0);
+                self.key(event.key, event.down);
             }
             RIM_TYPEMOUSE
                 if read >= (size_of::<RAWINPUTHEADER>() + size_of::<RAWMOUSE>()) as u32 =>
             {
                 let flags = unsafe { raw.data.mouse.Anonymous.Anonymous.usButtonFlags };
                 // Mouse movement/coordinates/wheel are never read or retained.
-                if flags & 0x3c0 == 0 {
+                if flags & RI_MOUSE_EXTRA_BUTTONS == 0 {
                     return;
                 }
                 if !self.source(RIM_TYPEMOUSE, raw.header.hDevice) {
                     return;
                 }
-                for (flag, key, down) in [
-                    (64, 0x05, true),
-                    (128, 0x05, false),
-                    (256, 0x06, true),
-                    (512, 0x06, false),
-                ] {
-                    if flags & flag != 0 {
-                        self.key(key, down);
-                    }
+                for event in decode_mouse_buttons(flags) {
+                    self.key(event.key, event.down);
                 }
             }
             _ => {} // Unsupported HID bodies are discarded.

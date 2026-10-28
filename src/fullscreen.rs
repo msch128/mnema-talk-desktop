@@ -90,11 +90,16 @@ pub fn was_shown(config_dir: &Path) -> bool {
         .unwrap_or(false)
 }
 
-/// Remembers that the hint was given, so it is never repeated.
-pub fn remember_shown(config_dir: &Path) {
-    if std::fs::create_dir_all(config_dir).is_ok() {
-        let _ = std::fs::write(config_dir.join(FILE), br#"{"exclusive_fullscreen":true}"#);
-    }
+/// Remembers that the hint was given, so it is never repeated. The marker is
+/// written to a temporary file and renamed into place, so a crash never leaves
+/// half a file. An error means the hint will be given again on the next start.
+pub fn remember_shown(config_dir: &Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(config_dir)?;
+    let temporary = config_dir.join(format!("{FILE}.tmp"));
+    std::fs::write(&temporary, br#"{"exclusive_fullscreen":true}"#)?;
+    std::fs::rename(&temporary, config_dir.join(FILE)).inspect_err(|_| {
+        let _ = std::fs::remove_file(&temporary);
+    })
 }
 
 #[cfg(test)]
@@ -154,11 +159,20 @@ mod tests {
     }
 
     #[test]
+    fn a_marker_that_cannot_be_written_is_reported_not_swallowed() {
+        let file = std::env::temp_dir().join(format!("mnema-hints-file-{}", std::process::id()));
+        std::fs::write(&file, "x").unwrap();
+        // The "directory" is a regular file, so the marker cannot be stored.
+        assert!(remember_shown(&file).is_err());
+        let _ = std::fs::remove_file(&file);
+    }
+
+    #[test]
     fn the_given_hint_is_remembered_across_runs_and_junk_means_not_given() {
         let dir = std::env::temp_dir().join(format!("mnema-hints-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         assert!(!was_shown(&dir), "no file yet");
-        remember_shown(&dir);
+        remember_shown(&dir).unwrap();
         assert!(was_shown(&dir));
         std::fs::write(dir.join(FILE), "not json").unwrap();
         assert!(!was_shown(&dir));

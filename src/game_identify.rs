@@ -8,7 +8,7 @@
 //! lists); the window title is read only for Java runtimes. Nothing leaves the
 //! device and nothing is injected, enumerated or hooked.
 
-use super::{game_library::InstallIndex, game_list::GameList};
+use super::{foreground::file_name, game_library::InstallIndex, game_list::GameList};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Source {
@@ -65,7 +65,7 @@ pub fn identify(
     image: &str,
     title: &str,
 ) -> Option<Identified> {
-    let file = image.rsplit(['\\', '/']).next().filter(|f| !f.is_empty())?;
+    let file = file_name(image)?;
     if is_helper(file) {
         return None;
     }

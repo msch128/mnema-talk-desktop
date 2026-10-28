@@ -127,7 +127,7 @@ loop.
 
 | System | Source | Notes |
 | --- | --- | --- |
-| Windows | Raw Input (`RegisterRawInputDevices` with `RIDEV_INPUTSINK`, keyboard and mouse) on its own thread with a hidden window | No keyboard hook, no `GetAsyncKeyState`. Works while a game has the focus. A session lock clears all keys, so a key cannot stay stuck down across the lock screen. |
+| Windows | Raw Input (`RegisterRawInputDevices` with `RIDEV_INPUTSINK`, keyboard and mouse) on its own thread with a hidden window | No keyboard hook, no `GetAsyncKeyState`. Works while a game has the focus. A session lock or unlock, a console or remote disconnect, a logoff and a suspend or resume clear all keys, so a key cannot stay stuck down when its key-up happens where Raw Input cannot see it. |
 | macOS, Linux | none | The gaming integration is Windows only. |
 
 What is read: for each change only the key (or the mouse side button 4 or 5)

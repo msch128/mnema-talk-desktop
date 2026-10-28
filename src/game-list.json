@@ -1387,8 +1387,7 @@
     {
       "name": "Mount & Blade II: Bannerlord",
       "executables": [
-        "Bannerlord.exe",
-        "TaleWorlds.MountAndBlade.Launcher.exe"
+        "Bannerlord.exe"
       ]
     },
     {
