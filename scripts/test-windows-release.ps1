@@ -17,10 +17,31 @@ if ($FixtureDirectory) {
   if ($fixture.nonce -notmatch '^[a-f0-9]{32}$' -or [IO.Path]::GetFileName($FixtureDirectory) -ne "mnema-auth-$($fixture.nonce)" -or $fixture.origin -ne $InstanceUrl -or $uri.Host -ne '127.0.0.1' -or $uri.Port -lt 1024 -or $fixture.normal_router -ne $true -or $fixture.username -ne 'desktop-fixture-user' -or $fixture.password -notmatch '^[a-f0-9]{64}$' -or $fixture.channel -ne 'desktop-fixture-chat' -or $fixture.outbound -ne "Desktop fixture outbound $($fixture.nonce)" -or $fixture.inbound -ne "Desktop fixture inbound $($fixture.nonce)") { throw 'Invalid owned local fixture receipt' }
 } else {
 if ($uri.Host -notmatch '^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$') { throw 'A public HTTPS instance origin is required' }
-foreach ($address in [Net.Dns]::GetHostAddresses($uri.Host)) {
+# Accept only globally routable unicast addresses (allow-list), so reserved,
+# documentation, benchmarking, transition and unspecified ranges are refused too.
+# The app resolves the name again on its own; this is a pre-check, not an egress guard.
+function Test-GlobalAddress([Net.IPAddress]$address) {
   if ($address.IsIPv4MappedToIPv6) { $address = $address.MapToIPv4() }
-  $bytes = $address.GetAddressBytes()
-  if ([Net.IPAddress]::IsLoopback($address) -or $address.IsIPv6LinkLocal -or $address.IsIPv6SiteLocal -or $address.IsIPv6Multicast -or ($bytes.Length -eq 16 -and ($bytes[0] -band 254) -eq 252) -or ($bytes.Length -eq 4 -and ($bytes[0] -in 0,10,127 -or $bytes[0] -ge 224 -or ($bytes[0] -eq 172 -and $bytes[1] -ge 16 -and $bytes[1] -le 31) -or ($bytes[0] -eq 192 -and $bytes[1] -eq 168) -or ($bytes[0] -eq 169 -and $bytes[1] -eq 254) -or ($bytes[0] -eq 100 -and $bytes[1] -ge 64 -and $bytes[1] -le 127)))) { throw 'Private instance addresses are not accepted by this public CI test' }
+  $b = $address.GetAddressBytes()
+  if ($b.Length -eq 4) {
+    if ($b[0] -in 0,10,127 -or $b[0] -ge 224) { return $false }
+    if ($b[0] -eq 100 -and $b[1] -ge 64 -and $b[1] -le 127) { return $false }
+    if ($b[0] -eq 169 -and $b[1] -eq 254) { return $false }
+    if ($b[0] -eq 172 -and $b[1] -ge 16 -and $b[1] -le 31) { return $false }
+    if ($b[0] -eq 192 -and ($b[1] -eq 168 -or ($b[1] -eq 0 -and $b[2] -in 0,2) -or ($b[1] -eq 88 -and $b[2] -eq 99))) { return $false }
+    if ($b[0] -eq 198 -and ($b[1] -in 18,19 -or ($b[1] -eq 51 -and $b[2] -eq 100))) { return $false }
+    if ($b[0] -eq 203 -and $b[1] -eq 0 -and $b[2] -eq 113) { return $false }
+    return $true
+  }
+  # IPv6: global unicast is 2000::/3; exclude 2001::/32 (Teredo), 2001:db8::/32
+  # (documentation) and 2002::/16 (6to4, embeds an arbitrary IPv4 address).
+  if (($b[0] -band 224) -ne 32) { return $false }
+  if ($b[0] -eq 0x20 -and $b[1] -eq 0x02) { return $false }
+  if ($b[0] -eq 0x20 -and $b[1] -eq 0x01 -and (($b[2] -eq 0 -and $b[3] -eq 0) -or ($b[2] -eq 0x0d -and $b[3] -eq 0xb8))) { return $false }
+  return $true
+}
+foreach ($address in [Net.Dns]::GetHostAddresses($uri.Host)) {
+  if (!(Test-GlobalAddress $address)) { throw 'Private instance addresses are not accepted by this public CI test' }
 }
 }
 if ($VoiceAcceptance -and (!$fixture -or $fixture.voice_enabled -ne $true -or $fixture.voice_channel -ne 'desktop-fixture-voice')) { throw 'Voice acceptance requires the owned SFU fixture' }
@@ -49,8 +70,33 @@ try {
     if ($total -gt 268435456) { throw 'Release archive exceeds the size limit' }
   }
 } finally { $archive.Dispose() }
-Expand-Archive (Join-Path $directory $zipName) (Join-Path $directory 'package')
 $package = Join-Path $directory 'package'
+# Extract entry by entry through a counting copy: the sizes in the ZIP headers are
+# attacker-declared, so the real inflated bytes are what the limits apply to.
+$archive = [IO.Compression.ZipFile]::OpenRead((Join-Path $directory $zipName))
+try {
+  New-Item -ItemType Directory -Path $package | Out-Null
+  $root = [IO.Path]::GetFullPath($package).TrimEnd('\') + '\'
+  $written = 0L
+  $buffer = New-Object byte[] 81920
+  foreach ($entry in $archive.Entries) {
+    $target = [IO.Path]::GetFullPath((Join-Path $package $entry.FullName.Replace('/', '\')))
+    if (!$target.StartsWith($root, [StringComparison]::OrdinalIgnoreCase)) { throw 'Unsafe release archive path' }
+    if ($entry.FullName.EndsWith('/') -or $entry.FullName.EndsWith('\')) { New-Item -ItemType Directory -Force -Path $target | Out-Null; continue }
+    New-Item -ItemType Directory -Force -Path ([IO.Path]::GetDirectoryName($target)) | Out-Null
+    $source = $entry.Open()
+    try {
+      $output = [IO.File]::Open($target, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write)
+      try {
+        while (($read = $source.Read($buffer, 0, $buffer.Length)) -gt 0) {
+          $written += $read
+          if ($written -gt 268435456) { throw 'Release archive exceeds the size limit' }
+          $output.Write($buffer, 0, $read)
+        }
+      } finally { $output.Dispose() }
+    } finally { $source.Dispose() }
+  }
+} finally { $archive.Dispose() }
 $receipt = Get-Content (Join-Path $package 'DEV-BUILD.json') -Raw | ConvertFrom-Json
 $tagJson = gh api "repos/msch128/mnema-talk/git/ref/tags/$Tag"
 if ($LASTEXITCODE -ne 0) { throw 'Release tag lookup failed' }
@@ -218,9 +264,9 @@ try {
     authenticated_chat_ui_checked = ($null -ne $fixture)
     authenticated_chat_media_and_games_qualified = $false
   } | ConvertTo-Json | Set-Content (Join-Path $directory 'ACCEPTANCE.json') -Encoding utf8
-  if ($VoiceAcceptance) { 'Published Windows EXE: generated accounts, normal WSS/SFU receiver, synthetic microphone RTP, peer-visible mute/deafen and leave/rejoin PASS. No audible/reverse audio, screen capture, E2EE or game qualification.' | Out-File -Append $env:GITHUB_STEP_SUMMARY }
-  elseif ($fixture) { 'Published Windows release: local fixture login, chat send/receive and logout UI PASS. Generated fixture credentials only; no media, S3, E2EE or game qualification.' | Out-File -Append $env:GITHUB_STEP_SUMMARY }
-  else { 'Published Windows release: selector, actual instance sign-in page and language interaction PASS. No credentials or authenticated/media qualification.' | Out-File -Append $env:GITHUB_STEP_SUMMARY }
+  if ($VoiceAcceptance) { 'Published Windows EXE: generated accounts, normal WSS/SFU receiver, synthetic microphone RTP, peer-visible mute/deafen and leave/rejoin PASS. No audible/reverse audio, screen capture, E2EE or game qualification.' | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY }
+  elseif ($fixture) { 'Published Windows release: local fixture login, chat send/receive and logout UI PASS. Generated fixture credentials only; no media, S3, E2EE or game qualification.' | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY }
+  else { 'Published Windows release: selector, actual instance sign-in page and language interaction PASS. No credentials or authenticated/media qualification.' | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY }
 } finally {
   if (!$process.HasExited) { Stop-Process -Id $process.Id -Force }
 }
