@@ -127,6 +127,7 @@ impl Launcher for Epic {
 #[cfg(windows)]
 mod registry {
     //! Read-only registry access for launcher install lists.
+    use super::super::wide::wide;
     use windows_sys::Win32::{
         Foundation::ERROR_SUCCESS,
         System::Registry::{
@@ -134,10 +135,6 @@ mod registry {
             RegQueryValueExW,
         },
     };
-
-    fn wide(text: &str) -> Vec<u16> {
-        text.encode_utf16().chain(std::iter::once(0)).collect()
-    }
 
     pub struct Key(HKEY);
 

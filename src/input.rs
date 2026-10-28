@@ -236,6 +236,70 @@ pub fn side_specific(vkey: u16, make_code: u16, extended: bool) -> u16 {
     }
 }
 
+// Raw Input constants that are macros in winuser.h / wtsapi32.h, not typed API
+// metadata. Kept here, next to the pure decoding below, so both Windows sources
+// (the shipped one and the fixture owner) read a report the same way.
+pub const RI_KEY_BREAK: u16 = 0x1;
+pub const RI_KEY_E0: u16 = 0x2;
+pub const RI_KEY_E1: u16 = 0x4;
+/// `usButtonFlags` bits of the two extra mouse buttons (4 and 5), down and up.
+pub const RI_MOUSE_EXTRA_BUTTONS: u16 = 0x40 | 0x80 | 0x100 | 0x200;
+
+/// What one Raw Input keyboard report means.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum KeyReport {
+    Key(KeyEvent),
+    /// Not a key change (the "fake" key Windows sends around some sequences).
+    Ignore,
+    /// A report that cannot be trusted (unknown flags, a keyboard overrun, a
+    /// Shift of unknown side): forget every key rather than risk a stuck one.
+    Reset,
+}
+
+/// Decodes the three fields of a `RAWKEYBOARD` report.
+pub fn decode_keyboard(vkey: u16, make_code: u16, flags: u16) -> KeyReport {
+    if vkey == 0 || vkey == 0xff {
+        return KeyReport::Ignore;
+    }
+    if make_code == 0xff || flags & !(RI_KEY_BREAK | RI_KEY_E0 | RI_KEY_E1) != 0 {
+        return KeyReport::Reset;
+    }
+    if vkey == VK_SHIFT && !matches!(make_code, 0x2a | 0x36) {
+        return KeyReport::Reset;
+    }
+    KeyReport::Key(KeyEvent {
+        key: side_specific(vkey, make_code, flags & RI_KEY_E0 != 0),
+        down: flags & RI_KEY_BREAK == 0,
+    })
+}
+
+/// The changes of buttons 4 and 5 in a mouse report's `usButtonFlags`. Movement,
+/// position and wheel are never read.
+pub fn decode_mouse_buttons(button_flags: u16) -> impl Iterator<Item = KeyEvent> {
+    [
+        (0x40, VK_XBUTTON1, true),
+        (0x80, VK_XBUTTON1, false),
+        (0x100, VK_XBUTTON2, true),
+        (0x200, VK_XBUTTON2, false),
+    ]
+    .into_iter()
+    .filter(move |(flag, _, _)| button_flags & flag != 0)
+    .map(|(_, key, down)| KeyEvent { key, down })
+}
+
+/// `WM_WTSSESSION_CHANGE` codes after which key-up events may have gone to
+/// another desktop or session: lock and unlock, console or remote disconnect
+/// and logoff.
+pub fn session_change_loses_keys(code: u32) -> bool {
+    matches!(code, 0x2 | 0x4 | 0x6 | 0x7 | 0x8)
+}
+
+/// `WM_POWERBROADCAST` codes (`PBT_APMSUSPEND`, `PBT_APMRESUMESUSPEND`,
+/// `PBT_APMRESUMEAUTOMATIC`): nothing is delivered while the machine sleeps.
+pub fn power_change_loses_keys(code: u32) -> bool {
+    matches!(code, 0x4 | 0x7 | 0x12)
+}
+
 /// Test double: pushes whatever the test emits.
 #[cfg(test)]
 #[derive(Default)]
@@ -456,6 +520,81 @@ mod tests {
         let mut t = tracker();
         assert!(!t.apply(key(300, true)));
         assert!(!t.apply(key(u16::MAX, true)));
+    }
+
+    #[test]
+    fn keyboard_reports_decode_to_side_specific_keys() {
+        let key = |key, down| KeyReport::Key(KeyEvent { key, down });
+        assert_eq!(decode_keyboard(0x41, 0x1e, 0), key(0x41, true));
+        assert_eq!(decode_keyboard(0x41, 0x1e, RI_KEY_BREAK), key(0x41, false));
+        assert_eq!(decode_keyboard(VK_SHIFT, 0x2a, 0), key(VK_LSHIFT, true));
+        assert_eq!(
+            decode_keyboard(VK_SHIFT, 0x36, RI_KEY_BREAK),
+            key(VK_RSHIFT, false)
+        );
+        assert_eq!(
+            decode_keyboard(VK_CONTROL, 0x1d, RI_KEY_E0),
+            key(VK_RCONTROL, true)
+        );
+        assert_eq!(
+            decode_keyboard(0x13, 0x45, RI_KEY_E1),
+            key(0x13, true),
+            "Pause"
+        );
+    }
+
+    #[test]
+    fn untrustworthy_keyboard_reports_reset_and_fake_keys_are_ignored() {
+        assert_eq!(decode_keyboard(0xff, 0x2a, RI_KEY_E0), KeyReport::Ignore);
+        assert_eq!(decode_keyboard(0, 0, 0), KeyReport::Ignore);
+        assert_eq!(decode_keyboard(0x41, 0xff, 0), KeyReport::Reset, "overrun");
+        assert_eq!(
+            decode_keyboard(0x41, 0x1e, 0x8),
+            KeyReport::Reset,
+            "unknown flag"
+        );
+        assert_eq!(
+            decode_keyboard(VK_SHIFT, 0x1e, 0),
+            KeyReport::Reset,
+            "unknown Shift side"
+        );
+    }
+
+    #[test]
+    fn extra_mouse_buttons_decode_and_other_mouse_data_is_dropped() {
+        let events: Vec<_> = decode_mouse_buttons(0x40 | 0x200).collect();
+        assert_eq!(
+            events,
+            [
+                KeyEvent {
+                    key: VK_XBUTTON1,
+                    down: true
+                },
+                KeyEvent {
+                    key: VK_XBUTTON2,
+                    down: false
+                },
+            ]
+        );
+        // Buttons 1-3 and the wheel are not ours.
+        assert_eq!(decode_mouse_buttons(0x1 | 0x2 | 0x400).count(), 0);
+        assert_eq!(RI_MOUSE_EXTRA_BUTTONS, 0x3c0);
+    }
+
+    #[test]
+    fn session_and_power_changes_that_lose_key_ups_are_recognised() {
+        // lock 7, unlock 8, console disconnect 2, remote disconnect 4, logoff 6
+        for code in [2, 4, 6, 7, 8] {
+            assert!(session_change_loses_keys(code), "{code}");
+        }
+        // connects, logon, remote control: keys are still tracked
+        for code in [1, 3, 5, 9, 0xa] {
+            assert!(!session_change_loses_keys(code), "{code}");
+        }
+        for code in [0x4, 0x7, 0x12] {
+            assert!(power_change_loses_keys(code), "{code}");
+        }
+        assert!(!power_change_loses_keys(0xa), "power status change");
     }
 
     #[test]

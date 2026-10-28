@@ -92,26 +92,22 @@ impl SafetyGate {
             .fetch_or(CLEAR_CONTEXT | RELEASE_PTT, Ordering::SeqCst);
     }
     pub fn heartbeat(&self, epoch: u64, now: Instant) {
-        if epoch == 0 || self.epoch() != epoch {
-            return;
-        }
-        if self.state.load(Ordering::SeqCst) & 3 != 0 && !self.fresh(epoch, now) {
-            self.watchdog(now);
-            return; // A recovering input loop cannot renew an expired grant.
-        }
-        self.heartbeat_ms.store(self.elapsed(now), Ordering::SeqCst);
-        self.heartbeat_epoch.store(epoch, Ordering::SeqCst);
+        self.beat(epoch, now, &self.heartbeat_ms, &self.heartbeat_epoch);
     }
     pub fn core_heartbeat(&self, epoch: u64, now: Instant) {
+        self.beat(epoch, now, &self.core_ms, &self.core_epoch);
+    }
+    /// The one gate both heartbeat sources go through.
+    fn beat(&self, epoch: u64, now: Instant, ms: &AtomicU64, stored_epoch: &AtomicU64) {
         if epoch == 0 || self.epoch() != epoch {
             return;
         }
         if self.state.load(Ordering::SeqCst) & 3 != 0 && !self.fresh(epoch, now) {
             self.watchdog(now);
-            return;
+            return; // A recovering loop cannot renew an expired grant.
         }
-        self.core_ms.store(self.elapsed(now), Ordering::SeqCst);
-        self.core_epoch.store(epoch, Ordering::SeqCst);
+        ms.store(self.elapsed(now), Ordering::SeqCst);
+        stored_epoch.store(epoch, Ordering::SeqCst);
     }
     /// Only called after independently checked native availability and a fresh
     /// authoritative Voice/crypto/game grant for this exact epoch.
@@ -565,6 +561,18 @@ mod tests {
         assert!(gate.grant(epoch, true, true, now));
         let late = now + Duration::from_millis(251);
         gate.heartbeat(epoch, late);
+        assert_ne!(gate.epoch(), epoch);
+        assert_eq!(gate.permissions(epoch, late), (false, false));
+    }
+    #[test]
+    fn late_core_heartbeat_cannot_revive_an_expired_grant_either() {
+        let now = Instant::now();
+        let gate = SafetyGate::new(now);
+        let epoch = gate.epoch();
+        heartbeat(&gate, epoch, now);
+        assert!(gate.grant(epoch, true, true, now));
+        let late = now + Duration::from_millis(251);
+        gate.core_heartbeat(epoch, late);
         assert_ne!(gate.epoch(), epoch);
         assert_eq!(gate.permissions(epoch, late), (false, false));
     }

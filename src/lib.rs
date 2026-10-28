@@ -15,6 +15,7 @@ pub mod input;
 pub mod input_windows;
 pub mod profiles;
 pub mod shortcuts;
+pub mod wide;
 pub mod windows;
 
 #[cfg(feature = "gaming-fixture")]

@@ -47,6 +47,9 @@ mod input;
 #[path = "../../../src/input_windows.rs"]
 mod input_windows;
 #[allow(dead_code)]
+#[path = "../../../src/wide.rs"]
+mod wide;
+#[allow(dead_code)]
 #[path = "../../../src/shortcuts.rs"]
 mod shortcuts;
 
@@ -1034,8 +1037,13 @@ fn screen_state() -> fullscreen::ScreenState {
 /// surfaces and the settings.
 fn announce_exclusive_fullscreen(app: &tauri::AppHandle) {
     super::web_notify::host_toast(app, fullscreen::HINT_TITLE, fullscreen::HINT_BODY);
-    if let Ok(dir) = app.path().app_config_dir() {
-        fullscreen::remember_shown(&dir);
+    match app.path().app_config_dir() {
+        Ok(dir) => {
+            if let Err(why) = fullscreen::remember_shown(&dir) {
+                eprintln!("Mnema Desktop: could not remember the fullscreen hint: {why}");
+            }
+        }
+        Err(why) => eprintln!("Mnema Desktop: no config folder to remember the fullscreen hint: {why}"),
     }
 }
 /// Evaluate the gaming state on the main thread soon. Many wake-ups collapse
