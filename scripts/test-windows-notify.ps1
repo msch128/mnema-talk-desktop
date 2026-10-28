@@ -152,7 +152,12 @@ try {
   $uninstall = if ($installDir) { Join-Path $installDir 'uninstall.exe' } else { $null }
   if ($uninstall -and (Test-Path $uninstall)) {
     Start-Process -FilePath $uninstall -ArgumentList '/S' -Wait
-    $leftover = @(Get-ChildItem $menu -Filter "$Product*.lnk" -Recurse -ErrorAction SilentlyContinue)
+    # The NSIS uninstaller relaunches from a temp copy, so -Wait returns early: poll for the removal.
+    for ($i = 0; $i -lt 30; $i++) {
+      $leftover = @(Get-ChildItem $menu -Filter "$Product*.lnk" -Recurse -ErrorAction SilentlyContinue)
+      if ($leftover.Count -eq 0) { break }
+      Start-Sleep -Seconds 1
+    }
     if ($leftover.Count -gt 0) {
       if ($completed) { Fail "Uninstall left the Start-menu shortcut: $($leftover[0].FullName)" }
       Write-Warning "Uninstall left the Start-menu shortcut: $($leftover[0].FullName)"
