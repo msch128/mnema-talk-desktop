@@ -5,7 +5,7 @@
 //! only ever reads the finished index, so a slow disk or a huge library never
 //! delays game detection.
 //!
-//! Supported (Windows only for now): Steam, Epic Games Store, GOG Galaxy and the
+//! Supported (Windows only): Steam, Epic Games Store, GOG Galaxy and the
 //! EA app (Windows registry). Battle.net is not read: its install list
 //! lives in a binary database (`product.db`) that has no public format, and
 //! reading it would mean depending on private details. Games from Battle.net

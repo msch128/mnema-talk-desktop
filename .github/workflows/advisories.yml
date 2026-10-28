@@ -65,8 +65,8 @@ jobs:
           node-version: '26'
       - name: Install pinned Rust toolchain
         run: rustup toolchain install 1.99.1 --profile minimal
-      # Scoped to the Windows target (deny.toml): Linux is paused, and the
-      # Linux-only GTK3 crates are not in the Windows build. One documented
+      # Scoped to the Windows target (deny.toml): the Linux client is Electron,
+      # and the Linux-only GTK3 crates are not in the Windows build. One documented
       # exception, see doc/security-review-1.2.md.
       - name: Rust advisory scan (pinned tool, Windows graph)
         run: |
