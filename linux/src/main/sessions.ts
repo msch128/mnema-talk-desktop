@@ -24,7 +24,7 @@ export function prepare(ctx: Context, partition: string, role: Role, handler: Re
 
 /** The partition of a server's page, made ready. */
 export function prepareServer(ctx: Context, id: string): string {
-  const partition = serverPartition(ctx, id)
+  const partition = serverPartition(id)
   prepare(ctx, partition, 'instance', appHandler('instance', ctx.trusted, ctx.debug, id))
   return partition
 }

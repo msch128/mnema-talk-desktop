@@ -55,8 +55,12 @@ scheme (`mnema://localhost`), no network from any page (`webRequest` cancels
 everything but `mnema:`, `blob:`, `data:`), no navigation or new window outside
 the app (HTTPS links open in the system browser after a confirmation),
 permissions only for the app's own pages in the instance window (microphone,
-camera, screen, notifications, clipboard write, output device, fullscreen), no
-device (USB, HID, serial, Bluetooth) ever, and `@electron/fuses`: no
+camera, screen, notifications, clipboard write, output device, fullscreen;
+microphone and camera only for the page itself, never for a frame inside it).
+Unlike WebView2 and WKWebView on Windows and macOS, Electron shows no prompt of
+its own once the host says yes, and X11 has no OS-level device prompt: a call
+opens the microphone as soon as the signed app asks for it. No device
+(USB, HID, serial, Bluetooth) ever, and `@electron/fuses`: no
 `ELECTRON_RUN_AS_NODE`, no `NODE_OPTIONS` or `NODE_EXTRA_CA_CERTS`, no
 `--inspect`, cookie encryption, only load the app from `app.asar`. A packaged
 client also refuses a remote debugging port. The ASAR integrity fuse is set

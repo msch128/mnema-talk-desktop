@@ -6,29 +6,19 @@
  */
 import { type DesktopCapturerSource, type Session, type WebContents, desktopCapturer } from 'electron'
 import { localOrigin, parseUrl } from '../core/origin.ts'
+import { permitted } from '../core/permitted.ts'
 import type { Context, Role } from './context.ts'
 import { openPicker } from './windows.ts'
 
-/** Microphone, camera (`media`), screen share, notifications for messages, copying, the output device and fullscreen video. */
-const GRANTED = new Set(['media', 'display-capture', 'notifications', 'clipboard-sanitized-write', 'speaker-selection', 'fullscreen'])
-
 const NETWORK_FREE_SCHEMES = new Set(['mnema:', 'blob:', 'data:', 'devtools:'])
-
-export function permitted(permission: string, requestingUrl: string, role: Role | undefined, mediaTypes: readonly string[] = []): boolean {
-  if (role !== 'instance' || !GRANTED.has(permission)) return false
-  const url = parseUrl(requestingUrl)
-  if (!url || localOrigin(url) === null) return false
-  // `media` also names the capture of audio and video; nothing else hides behind it.
-  return permission !== 'media' || mediaTypes.every((t) => t === 'audio' || t === 'video')
-}
 
 export function secureSession(ctx: Context, ses: Session, role: Role): void {
   ses.setPermissionRequestHandler((contents: WebContents | null, permission, callback, details) => {
     const mediaTypes = 'mediaTypes' in details && Array.isArray(details.mediaTypes) ? (details.mediaTypes as string[]) : []
-    callback(contents !== null && permitted(permission, details.requestingUrl, ctx.roles.get(contents.id), mediaTypes))
+    callback(contents !== null && permitted(permission, details.requestingUrl, ctx.roles.get(contents.id), mediaTypes, details.isMainFrame))
   })
-  ses.setPermissionCheckHandler((contents, permission, requestingOrigin) => {
-    return contents !== null && permitted(permission, requestingOrigin, ctx.roles.get(contents.id))
+  ses.setPermissionCheckHandler((contents, permission, requestingOrigin, details) => {
+    return contents !== null && permitted(permission, requestingOrigin, ctx.roles.get(contents.id), [], details.isMainFrame)
   })
   // No USB, HID, serial or Bluetooth device ever.
   ses.setDevicePermissionHandler(() => false)
@@ -40,7 +30,8 @@ export function secureSession(ctx: Context, ses: Session, role: Role): void {
   ses.setSpellCheckerEnabled(false)
   if (role === 'instance') {
     ses.setDisplayMediaRequestHandler((request, callback) => {
-      void chooseScreen(ctx, request.frame?.url ?? '', request.userGesture).then((source) => callback(source ? { video: source } : null))
+      // A picker that cannot open must still answer, or getDisplayMedia never settles.
+      chooseScreen(ctx, request.frame?.url ?? '', request.userGesture).then((source) => callback(source ? { video: source } : null), () => callback(null))
     })
   } else {
     ses.setDisplayMediaRequestHandler((_request, callback) => callback(null))
@@ -79,7 +70,12 @@ function pick(ctx: Context, parent: Electron.BaseWindow, sources: DesktopCapture
       if (win && !win.isDestroyed()) win.close()
     }
     pending.set(ctx, { sources, resolve: finish })
-    openPicker(ctx, parent).once('closed', () => finish(null))
+    try {
+      openPicker(ctx, parent).once('closed', () => finish(null))
+    } catch {
+      // The parent went away or the window could not be created: nothing is shared, and nothing stays pending.
+      finish(null)
+    }
   })
 }
 

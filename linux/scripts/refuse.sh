@@ -4,12 +4,11 @@
 # command may keep waiting for a click on its dialog; it is stopped here.
 # Run it under a display, for example `xvfb-run -a bash scripts/refuse.sh 'sandbox is turned off' ./app --no-sandbox`.
 set -u
+. "$(dirname "$0")/launch-lib.sh"
 [ "$#" -ge 2 ] || { echo 'usage: refuse.sh <message regex> <command> [args...]' >&2; exit 2; }
 message="$1"
 shift
-log="$(mktemp)"
-MNEMA_DEBUG_PROTOCOL=1 setsid "$@" >"$log" 2>&1 &
-pid=$!
+start_app "$@"
 seen=0
 for _ in $(seq 1 60); do
   sleep 0.5
@@ -19,9 +18,7 @@ done
 sleep 2
 served=0
 grep -qF 'mnema://localhost/' "$log" && served=1
-kill -- "-$pid" 2>/dev/null
-sleep 1
-kill -9 -- "-$pid" 2>/dev/null
+stop_app
 if [ "$seen" = 1 ] && [ "$served" = 0 ]; then
   echo "ok: $1 refused to run"
   exit 0

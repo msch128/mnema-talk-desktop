@@ -6,26 +6,24 @@
  * the main frame, and the URL that frame shows.
  */
 import { type IpcMainEvent, type IpcMainInvokeEvent, type WebContents, ipcMain, shell } from 'electron'
+import { type Args, wholeNumber } from '../core/ipcargs.ts'
 import { socketRequest, type WsEvent } from '../core/sockets.ts'
-import { bundled, localOrigin, parseUrl, pickerUi, updateUi } from '../core/origin.ts'
+import { bundled, localOrigin, pickerUi, updateUi } from '../core/origin.ts'
 import { RELEASES_PAGE } from '../core/pinned.ts'
 import type { Context, Role } from './context.ts'
+import { handle, mainFrameUrl } from './handle.ts'
 import { pickerChoose, pickerSources } from './permissions.ts'
 import { notify, notifyOpen, notifyPermission } from './notify.ts'
 import { addServer, countsChanged } from './shell.ts'
-
-type Args = Record<string, unknown>
 
 /** The page this call comes from, with the server it belongs to (decided by the host when it made the page). */
 interface Caller { role: Role, contents: WebContents, server: string | null }
 
 function caller(ctx: Context, event: IpcMainInvokeEvent | IpcMainEvent): Caller | null {
   const contents = event.sender
-  const frame = event.senderFrame
   const role = ctx.roles.get(contents.id)
-  if (!role || !frame || frame !== contents.mainFrame) return null
-  const url = parseUrl(frame.url)
-  if (!url) return null
+  const url = mainFrameUrl(event)
+  if (!role || !url) return null
   const ok = role === 'selector' ? bundled(url)
     : role === 'instance' ? localOrigin(url) !== null
       : role === 'updater' ? updateUi(url)
@@ -61,12 +59,6 @@ function text(args: Args, name: string): string {
   return value
 }
 
-function id(args: Args, name: string): number {
-  const value = args[name]
-  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0) throw new Error('invalid arguments')
-  return value
-}
-
 async function run(ctx: Context, from: Caller, command: string, args: Args): Promise<unknown> {
   const { role, contents } = from
   const only = (...roles: Role[]) => { if (!roles.includes(role)) throw new Error('Not allowed.') }
@@ -85,7 +77,7 @@ async function run(ctx: Context, from: Caller, command: string, args: Args): Pro
       only('instance')
       const session = own()
       const dm = socketRequest(text(args, 'path'))
-      const channel = id(args, 'onEvent')
+      const channel = wholeNumber(args, 'onEvent')
       let index = 0
       const send = (message: object) => {
         if (contents.isDestroyed()) return false
@@ -100,16 +92,16 @@ async function run(ctx: Context, from: Caller, command: string, args: Args): Pro
     }
     case 'desktop_ws_send':
       only('instance')
-      own().sockets.send(id(args, 'id'), text(args, 'data'))
+      own().sockets.send(wholeNumber(args, 'id'), text(args, 'data'))
       return null
     case 'desktop_ws_close':
       only('instance')
-      own().sockets.close(id(args, 'id'))
+      own().sockets.close(wholeNumber(args, 'id'))
       return null
     case 'desktop_notify_open':
       only('instance')
       own()
-      return notifyOpen(ctx, from.server as string, contents, id(args, 'onEvent'))
+      return notifyOpen(ctx, from.server as string, contents, wholeNumber(args, 'onEvent'))
     case 'desktop_notify':
       only('instance')
       own()
@@ -121,12 +113,12 @@ async function run(ctx: Context, from: Caller, command: string, args: Args): Pro
       return notifyPermission()
     case 'desktop_report_unread':
       only('instance')
-      ctx.trusted.registry.report(own().id, id(args, 'unread'), id(args, 'mentions'))
+      ctx.trusted.registry.report(own().id, wholeNumber(args, 'unread'), wholeNumber(args, 'mentions'))
       countsChanged(ctx)
       return null
     case 'desktop_set_badge':
       only('instance')
-      ctx.trusted.registry.reportBadge(own().id, id(args, 'count'))
+      ctx.trusted.registry.reportBadge(own().id, wholeNumber(args, 'count'))
       countsChanged(ctx)
       return null
     case 'native_update_state':
@@ -161,16 +153,7 @@ async function run(ctx: Context, from: Caller, command: string, args: Args): Pro
 }
 
 export function registerIpc(ctx: Context): void {
-  ipcMain.handle('mnema:invoke', async (event, command: unknown, args: unknown) => {
-    const from = caller(ctx, event)
-    try {
-      if (!from || typeof command !== 'string' || typeof args !== 'object' || args === null) throw new Error('Not allowed.')
-      return { ok: true, value: await run(ctx, from, command, args as Args) }
-    } catch (error) {
-      // Plain text only: no stack, no path.
-      return { ok: false, error: (error instanceof Error ? error.message : 'The command failed.').slice(0, 300) }
-    }
-  })
+  handle('mnema:invoke', (event) => caller(ctx, event), (from, command, args) => run(ctx, from, command, args))
   ipcMain.on('mnema:identity', (event) => {
     event.returnValue = identity(ctx, event)
   })

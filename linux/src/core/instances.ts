@@ -109,10 +109,17 @@ function hue(id: string): number {
 export interface Stored {
   servers: URL[]
   active: URL | null
+  /** False when the file was there but could not be read in full (unreadable, too large, unknown version, an address that did not hold up): the list may be shorter than what the person had. */
+  complete?: boolean
 }
 
 export function emptyStored(): Stored {
   return { servers: [], active: null }
+}
+
+/** A list that stands for something lost: nothing may be concluded from what is missing in it. */
+function partial(servers: URL[] = [], active: URL | null = null): Stored {
+  return { servers, active, complete: false }
 }
 
 /** Reads the list. Anything that does not hold up (unknown version, a bad address, a duplicate, too many) is dropped rather than trusted. */
@@ -120,27 +127,29 @@ export function loadStored(file: string | null): Stored {
   if (!file) return emptyStored()
   let raw: unknown
   try {
-    if (statSync(file).size > MAX_STORE_BYTES) return emptyStored()
+    if (statSync(file).size > MAX_STORE_BYTES) return partial()
     raw = JSON.parse(readFileSync(file, 'utf8'))
-  } catch {
-    return emptyStored()
+  } catch (error) {
+    // No file is a list that was never written; any other failure is a list that exists and could not be read.
+    return (error as NodeJS.ErrnoException).code === 'ENOENT' ? emptyStored() : partial()
   }
-  if (typeof raw !== 'object' || raw === null) return emptyStored()
+  if (typeof raw !== 'object' || raw === null) return partial()
   const { version, servers, active } = raw as Record<string, unknown>
-  if (version !== STORE_VERSION || !Array.isArray(servers)) return emptyStored()
+  if (version !== STORE_VERSION || !Array.isArray(servers)) return partial()
   const list: URL[] = []
+  let complete = true
   for (const address of servers) {
-    if (typeof address !== 'string' || list.length >= MAX_INSTANCES) continue
+    if (typeof address !== 'string' || list.length >= MAX_INSTANCES) { complete = false; continue }
     try {
       const origin = parseAddress(address)
       if (!list.some((u) => u.href === origin.href)) list.push(origin)
-    } catch { /* dropped */ }
+    } catch { complete = false }
   }
   let front: URL | null = null
   if (typeof active === 'string') {
     try { front = list.find((u) => u.href === parseAddress(active).href) ?? null } catch { front = null }
   }
-  return { servers: list, active: front }
+  return complete ? { servers: list, active: front } : partial(list, front)
 }
 
 export function saveStored(file: string | null, stored: Stored): void {
@@ -158,8 +167,12 @@ export class Registry {
   private slots: Slot[] = []
   private front: string | null = null
   private addingNow = false
+  /** Whether the list this one was restored from was read in full (see `Stored.complete`). */
+  private loadedInFull = true
+
   static restore(stored: Stored): Registry {
     const registry = new Registry()
+    registry.loadedInFull = stored.complete !== false
     for (const origin of stored.servers) {
       try { registry.add(origin) } catch { /* a duplicate */ }
     }
@@ -171,6 +184,11 @@ export class Registry {
 
   get length(): number {
     return this.slots.length
+  }
+
+  /** False when the list at start may have been shorter than what was saved: what is missing from it proves nothing (it is not a reason to delete a server's data). */
+  get readInFull(): boolean {
+    return this.loadedInFull
   }
 
   contains(id: string): boolean {

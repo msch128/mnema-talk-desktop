@@ -9,7 +9,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import tls from 'node:tls'
-import { BaseWindow, app, dialog, protocol } from 'electron'
+import { app, dialog, protocol } from 'electron'
 import { APP_SCHEME, PICKER_PREFIX, UI_PREFIX } from '../core/origin.ts'
 import { passwordStoreSwitch } from '../core/osvault.ts'
 import { TITLE } from '../core/title.ts'
@@ -23,7 +23,7 @@ import { buildMenu } from './menu.ts'
 import { HOST_PAGE_CSP, assetHandler } from './protocol.ts'
 import { registerRailIpc } from './rail.ts'
 import { prepare } from './sessions.ts'
-import { bundlesChanged, createShell, legacyStorageWaits, wipeLegacyStorage } from './shell.ts'
+import { bundlesChanged, createShell, legacyStorageWaits, raiseWindow, wipeLegacyStorage } from './shell.ts'
 import { SANDBOX_MESSAGE, debuggingAccepted, debuggingRequested, sandboxAccepted, sandboxDisabled } from './sandbox.ts'
 import { createUpdater, scheduleChecks } from './updater.ts'
 import { osVault } from './vault.ts'
@@ -52,6 +52,9 @@ function useSystemCertificates(): void {
   } catch { /* the bundled roots stay in force */ }
 }
 
+/** The context once the program has started; a second launch can come before that. */
+let running: Context | null = null
+
 async function start(): Promise<void> {
   if (sandboxDisabled((name) => app.commandLine.hasSwitch(name), process.env) && !sandboxAccepted(process.env)) {
     console.error(SANDBOX_MESSAGE)
@@ -79,6 +82,7 @@ async function start(): Promise<void> {
   }
   const shell = { window: null, rail: null, selector: null, pages: new Map(), attachments: new Map() }
   const ctx: Context = { trusted, updater: null, debug, roles: new Map(), servers: new Map(), prepared: new Set(), shell, windows: {} }
+  running = ctx
   // The single-server client kept every server in one partition and recorded none of them: it belongs to no one server and is never handed on. Wiped once (the partition is gone afterwards).
   if (legacyStorageWaits(ctx)) void wipeLegacyStorage(ctx)
 
@@ -137,13 +141,15 @@ if (!app.requestSingleInstanceLock()) {
   app.quit()
 } else {
   app.on('second-instance', () => {
-    const win = BaseWindow.getAllWindows().find((w) => w.isVisible())
-    win?.show()
-    win?.focus()
+    // The window of the shell, also when it is minimized: not whichever window happens to be visible.
+    if (running) raiseWindow(running)
   })
   app.on('window-all-closed', () => app.quit())
   void app.whenReady().then(start).catch((error: unknown) => {
-    console.error(`Mnema Desktop could not start: ${String(error)}`)
+    const message = `Mnema Desktop could not start: ${String(error)}`
+    console.error(message)
+    // A program started from a launcher has no terminal: the person must be told why nothing appears.
+    dialog.showErrorBox(TITLE, message)
     app.exit(1)
   })
 }

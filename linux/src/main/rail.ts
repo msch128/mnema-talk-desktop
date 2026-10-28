@@ -4,19 +4,18 @@
  * the pages of the servers and the selector cannot reach the list, whatever
  * they send.
  */
-import { type IpcMainInvokeEvent, ipcMain } from 'electron'
-import { localOrigin, parseUrl } from '../core/origin.ts'
+import type { IpcMainInvokeEvent } from 'electron'
+import { type Args, wholeNumber } from '../core/ipcargs.ts'
+import { localOrigin } from '../core/origin.ts'
 import { validId } from '../core/instances.ts'
 import type { Context } from './context.ts'
+import { handle, mainFrameUrl } from './handle.ts'
 import { activate, cancelAdding, moveServer, railSnapshot, reconnect, removeServer, startAdding } from './shell.ts'
-
-type Args = Record<string, unknown>
 
 function fromRail(ctx: Context, event: IpcMainInvokeEvent): boolean {
   const rail = ctx.shell.rail
-  const frame = event.senderFrame
-  if (!rail || rail.webContents.isDestroyed() || event.sender.id !== rail.webContents.id || !frame || frame !== event.sender.mainFrame) return false
-  const url = parseUrl(frame.url)
+  if (!rail || rail.webContents.isDestroyed() || event.sender.id !== rail.webContents.id) return false
+  const url = mainFrameUrl(event)
   return url !== null && localOrigin(url) !== null
 }
 
@@ -33,9 +32,7 @@ async function run(ctx: Context, command: string, args: Args): Promise<unknown> 
     case 'rail_add': startAdding(ctx); return null
     case 'rail_cancel_add': cancelAdding(ctx); return null
     case 'rail_move': {
-      const to = args.to
-      if (typeof to !== 'number' || !Number.isSafeInteger(to) || to < 0) throw new Error('invalid arguments')
-      moveServer(ctx, serverId(args), to)
+      moveServer(ctx, serverId(args), wholeNumber(args, 'to'))
       return null
     }
     case 'rail_remove': await removeServer(ctx, serverId(args)); return null
@@ -45,12 +42,5 @@ async function run(ctx: Context, command: string, args: Args): Promise<unknown> 
 }
 
 export function registerRailIpc(ctx: Context): void {
-  ipcMain.handle('mnema:rail', async (event, command: unknown, args: unknown) => {
-    try {
-      if (!fromRail(ctx, event) || typeof command !== 'string' || typeof args !== 'object' || args === null) throw new Error('Not allowed.')
-      return { ok: true, value: await run(ctx, command, args as Args) }
-    } catch (error) {
-      return { ok: false, error: (error instanceof Error ? error.message : 'The command failed.').slice(0, 300) }
-    }
-  })
+  handle('mnema:rail', (event) => fromRail(ctx, event) || null, (_from, command, args) => run(ctx, command, args))
 }

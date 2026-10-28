@@ -147,6 +147,8 @@ function entry(text, action, className) {
 }
 
 function openMenu(server, anchor, confirm) {
+  // A push of the host may have replaced the tile this menu was asked from.
+  if (!anchor.isConnected) anchor = [...document.querySelectorAll('.tile')].find((t) => t.dataset.id === server.id) || anchor;
   closeMenu();
   menuFor = anchor;
   const menu = $('menu');
