@@ -1037,6 +1037,7 @@ pub(super) fn run() {
             app.manage(super::web_notify::Notifier::default());
             super::web_notify::setup(app.handle());
             super::native_updates::setup(app.handle());
+            super::ui_watch::start(app.handle());
             super::web_gaming::setup(app.handle());
             super::web_shell::create(app.handle())?;
             refresh_in_background(app.handle());

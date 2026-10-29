@@ -502,6 +502,56 @@ jobs:
           & ./scripts/test-windows-notify.ps1 -Installer (Join-Path $env:RUNNER_TEMP 'notify-setup.exe')
           if ($LASTEXITCODE -ne $null -and $LASTEXITCODE -ne 0) { throw 'The notification check failed' }
 
+  # A game takes the focus. A build with the test-only `gaming-selftest` feature
+  # (never in a shipped build) simulates a Talk with gaming on and knows a
+  # stand-in game; scripts/test-windows-gaming-hang.ps1 puts a borderless,
+  # topmost, full-screen window up, moves the focus between it and an ordinary
+  # window while key events and the overlay shortcut are sent, and requires that
+  # none of the host's windows is ever hung or fails to answer a message.
+  windows-gaming-responsive:
+    if: inputs.acceptance_release == ''
+    runs-on: windows-2025
+    timeout-minutes: 45
+    env:
+      RUST_VERSION: 1.99.1
+      CARGO_TARGET_DIR: ${{ github.workspace }}/experimental/app/target
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.ref || github.sha }}
+      - name: Select pinned Rust toolchain
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          rustup toolchain install $env:RUST_VERSION --profile minimal
+          if ($LASTEXITCODE -ne 0) { throw 'Rust installation failed' }
+          rustup default $env:RUST_VERSION
+          if ($LASTEXITCODE -ne 0) { throw 'Rust selection failed' }
+      # Restored on pull requests, saved only on main.
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: experimental/app -> target
+          key: ${{ hashFiles('**/Cargo.lock') }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Stage the signed web bundle
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/stage-web-bundle.sh
+      - name: Build the host with the gaming self-test
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          cargo build --locked --release --manifest-path experimental/app/Cargo.toml --features shell,web-client,custom-protocol,gaming-selftest
+          if ($LASTEXITCODE -ne 0) { throw 'Host build failed' }
+      - name: The host keeps answering while a full-screen game takes the focus
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & ./scripts/test-windows-gaming-hang.ps1 -Exe (Join-Path $env:CARGO_TARGET_DIR 'release/mnema-native-client-preview.exe')
+          if ($LASTEXITCODE -ne $null -and $LASTEXITCODE -ne 0) { throw 'The gaming responsiveness check failed' }
+
   # Several servers side by side on a real Windows desktop: a build with the
   # test-only `multi-selftest` feature (never in a shipped build) adds two
   # stand-in instances, signs in to both, and checks that browser storage,

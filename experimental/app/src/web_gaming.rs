@@ -6,6 +6,7 @@
 //! sidepeek belong to exactly one: the server that owns the Talk the person is
 //! in. Only that server's page may feed them, and only its page receives what
 //! they send back.
+use super::ui_watch::ui_guard;
 use crate::web_bundle::write_atomic;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -860,20 +861,14 @@ fn announced_game(
     )
 }
 /// The title of a window, read only for Java runtimes (a shared runtime is a
-/// Minecraft candidate only by its title).
+/// Minecraft candidate only by its title). The window belongs to another
+/// program and may be stuck, so it is asked with a timeout; a stuck one has no title.
 #[cfg(windows)]
 fn window_title(hwnd: *mut std::ffi::c_void) -> String {
-    let mut text = [0u16; 512];
-    // SAFETY: a sized buffer that lives across the call.
-    let len = unsafe {
-        windows_sys::Win32::UI::WindowsAndMessaging::GetWindowTextW(
-            hwnd,
-            text.as_mut_ptr(),
-            text.len() as i32,
-        )
-    };
-    String::from_utf16_lossy(&text[..len.max(0) as usize])
+    super::ui_watch::hung_window::title(hwnd as usize, TITLE_TIMEOUT).unwrap_or_default()
 }
+#[cfg(windows)]
+const TITLE_TIMEOUT: Duration = Duration::from_millis(50);
 #[cfg(not(windows))]
 fn native_sample(
     _g: &mut Gaming,
@@ -936,6 +931,7 @@ impl Gaming {
     }
 }
 fn tick(app: &tauri::AppHandle) {
+    let _step = ui_guard::doing("gaming evaluation");
     let shared = app.state::<Mutex<Gaming>>();
     let Ok(mut g) = shared.lock() else {
         return;
@@ -947,6 +943,7 @@ fn tick(app: &tauri::AppHandle) {
     let want_input = fresh;
     let tracker = g.keys.clone();
     let (game, position) = if fresh {
+        let _step = ui_guard::doing("foreground window sample");
         native_sample(&mut g, app)
     } else {
         (false, None)
@@ -963,14 +960,12 @@ fn tick(app: &tauri::AppHandle) {
     let active = g.active;
     let overlay = g.overlay;
     let holding = g.ptt_down;
-    // One cheap shell query, and only while a game is in front and the hint is still due.
-    let hint = cfg!(windows) && active && !g.hint.done() && g.hint.look(true, screen_state());
-    if hint {
-        g.exclusive_hint = true;
-    }
+    // The shell's answer is asked for on a worker thread, and only while a game
+    // is in front and the hint is still due.
+    let probe = cfg!(windows) && active && !g.hint.done();
     drop(g);
-    if hint {
-        announce_exclusive_fullscreen(app);
+    if probe {
+        look_at_screen(app);
     }
     app.state::<Heartbeat>().set(match (fresh, holding) {
         (false, _) => None,
@@ -989,10 +984,19 @@ fn tick(app: &tauri::AppHandle) {
     if !cfg!(windows) {
         return;
     }
+    let _step = ui_guard::doing("sidepeek and overlay windows");
     for (label, visible) in [("sidepeek", active), ("gaming-overlay", active && overlay)] {
         if visible {
-            if let Ok(w) = surface(app, label, label == "gaming-overlay") {
-                if let Some(p) = position {
+            let made = {
+                let _step = ui_guard::doing("create a gaming window");
+                surface(app, label, label == "gaming-overlay")
+            };
+            if let Ok(w) = made {
+                // A window that is already there is not moved or shown again:
+                // every call is a message into the window system over a game.
+                if let Some(p) = position
+                    && w.outer_position().map_or(true, |now| now != p)
+                {
                     let _ = w.set_position(p);
                 }
                 if !w.is_visible().unwrap_or(false) {
@@ -1002,7 +1006,9 @@ fn tick(app: &tauri::AppHandle) {
                     }
                 }
             }
-        } else if let Some(w) = app.get_webview_window(label) {
+        } else if let Some(w) = app.get_webview_window(label)
+            && w.is_visible().unwrap_or(false)
+        {
             let _ = w.hide();
         }
     }
@@ -1024,6 +1030,47 @@ fn screen_state() -> fullscreen::ScreenState {
 fn screen_state() -> fullscreen::ScreenState {
     fullscreen::ScreenState::Normal
 }
+/// How often the shell is asked whether a game owns the display.
+const SCREEN_LOOK_EVERY: Duration = Duration::from_secs(2);
+
+/// Asks the shell about exclusive fullscreen on a thread of its own. The shell
+/// answers over RPC to the desktop, which can take seconds while a game is
+/// starting; the UI thread must never wait for it. At most one question is out at
+/// a time and they are spaced, so a stuck shell costs one idle thread. The toast
+/// and the marker file follow on the same thread.
+fn look_at_screen(app: &tauri::AppHandle) {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    static BUSY: AtomicBool = AtomicBool::new(false);
+    static SPACING: Mutex<ui_guard::Throttle> =
+        Mutex::new(ui_guard::Throttle::new(SCREEN_LOOK_EVERY));
+    if !SPACING
+        .lock()
+        .is_ok_and(|mut spacing| spacing.ready(Instant::now()))
+        || BUSY.swap(true, Ordering::AcqRel)
+    {
+        return;
+    }
+    let app = app.clone();
+    let spawned = std::thread::Builder::new()
+        .name("mnema-screen-state".into())
+        .spawn(move || {
+            let state = screen_state();
+            let due = app.state::<Mutex<Gaming>>().lock().is_ok_and(|mut g| {
+                let active = g.active;
+                let due = g.hint.look(active, state);
+                g.exclusive_hint |= due;
+                due
+            });
+            BUSY.store(false, Ordering::Release);
+            if due {
+                announce_exclusive_fullscreen(&app);
+            }
+        });
+    if spawned.is_err() {
+        BUSY.store(false, Ordering::Release);
+    }
+}
+
 /// Tells the person once. The toast waits in the notification centre while the
 /// game owns the display, and the snapshot carries the same hint for the
 /// surfaces and the settings.
@@ -1256,6 +1303,53 @@ pub fn setup(app: &tauri::AppHandle) {
     start_library_scan(app);
     let beat = app.clone();
     std::thread::spawn(move || beat.state::<Heartbeat>().run(&beat));
+    #[cfg(feature = "gaming-selftest")]
+    selftest::start(app);
+}
+
+/// Test-only: a Talk with gaming on is held up by a thread, and the stand-in
+/// game of the Windows check (scripts/test-windows-gaming-hang.ps1) is a known
+/// game, so detection, the sidepeek and the overlay run on a CI desktop without
+/// a server or a real game.
+#[cfg(feature = "gaming-selftest")]
+mod selftest {
+    use super::*;
+
+    pub const GAME: &str = "mnema-fakegame.exe";
+    const ID: &str = "00000000-0000-4000-8000-000000000001";
+
+    pub fn start(app: &tauri::AppHandle) {
+        let app = app.clone();
+        std::thread::spawn(move || {
+            loop {
+                if let Ok(mut g) = app.state::<Mutex<Gaming>>().lock() {
+                    g.origin = crate::web_client::local_origin(&crate::web_client::app_url());
+                    g.owner = Some("selftest".into());
+                    g.voice = Voice {
+                        connected: true,
+                        scope: Some(ID.into()),
+                        account: Some(ID.into()),
+                        channel: Some(ID.into()),
+                        members: vec![Member {
+                            id: ID.into(),
+                            name: "Self".into(),
+                            speaking: false,
+                            muted: false,
+                            sharing: false,
+                        }],
+                        ..Voice::default()
+                    };
+                    g.updated = Instant::now();
+                    g.settings.enabled = true;
+                    if !g.settings.games.iter().any(|name| name == GAME) {
+                        g.settings.games.push(GAME.into());
+                    }
+                }
+                wake(&app);
+                std::thread::sleep(Duration::from_millis(400));
+            }
+        });
+    }
 }
 #[cfg(test)]
 mod tests {
