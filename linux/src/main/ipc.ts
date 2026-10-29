@@ -6,6 +6,7 @@
  * the main frame, and the URL that frame shows.
  */
 import { type IpcMainEvent, type IpcMainInvokeEvent, type WebContents, ipcMain, shell } from 'electron'
+import { SELECTOR_ONLY } from '../core/client.ts'
 import { type Args, wholeNumber } from '../core/ipcargs.ts'
 import { socketRequest, type WsEvent } from '../core/sockets.ts'
 import { bundled, localOrigin, pickerUi, updateUi } from '../core/origin.ts'
@@ -70,7 +71,7 @@ async function run(ctx: Context, from: Caller, command: string, args: Args): Pro
   }
   switch (command) {
     case 'desktop_open_instance':
-      if (role !== 'selector') throw new Error('Only the instance selector may open an instance.')
+      if (role !== 'selector') throw new Error(SELECTOR_ONLY)
       await addServer(ctx, text(args, 'address'))
       return null
     case 'desktop_ws_open': {

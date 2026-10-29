@@ -97,7 +97,10 @@ export function inviteCode(input: string): string | null {
   }
 }
 
-const UPDATE_NEEDED = 'This instance needs an update for the desktop client.'
+export const UPDATE_NEEDED = 'This instance needs an update for the desktop client.'
+export const NOT_COMPATIBLE = 'This instance is not compatible with this desktop client.'
+/** Sent to the connect page, which translates it by exact text (`test-vectors/host-errors.json`). */
+export const SELECTOR_ONLY = 'Only the instance selector may open an instance.'
 
 /** `GET /api/health`: what the server says about itself. */
 export function parseHealth(bytes: Uint8Array): ServerInfo {
@@ -111,7 +114,7 @@ export function parseHealth(bytes: Uint8Array): ServerInfo {
   const { status, version, web_client_api: api } = health as Record<string, unknown>
   const apiOk = api === undefined || api === null || asU32(api) !== null
   if (typeof status !== 'string' || (version !== undefined && typeof version !== 'string') || !apiOk) throw new Error(UPDATE_NEEDED)
-  if (status !== 'ok') throw new Error('This instance is not compatible with this desktop client.')
+  if (status !== 'ok') throw new Error(NOT_COMPATIBLE)
   if (typeof api !== 'number' || api < 1) throw new Error(UPDATE_NEEDED)
   return { version: parseVersion(version ?? ''), webClientApi: api }
 }

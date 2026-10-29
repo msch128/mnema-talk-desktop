@@ -9,11 +9,14 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { type TrustedKey, parseKey, validPath, verifyBundle } from '../src/core/bundle.ts'
-import { appPath, externalAllowed, inviteCode, parseAddress, parseHealth } from '../src/core/client.ts'
+import { SELECTOR_ONLY, appPath, externalAllowed, inviteCode, parseAddress, parseHealth } from '../src/core/client.ts'
 import { Jar } from '../src/core/cookies.ts'
 import { verifyPackage } from '../src/core/minisign.ts'
 import { Limits, clampRange, inlineSafe, mimeFor, serveBundle, target } from '../src/core/proxy.ts'
-import { Store } from '../src/core/store.ts'
+import { INVALID_RESPONSE, NAT_HINT, UNAVAILABLE, unreachableReason } from '../src/core/discover.ts'
+import { AddError, MAX_INSTANCES } from '../src/core/instances.ts'
+import { Store, refusalText } from '../src/core/store.ts'
+import { WITHDRAWN } from '../src/core/trusted.ts'
 import { bundleAsset } from '../src/core/updates.ts'
 import { type Statement, TrustState, chooseUpdaterKey, minisignKeyId, parseUtc, rootKey, signatureKeyId, statementBundleKeys, statementCaps, verifyStatement } from '../src/core/trust.ts'
 import { formatVersion, parseVersion } from '../src/core/version.ts'
@@ -213,4 +216,53 @@ test('client vectors: addresses, health, external links and app routes', () => {
 test('minisign vectors', () => {
   const v = load('minisign')
   for (const c of v.cases) assert.equal(verifyPackage(Buffer.from(c.package), c.signature, c.pubkey, c.version), c.expect, c.name)
+})
+
+/**
+ * The connect page translates the sentences this client sends by exact text.
+ * They are the ones written in `test-vectors/host-errors.json`, also read by
+ * the Rust host and copied into the web app.
+ */
+test('the sentences the connect page can receive are exactly the listed ones', () => {
+  const list = load('host-errors')
+  const render = (text: string): string => text.replace('{version}', '0.8.9').replace('{count}', String(MAX_INSTANCES))
+  const error = (code: string): Error => Object.assign(new Error('x'), { code })
+  const message = (run: () => unknown): string => {
+    try { run() } catch (e) { return (e as Error).message }
+    throw new Error('expected an error')
+  }
+  const sent: Record<string, string> = {
+    enterAddress: message(() => parseAddress('a\u0001b')),
+    invalidAddress: message(() => parseAddress('a b')),
+    httpsOrigin: message(() => parseAddress('https://user@example.org')),
+    refused: unreachableReason(error('ECONNREFUSED')),
+    timeout: unreachableReason(error('ETIMEDOUT')),
+    dns: unreachableReason(error('ENOTFOUND')),
+    certificate: unreachableReason(error('CERT_HAS_EXPIRED')),
+    unreachable: unreachableReason(new Error('x')),
+    unavailable: UNAVAILABLE,
+    invalidResponse: INVALID_RESPONSE,
+    instanceNeedsUpdate: message(() => parseHealth(Buffer.from('{}'))),
+    notCompatible: message(() => parseHealth(Buffer.from('{"status":"down"}'))),
+    noBundle: refusalText({ kind: 'no_bundle' }),
+    serverNewer: refusalText({ kind: 'server_newer' }),
+    serverTooOld: refusalText({ kind: 'server_too_old', needs: parseVersion('0.8.9') as never }),
+    contractRetired: refusalText({ kind: 'server_contract_retired' }),
+    signerWithdrawn: refusalText({ kind: 'signer_withdrawn' }),
+    rolledBack: refusalText({ kind: 'rolled_back' }),
+    alreadyListed: new AddError('known').message,
+    maxServers: new AddError('full').message,
+    withdrawn: WITHDRAWN,
+    selectorOnly: SELECTOR_ONLY,
+  }
+  assert.equal(list.natHint, NAT_HINT)
+  const mine = list.sentences.filter((s: Json) => s.clients.includes('linux'))
+  assert.deepEqual(mine.map((s: Json) => s.id).sort(), Object.keys(sent).sort())
+  for (const s of mine) {
+    const expected = render(s.text)
+    const got = sent[s.id] as string
+    if (s.withHint) assert.equal(got, `${expected} ${list.natHint}`, s.id)
+    else if (s.withDetail) assert.ok(got === expected || got.startsWith(`${expected} (`), s.id)
+    else assert.equal(got, expected, s.id)
+  }
 })
