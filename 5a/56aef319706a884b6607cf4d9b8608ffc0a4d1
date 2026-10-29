@@ -1,0 +1,46 @@
+experimental/README.md
+  h_0ff4f4713441f4 60-64
+experimental/app/src/instances.rs
+  h_0ff4f4713441f4 34-35,117-119,122-127,610,864-892
+experimental/app/src/web_client.rs
+  h_0ff4f4713441f4 513-550,579,1165-1190,1440
+experimental/app/src/web_shell.rs
+  h_0ff4f4713441f4 42,587-599,602-605,885,890,962,964,1216,1218,1624-1649
+linux/README.md
+  h_0ff4f4713441f4 153-156
+linux/src/core/client.ts
+  h_0ff4f4713441f4 119-141
+linux/src/core/discover.ts
+  h_0ff4f4713441f4 2,8,29
+linux/src/core/instances.ts
+  h_0ff4f4713441f4 32-33,97,102-111,331
+linux/src/core/store.ts
+  h_0ff4f4713441f4 29-30
+linux/src/core/title.ts
+  h_0ff4f4713441f4 3-8
+linux/src/core/trusted.ts
+  h_0ff4f4713441f4 274
+linux/src/main/menu.ts
+  h_0ff4f4713441f4 4,14
+linux/src/main/notify.ts
+  h_0ff4f4713441f4 9,43
+linux/src/main/shell.ts
+  h_0ff4f4713441f4 21,68-69,72-73
+linux/test/client.test.ts
+  h_0ff4f4713441f4 3,17-28
+linux/test/instances.test.ts
+  h_0ff4f4713441f4 7,294-311
+linux/test/title.test.ts
+  h_0ff4f4713441f4 1-10
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5a56aef319706a884b6607cf4d9b8608ffc0a4d1",
+  "prompts": {},
+  "humans": {
+    "h_0ff4f4713441f4": {
+      "author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}
