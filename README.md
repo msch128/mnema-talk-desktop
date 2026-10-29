@@ -93,7 +93,7 @@ Download `Mnema-Desktop-DEV_<version>_x64-setup.exe` from the
 and run it once. It installs for the current user only (no administrator
 prompt) and updates itself from then on. SmartScreen warns because the installer
 has no Authenticode certificate; the self-update does not depend on one (see
-below). The portable ZIP of each release does not update itself; it tells you when a newer version exists and opens the release page. To build from
+below). The portable ZIP of each release does not update itself; it tells you when a newer version exists and opens the release page. It keeps its settings, server list and browser data in a `mnema-data` folder beside the program (or in the absolute folder named by `MNEMA_DESKTOP_DATA_DIR`). The first start copies the client's own files that an earlier portable version kept in `%LOCALAPPDATA%\com.mnema.desktop.shareddev` and `%APPDATA%\com.mnema.desktop.shareddev` (not the browser engine's data, so you sign in to your servers again); it does that once, and it does not delete them: remove those two folders by hand when you no longer need them. Deleting `mnema-data` resets the portable copy. Saved passwords live in the Windows credential store, as for any Windows program. To build from
 source, see [experimental/README.md](experimental/README.md#mnema-desktop-dev):
 Rust and Node, with mnema-talk checked out next to this repository. The older
 Windows DEV ZIP attached to

@@ -842,7 +842,19 @@ fn a_portable_copy_announces_a_release_but_never_runs_an_installer() {
         assert!(!dir.join(PENDING_FILE).exists());
     }
     assert!(run(prepare_pending(&handle)).is_none());
+    // Nor does the start-up path that applies a kept installer.
+    run(apply_pending(&handle));
+    assert_eq!(state.snapshot().phase, Phase::Available);
     assert_eq!(Persisted::load(Some(&dir)).pending, None);
+    assert!(!dir.join(PENDING_FILE).exists());
+
+    // Skipping the version works here too and survives a restart, so a copy
+    // that is not updated stops announcing the same release at every start.
+    skip(&handle);
+    assert_eq!(
+        Persisted::load(Some(&dir)).skipped.as_deref(),
+        Some("0.2.0")
+    );
 }
 
 #[test]

@@ -1025,7 +1025,8 @@ pub(super) fn run() {
             }
         })
         .setup(|app| {
-            let data_dir = app.path().app_local_data_dir().ok();
+            super::storage::adopt_profile_files(app.handle());
+            let data_dir = super::storage::data_dir(app.handle());
             let trusted = Trusted::new(data_dir, (!BUILTIN_BUNDLE.is_empty()).then_some(BUILTIN_BUNDLE));
             if let Ok(store) = trusted.store.lock() {
                 for name in &store.rejected {

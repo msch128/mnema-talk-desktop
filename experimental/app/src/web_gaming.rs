@@ -497,10 +497,7 @@ fn apply_settings(
     settings: Settings,
 ) -> Result<Command, String> {
     settings.validate()?;
-    let dir = app
-        .path()
-        .app_config_dir()
-        .map_err(|_| "Settings unavailable.")?;
+    let dir = super::storage::config_dir(app).ok_or("Settings unavailable.")?;
     std::fs::create_dir_all(&dir).map_err(|_| "Cannot save settings.")?;
     let data = serde_json::to_vec(&settings).map_err(|_| "Invalid settings.")?;
     write_atomic(&dir.join("gaming.json"), &data).map_err(|_| "Cannot save settings.")?;
@@ -1032,7 +1029,7 @@ fn screen_state() -> fullscreen::ScreenState {
 /// surfaces and the settings.
 fn announce_exclusive_fullscreen(app: &tauri::AppHandle) {
     super::web_notify::host_toast(app, fullscreen::HINT_TITLE, fullscreen::HINT_BODY);
-    match app.path().app_config_dir() {
+    match super::storage::config_dir(app).ok_or("no profile") {
         Ok(dir) => {
             if let Err(why) = fullscreen::remember_shown(&dir) {
                 eprintln!("Mnema Desktop: could not remember the fullscreen hint: {why}");
@@ -1234,7 +1231,7 @@ fn start_library_scan(app: &tauri::AppHandle) {
 }
 
 pub fn setup(app: &tauri::AppHandle) {
-    if let Ok(dir) = app.path().app_config_dir()
+    if let Some(dir) = super::storage::config_dir(app)
         && let Ok(bytes) = std::fs::read(dir.join("gaming.json"))
         && bytes.len() <= 16384
         && let Ok(settings) = serde_json::from_slice::<Settings>(&bytes)
@@ -1245,7 +1242,7 @@ pub fn setup(app: &tauri::AppHandle) {
     }
     if let Ok(mut g) = app.state::<Mutex<Gaming>>().lock() {
         g.sync_chords();
-        if let Ok(dir) = app.path().app_config_dir() {
+        if let Some(dir) = super::storage::config_dir(app) {
             g.hint = fullscreen::HintGate::new(fullscreen::was_shown(&dir));
         }
     }
