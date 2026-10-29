@@ -286,8 +286,8 @@ test('a release the store turned down counts as a look, so it is not downloaded 
   assert.equal(offline.reached, false)
 })
 
-test('a failed write or verification does not use up the update check', async () => {
-  for (const message of ['cannot write the bundle', 'cannot create the cache directory', 'signature mismatch']) {
+test('a failed write does not use up the update check', async () => {
+  for (const message of ['cannot write the bundle', 'cannot create the cache directory']) {
     const failed = new Trusted(null, null, deps({
       fetchTrust: () => Promise.resolve({ doc, sig }),
       installNewer: () => Promise.reject(new BundleError(message)),
@@ -296,4 +296,14 @@ test('a failed write or verification does not use up the update check', async ()
     assert.equal(failed.reached, false, message)
     assert.equal(failed.store.checkDue(NOW), true, message)
   }
+})
+
+test('a release that fails verification counts as looked at, so it is not downloaded again every retry', async () => {
+  const failed = new Trusted(null, null, deps({
+    fetchTrust: () => Promise.resolve({ doc, sig }),
+    installNewer: (store, keys) => Promise.resolve(store.install(new Uint8Array(8), keys())),
+  }))
+  await failed.refresh(true)
+  assert.equal(failed.reached, true)
+  assert.equal(failed.store.checkDue(NOW), false)
 })
