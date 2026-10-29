@@ -45,8 +45,9 @@ test('only the hosts own origin and its routes are app pages', () => {
   const app = (path: string) => new URL(path, 'mnema://localhost/')
   for (const path of ['', '/', '/index.html', '/login', '/admin/users', `/c/${id}`, `/v/${id}/chat`, '/c/general', '/v/lounge/chat', '/dm/alice', '/dm/g/1a2b3c4d']) assert.ok(bundled(app(path)), path)
   for (const path of ['/other.html', '/api/health', '/admin/unknown', '/c/Not-A-Slug']) assert.ok(!bundled(app(path)), path)
-  for (const raw of ['https://community.example/', 'tauri://localhost/', 'http://tauri.localhost/', 'mnema://localhost:9000/', 'mnema://user@localhost/', 'mnema://evil/', 'https://mnema.localhost.evil.example/', 'https://mnema.localhost/']) {
+  for (const raw of ['https://community.example/', 'tauri://localhost/', 'http://tauri.localhost/', 'mnema://localhost:9000/', 'mnema://user@localhost/', 'mnema://evil/', 'https://mnema.localhost.evil.example/', 'https://mnema.localhost/', 'file:///home/someone/photo.png', 'file://localhost/etc/passwd', 'blob:mnema://localhost/1', 'data:text/html,x']) {
     assert.ok(!bundled(url(raw)), raw)
+    assert.ok(!appApi(url(raw)), raw)
   }
 })
 
@@ -306,4 +307,10 @@ test('a release that fails verification counts as looked at, so it is not downlo
   await failed.refresh(true)
   assert.equal(failed.reached, true)
   assert.equal(failed.store.checkDue(NOW), false)
+})
+
+test('a file dropped outside the chat cannot navigate a page away', () => {
+  const windows = readFileSync(new URL('../src/main/windows.ts', import.meta.url), 'utf8')
+  assert.match(windows, /navigateOnDragDrop: false/)
+  assert.match(windows, /contents\.on\('will-navigate'/)
 })
