@@ -149,9 +149,9 @@ async fn connect(
     let config = WebSocketConfig::default()
         .max_message_size(Some(MAX_FRAME))
         .max_frame_size(Some(MAX_FRAME));
-    let mut tls = native_tls::TlsConnector::builder();
-    tls.min_protocol_version(Some(native_tls::Protocol::Tlsv12));
-    let connector = tokio_tungstenite::Connector::NativeTls(tls.build().map_err(|_| ())?);
+    let connector = tokio_tungstenite::Connector::Rustls(Arc::new(
+        crate::web_tls::client_config().map_err(|_| ())?,
+    ));
     let connecting = tokio_tungstenite::connect_async_tls_with_config(
         request,
         Some(config),
@@ -290,6 +290,52 @@ mod tests {
             .await
             .expect("event in time")
             .expect("channel open")
+    }
+
+    /// The socket reaches an HTTPS instance on either protocol version, the way
+    /// the health check does (`web_tls`): a TLS 1.3-only server was out of
+    /// reach of the system stack on Windows 10.
+    async fn greeting_over(
+        versions: &'static [&'static rustls::SupportedProtocolVersion],
+    ) -> Option<String> {
+        use crate::web_tls::tests::{Serves, serve};
+        let origin = serve(versions, Serves::Socket, true).await;
+        let instance = Instance {
+            origin,
+            client: client().unwrap(),
+            jar: Jar::new(None, 0),
+            limits: Limits::default(),
+        };
+        let mut ws = connect(&instance, false).await.ok()?;
+        match tokio::time::timeout(Duration::from_secs(5), ws.next()).await {
+            Ok(Some(Ok(Message::Text(text)))) => Some(text.as_str().to_owned()),
+            _ => None,
+        }
+    }
+
+    #[tokio::test]
+    async fn the_socket_opens_to_a_server_that_offers_only_tls_1_3() {
+        use crate::web_tls::tests::{GREETING, TLS13_ONLY};
+        assert_eq!(greeting_over(TLS13_ONLY).await.as_deref(), Some(GREETING));
+    }
+
+    #[tokio::test]
+    async fn the_socket_opens_to_a_server_that_offers_only_tls_1_2() {
+        use crate::web_tls::tests::{GREETING, TLS12_ONLY};
+        assert_eq!(greeting_over(TLS12_ONLY).await.as_deref(), Some(GREETING));
+    }
+
+    #[tokio::test]
+    async fn the_socket_refuses_a_certificate_the_system_does_not_trust() {
+        use crate::web_tls::tests::{Serves, TLS13_ONLY, serve};
+        let origin = serve(TLS13_ONLY, Serves::Socket, false).await;
+        let instance = Instance {
+            origin,
+            client: client().unwrap(),
+            jar: Jar::new(None, 0),
+            limits: Limits::default(),
+        };
+        assert!(connect(&instance, false).await.is_err());
     }
 
     #[test]

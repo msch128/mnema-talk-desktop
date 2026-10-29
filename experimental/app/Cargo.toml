@@ -7,7 +7,7 @@ license = "AGPL-3.0-only"
 [features]
 default = []
 shell = ["dep:tauri", "dep:tauri-build"]
-web-client = ["shell", "dep:reqwest", "dep:ed25519-dalek", "dep:sha2", "dep:hex", "dep:base64", "dep:zip", "dep:flate2", "dep:cookie", "dep:tokio-tungstenite", "dep:futures-util", "dep:native-tls", "dep:keyring-core", "dep:apple-native-keyring-store", "dep:windows-native-keyring-store", "dep:tauri-plugin-updater", "dep:minisign-verify", "dep:tauri-winrt-notification", "dep:windows", "dep:objc2", "dep:objc2-foundation", "dep:objc2-user-notifications", "dep:block2"]
+web-client = ["shell", "dep:reqwest", "dep:ed25519-dalek", "dep:sha2", "dep:hex", "dep:base64", "dep:zip", "dep:flate2", "dep:cookie", "dep:tokio-tungstenite", "dep:futures-util", "dep:rustls", "dep:rustls-platform-verifier", "dep:keyring-core", "dep:apple-native-keyring-store", "dep:windows-native-keyring-store", "dep:tauri-plugin-updater", "dep:minisign-verify", "dep:tauri-winrt-notification", "dep:windows", "dep:objc2", "dep:objc2-foundation", "dep:objc2-user-notifications", "dep:block2"]
 # Test-only: the app runs two servers side by side against stand-in instances and records the result (src/selftest_multi.rs). Never in a shipped build.
 multi-selftest = ["web-client"]
 # Test-only: the app posts one toast on its own and records the outcome (src/web_notify/selftest.rs). Never in a shipped build.
@@ -16,7 +16,7 @@ notify-selftest = ["web-client"]
 webview-probe = ["web-client"]
 custom-protocol = ["shell", "tauri/custom-protocol"]
 [dependencies]
-reqwest = { version = "=0.13.5", optional = true, default-features = false, features = ["native-tls", "json"] }
+reqwest = { version = "=0.13.5", optional = true, default-features = false, features = ["rustls-no-provider", "json"] }
 ed25519-dalek = { version = "=3.0.0", optional = true, default-features = false, features = [] }
 sha2 = { version = "=0.11.1", optional = true }
 hex = { version = "=0.4.3", optional = true }
@@ -25,9 +25,13 @@ zip = { version = "=9.1.0", optional = true, default-features = false, features 
 # zip selects flate2 without a backend; the pure-Rust one keeps the build free of C.
 flate2 = { version = "=1.1.10", optional = true, default-features = false, features = ["rust_backend"] }
 cookie = { version = "=0.18.2", optional = true, default-features = false }
-tokio-tungstenite = { version = "=0.30.0", optional = true, default-features = false, features = ["connect", "handshake", "native-tls"] }
+tokio-tungstenite = { version = "=0.30.0", optional = true, default-features = false, features = ["connect", "handshake", "rustls-tls-native-roots"] }
 futures-util = { version = "=0.3.34", optional = true, default-features = false, features = ["sink", "std"] }
-native-tls = { version = "=0.2.18", optional = true }
+# One TLS stack for every connection of the host: rustls speaks TLS 1.2 and 1.3 on every Windows and macOS version (SChannel before Windows 11 and
+# Secure Transport have no TLS 1.3), and rustls-platform-verifier keeps the decision on the operating system's own trust store (web_tls.rs).
+# The `ring` provider keeps the build free of C.
+rustls = { version = "=0.23.46", optional = true, default-features = false, features = ["ring", "std", "tls12"] }
+rustls-platform-verifier = { version = "=0.7.1", optional = true }
 serde = { version = "=1.0.229", features = ["derive"] }
 serde_json = "=1.0.154"
 uuid = { version = "=1.29.0", features = ["v4"] }
@@ -35,9 +39,9 @@ url = "=2.5.8"
 tokio = { version = "=1.54.1", features = ["sync", "time", "rt", "macros"] }
 # `unstable`: several webviews in one window (the server rail beside the pages).
 tauri = { version = "=2.12.5", optional = true, features = ["unstable"] }
-# Signed native self-update. The system TLS stack like the rest of the host; no system proxy.
+# Signed native self-update. The same rustls stack and platform verifier as the rest of the host (its default provider is installed in web_tls.rs); no system proxy.
 # No `zip` feature: it is only for legacy zip-wrapped Windows packages (and pulls a vulnerable zip 4).
-tauri-plugin-updater = { version = "=2.14.0", optional = true, default-features = false, features = ["native-tls"] }
+tauri-plugin-updater = { version = "=2.14.0", optional = true, default-features = false, features = ["rustls-tls"] }
 minisign-verify = { version = "=0.3.0", optional = true }
 [target.'cfg(target_os="macos")'.dependencies]
 apple-native-keyring-store = { version = "=1.0.2", optional = true, default-features = false, features = ["keychain"] }
@@ -52,6 +56,9 @@ keyring-core = { version = "=1.0.1", optional = true }
 minisign = "=0.10.0"
 tauri = { version = "=2.12.5", features = ["test"] }
 tokio = { version = "=1.54.1", features = ["net", "io-util", "rt", "macros"] }
+# A local TLS server with a throwaway CA for the protocol-version tests (web_tls.rs); never part of the shipped program.
+tokio-rustls = { version = "=0.26.6", default-features = false, features = ["ring", "tls12"] }
+rcgen = { version = "=0.14.10", default-features = false, features = ["ring", "pem"] }
 [target.'cfg(any(target_os="macos",target_os="windows"))'.dev-dependencies]
 # keyring 3 wrote the session items of releases up to 0.3.x; a test reads them with the new store.
 keyring-v3 = { package = "keyring", version = "=3.6.3", default-features = false, features = ["apple-native", "windows-native"] }

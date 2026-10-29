@@ -334,6 +334,7 @@ fn holds(store: &Store, running: &Held) -> bool {
 pub(crate) const NEEDS_UPDATE: &str = "This instance needs an update for the desktop client.";
 pub(crate) const NOT_COMPATIBLE: &str = "This instance is not compatible with this desktop client.";
 pub(crate) const NO_HTTPS: &str = "Unable to initialize HTTPS.";
+const TLS_VERSION: &str = "The instance offers no TLS version this client can use. It speaks TLS 1.2 and 1.3; ask the administrator to enable one of them.";
 pub(crate) const UNAVAILABLE: &str =
     "The instance is unavailable or redirects to a different address.";
 pub(crate) const CHECK_FAILED: &str = "Instance check failed.";
@@ -548,8 +549,8 @@ pub(crate) async fn discover(origin: &Url) -> Result<(ServerInfo, Option<String>
 }
 
 /// Why the instance could not be reached, in words the person can act on. The
-/// innermost cause (for SChannel the HRESULT text) is kept, short, so a report
-/// shows what the system's TLS stack refused rather than a masked sentence.
+/// innermost cause (for the system verifier its HRESULT text) is kept, short, so a
+/// report shows what the TLS stack refused rather than a masked sentence.
 fn unreachable_reason(error: &(dyn std::error::Error + 'static)) -> String {
     let mut causes = Vec::new();
     let mut kind = None;
@@ -570,6 +571,20 @@ fn unreachable_reason(error: &(dyn std::error::Error + 'static)) -> String {
         .map(|c| c.chars().take(160).collect::<String>())
         .filter(|c| !c.is_empty());
     let joined = causes.join(" ").to_ascii_lowercase();
+    // A server that offers no TLS version this client speaks (1.2 and 1.3): the
+    // peer's protocol_version alert, rustls' own refusals of a peer, and the
+    // HRESULTs Windows' stack gave for it before the host used rustls.
+    let version = [
+        "protocolversion",
+        "protocol version",
+        "peerincompatible",
+        "peer is incompatible",
+        "os error -2146893054",
+        "0x80090302",
+        "os error -2146893007",
+    ]
+    .iter()
+    .any(|word| joined.contains(word));
     let tls = [
         "certificate",
         "schannel",
@@ -596,6 +611,8 @@ fn unreachable_reason(error: &(dyn std::error::Error + 'static)) -> String {
             "through its public address (NAT loopback/hairpin) — try the local address or ",
             "another network."
         )
+    } else if version {
+        TLS_VERSION
     } else if tls {
         "This computer does not trust the instance's HTTPS certificate. Check the system clock, \
          and that no antivirus or network filter intercepts HTTPS."
@@ -603,7 +620,11 @@ fn unreachable_reason(error: &(dyn std::error::Error + 'static)) -> String {
         "Unable to reach the instance using trusted HTTPS."
     };
     match detail {
-        Some(detail) if reason.starts_with("This computer") || reason.starts_with("Unable") => {
+        Some(detail)
+            if reason.starts_with("This computer")
+                || reason.starts_with("Unable")
+                || reason == TLS_VERSION =>
+        {
             format!("{reason} ({detail})")
         }
         _ => reason.to_owned(),
@@ -948,6 +969,7 @@ async fn refresh_once(app: &tauri::AppHandle, first: bool) {
 }
 
 pub(super) fn run() {
+    super::web_tls::install_provider();
     let result = tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(std::sync::Mutex::new(super::web_gaming::Gaming::default()))
@@ -1252,6 +1274,22 @@ mod tests {
         ));
         assert!(text.starts_with("This computer does not trust"), "{text}");
         assert!(text.ends_with("(0x800B0109))"), "{text}");
+    }
+
+    #[test]
+    fn a_server_without_a_usable_tls_version_is_named_as_such() {
+        for cause in [
+            "received fatal alert: ProtocolVersion",
+            "peer is incompatible: ServerDoesNotSupportTls12Or13",
+            "The requested function is not supported. (os error -2146893054)",
+        ] {
+            let text = unreachable_reason(&layered(
+                "error sending request",
+                layered("client error (Connect)", Layer(cause.into(), None)),
+            ));
+            assert!(text.starts_with(TLS_VERSION), "{text}");
+            assert!(text.ends_with(&format!("({cause})")), "{text}");
+        }
     }
 
     #[test]
@@ -2135,6 +2173,7 @@ mod shared_vectors {
                 plain("dns error: failed to lookup address information"),
             ),
             ("certificate", plain("the certificate is not trusted")),
+            ("tlsVersion", plain("received fatal alert: ProtocolVersion")),
             ("unreachable", plain("odd")),
             ("unavailable", UNAVAILABLE.to_owned()),
             ("checkFailed", CHECK_FAILED.to_owned()),
@@ -2292,7 +2331,7 @@ mod shared_vectors {
         }
     }
 
-    /// The system's TLS stack (SChannel, Secure Transport) against a real
+    /// The host's TLS stack (rustls, verified by SChannel or Security.framework) against a real
     /// public server on a port that is not 443, with a Let's Encrypt
     /// certificate (badssl.com's test servers; one request per run). The
     /// server is no Mnema instance, so the check ends at "answered, but not

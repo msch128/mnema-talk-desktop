@@ -7,6 +7,20 @@
       "source": "https://raw.githubusercontent.com/dropbox/rust-alloc-no-stdlib/0a81fd6928ea3b33c8cd484aa4575d50ffb98012/LICENSE"
     }
   ],
+  "asn1-rs-impl@0.2.0": [
+    {
+      "name": "LICENSE-APACHE",
+      "provenance": "crate-vcs-commit-upstream-root",
+      "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+      "source": "https://raw.githubusercontent.com/rusticata/asn1-rs/a20e5f7319c896737ad0f2557037817b91ad854f/LICENSE-APACHE"
+    },
+    {
+      "name": "LICENSE-MIT",
+      "provenance": "crate-vcs-commit-upstream-root",
+      "sha256": "a5c61b93b6ee1d104af9920cf020ff3c7efe818e31fe562c72261847a728f513",
+      "source": "https://raw.githubusercontent.com/rusticata/asn1-rs/a20e5f7319c896737ad0f2557037817b91ad854f/LICENSE-MIT"
+    }
+  ],
   "block2@0.6.2": [
     {
       "name": "LICENSE.md",
@@ -227,6 +241,20 @@
       "source": "https://raw.githubusercontent.com/spdx/license-list-data/v3.27.0/text/MPL-2.0.txt"
     }
   ],
+  "jni-macros@0.22.4": [
+    {
+      "name": "LICENSE-APACHE",
+      "provenance": "crate-vcs-commit-upstream-root",
+      "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+      "source": "https://raw.githubusercontent.com/jni-rs/jni-rs/33045a124105c939d1e2cbdcb5a39e5d868ffa03/LICENSE-APACHE"
+    },
+    {
+      "name": "LICENSE-MIT",
+      "provenance": "crate-vcs-commit-upstream-root",
+      "sha256": "fea1d5bf3dd71605ce5d7d2ff695c1837e914c77195e523a86b5391716477960",
+      "source": "https://raw.githubusercontent.com/jni-rs/jni-rs/33045a124105c939d1e2cbdcb5a39e5d868ffa03/LICENSE-MIT"
+    }
+  ],
   "jni-sys-macros@0.4.1": [
     {
       "name": "LICENSE-APACHE",
@@ -239,6 +267,20 @@
       "provenance": "crate-vcs-commit-upstream-root",
       "sha256": "1d85bd754b04ceec93e98e890edd1fa3c6a22e81bcb32135806beeccefa51cd1",
       "source": "https://raw.githubusercontent.com/jni-rs/jni-sys/64d77b7a5f119d7b55b4e2c169a4668067ff59e6/LICENSE-MIT"
+    }
+  ],
+  "jni@0.22.4": [
+    {
+      "name": "LICENSE-APACHE",
+      "provenance": "crate-vcs-commit-upstream-root",
+      "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+      "source": "https://raw.githubusercontent.com/jni-rs/jni-rs/5ae9458a4ec44c5318f37ddc7569c1d4ae8a69e7/LICENSE-APACHE"
+    },
+    {
+      "name": "LICENSE-MIT",
+      "provenance": "crate-vcs-commit-upstream-root",
+      "sha256": "fea1d5bf3dd71605ce5d7d2ff695c1837e914c77195e523a86b5391716477960",
+      "source": "https://raw.githubusercontent.com/jni-rs/jni-rs/5ae9458a4ec44c5318f37ddc7569c1d4ae8a69e7/LICENSE-MIT"
     }
   ],
   "libappindicator-sys@0.9.0": [
@@ -1161,6 +1203,20 @@
       "provenance": "crate-vcs-commit-upstream-root",
       "sha256": "e1c1975c3474cce31722836f101a40ffaf1cc784e4d2f38ce3e77b9712934e78",
       "source": "https://raw.githubusercontent.com/Spxg/sqlite-wasm-rs/3d8318430bacd7d6a1aafdf5b5e54fb0fee8d451/LICENSE"
+    }
+  ],
+  "rustls-platform-verifier-android@0.2.0": [
+    {
+      "name": "LICENSE-APACHE",
+      "provenance": "crate-vcs-commit-upstream-root",
+      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+      "source": "https://raw.githubusercontent.com/rustls/rustls-platform-verifier/252e25161a91af476cbea620e29d277592d27ec7/LICENSE-APACHE"
+    },
+    {
+      "name": "LICENSE-MIT",
+      "provenance": "crate-vcs-commit-upstream-root",
+      "sha256": "1c7cf76689c837a68ed8d704994e52a0f2940c087958f860d17f3186afbdcc0c",
+      "source": "https://raw.githubusercontent.com/rustls/rustls-platform-verifier/252e25161a91af476cbea620e29d277592d27ec7/LICENSE-MIT"
     }
   ],
   "selectors@0.38.0": [
