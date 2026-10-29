@@ -324,9 +324,11 @@ pub(crate) async fn open_default_page(
     let window = app.get_window(SHELL).ok_or("The window is gone.")?;
     let page = window
         .add_child(
-            WebviewBuilder::new(label, WebviewUrl::CustomProtocol(app_url()))
-                .use_https_scheme(true)
-                .on_navigation(bundled),
+            crate::storage::webview_on_default_storage(
+                WebviewBuilder::new(label, WebviewUrl::CustomProtocol(app_url()))
+                    .use_https_scheme(true)
+                    .on_navigation(bundled),
+            ),
             LogicalPosition::new(0.0, 0.0),
             LogicalSize::new(1.0, 1.0),
         )
@@ -1174,6 +1176,7 @@ fn new_window(
         let downloads = app.clone();
         builder.on_download(move |_, event| save_download(&downloads, event))
     };
+    let builder = crate::storage::window_on_default_storage(builder);
     let child = super::web_permissions::with_probe_args(app, &label, builder).build();
     match child {
         Ok(window) => Create { window },
