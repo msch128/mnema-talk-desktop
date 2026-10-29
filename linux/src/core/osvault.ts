@@ -56,8 +56,10 @@ export function createVault(dir: string, storage: SecretStorage): Vault {
       let blob: Buffer
       try {
         blob = readFileSync(path)
-      } catch {
-        return null
+      } catch (error) {
+        // Only a missing file is an absent entry; any other read error leaves the stored session alone (the Jar then holds off writing).
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null
+        throw error
       }
       // A blob that will not decrypt (locked keyring) throws: the entry exists and must not count as absent.
       return Buffer.from(storage.decryptString(blob), 'utf8')

@@ -6,7 +6,7 @@
  */
 import { rmSync } from 'node:fs'
 import { join } from 'node:path'
-import { type TrustedKey, parseKey } from './bundle.ts'
+import { type TrustedKey, BundleError, parseKey } from './bundle.ts'
 import { parseAddress } from './client.ts'
 import { Jar, type Vault } from './cookies.ts'
 import { discover } from './discover.ts'
@@ -197,8 +197,9 @@ export class Trusted {
    * bundle was withdrawn, or the first one arrived).
    */
   async refresh(first: boolean): Promise<boolean> {
-    this.reached = true
     const dropped = await this.trustRound()
+    // Without a fresh statement (offline, refused) the revocation refresh is to be repeated soon, whatever the update check does.
+    this.reached = this.fresh()
     const hadBundle = this.store.newest() !== undefined
     const due = this.store.checkDue(this.deps.now())
     let installed: unknown = null
@@ -212,7 +213,14 @@ export class Trusted {
           // A skipped or failed round did not look: look again next start.
           this.store.markChecked(this.deps.now())
           this.reached = true
-        } catch { /* offline or refused */ }
+        } catch (error) {
+          // A release the store turned down (older than what is held, below the floor) was looked at: repeating it would download it again every retry.
+          if (error instanceof BundleError) {
+            this.store.markChecked(this.deps.now())
+            this.reached = true
+          }
+          /* otherwise offline: retry soon */
+        }
       }
     }
     return dropped || (!hadBundle && installed !== null && installed !== undefined)

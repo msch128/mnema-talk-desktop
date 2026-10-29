@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, test } from 'node:test'
 import { readFileSync } from 'node:fs'
+import { BundleError } from '../src/core/bundle.ts'
 import { appApi, bundled, localOrigin, pickerUi, updateUi } from '../src/core/origin.ts'
 import { Trusted, type TrustedDeps, WITHDRAWN, defaultDeps, pinnedKeys } from '../src/core/trusted.ts'
 import { NO_FLOOR, parseUtc } from '../src/core/trust.ts'
@@ -250,4 +251,37 @@ test('a failed bundle install is logged, not swallowed', async () => {
   }))
   await assert.rejects(t.connect(newer.origin.href))
   assert.ok(messages.some((m) => /could not install a newer bundle: unreachable/.test(m)), messages.join('|'))
+})
+
+test('a round without a fresh statement is repeated soon even when the update check does not run', async () => {
+  const make = (installNewer: () => Promise<unknown>) => new Trusted(null, null, deps({
+    fetchTrust: () => Promise.reject(new Error('offline')),
+    installNewer,
+  }))
+  const before = process.env.MNEMA_DESKTOP_NO_UPDATE_CHECK
+  process.env.MNEMA_DESKTOP_NO_UPDATE_CHECK = '1'
+  try {
+    const switchedOff = make(() => Promise.resolve(null))
+    await switchedOff.refresh(false)
+    assert.equal(switchedOff.reached, false)
+  } finally {
+    if (before === undefined) delete process.env.MNEMA_DESKTOP_NO_UPDATE_CHECK
+    else process.env.MNEMA_DESKTOP_NO_UPDATE_CHECK = before
+  }
+})
+
+test('a release the store turned down counts as a look, so it is not downloaded again every retry', async () => {
+  const refused = new Trusted(null, null, deps({
+    fetchTrust: () => Promise.resolve({ doc, sig }),
+    installNewer: () => Promise.reject(new BundleError('below the security floor')),
+  }))
+  await refused.refresh(true)
+  assert.equal(refused.reached, true)
+  assert.equal(refused.store.checkDue(NOW), false)
+  const offline = new Trusted(null, null, deps({
+    fetchTrust: () => Promise.resolve({ doc, sig }),
+    installNewer: () => Promise.reject(new Error('offline')),
+  }))
+  await offline.refresh(true)
+  assert.equal(offline.reached, false)
 })
