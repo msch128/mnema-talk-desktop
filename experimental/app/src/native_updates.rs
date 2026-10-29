@@ -39,8 +39,37 @@ const WINDOW: &str = "updater";
 pub const MENU_ID: &str = "native-update";
 const UI_PREFIX: &str = "/__update/";
 
+/// Shipped only inside the portable ZIP, next to the executable, by the release
+/// workflow. The installer never carries it, so an installed copy keeps
+/// updating itself; planting the file can only switch updating off.
+pub const PORTABLE_MARKER: &str = "mnema-portable.marker";
+
+/// Where a release is announced to a portable copy, which must not run the
+/// installer: a second copy would be installed beside it.
+const RELEASE_PAGE: &str = "https://github.com/msch128/mnema-talk-desktop/releases/tag/v";
+
 pub fn disabled() -> bool {
     crate::web_updates::disabled()
+}
+
+/// Whether the executable at `exe` is the portable build: the marker is a
+/// regular file in the same directory (a link or a directory does not count).
+pub fn portable_at(exe: &Path) -> bool {
+    exe.parent()
+        .and_then(|dir| std::fs::symlink_metadata(dir.join(PORTABLE_MARKER)).ok())
+        .is_some_and(|m| m.file_type().is_file())
+}
+
+/// Whether the running program is the portable build. An unknown location is
+/// not portable: only the marker switches the installer off.
+pub fn is_portable() -> bool {
+    std::env::current_exe().is_ok_and(|exe| portable_at(&exe))
+}
+
+/// The release page of a version, only for a plain `MAJOR.MINOR.PATCH`.
+pub fn release_page(version: &str) -> Option<Url> {
+    let version = Version::parse(version)?;
+    Url::parse(&format!("{RELEASE_PAGE}{version}")).ok()
 }
 
 // ---------------------------------------------------------------- pure logic
@@ -157,6 +186,8 @@ pub struct Snapshot {
     pub total: Option<u64>,
     pub mode: Option<Mode>,
     pub error: Option<Failure>,
+    /// The portable build never runs an installer: it only points to the release.
+    pub portable: bool,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -206,6 +237,7 @@ pub struct Source {
     pub github_only: bool,
     pub target: Option<String>,
     pub executable_path: Option<PathBuf>,
+    pub portable: bool,
 }
 
 impl Source {
@@ -238,6 +270,7 @@ impl Source {
             github_only: true,
             target: None,
             executable_path: None,
+            portable: is_portable(),
         })
     }
 }
@@ -270,6 +303,14 @@ fn now() -> u64 {
 impl NativeUpdates {
     pub fn new(current: String, dir: Option<PathBuf>, source: Source) -> NativeUpdates {
         let mut persisted = Persisted::load(dir.as_deref());
+        let portable = source.portable;
+        if portable {
+            // A portable copy never installs: forget what an earlier run kept.
+            persisted.pending = None;
+            if let Some(d) = &dir {
+                let _ = std::fs::remove_file(d.join(PENDING_FILE));
+            }
+        }
         // Already installed or superseded: nothing to wait for.
         if let Some(p) = &persisted.pending
             && offerable(&current, &p.version).is_none()
@@ -296,6 +337,7 @@ impl NativeUpdates {
                     total: None,
                     mode: None,
                     error: None,
+                    portable,
                 },
                 update: None,
                 busy: false,
@@ -319,6 +361,7 @@ impl NativeUpdates {
                 total: None,
                 mode: None,
                 error: Some(Failure::Unknown),
+                portable: false,
             })
     }
 
@@ -331,7 +374,8 @@ impl NativeUpdates {
     }
 
     fn refresh_menu(&self) {
-        let text = menu_text(self.snapshot().phase);
+        let snapshot = self.snapshot();
+        let text = menu_text(snapshot.phase, snapshot.portable);
         let items = match self.menu.lock() {
             Ok(mut menu) if menu.shown != Some(text) => {
                 menu.shown = Some(text);
@@ -349,9 +393,11 @@ impl NativeUpdates {
     }
 }
 
-/// A dot marks a waiting update; the word is the same in every language.
-fn menu_text(phase: Phase) -> &'static str {
+/// A dot marks a waiting update; the word is the same in every language. A
+/// portable copy says it only has a download to offer.
+fn menu_text(phase: Phase, portable: bool) -> &'static str {
     match phase {
+        Phase::Available if portable => "Download update \u{2022}",
         Phase::Available | Phase::Ready | Phase::Failed => "Update \u{2022}",
         _ => "Updates",
     }
@@ -362,7 +408,7 @@ pub fn menu_item<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<tauri::menu::M
     let item = tauri::menu::MenuItem::with_id(
         app,
         MENU_ID,
-        menu_text(state.snapshot().phase),
+        menu_text(state.snapshot().phase, state.snapshot().portable),
         true,
         None::<&str>,
     )?;
@@ -557,6 +603,9 @@ async fn look<R: Runtime>(app: &AppHandle<R>, manual: bool) -> bool {
 /// verified installer for the next start (`Mode::Later`).
 pub async fn install<R: Runtime>(app: &AppHandle<R>, mode: Mode) {
     let state = app.state::<NativeUpdates>();
+    if state.source.portable {
+        return;
+    }
     // After a restart a held installer has no manifest entry in memory yet.
     if state
         .inner
@@ -696,6 +745,9 @@ pub async fn prepare_pending<R: Runtime>(app: &AppHandle<R>) -> Option<(Update, 
         return None;
     }
     let state = app.state::<NativeUpdates>();
+    if state.source.portable {
+        return None;
+    }
     let (pending, current) = match state.inner.lock() {
         Ok(i) => (i.persisted.pending.clone()?, i.snapshot.current.clone()),
         Err(_) => return None,
@@ -728,10 +780,10 @@ pub async fn prepare_pending<R: Runtime>(app: &AppHandle<R>) -> Option<(Update, 
 }
 
 async fn apply_pending<R: Runtime>(app: &AppHandle<R>) {
-    if disabled() {
+    let state = app.state::<NativeUpdates>();
+    if disabled() || state.source.portable {
         return;
     }
-    let state = app.state::<NativeUpdates>();
     // The installer is only run on the strength of a trust statement fetched
     // in this process: fetch it first (the main window is not up yet). If that
     // fails the installer stays kept and the next start tries again.
@@ -920,7 +972,22 @@ pub fn native_update_action(
 ) -> Result<Snapshot, String> {
     from_update_window(&window)?;
     let app = window.app_handle().clone();
+    let portable = state.source.portable;
     match action.as_str() {
+        // The portable copy cannot be replaced by an installer.
+        "now" | "later" if portable => {
+            return Err("A portable copy does not install updates.".into());
+        }
+        "download_page" => {
+            let page = portable
+                .then(|| state.snapshot().version)
+                .flatten()
+                .and_then(|v| release_page(&v));
+            if let Some(url) = page {
+                // The confirmation dialog waits for an answer.
+                std::thread::spawn(move || crate::web_client::open_external(&url));
+            }
+        }
         "check" => {
             tauri::async_runtime::spawn(async move { check(&app, true).await });
         }

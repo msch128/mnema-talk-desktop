@@ -292,6 +292,16 @@ fn app_with_source(
     dir: &Path,
     github_only: bool,
 ) -> tauri::App<MockRuntime> {
+    app_built(trusted, port, dir, github_only, false)
+}
+
+fn app_built(
+    trusted: &Keys,
+    port: u16,
+    dir: &Path,
+    github_only: bool,
+    portable: bool,
+) -> tauri::App<MockRuntime> {
     let mut context = mock_context(noop_assets());
     context.config_mut().plugins.0.insert(
         "updater".into(),
@@ -312,6 +322,7 @@ fn app_with_source(
         github_only,
         target: Some("windows-x86_64".into()),
         executable_path: Some(dir.join("Mnema Test.app/Contents/MacOS/mnema")),
+        portable,
     };
     let current = app.package_info().version.to_string();
     assert_eq!(current, "0.1.0", "the mock app is the old version");
@@ -758,4 +769,104 @@ fn a_package_signed_by_the_release_pipeline_verifies_and_every_wrong_form_is_ref
         verify_package(&bytes, &signature, &keys().pubkey(), &version),
         Err(VerifyError::Mismatch)
     );
+}
+
+// ------------------------------------------------------------ portable build
+
+#[test]
+fn only_a_marker_file_next_to_the_executable_makes_a_copy_portable() {
+    let dir = data_dir("marker");
+    let exe = dir.join("Mnema Desktop DEV.exe");
+    assert!(!portable_at(&exe), "an installed copy has no marker");
+    std::fs::write(dir.join(PORTABLE_MARKER), b"portable\n").unwrap();
+    assert!(portable_at(&exe));
+    // Elsewhere, or as a directory, the name means nothing.
+    assert!(!portable_at(&dir.join("sub/Mnema Desktop DEV.exe")));
+    std::fs::remove_file(dir.join(PORTABLE_MARKER)).unwrap();
+    std::fs::create_dir(dir.join(PORTABLE_MARKER)).unwrap();
+    assert!(!portable_at(&exe));
+    assert!(!portable_at(Path::new("")));
+}
+
+#[test]
+fn the_release_page_is_built_only_from_a_plain_version() {
+    assert_eq!(
+        release_page("1.4.2").unwrap().as_str(),
+        "https://github.com/msch128/mnema-talk-desktop/releases/tag/v1.4.2"
+    );
+    for odd in ["", "1.4", "v1.4.2", "1.4.2/../x", "1.4.2?x=1", "1.4.2#a"] {
+        assert!(release_page(odd).is_none(), "{odd}");
+    }
+}
+
+#[test]
+fn a_portable_copy_announces_a_release_but_never_runs_an_installer() {
+    let keys = keys();
+    let dir = data_dir("portable");
+    let rel = release("0.2.0", &keys);
+    let port = publish(&rel);
+    // A leftover from before: it must neither be offered nor run.
+    std::fs::write(dir.join(PENDING_FILE), &rel.bytes).unwrap();
+    Persisted {
+        pending: Some(Pending {
+            version: "0.2.0".into(),
+            signature: "x".into(),
+        }),
+        ..Persisted::default()
+    }
+    .save(Some(&dir));
+    let app = app_built(&keys, port, &dir, false, true);
+    let handle = app.handle().clone();
+    let state = handle.state::<NativeUpdates>();
+    let snap = state.snapshot();
+    assert_eq!((snap.phase, snap.portable), (Phase::Idle, true));
+    assert!(!dir.join(PENDING_FILE).exists());
+
+    assert!(run(look(&handle, false)), "the new version is announced");
+    let snap = state.snapshot();
+    assert_eq!(
+        (snap.phase, snap.version.as_deref()),
+        (Phase::Available, Some("0.2.0"))
+    );
+    assert_eq!(
+        menu_text(snap.phase, snap.portable),
+        "Download update \u{2022}"
+    );
+
+    // Neither choice downloads or keeps anything.
+    for mode in [Mode::Now, Mode::Later] {
+        run(install(&handle, mode));
+        let snap = state.snapshot();
+        assert_eq!(snap.phase, Phase::Available, "{snap:?}");
+        assert_eq!(snap.received, 0);
+        assert!(!dir.join(PENDING_FILE).exists());
+    }
+    assert!(run(prepare_pending(&handle)).is_none());
+    assert_eq!(Persisted::load(Some(&dir)).pending, None);
+}
+
+#[test]
+fn an_installed_copy_still_offers_the_installer() {
+    assert_eq!(menu_text(Phase::Available, false), "Update \u{2022}");
+    assert_eq!(menu_text(Phase::Idle, true), "Updates");
+}
+
+/// The release workflow is what puts the marker into the portable ZIP and keeps
+/// it out of the installer; this ties its spelling to the one the program reads.
+#[test]
+fn the_release_workflow_marks_the_portable_zip_and_checks_the_installer_has_none() {
+    let workflow = include_str!("../../../../.github/workflows/desktop-release.yml");
+    let marked = workflow
+        .lines()
+        .filter(|l| l.contains(PORTABLE_MARKER))
+        .count();
+    assert!(
+        marked >= 3,
+        "write, ZIP check and installer check: {marked}"
+    );
+    let write = workflow
+        .find(&format!("> \"portable/{PORTABLE_MARKER}\""))
+        .unwrap();
+    let zip = workflow.find("-windows-x64-portable.zip\" .)").unwrap();
+    assert!(write < zip, "the marker is written before the ZIP is made");
 }

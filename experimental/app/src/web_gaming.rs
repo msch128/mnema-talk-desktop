@@ -48,11 +48,11 @@ mod input;
 #[path = "../../../src/input_windows.rs"]
 mod input_windows;
 #[allow(dead_code)]
-#[path = "../../../src/wide.rs"]
-mod wide;
-#[allow(dead_code)]
 #[path = "../../../src/shortcuts.rs"]
 mod shortcuts;
+#[allow(dead_code)]
+#[path = "../../../src/wide.rs"]
+mod wide;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
@@ -1038,7 +1038,9 @@ fn announce_exclusive_fullscreen(app: &tauri::AppHandle) {
                 eprintln!("Mnema Desktop: could not remember the fullscreen hint: {why}");
             }
         }
-        Err(why) => eprintln!("Mnema Desktop: no config folder to remember the fullscreen hint: {why}"),
+        Err(why) => {
+            eprintln!("Mnema Desktop: no config folder to remember the fullscreen hint: {why}")
+        }
     }
 }
 /// Evaluate the gaming state on the main thread soon. Many wake-ups collapse

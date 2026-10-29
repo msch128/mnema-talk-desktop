@@ -18,6 +18,7 @@ const T = de
       version: (v) => `Installiert: v${v}`,
       external: (v) => `Version ${v} ist verfügbar. Diese Installation wird von der Paketverwaltung verwaltet: lade das neue Paket von der Release-Seite.`,
       downloadPage: 'Release-Seite öffnen',
+      portable: (v) => `Version ${v} ist verfügbar. Diese portable Kopie aktualisiert sich nicht selbst: lade das neue portable ZIP von der Release-Seite.`,
     }
   : {
       title: { idle: 'Mnema Desktop', up_to_date: 'You are up to date', checking: 'Checking for updates…', available: 'Update available', downloading: 'Downloading update…', ready: 'Update ready', installing: 'Installing update…', failed: 'Update failed' },
@@ -34,6 +35,7 @@ const T = de
       version: (v) => `Installed: v${v}`,
       external: (v) => `Version ${v} is available. This installation is managed by your package manager: download the new package from the release page.`,
       downloadPage: 'Open release page',
+      portable: (v) => `Version ${v} is available. This portable copy does not update itself: download the new portable ZIP from the release page.`,
     };
 
 const $ = (id) => document.getElementById(id);
@@ -58,7 +60,8 @@ function render(s) {
   document.querySelector('.mark').className = 'mark' + (s.phase === 'failed' ? ' err' : '');
   const v = s.version || '';
   let detail;
-  if (s.phase === 'available' && s.external) detail = T.external(v);
+  if (s.phase === 'available' && s.portable) detail = T.portable(v);
+  else if (s.phase === 'available' && s.external) detail = T.external(v);
   else if (s.phase === 'available') detail = T.available(v);
   else if (s.phase === 'downloading') detail = (s.mode === 'later' ? T.downloading_later : T.downloading_now)(v);
   else if (s.phase === 'ready') detail = T.ready(v);
@@ -77,14 +80,14 @@ function render(s) {
   if (pct) bar.setAttribute('aria-valuenow', String(pct)); else bar.removeAttribute('aria-valuenow');
   const actions = $('actions');
   actions.replaceChildren();
-  if (s.phase === 'available' && s.external) {
+  if (s.phase === 'available' && (s.external || s.portable)) {
     actions.append(button(T.downloadPage, 'download_page', true), button(T.close, 'close'));
   } else if (s.phase === 'available') {
     actions.append(button(T.now, 'now', true), button(T.later, 'later'));
   } else if (s.phase === 'ready') {
     actions.append(button(T.installNow, 'now', true), button(T.close, 'close'));
   } else if (s.phase === 'failed') {
-    actions.append(button(T.retry, s.version && !s.external ? (s.mode === 'later' ? 'later' : 'now') : 'check', true), button(T.close, 'close'));
+    actions.append(button(T.retry, s.version && !s.external && !s.portable ? (s.mode === 'later' ? 'later' : 'now') : 'check', true), button(T.close, 'close'));
   } else if (s.phase === 'up_to_date' || s.phase === 'idle') {
     actions.append(button(T.check, 'check'), button(T.close, 'close'));
   }

@@ -400,9 +400,8 @@ async fn removal(app: &tauri::AppHandle, trusted: &Trusted, a: &str, b: &str, se
     let probe = format!("{b}-probe");
     let refused = Os.save(&probe, b"probe") == Save::Refused;
     Os.remove(&probe);
-    let had_session = Os.load(b).found().is_some()
-        || stored.as_ref().is_some_and(|f| f.exists())
-        || refused;
+    let had_session =
+        Os.load(b).found().is_some() || stored.as_ref().is_some_and(|f| f.exists()) || refused;
     check(
         "B's session is stored",
         had_session,
