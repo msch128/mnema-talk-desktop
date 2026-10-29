@@ -27,6 +27,13 @@ pub fn install_provider() {
     }
 }
 
+/// Says once per run that the configuration could not be built, however many
+/// clients and sockets ask for it afterwards.
+pub fn log_failure(why: &rustls::Error) {
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(|| eprintln!("Mnema Desktop: the TLS configuration could not be built: {why}"));
+}
+
 /// The client configuration for one connection: system verification, TLS 1.2
 /// and later. Built per client; it is cheap and holds no connection state.
 pub fn client_config() -> Result<ClientConfig, rustls::Error> {

@@ -621,7 +621,10 @@ pub fn client_builder() -> reqwest::ClientBuilder {
         // The platform verifier could not start. reqwest then builds the same
         // stack itself (rustls, platform verifier), still with TLS 1.2 as the
         // floor; the connection is never left unchecked.
-        Err(_) => builder.min_tls_version(reqwest::tls::Version::TLS_1_2),
+        Err(why) => {
+            crate::web_tls::log_failure(&why);
+            builder.min_tls_version(reqwest::tls::Version::TLS_1_2)
+        }
     }
 }
 

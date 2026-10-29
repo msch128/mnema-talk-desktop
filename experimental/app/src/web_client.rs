@@ -572,16 +572,15 @@ fn unreachable_reason(error: &(dyn std::error::Error + 'static)) -> String {
         .filter(|c| !c.is_empty());
     let joined = causes.join(" ").to_ascii_lowercase();
     // A server that offers no TLS version this client speaks (1.2 and 1.3): the
-    // peer's protocol_version alert, rustls' own refusals of a peer, and the
-    // HRESULTs Windows' stack gave for it before the host used rustls.
+    // peer's protocol_version alert, rustls' own version refusals, and the
+    // HRESULT Windows' stack gave for it before the host used rustls. Other
+    // incompatibilities (signature schemes, ciphers) are not about versions.
     let version = [
-        "protocolversion",
-        "protocol version",
-        "peerincompatible",
-        "peer is incompatible",
+        "fatal alert: protocolversion",
+        "serverdoesnotsupporttls12or13",
+        "servertlsversionisdisabledbyourconfig",
         "os error -2146893054",
         "0x80090302",
-        "os error -2146893007",
     ]
     .iter()
     .any(|word| joined.contains(word));
@@ -1281,6 +1280,7 @@ mod tests {
         for cause in [
             "received fatal alert: ProtocolVersion",
             "peer is incompatible: ServerDoesNotSupportTls12Or13",
+            "peer is incompatible: ServerTlsVersionIsDisabledByOurConfig",
             "The requested function is not supported. (os error -2146893054)",
         ] {
             let text = unreachable_reason(&layered(
@@ -1289,6 +1289,21 @@ mod tests {
             ));
             assert!(text.starts_with(TLS_VERSION), "{text}");
             assert!(text.ends_with(&format!("({cause})")), "{text}");
+        }
+    }
+
+    #[test]
+    fn other_incompatibilities_are_not_taken_for_a_version_problem() {
+        for cause in [
+            "peer is incompatible: NoSignatureSchemesInCommon",
+            "peer is incompatible: NoCipherSuitesInCommon",
+            "The client and server cannot communicate (os error -2146893007)",
+        ] {
+            let text = unreachable_reason(&layered(
+                "error sending request",
+                layered("client error (Connect)", Layer(cause.into(), None)),
+            ));
+            assert!(!text.starts_with(TLS_VERSION), "{text}");
         }
     }
 

@@ -150,7 +150,7 @@ async fn connect(
         .max_message_size(Some(MAX_FRAME))
         .max_frame_size(Some(MAX_FRAME));
     let connector = tokio_tungstenite::Connector::Rustls(Arc::new(
-        crate::web_tls::client_config().map_err(|_| ())?,
+        crate::web_tls::client_config().map_err(|why| crate::web_tls::log_failure(&why))?,
     ));
     let connecting = tokio_tungstenite::connect_async_tls_with_config(
         request,
