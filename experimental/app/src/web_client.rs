@@ -544,11 +544,21 @@ fn unreachable_reason(error: &(dyn std::error::Error + 'static)) -> String {
     .iter()
     .any(|word| joined.contains(word));
     let reason = if timed_out || kind == Some(std::io::ErrorKind::TimedOut) {
-        "The instance did not answer in time. Check the address, the port and your network."
+        concat!(
+            "The instance did not answer in time. Check the address, the port and your network. ",
+            "If the server is in your own network, your router may not support reaching it ",
+            "through its public address (NAT loopback/hairpin); try from outside or use the ",
+            "local address."
+        )
     } else if joined.contains("dns error") || joined.contains("lookup address") {
         "The instance address could not be resolved. Check the address and your network."
     } else if kind == Some(std::io::ErrorKind::ConnectionRefused) {
-        "The instance refused the connection. Check the address and the port."
+        concat!(
+            "The instance refused the connection. Check the address and the port. ",
+            "If the server is in your own network, your router may not support reaching it ",
+            "through its public address (NAT loopback/hairpin); try from outside or use the ",
+            "local address."
+        )
     } else if tls {
         "This computer does not trust the instance's HTTPS certificate. Check the system clock, \
          and that no antivirus or network filter intercepts HTTPS."
@@ -1218,7 +1228,9 @@ mod tests {
             "error sending request",
             Error::from(ErrorKind::ConnectionRefused),
         );
-        assert!(unreachable_reason(&refused).starts_with("The instance refused"));
+        let refused = unreachable_reason(&refused);
+        assert!(refused.starts_with("The instance refused"));
+        assert!(refused.contains("NAT loopback/hairpin"));
         let timeout = layered("error sending request", Error::from(ErrorKind::TimedOut));
         assert!(unreachable_reason(&timeout).starts_with("The instance did not answer"));
         let dns = layered(

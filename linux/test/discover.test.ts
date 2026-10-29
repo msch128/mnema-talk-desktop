@@ -5,9 +5,9 @@ import { unreachableReason } from '../src/core/discover.ts'
 const coded = (code: string): Error => Object.assign(new Error('x'), { code })
 
 test('a refused, unresolved or slow instance is told apart', () => {
-  assert.match(unreachableReason(coded('ECONNREFUSED')), /^The instance refused the connection/)
+  assert.match(unreachableReason(coded('ECONNREFUSED')), /^The instance refused the connection.*NAT loopback\/hairpin/)
   assert.match(unreachableReason(coded('ENOTFOUND')), /could not be resolved/)
-  assert.match(unreachableReason(new Error('connect timeout')), /did not answer in time/)
+  assert.match(unreachableReason(new Error('connect timeout')), /did not answer in time.*NAT loopback/)
   assert.match(unreachableReason(Object.assign(new Error('x'), { name: 'TimeoutError' })), /did not answer in time/)
 })
 

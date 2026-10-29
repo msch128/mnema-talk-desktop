@@ -4,6 +4,7 @@ import type { ServerInfo } from './store.ts'
 
 const MAX_DISCOVERY_BYTES = 16 * 1024
 
+const NAT_HINT = 'If the server is in your own network, your router may not support reaching it through its public address (NAT loopback/hairpin); try from outside or use the local address.'
 const CERTIFICATE_CODE = /^(CERT_|ERR_TLS_CERT|UNABLE_TO_|DEPTH_ZERO_|SELF_SIGNED_)/
 
 /**
@@ -13,10 +14,10 @@ const CERTIFICATE_CODE = /^(CERT_|ERR_TLS_CERT|UNABLE_TO_|DEPTH_ZERO_|SELF_SIGNE
 export function unreachableReason(error: unknown): string {
   const code = error instanceof Error ? String((error as NodeJS.ErrnoException).code ?? '') : ''
   const name = error instanceof Error ? error.name : ''
-  if (code === 'ECONNREFUSED') return 'The instance refused the connection. Check the address and the port.'
+  if (code === 'ECONNREFUSED') return `The instance refused the connection. Check the address and the port. ${NAT_HINT}`
   if (code === 'ENOTFOUND' || code === 'EAI_AGAIN') return 'The instance address could not be resolved. Check the address and your network.'
   if (code === 'ETIMEDOUT' || name === 'TimeoutError' || (error instanceof Error && error.message === 'connect timeout')) {
-    return 'The instance did not answer in time. Check the address, the port and your network.'
+    return `The instance did not answer in time. Check the address, the port and your network. ${NAT_HINT}`
   }
   if (CERTIFICATE_CODE.test(code)) {
     return `This computer does not trust the instance's HTTPS certificate. Check the system clock, and that no antivirus or network filter intercepts HTTPS. (${code})`
