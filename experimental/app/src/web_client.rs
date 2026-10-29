@@ -1147,17 +1147,27 @@ fn show_dialog(kind: Dialog, text: &str) -> bool {
 }
 
 /// The argument vector of `osascript` for a dialog: the script lines, then the
-/// text and the title as its `argv`. Cancel makes `osascript` fail.
+/// text and the title as its `argv`. Cancel makes `osascript` fail. An error
+/// offers "Copy", which puts the whole text on the clipboard: the text of a
+/// macOS alert cannot be selected.
 #[cfg_attr(not(any(target_os = "macos", test)), allow(dead_code))]
 fn osascript_args(kind: Dialog, text: &str) -> Vec<String> {
-    let line = match kind {
-        Dialog::Error => "display alert (item 2 of argv) message (item 1 of argv) as critical",
-        Dialog::Confirm => {
-            "display dialog (item 1 of argv) with title (item 2 of argv) buttons {\"Cancel\", \"Open\"} default button \"Cancel\" cancel button \"Cancel\" with icon caution"
-        }
+    let lines: &[&str] = match kind {
+        Dialog::Error => &[
+            "on run argv",
+            "set answer to display alert (item 2 of argv) message (item 1 of argv) as critical buttons {\"Copy\", \"OK\"} default button \"OK\"",
+            "if button returned of answer is \"Copy\" then set the clipboard to (item 1 of argv)",
+            "end run",
+        ],
+        Dialog::Confirm => &[
+            "on run argv",
+            "display dialog (item 1 of argv) with title (item 2 of argv) buttons {\"Cancel\", \"Open\"} default button \"Cancel\" cancel button \"Cancel\" with icon caution",
+            "end run",
+        ],
     };
-    ["-e", "on run argv", "-e", line, "-e", "end run"]
-        .into_iter()
+    lines
+        .iter()
+        .flat_map(|line| ["-e", line])
         .map(str::to_owned)
         .chain([text.to_owned(), APP_TITLE.to_owned()])
         .collect()
@@ -1583,8 +1593,14 @@ mod tests {
             "mnema://user@localhost/",
             "mnema://evil/",
             "https://mnema.localhost.evil.example/",
+            // A file dropped outside the chat must not navigate the page.
+            "file:///Users/someone/photo.png",
+            "file://localhost/C:/Users/someone/photo.png",
+            "blob:https://mnema.localhost/1",
+            "data:text/html,x",
         ] {
             assert!(!bundled(&url(raw)), "{raw}");
+            assert!(!app_api(&url(raw)), "{raw}");
         }
         // The other engines' form of the origin is not this platform's.
         let other = if cfg!(windows) {
@@ -1721,6 +1737,23 @@ mod tests {
         let message = startup_message();
         assert!(message.starts_with(APP_TITLE));
         assert_eq!(message.contains("WebView2"), cfg!(windows));
+    }
+
+    #[test]
+    fn an_error_dialog_can_be_copied_and_a_question_cannot_lose_its_cancel() {
+        let hostile = "a \"quote\" \\ back\nline & 'single' \u{2028} end run -e";
+        let error = osascript_args(Dialog::Error, hostile);
+        let script = error[..error.len() - 2].join("\n");
+        assert!(script.contains("buttons {\"Copy\", \"OK\"}"));
+        assert!(script.contains("set the clipboard to (item 1 of argv)"));
+        assert_eq!(error[error.len() - 2], hostile);
+        // Every script line is introduced by `-e`; nothing else is a flag.
+        let lines = &error[..error.len() - 2];
+        assert!(lines.chunks(2).all(|pair| pair[0] == "-e"));
+        let confirm = osascript_args(Dialog::Confirm, hostile);
+        let script = confirm.join("\n");
+        assert!(script.contains("cancel button \"Cancel\""));
+        assert!(!script.contains("clipboard"));
     }
 
     #[test]
@@ -2363,5 +2396,30 @@ mod shared_vectors {
         let origin = Url::parse("https://tls-v1-2.badssl.com:1012/").unwrap();
         let error = fetch_health(&origin).await.unwrap_err();
         assert_eq!(error, UNAVAILABLE, "TLS to host:1012 must succeed");
+    }
+}
+
+#[cfg(test)]
+mod drop_tests {
+    /// Dropped files must reach the instance page as HTML5 events, so the
+    /// native drop handler of the webview is off for that page. Nothing of the
+    /// trusted local UI listens for native drops.
+    #[test]
+    fn the_instance_page_takes_file_drops_itself() {
+        let shell = include_str!("web_shell.rs");
+        let start = shell
+            .find("fn instance_page(")
+            .or_else(|| shell.find("let label = instance_label(id);"))
+            .expect("the builder of the instance page");
+        let body = &shell[start..];
+        let end = body.find("isolate(builder, app, id)").expect("its end");
+        assert!(body[..end].contains(".disable_drag_drop_handler()"));
+        for (name, source) in [
+            ("web_shell", shell),
+            ("web_gaming", include_str!("web_gaming.rs")),
+            ("native_updates", include_str!("native_updates.rs")),
+        ] {
+            assert!(!source.contains("onDragDropEvent"), "{name}");
+        }
     }
 }

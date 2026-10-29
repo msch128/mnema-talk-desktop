@@ -1037,6 +1037,10 @@ fn page_builder(
         WebviewUrl::CustomProtocol(crate::web_client::join_page(invite)),
     )
         .use_https_scheme(true)
+        // The page attaches dropped files itself (HTML5 drop events); the
+        // native handler would swallow them. A drop outside the chat cannot
+        // navigate: `on_navigation` below lets only app routes through.
+        .disable_drag_drop_handler()
         .initialization_script(crate::web_client::identity_script(
             app,
             "instance",
