@@ -26,6 +26,8 @@ export interface ServerInfo {
   /** `null` for anything that is not a release version, such as `dev`. */
   readonly version: Version | null
   readonly webClientApi: number
+  /** What the server calls itself (`community_name` of `/api/health`); absent from an older server. */
+  readonly communityName?: string | null
 }
 
 /** Why no held bundle fits a server. Never answered by running the server's own JavaScript. */

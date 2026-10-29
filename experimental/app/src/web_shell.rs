@@ -39,6 +39,7 @@ const RAIL: &str = "rail";
 const ADD: &str = "main";
 /// The Windows startup check looks for a window of this name.
 const TITLE: &str = "Mnema Desktop DEV \u{2014} Instance";
+const PRODUCT: &str = "Mnema Desktop DEV";
 #[cfg_attr(target_os = "macos", allow(dead_code))]
 const PROFILES: &str = "profiles";
 const WIPE_ATTEMPTS: u32 = 20;
@@ -583,8 +584,25 @@ fn rail_snapshot(app: &tauri::AppHandle) -> RailState {
 }
 
 /// Shows the rail what it should draw, and renames the menu entries to match.
+/// The title of the window: the active server's name before the product, or
+/// the product alone while none is active.
+fn window_title(state: &RailState) -> String {
+    state
+        .instances
+        .iter()
+        .find(|i| state.active.as_deref() == Some(i.id.as_str()))
+        .map_or_else(
+            || TITLE.to_owned(),
+            |i| format!("{} \u{2014} {PRODUCT}", i.name),
+        )
+}
+
 pub fn push_rail(app: &tauri::AppHandle) {
     let state = rail_snapshot(app);
+    // The window is titled with the server in front, by the name it gives itself.
+    if let Some(window) = app.get_window(SHELL) {
+        let _ = window.set_title(&window_title(&state));
+    }
     if let Ok(json) = serde_json::to_string(&state)
         && let Some(rail) = app.get_webview(RAIL)
     {
@@ -864,10 +882,12 @@ fn make_session(
     id: &str,
     origin: Url,
     held: Held,
+    community: Option<String>,
 ) -> Result<Arc<Session>, String> {
     Ok(Arc::new(Session {
         id: id.to_owned(),
         held,
+        community,
         sockets: Arc::new(Sockets::default()),
         instance: Arc::new(Instance {
             client: client().map_err(|_| "Unable to initialize HTTPS.")?,
@@ -939,9 +959,9 @@ async fn start_server(app: &tauri::AppHandle, id: &str) {
 }
 
 async fn connect(trusted: &Trusted, id: &str, origin: &Url) -> Result<Arc<Session>, String> {
-    let server = discover(origin).await?;
+    let (server, community) = discover(origin).await?;
     let held = choose(trusted, &server).await?;
-    make_session(trusted, id, origin.clone(), held)
+    make_session(trusted, id, origin.clone(), held, community)
 }
 
 /// A page that already exists reloads, to show what its server's slot says
@@ -1193,9 +1213,9 @@ pub async fn add_server(
         return Ok(());
     }
     check_room(state)?;
-    let server = discover(&origin).await?;
+    let (server, community) = discover(&origin).await?;
     let held = choose(state, &server).await?;
-    let session = make_session(state, &id, origin.clone(), held)?;
+    let session = make_session(state, &id, origin.clone(), held, community)?;
     let won = {
         let mut registry = state.registry.lock().map_err(|_| "busy")?;
         match registry.add(origin) {
@@ -1599,6 +1619,32 @@ mod tests {
         assert!(room_with(0, false));
         assert!(!room_with(1, false));
         assert!(room_with(1, true));
+    }
+
+    #[test]
+    fn the_window_is_titled_with_the_active_server_in_front() {
+        use crate::instances::RailInstance;
+        let instance = |id: &str, name: &str| RailInstance {
+            id: id.into(),
+            initial: "L".into(),
+            hue: 0,
+            name: name.into(),
+            status: "ready",
+            message: None,
+            unread: 0,
+            mentions: 0,
+        };
+        let mut state = RailState {
+            active: None,
+            adding: false,
+            can_add: true,
+            instances: vec![instance("a", "Lantern Fox"), instance("b", "b.example")],
+        };
+        assert_eq!(window_title(&state), TITLE);
+        state.active = Some("b".into());
+        assert_eq!(window_title(&state), "b.example \u{2014} Mnema Desktop DEV");
+        state.active = Some("a".into());
+        assert!(window_title(&state).starts_with("Lantern Fox"));
     }
 
     #[test]

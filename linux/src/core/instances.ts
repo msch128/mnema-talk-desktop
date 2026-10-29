@@ -29,6 +29,8 @@ export interface Session {
   readonly id: string
   readonly instance: Instance
   readonly held: Held
+  /** What the server calls itself, when it says (`community_name` of `/api/health`). */
+  readonly community?: string | null
   /** Sockets this server's pages hold open; the budget is per server. */
   readonly sockets: Sockets
 }
@@ -92,8 +94,19 @@ export interface RailState {
   instances: RailInstance[]
 }
 
+/** The address as a name: the host, with its port when it has one. */
 export function slotName(origin: URL): string {
   return origin.port === '' ? origin.hostname : `${origin.hostname}:${origin.port}`
+}
+
+/**
+ * The name on the rail, in menus and toasts: what a running server calls
+ * itself (the Owner's community name), else its address. A server that only
+ * repeats its host keeps the address with its port.
+ */
+export function nameOf(slot: Pick<Slot, 'origin' | 'phase'>): string {
+  const community = slot.phase.kind === 'ready' ? slot.phase.session.community : null
+  return community && community.toLowerCase() !== slot.origin.hostname.toLowerCase() ? community : slotName(slot.origin)
 }
 
 function initial(name: string): string {
@@ -315,7 +328,7 @@ export class Registry {
       adding: this.addingNow,
       can_add: canAdd && this.slots.length < MAX_INSTANCES,
       instances: this.slots.map((slot) => {
-        const name = slotName(slot.origin)
+        const name = nameOf(slot)
         return {
           id: slot.id,
           name,

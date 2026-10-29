@@ -6,7 +6,7 @@
  */
 import { Notification, app, type WebContents } from 'electron'
 import { MAX_BODY, ToastGates, badgeCount, cleanText, taggedTitle, validId } from '../core/notify.ts'
-import { slotName } from '../core/instances.ts'
+import { nameOf } from '../core/instances.ts'
 import type { Context } from './context.ts'
 import { bringForward } from './shell.ts'
 
@@ -40,7 +40,7 @@ export function notify(ctx: Context, server: string, title: string, body: string
   if (!slot) throw new Error('No instance is selected.')
   if (!Notification.isSupported() || !gates.allow(server, Date.now())) return null
   const generation = slot.generation
-  const toast = new Notification({ title: taggedTitle(title, slotName(slot.origin), registry.length > 1), body: cleanText(body, MAX_BODY), silent: false })
+  const toast = new Notification({ title: taggedTitle(title, nameOf(slot), registry.length > 1), body: cleanText(body, MAX_BODY), silent: false })
   shown.set(toast, generation)
   toast.on('click', () => {
     shown.delete(toast)

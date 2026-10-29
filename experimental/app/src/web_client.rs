@@ -510,7 +510,44 @@ fn parse_health(bytes: &[u8]) -> Result<ServerInfo, String> {
     }
 }
 
-pub(crate) async fn discover(origin: &Url) -> Result<ServerInfo, String> {
+/// What the server calls itself in `/api/health` (`community_name`: the name
+/// its Owner chose, else its host). It is only ever shown as text, so it is
+/// cleaned and capped here; `None` for a server that sends none (older).
+pub(crate) fn parse_community_name(bytes: &[u8]) -> Option<String> {
+    #[derive(Deserialize)]
+    struct Named {
+        community_name: Option<String>,
+    }
+    let named: Named = crate::web_json::parse(bytes)?;
+    clean_name(&named.community_name?)
+}
+
+/// Longest name taken over; the server's own limit is 60 for a chosen name,
+/// a host fallback may be longer.
+const MAX_NAME_CHARS: usize = 80;
+
+fn clean_name(raw: &str) -> Option<String> {
+    let cleaned: String = raw
+        .chars()
+        .map(|c| if c.is_control() { ' ' } else { c })
+        .collect();
+    let name: String = cleaned
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .chars()
+        .take(MAX_NAME_CHARS)
+        .collect();
+    (!name.is_empty()).then_some(name)
+}
+
+/// Asks the server what it is: its health and the name it gives itself.
+pub(crate) async fn discover(origin: &Url) -> Result<(ServerInfo, Option<String>), String> {
+    let bytes = fetch_health(origin).await?;
+    Ok((parse_health(&bytes)?, parse_community_name(&bytes)))
+}
+
+async fn fetch_health(origin: &Url) -> Result<Vec<u8>, String> {
     let client = crate::web_proxy::client_builder()
         .redirect(Policy::none())
         .timeout(Duration::from_secs(10))
@@ -539,7 +576,7 @@ pub(crate) async fn discover(origin: &Url) -> Result<ServerInfo, String> {
         }
         bytes.extend_from_slice(&chunk);
     }
-    parse_health(&bytes)
+    Ok(bytes)
 }
 
 /// The verified bundle for this server. When the server is ahead of every
@@ -1126,6 +1163,32 @@ mod tests {
     }
 
     #[test]
+    fn the_name_a_server_gives_itself_is_cleaned_before_it_is_shown() {
+        let name = |body: &str| parse_community_name(body.as_bytes());
+        let ok = r#""status":"ok","version":"1.3.0","web_client_api":1"#;
+        assert_eq!(
+            name(&format!(r#"{{{ok},"community_name":"  Lantern\n Fox "}}"#)).as_deref(),
+            Some("Lantern Fox")
+        );
+        assert_eq!(
+            name(&format!(r#"{{{ok}}}"#)),
+            None,
+            "older servers send none"
+        );
+        assert_eq!(name(&format!(r#"{{{ok},"community_name":"   "}}"#)), None);
+        assert_eq!(name(&format!(r#"{{{ok},"community_name":7}}"#)), None);
+        assert_eq!(
+            name(&format!(
+                r#"{{{ok},"community_name":"{}"}}"#,
+                "x".repeat(200)
+            ))
+            .map(|n| n.chars().count()),
+            Some(80)
+        );
+        assert_eq!(name("not JSON"), None);
+    }
+
+    #[test]
     fn health_decides_what_the_server_is() {
         let info =
             parse_health(br#"{"status":"ok","version":"0.7.17","web_client_api":1}"#).unwrap();
@@ -1374,6 +1437,7 @@ mod tests {
                 limits: Limits::default(),
             }),
             held,
+            community: None,
             sockets: Arc::new(crate::web_ws::Sockets::default()),
         });
         registry.slot_mut(&id).unwrap().phase = Phase::Ready(Arc::clone(&session));

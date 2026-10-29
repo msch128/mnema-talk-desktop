@@ -57,6 +57,11 @@ page of one server next to it, as separate webviews (Tauri's `unstable`
 multiwebview). Each server has its own webview with its own storage, its own
 session and its own sockets; commands and the protocol handler pick the server
 by the label of the calling webview (`i-<id>`), never by an argument. A
+server is named on the rail, in the server menu and in the window title by what
+it calls itself (`community_name` of `GET /api/health`, the name its Owner chose
+or its host), shown as plain text; the address stands in for a server that
+sends none or cannot be served, and the name is read again when the server
+reconnects. A
 separate check, `scripts/multi-instance-selftest.mjs`, runs a build with the
 test-only `multi-selftest` feature against two stand-in instances
 (`scripts/fake-instance.mjs`) on Windows and macOS CI: storage, cookies, counters
