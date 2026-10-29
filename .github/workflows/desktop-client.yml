@@ -400,8 +400,8 @@ jobs:
           $stray = @(Stray | Where-Object { $before -notcontains $_ })
           if ($stray) { throw "The portable program wrote to the profile: $($stray -join ', ')" }
           if (!(Test-Path (Join-Path $unpacked 'mnema-data/data'))) { throw 'The portable program did not keep its data beside itself' }
-          # The engine's own folder is there too: no browser data in the profile.
-          if (!(Test-Path (Join-Path $unpacked 'mnema-data/data/EBWebView'))) { throw 'The portable program keeps its browser data elsewhere' }
+          # The browser engine's own folder (of the host or of a server) is there too.
+          if (!(Get-ChildItem (Join-Path $unpacked 'mnema-data') -Directory -Recurse -Filter EBWebView -ErrorAction SilentlyContinue)) { throw 'The portable program keeps its browser data elsewhere' }
       - name: Upload explicitly unsigned Windows DEV artifact
         if: inputs.acceptance_release == ''
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
