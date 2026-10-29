@@ -204,8 +204,6 @@ jobs:
           MNEMA_TEST_UPDATE_VERSION: ${{ env.FIXTURE_VERSION }}
           # Items written by keyring 3 (releases up to 0.3.x) stay readable (web_vault.rs).
           MNEMA_KEYRING_COMPAT: '1'
-          # One request to a public Let's Encrypt server on port 1012 (web_client.rs).
-          MNEMA_TEST_PUBLIC_TLS: '1'
         run: |
           cargo test --locked --manifest-path experimental/app/Cargo.toml --features shell,web-client,custom-protocol
           if ($LASTEXITCODE -ne 0) { throw 'Shared host tests failed' }
@@ -578,8 +576,6 @@ jobs:
           MNEMA_TEST_UPDATE_VERSION: ${{ env.FIXTURE_VERSION }}
           # Items written by keyring 3 (releases up to 0.3.x) stay readable (web_vault.rs).
           MNEMA_KEYRING_COMPAT: '1'
-          # One request to a public Let's Encrypt server on port 1012 (web_client.rs).
-          MNEMA_TEST_PUBLIC_TLS: '1'
         run: |
           cargo test --locked --manifest-path experimental/app/Cargo.toml --features shell,web-client,custom-protocol
           cargo test --locked --manifest-path experimental/app/Cargo.toml --features shell,web-client,custom-protocol public_https -- --ignored

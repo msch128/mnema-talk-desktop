@@ -2299,11 +2299,11 @@ mod shared_vectors {
     /// with a health document", never at a certificate or reachability
     /// sentence (the refusal sentences are covered by the unit tests above;
     /// badssl's expired-certificate host resets or stalls on some runners, so
-    /// it is no control here). Opt-in (MNEMA_TEST_PUBLIC_TLS=1, set by CI): it needs the
+    /// it is no control here). Opt-in (MNEMA_PUBLIC_TLS=1, set by public-tls.yml, not by the required checks): it needs the
     /// internet.
     #[tokio::test]
     async fn a_public_certificate_on_a_non_default_port_is_trusted() {
-        if std::env::var("MNEMA_TEST_PUBLIC_TLS").as_deref() != Ok("1") {
+        if std::env::var("MNEMA_PUBLIC_TLS").as_deref() != Ok("1") {
             return;
         }
         let origin = Url::parse("https://tls-v1-2.badssl.com:1012/").unwrap();
