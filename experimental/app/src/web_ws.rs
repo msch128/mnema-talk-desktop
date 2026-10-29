@@ -236,7 +236,16 @@ async fn run(
                 }
                 None => break true,
             },
-            () = close.notified() => break true,
+            () = close.notified() => {
+                // A browser socket writes what was queued before it closes.
+                while let Ok(text) = rx.try_recv() {
+                    let sent = tokio::time::timeout(WRITE_TIMEOUT, ws.send(Message::text(text))).await;
+                    if !matches!(sent, Ok(Ok(()))) {
+                        break;
+                    }
+                }
+                break true;
+            }
         }
     };
     // A peer that never answers the handshake is not waited for.
@@ -353,6 +362,39 @@ mod tests {
             assert!(sockets.send(1, "ok".into()).is_ok());
         }
         assert_eq!(sockets.send(1, "more".into()), Err("socket busy".into()));
+    }
+
+    #[tokio::test]
+    async fn texts_queued_before_a_close_are_written_first() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let instance = instance_with(listener, false).await;
+        let server = TcpListener::bind(addr).await.unwrap();
+        let (got_tx, got_rx) = tokio::sync::oneshot::channel();
+        tokio::spawn(async move {
+            let (stream, _) = server.accept().await.unwrap();
+            let mut ws = tokio_tungstenite::accept_async(stream).await.unwrap();
+            let mut texts = Vec::new();
+            while let Some(Ok(message)) = ws.next().await {
+                if let Message::Text(text) = message {
+                    texts.push(text.as_str().to_owned());
+                }
+            }
+            let _ = got_tx.send(texts);
+        });
+        let sockets = Arc::new(Sockets::default());
+        let (emit, mut events) = collector();
+        let id = open(&sockets, Arc::clone(&instance), false, emit).unwrap();
+        assert_eq!(next(&mut events).await, WsEvent::Open { id });
+        for n in 0..5 {
+            sockets.send(id, format!("m{n}")).unwrap();
+        }
+        sockets.close(id);
+        let texts = tokio::time::timeout(Duration::from_secs(5), got_rx)
+            .await
+            .expect("server saw the end")
+            .unwrap();
+        assert_eq!(texts, ["m0", "m1", "m2", "m3", "m4"]);
     }
 
     #[tokio::test]

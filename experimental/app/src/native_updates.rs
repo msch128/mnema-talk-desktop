@@ -785,8 +785,10 @@ async fn apply_pending<R: Runtime>(app: &AppHandle<R>) {
         return;
     }
     // The installer is only run on the strength of a trust statement fetched
-    // in this process: fetch it first (the main window is not up yet). If that
-    // fails the installer stays kept and the next start tries again.
+    // in this process: fetch it first. That runs off the start path, so the
+    // windows may already be open; the busy flag below keeps a check or an
+    // "Update now" from overlapping the apply. If the fetch fails the installer
+    // stays kept and the next start tries again.
     if state
         .inner
         .lock()
@@ -799,10 +801,19 @@ async fn apply_pending<R: Runtime>(app: &AppHandle<R>) {
     let Some((update, bytes)) = prepare_pending(app).await else {
         return;
     };
-    state.with(|i| {
+    let claimed = state.with(|i| {
+        if i.busy {
+            return false;
+        }
+        i.busy = true;
         i.snapshot.phase = Phase::Installing;
         i.snapshot.version = Some(update.version.clone());
+        true
     });
+    // Another run owns the updater right now: the installer stays kept.
+    if claimed != Some(true) {
+        return;
+    }
     let _ = open_window(app, false);
     // On macOS this may ask for the administrator password.
     let installed = tauri::async_runtime::spawn_blocking(move || update.install(&bytes)).await;
@@ -810,6 +821,7 @@ async fn apply_pending<R: Runtime>(app: &AppHandle<R>) {
         Ok(Ok(())) => app.restart(),
         _ => {
             discard_pending(&state);
+            state.with(|i| i.busy = false);
             fail(&state, Failure::Install);
         }
     }
