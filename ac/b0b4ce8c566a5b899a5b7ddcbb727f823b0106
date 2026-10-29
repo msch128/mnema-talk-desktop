@@ -1,0 +1,35 @@
+.gitleaks.toml
+  s_06fcde5dbef956::t_00c0e2d2bea798 40
+experimental/app/src/web_client.rs
+  s_06fcde5dbef956::t_c024aff7cc7473 332-342,512,518-519,629,640,646,649,2107-2182
+experimental/app/src/web_shell.rs
+  s_06fcde5dbef956::t_12a95ebf992720 47,893,1190
+linux/src/core/client.ts
+  s_06fcde5dbef956::t_f624ee037623d7 100-103,117
+linux/src/core/discover.ts
+  s_06fcde5dbef956::t_49d147550cd8d2 6-7,9,44,48,51
+linux/src/main/ipc.ts
+  s_06fcde5dbef956::t_2b214e90fcf91a 9,74
+linux/test/vectors.test.ts
+  s_06fcde5dbef956::t_ef45f3a78f6669 12,16-19,220-268
+scripts/check-native-test-vectors.mjs
+  s_06fcde5dbef956::t_f08e96839129aa 9,14
+test-vectors/host-errors.json
+  s_06fcde5dbef956::t_823e7b0581374e 1-208
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "acb0b4ce8c566a5b899a5b7ddcbb727f823b0106",
+  "prompts": {},
+  "sessions": {
+    "s_06fcde5dbef956": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "94b73314-95fe-4e96-8c43-d20b0f28358d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}
