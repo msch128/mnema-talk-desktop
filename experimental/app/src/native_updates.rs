@@ -1000,6 +1000,15 @@ pub fn native_update_action(
                 std::thread::spawn(move || crate::web_client::open_external(&url));
             }
         }
+        // The link of the footer: the page of the offered version, else of the
+        // installed one. The address is built here from the fixed prefix.
+        "release_page" => {
+            let snapshot = state.snapshot();
+            let version = snapshot.version.unwrap_or(snapshot.current);
+            if let Some(url) = release_page(&version) {
+                std::thread::spawn(move || crate::web_client::open_external(&url));
+            }
+        }
         "check" => {
             tauri::async_runtime::spawn(async move { check(&app, true).await });
         }

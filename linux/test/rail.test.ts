@@ -74,7 +74,7 @@ test('unread reports push the rail only: the menu is rebuilt when the list chang
 
 test('a failed start tells the person, and a second launch raises the window of the shell', () => {
   const main = read('../src/main/main.ts')
-  assert.match(main, /could not start[\s\S]*?dialog\.showErrorBox\(TITLE, message\)[\s\S]*?app\.exit\(1\)/)
+  assert.match(main, /could not start[\s\S]*?errorBox\(message\)[\s\S]*?app\.exit\(1\)/)
   assert.match(main, /second-instance[\s\S]*?raiseWindow\(running\)/)
   assert.match(read('../src/main/shell.ts'), /function raiseWindow[\s\S]*?isMinimized\(\)\) window\.restore\(\)/)
 })
