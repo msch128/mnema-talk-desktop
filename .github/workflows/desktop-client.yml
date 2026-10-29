@@ -369,14 +369,23 @@ jobs:
           if (!(Test-Path (Join-Path $unpacked 'mnema-portable.marker'))) { throw 'The unpacked ZIP has no portable marker' }
           function Installed { Get-ChildItem $env:LOCALAPPDATA -Include 'mnema-native-client-preview.exe','Mnema Desktop DEV.exe' -Recurse -Depth 3 -ErrorAction SilentlyContinue }
           if (Installed) { throw 'A copy is installed before the portable program ran' }
-          # The portable copy keeps its files beside the program: nothing named
-          # after it (the product or the identifier) may appear in the profile's
-          # local or roaming application data. Earlier steps of this job started
-          # other builds, so only what is new counts.
-          function Stray { foreach ($root in $env:LOCALAPPDATA, $env:APPDATA) { Get-ChildItem $root -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -like 'Mnema*' -or $_.Name -like 'com.mnema*' } | ForEach-Object FullName } }
-          $before = @(Stray)
+          # The portable copy keeps its files beside the program. Earlier steps of
+          # this job started other builds and left their folders in the profile
+          # (the folders are named after the identifier or the product), so the
+          # check is a snapshot of every file in them before and after: any file
+          # that appears or changes is a write the portable copy made there.
+          function Snap {
+            foreach ($root in $env:LOCALAPPDATA, $env:APPDATA) {
+              Get-ChildItem $root -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -like 'Mnema*' -or $_.Name -like 'com.mnema*' } | ForEach-Object {
+                $_.FullName
+                Get-ChildItem $_.FullName -Recurse -Force -File -ErrorAction SilentlyContinue | ForEach-Object { "$($_.FullName)|$($_.Length)|$($_.LastWriteTimeUtc.Ticks)" }
+              }
+            }
+          }
+          $before = @(Snap)
           Add-Type -AssemblyName UIAutomationClient
           $process = Start-Process -FilePath $exe -WorkingDirectory $unpacked -PassThru
+          $started = $process.StartTime
           try {
             $ready = $false
             for ($attempt = 0; $attempt -lt 60; $attempt++) {
@@ -397,11 +406,17 @@ jobs:
             if (!$process.HasExited) { Stop-Process -Id $process.Id -Force }
           }
           if (Installed) { throw 'The portable program installed a copy of itself' }
-          $stray = @(Stray | Where-Object { $before -notcontains $_ })
+          # The one allowed write is the note that the earlier profile files were carried over.
+          $stray = @(Snap | Where-Object { $before -notcontains $_ -and $_ -notlike '*\.adopted-by-portable|*' })
           if ($stray) { throw "The portable program wrote to the profile: $($stray -join ', ')" }
-          if (!(Test-Path (Join-Path $unpacked 'mnema-data/data'))) { throw 'The portable program did not keep its data beside itself' }
-          # The browser engine's own folder (of the host or of a server) is there too.
-          if (!(Get-ChildItem (Join-Path $unpacked 'mnema-data') -Directory -Recurse -Filter EBWebView -ErrorAction SilentlyContinue)) { throw 'The portable program keeps its browser data elsewhere' }
+          $kept = Join-Path $unpacked 'mnema-data'
+          if (!(Test-Path (Join-Path $kept 'data'))) { throw 'The portable program did not keep its data beside itself' }
+          # The browser engine writes into the portable folder: a file of an
+          # EBWebView folder written after the program started.
+          $engine = @(Get-ChildItem $kept -Directory -Recurse -Filter EBWebView -ErrorAction SilentlyContinue |
+            ForEach-Object { Get-ChildItem $_.FullName -Recurse -File -Force -ErrorAction SilentlyContinue } |
+            Where-Object { $_.LastWriteTime -ge $started })
+          if (!$engine) { throw 'The browser engine of the portable program wrote nothing beside it' }
       - name: Upload explicitly unsigned Windows DEV artifact
         if: inputs.acceptance_release == ''
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

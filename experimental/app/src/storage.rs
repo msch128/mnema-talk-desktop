@@ -12,9 +12,10 @@ use tauri::{AppHandle, Manager, Runtime};
 const PORTABLE_FOLDER: &str = "mnema-data";
 /// Overrides the folder of a portable copy; it must be an absolute path.
 const CHOSEN_FOLDER_VAR: &str = "MNEMA_DESKTOP_DATA_DIR";
-/// Written into the portable folder once the files of an earlier run (which
-/// kept them in the profile) were carried over; it keeps that to one time.
-const ADOPTED: &str = ".adopted";
+/// Written into the profile's data folder (not into the portable folder, so a
+/// reset of that one stays a reset) once the files of an earlier run were
+/// carried over completely; it keeps that to one time.
+const ADOPTED: &str = ".adopted-by-portable";
 
 /// The root of a portable copy's files: the chosen folder when it is an
 /// absolute path, else a folder beside the executable.
@@ -104,44 +105,70 @@ pub fn webview_on_default_storage<R: Runtime>(
 }
 
 /// A portable copy that ran before this folder existed kept its files in the
-/// profile. The first run copies them over (the profile's files stay, an
-/// installed copy may share them) so that nothing is lost. Call before anything
-/// reads the folders.
+/// profile. The first run copies the client's own files over (the profile's
+/// files stay, an installed copy may share them). The browser engine's folders
+/// are not copied, they are live databases: the pages sign in again. Call
+/// before anything reads the folders.
 pub fn adopt_profile_files<R: Runtime>(app: &AppHandle<R>) {
     let Some(root) = portable_root() else { return };
-    if root.join(ADOPTED).exists() {
-        return;
-    }
-    for (from, to) in [
-        (app.path().app_local_data_dir().ok(), root.join("data")),
-        (app.path().app_config_dir().ok(), root.join("config")),
-    ] {
-        if let Some(from) = from {
-            copy_missing(&from, &to);
-        }
-    }
-    let _ = std::fs::write(root.join(ADOPTED), b"1\n");
-}
-
-/// Copies what `to` does not have yet; a file that cannot be read (the engine
-/// of a running installed copy holds some) is left out. Links are not followed.
-pub fn copy_missing(from: &Path, to: &Path) {
-    let Ok(entries) = std::fs::read_dir(from) else {
+    let (Ok(data), Ok(config)) = (app.path().app_local_data_dir(), app.path().app_config_dir())
+    else {
         return;
     };
-    if std::fs::create_dir_all(to).is_err() {
-        return;
+    adopt(&data, &config, root);
+}
+
+/// The marker is only written when every file arrived; otherwise the next
+/// start tries again (nothing already copied is overwritten).
+fn adopt(profile_data: &Path, profile_config: &Path, root: &Path) -> bool {
+    let marker = profile_data.join(ADOPTED);
+    if !profile_data.is_dir() || marker.exists() {
+        return false;
     }
+    let complete = copy_missing(profile_data, &root.join("data"))
+        & copy_missing(profile_config, &root.join("config"));
+    complete && std::fs::write(&marker, b"1\n").is_ok()
+}
+
+/// The browser engine's folders and the marker are not the client's files.
+fn left_out(name: &str) -> bool {
+    name == "EBWebView" || name.starts_with("webview-probe-") || name == ADOPTED
+}
+
+/// Copies what `to` does not have yet, each file through a temporary name so a
+/// cut copy is never taken for a whole one. True when nothing failed (a missing
+/// `from` has nothing to copy). Links are not followed.
+pub fn copy_missing(from: &Path, to: &Path) -> bool {
+    let entries = match std::fs::read_dir(from) {
+        Ok(entries) => entries,
+        Err(e) => return e.kind() == std::io::ErrorKind::NotFound,
+    };
+    if std::fs::create_dir_all(to).is_err() {
+        return false;
+    }
+    let mut complete = true;
     for entry in entries.flatten() {
-        let (src, dst) = (entry.path(), to.join(entry.file_name()));
+        let name = entry.file_name();
+        if left_out(&name.to_string_lossy()) {
+            continue;
+        }
+        let (src, dst) = (entry.path(), to.join(&name));
         match entry.file_type() {
-            Ok(kind) if kind.is_dir() => copy_missing(&src, &dst),
+            Ok(kind) if kind.is_dir() => complete &= copy_missing(&src, &dst),
             Ok(kind) if kind.is_file() && !dst.exists() => {
-                let _ = std::fs::copy(&src, &dst);
+                let part = to.join(format!(".{}.part", name.to_string_lossy()));
+                let copied =
+                    std::fs::copy(&src, &part).is_ok() && std::fs::rename(&part, &dst).is_ok();
+                if !copied {
+                    let _ = std::fs::remove_file(&part);
+                }
+                complete &= copied;
             }
-            _ => {}
+            Ok(_) => {}
+            Err(_) => complete = false,
         }
     }
+    complete
 }
 
 #[cfg(test)]
@@ -204,8 +231,79 @@ mod tests {
             from.join("instances.json").exists(),
             "the profile's files stay"
         );
-        copy_missing(&base.join("missing"), &base.join("nowhere"));
+        assert!(copy_missing(&base.join("missing"), &base.join("nowhere")));
         assert!(!base.join("nowhere").exists());
+    }
+
+    #[test]
+    fn the_browser_engines_folders_are_never_copied() {
+        let base = scratch("engine");
+        let (from, to) = (base.join("profile"), base.join("portable"));
+        for dir in [
+            "EBWebView/Default",
+            "profiles/abc/EBWebView",
+            "profiles/abc",
+            "webview-probe-x",
+        ] {
+            std::fs::create_dir_all(from.join(dir)).unwrap();
+            std::fs::write(from.join(dir).join("db"), b"live").unwrap();
+        }
+        std::fs::write(from.join("profiles/abc/meta.json"), b"{}").unwrap();
+        assert!(copy_missing(&from, &to));
+        assert!(to.join("profiles/abc/meta.json").exists());
+        assert!(!to.join("EBWebView").exists());
+        assert!(!to.join("profiles/abc/EBWebView").exists());
+        assert!(!to.join("webview-probe-x").exists());
+    }
+
+    #[test]
+    fn a_failed_copy_is_retried_and_the_marker_stays_outside_the_portable_folder() {
+        let base = scratch("adopt");
+        let (data, config, root) = (
+            base.join("local"),
+            base.join("roaming"),
+            base.join("beside"),
+        );
+        std::fs::create_dir_all(data.join("web-trust")).unwrap();
+        std::fs::write(data.join("web-trust/state"), b"t").unwrap();
+        std::fs::write(data.join("instances.json"), b"i").unwrap();
+        std::fs::create_dir_all(&config).unwrap();
+        std::fs::write(config.join("gaming.json"), b"g").unwrap();
+        // A file where a folder must go: the copy fails.
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("data"), b"in the way").unwrap();
+        assert!(!adopt(&data, &config, &root));
+        assert!(!data.join(ADOPTED).exists(), "no marker after a failure");
+
+        std::fs::remove_file(root.join("data")).unwrap();
+        assert!(adopt(&data, &config, &root));
+        assert_eq!(
+            std::fs::read(root.join("data/instances.json")).unwrap(),
+            b"i"
+        );
+        assert_eq!(
+            std::fs::read(root.join("data/web-trust/state")).unwrap(),
+            b"t"
+        );
+        assert_eq!(
+            std::fs::read(root.join("config/gaming.json")).unwrap(),
+            b"g"
+        );
+        assert!(data.join(ADOPTED).exists());
+        assert!(!root.join(ADOPTED).exists());
+        assert!(!root.join("data").join(ADOPTED).exists());
+
+        // A reset of the portable folder stays a reset.
+        std::fs::remove_dir_all(&root).unwrap();
+        assert!(!adopt(&data, &config, &root));
+        assert!(!root.exists());
+    }
+
+    #[test]
+    fn nothing_is_written_to_a_profile_that_does_not_exist() {
+        let base = scratch("fresh");
+        assert!(!adopt(&base.join("l"), &base.join("r"), &base.join("p")));
+        assert!(!base.join("l").exists() && !base.join("p").exists());
     }
 
     /// Every folder the client writes to goes through this module; a direct
