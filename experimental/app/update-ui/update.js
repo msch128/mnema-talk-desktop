@@ -18,6 +18,8 @@ const T = de
       version: (v) => `Installiert: v${v}`,
       external: (v) => `Version ${v} ist verfügbar. Diese Installation wird von der Paketverwaltung verwaltet: lade das neue Paket von der Release-Seite.`,
       downloadPage: 'Release-Seite öffnen',
+      releaseLink: 'Release-Hinweise und Download-Seite',
+      copy: 'Fehler kopieren', copied: 'Kopiert',
       portable: (v) => `Version ${v} ist verfügbar. Diese portable Kopie aktualisiert sich nicht selbst: lade das neue portable ZIP von der Release-Seite.`,
     }
   : {
@@ -35,11 +37,44 @@ const T = de
       version: (v) => `Installed: v${v}`,
       external: (v) => `Version ${v} is available. This installation is managed by your package manager: download the new package from the release page.`,
       downloadPage: 'Open release page',
+      releaseLink: 'Release notes / download page',
+      copy: 'Copy error', copied: 'Copied',
       portable: (v) => `Version ${v} is available. This portable copy does not update itself: download the new portable ZIP from the release page.`,
     };
 
+// The full text of a failure for a bug report: the sentence shown and the technical detail behind it.
+function errorText(s) {
+  const detail = [`error=${s.error || 'unknown'}`, `phase=${s.phase}`, `installed=v${s.current}`];
+  if (s.version) detail.push(`version=${s.version}`);
+  if (s.mode) detail.push(`mode=${s.mode}`);
+  if (s.portable) detail.push('portable');
+  if (s.external) detail.push('external');
+  return `${T.title.failed}: ${detailFor(s)}\n(${detail.join(', ')}; ${navigator.userAgent})`;
+}
+
+// The clipboard API needs a secure context; the selection command works without one.
+async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch (_) {
+    const area = document.createElement('textarea');
+    area.value = text;
+    area.style.position = 'fixed';
+    area.style.opacity = '0';
+    document.body.append(area);
+    area.select();
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch (_) { /* not copyable here */ }
+    area.remove();
+    return ok;
+  }
+}
+
 const $ = (id) => document.getElementById(id);
 let last = '';
+let shown = null;
+let copiedTimer = 0;
 
 function button(label, action, primary) {
   const b = document.createElement('button');
@@ -92,7 +127,11 @@ function render(s) {
   document.title = T.title[s.phase] || T.title.idle;
   $('title').textContent = T.title[s.phase] || T.title.idle;
   document.querySelector('.mark').className = 'mark' + (s.phase === 'failed' ? ' err' : '');
+  shown = s;
   $('detail').textContent = detailFor(s);
+  clearTimeout(copiedTimer);
+  $('copy').hidden = s.phase !== 'failed';
+  $('copy').textContent = T.copy;
   const notes = $('notes');
   notes.hidden = !(s.notes && (s.phase === 'available' || s.phase === 'ready'));
   notes.textContent = s.notes || '';
@@ -108,6 +147,7 @@ function render(s) {
   $('skip').hidden = !skippable;
   $('skip').textContent = T.skip;
   $('version').textContent = T.version(s.current);
+  $('release').textContent = T.releaseLink;
 }
 
 async function act(action) {
@@ -118,6 +158,13 @@ async function poll() {
   try { render(await invoke('native_update_state')); } catch (_) { /* host gone */ }
 }
 
+$('release').addEventListener('click', () => act('release_page'));
+$('copy').addEventListener('click', async () => {
+  if (!shown || !(await copyText(errorText(shown)))) return;
+  $('copy').textContent = T.copied;
+  clearTimeout(copiedTimer);
+  copiedTimer = setTimeout(() => { $('copy').textContent = T.copy; }, 2000);
+});
 $('skip').addEventListener('click', () => act('skip'));
 poll();
 setInterval(poll, 500);

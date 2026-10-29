@@ -25,11 +25,12 @@ header { display: flex; align-items: center; gap: 10px; }
 .mark { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); flex: none; }
 .mark.err { background: var(--danger); }
 h1 { margin: 0; font-size: 17px; font-weight: 600; letter-spacing: -0.01em; }
-.detail { margin: 0; color: var(--muted); }
+.detail { margin: 0; color: var(--muted); user-select: text; -webkit-user-select: text; cursor: text; overflow-wrap: anywhere; }
+.copy { align-self: flex-start; margin-top: -6px; }
 .notes {
   margin: 0; padding: 10px 12px; max-height: 96px; overflow: auto;
   background: var(--surface); border: 1px solid var(--hairline); border-radius: 8px;
-  color: var(--muted); font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere;
+  color: var(--muted); font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; -webkit-user-select: text;
 }
 .bar { height: 6px; background: var(--surface); border: 1px solid var(--hairline); border-radius: 999px; overflow: hidden; }
 .bar span { display: block; height: 100%; width: 0; background: var(--accent); transition: width .2s ease; }
@@ -45,7 +46,7 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
 button.primary:hover { background: var(--accent-hover); }
 button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 button:disabled { opacity: .5; cursor: default; }
-footer { display: flex; justify-content: space-between; align-items: center; color: var(--muted); font-size: 12px; }
+footer { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; color: var(--muted); font-size: 12px; }
 .mono { font-family: "JetBrains Mono", ui-monospace, Consolas, monospace; }
 .link { background: none; border: 0; padding: 2px 0; color: var(--muted); text-decoration: underline; font-size: 12px; }
 .link:hover { background: none; color: var(--text); }

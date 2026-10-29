@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
-import { LATEST_RELEASE_URL, PINNED_BUNDLE_KEYS, ROOT_PUB, TRUST_SIG_URL, TRUST_URL, UPDATER_ENDPOINTS, UPDATER_PUBKEY } from '../src/core/pinned.ts'
+import { LATEST_RELEASE_URL, PINNED_BUNDLE_KEYS, RELEASES_PAGE, ROOT_PUB, TRUST_SIG_URL, TRUST_URL, UPDATER_ENDPOINTS, UPDATER_PUBKEY, releasePage } from '../src/core/pinned.ts'
 
 const app = (name: string) => readFileSync(new URL(`../../experimental/app/${name}`, import.meta.url), 'utf8')
 
@@ -25,4 +25,9 @@ test('the package version is the version of the Tauri app', () => {
   const conf = JSON.parse(app('tauri.conf.json')) as { version: string }
   const own = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { version: string }
   assert.equal(own.version, conf.version)
+})
+
+test('the release page of a version is built from the fixed repository address', () => {
+  assert.equal(releasePage('1.4.2'), 'https://github.com/msch128/mnema-talk-desktop/releases/tag/v1.4.2')
+  for (const odd of ['', 'latest', '1.4', '1.4.2-rc1', '../../evil', '1.4.2/../x', 'v1.4.2', '01.4.2']) assert.equal(releasePage(odd), RELEASES_PAGE, odd)
 })

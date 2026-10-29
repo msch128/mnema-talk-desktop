@@ -201,6 +201,55 @@ describe('update page', () => {
     expect(await first({ phase: 'ready', version: '2' })).toEqual([{ action: 'now' }])
   })
 
+  it('links to the release page through the host, in every phase', async () => {
+    for (const snapshot of [{}, { phase: 'available', version: '2' }, { phase: 'available', version: '2', portable: true }, { phase: 'failed', error: 'offline' }]) {
+      await open(snapshot)
+      const link = document.getElementById('release') as HTMLButtonElement
+      expect(link.hidden).toBe(false)
+      expect(link.textContent).toBe('Release notes / download page')
+      invoke.mockClear()
+      link.click()
+      expect(invoke.mock.calls.filter((c) => c[0] === 'native_update_action').map((c) => c[1])).toEqual([{ action: 'release_page' }])
+    }
+    await open({}, 'de-DE')
+    expect(text('release')).toBe('Release-Hinweise und Download-Seite')
+  })
+
+  it('lets a failure be selected and copied with its technical detail', async () => {
+    const writeText = vi.fn(async () => undefined)
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+    await open({ phase: 'available', version: '2' })
+    expect(document.getElementById('copy')!.hidden).toBe(true)
+    await open({ phase: 'failed', version: '2', error: 'verify', mode: 'now', portable: true })
+    const copy = document.getElementById('copy') as HTMLButtonElement
+    expect(copy.hidden).toBe(false)
+    expect(copy.textContent).toBe('Copy error')
+    copy.click()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(writeText).toHaveBeenCalledOnce()
+    const copied = (writeText.mock.calls[0] as unknown as [string])[0]
+    expect(copied).toContain('The update signature does not match. It was not installed.')
+    expect(copied).toContain('error=verify')
+    expect(copied).toContain('installed=v0.1.0')
+    expect(copied).toContain('version=2')
+    expect(copy.textContent).toBe('Copied')
+    await vi.advanceTimersByTimeAsync(2100)
+    expect(copy.textContent).toBe('Copy error')
+    // The sentence itself is selectable text.
+    expect(readFileSync(resolve(dir, 'update.css'), 'utf8')).toMatch(/\.detail \{[^}]*user-select: text/)
+  })
+
+  it('falls back to the selection command where the clipboard API is missing', async () => {
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText: async () => { throw new Error('denied') } }, configurable: true })
+    const exec = vi.fn(() => true)
+    Object.defineProperty(document, 'execCommand', { value: exec, configurable: true })
+    await open({ phase: 'failed', error: 'offline' })
+    document.getElementById('copy')!.click()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(exec).toHaveBeenCalledWith('copy')
+    expect(text('copy')).toBe('Copied')
+  })
+
   it('ships no inline script or handler, and loads nothing remote', () => {
     expect(html).not.toMatch(/<script(?![^>]*\ssrc=)|\son\w+=|https?:\/\//i)
     expect(script).not.toMatch(/fetch\(|XMLHttpRequest|innerHTML|eval\(/)

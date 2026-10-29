@@ -10,7 +10,7 @@ import { SELECTOR_ONLY } from '../core/client.ts'
 import { type Args, wholeNumber } from '../core/ipcargs.ts'
 import { socketRequest, type WsEvent } from '../core/sockets.ts'
 import { bundled, localOrigin, pickerUi, updateUi } from '../core/origin.ts'
-import { RELEASES_PAGE } from '../core/pinned.ts'
+import { RELEASES_PAGE, releasePage } from '../core/pinned.ts'
 import type { Context, Role } from './context.ts'
 import { handle, mainFrameUrl } from './handle.ts'
 import { pickerChoose, pickerSources } from './permissions.ts'
@@ -135,6 +135,8 @@ async function run(ctx: Context, from: Caller, command: string, args: Args): Pro
         case 'now': if (external) void shell.openExternal(RELEASES_PAGE); else void updater.install('now'); break
         case 'later': if (external) void shell.openExternal(RELEASES_PAGE); else void updater.install('later'); break
         case 'download_page': void shell.openExternal(RELEASES_PAGE); break
+        // The footer link: the page of the offered version, else of the installed one; the address is built here.
+        case 'release_page': { const snap = updater.snapshot(); void shell.openExternal(releasePage(snap.version ?? snap.current)); break }
         case 'skip': updater.skip(); break
         case 'close': ctx.windows.updater?.close(); break
         default: throw new Error('Unknown action.')

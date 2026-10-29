@@ -9,14 +9,14 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import tls from 'node:tls'
-import { app, dialog, protocol } from 'electron'
+import { app, protocol } from 'electron'
 import { APP_SCHEME, PICKER_PREFIX, UI_PREFIX } from '../core/origin.ts'
 import { passwordStoreSwitch } from '../core/osvault.ts'
-import { TITLE } from '../core/title.ts'
 import { Trusted, defaultDeps } from '../core/trusted.ts'
 import { updatesDisabled } from '../core/updates.ts'
 import { CHECK_INTERVAL_SECS } from '../core/store.ts'
 import { loadAssets } from './assets.ts'
+import { errorBox } from './errorbox.ts'
 import { PARTITIONS, type Context } from './context.ts'
 import { registerIpc } from './ipc.ts'
 import { buildMenu } from './menu.ts'
@@ -58,7 +58,7 @@ let running: Context | null = null
 async function start(): Promise<void> {
   if (sandboxDisabled((name) => app.commandLine.hasSwitch(name), process.env) && !sandboxAccepted(process.env)) {
     console.error(SANDBOX_MESSAGE)
-    dialog.showErrorBox(TITLE, SANDBOX_MESSAGE)
+    await errorBox(SANDBOX_MESSAGE)
     app.exit(1)
     return
   }
@@ -145,11 +145,11 @@ if (!app.requestSingleInstanceLock()) {
     if (running) raiseWindow(running)
   })
   app.on('window-all-closed', () => app.quit())
-  void app.whenReady().then(start).catch((error: unknown) => {
+  void app.whenReady().then(start).catch(async (error: unknown) => {
     const message = `Mnema Desktop could not start: ${String(error)}`
     console.error(message)
     // A program started from a launcher has no terminal: the person must be told why nothing appears.
-    dialog.showErrorBox(TITLE, message)
+    await errorBox(message)
     app.exit(1)
   })
 }
