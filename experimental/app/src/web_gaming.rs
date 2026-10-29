@@ -1344,7 +1344,9 @@ mod tests {
         write_atomic(&file, b"{\"old\":1}").unwrap();
         write_atomic(&file, b"{\"new\":2}").unwrap();
         assert_eq!(std::fs::read(&file).unwrap(), b"{\"new\":2}");
-        assert!(!file.with_extension("tmp").exists());
+        let mut partial = file.as_os_str().to_owned();
+        partial.push(".partial");
+        assert!(!std::path::PathBuf::from(partial).exists());
         let _ = std::fs::remove_dir_all(&dir);
     }
     fn ptt_talk() -> Gaming {

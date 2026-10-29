@@ -148,6 +148,8 @@ impl Notifier {
                 }
             }
             _ => {
+                // The newest toast supersedes one still waiting for its flush.
+                state.held.remove(server);
                 state.last.insert(server.to_owned(), now);
                 Offer::Show(toast)
             }
@@ -491,6 +493,26 @@ mod tests {
             n.offer("a", t + MIN_GAP + ms(2), toast(5)),
             Offer::Show(_)
         ));
+    }
+
+    #[test]
+    fn a_toast_shown_after_the_gap_supersedes_the_held_one() {
+        let n = Notifier::default();
+        let t = Instant::now();
+        let ms = Duration::from_millis;
+        assert!(matches!(n.offer("a", t, toast(1)), Offer::Show(_)));
+        assert!(matches!(
+            n.offer("a", t + ms(100), toast(2)),
+            Offer::Held { .. }
+        ));
+        assert!(matches!(
+            n.offer("a", t + MIN_GAP + ms(1), toast(3)),
+            Offer::Show(_)
+        ));
+        assert!(
+            n.take_held("a", t + MIN_GAP + ms(2)).is_none(),
+            "the older held toast is not shown after the newer one"
+        );
     }
 
     #[test]

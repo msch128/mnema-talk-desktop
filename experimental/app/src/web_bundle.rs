@@ -511,6 +511,9 @@ const STATE_FILE: &str = "state.json";
 const STATE_BACKUP: &str = "state.json.bak";
 /// Why a bundle did not verify when its signer is simply not trusted (now).
 /// Such a file stays on disk: the key may be trusted again.
+/// A cached file that could not be read (a sharing lock, a scan): it may be
+/// fine next start, so it is kept.
+const UNREADABLE: &str = "unreadable";
 const NOT_TRUSTED: &str = "signature does not match a trusted key";
 
 /// The recorded marks. A state file that is there but cannot be parsed falls
@@ -586,10 +589,14 @@ impl Store {
                 .map(|n| n.to_string_lossy().into_owned())
                 .unwrap_or_default();
             let loaded = std::fs::metadata(&path)
-                .ok()
-                .filter(|m| m.len() <= MAX_ZIP)
-                .and_then(|_| std::fs::read(&path).ok())
-                .ok_or_else(|| "unreadable".to_owned())
+                .map_err(|_| UNREADABLE.to_owned())
+                .and_then(|m| {
+                    if m.len() > MAX_ZIP {
+                        Err("file too large".to_owned())
+                    } else {
+                        std::fs::read(&path).map_err(|_| UNREADABLE.to_owned())
+                    }
+                })
                 .and_then(|bytes| verify(&bytes, keys))
                 .and_then(|bundle| {
                     if bundle.version == named {
@@ -612,10 +619,11 @@ impl Store {
                 }
                 Err(reason) => {
                     // A file nobody can use is removed; one whose signer is
-                    // not trusted right now stays, the key may return.
+                    // not trusted right now stays, the key may return, and so
+                    // does one that could not be read, a lock may be gone.
                     if reason == NOT_TRUSTED {
                         withdrawn = true;
-                    } else {
+                    } else if reason != UNREADABLE {
                         let _ = std::fs::remove_file(&path);
                     }
                     rejected.push(name);
@@ -1704,6 +1712,31 @@ mod tests {
                 .unwrap(),
             Version(0, 8, 1)
         );
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_cached_bundle_that_cannot_be_read_is_kept_for_the_next_start() {
+        use std::os::unix::fs::PermissionsExt;
+        let d = dir("locked");
+        let mut store = Store::load(Some(&d), Some(&bundle(&Spec::new("0.8.0"))), &trusted(7));
+        store
+            .install(&bundle(&Spec::new("0.8.1")), &trusted(7))
+            .unwrap();
+        let path = d.join("mnema-web-0.8.1.zip");
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o000)).unwrap();
+        // A superuser reads through the mode; the test only means something without.
+        if std::fs::read(&path).is_ok() {
+            let _ = std::fs::remove_dir_all(&d);
+            return;
+        }
+        let locked = Store::load(Some(&d), Some(&bundle(&Spec::new("0.8.0"))), &trusted(7));
+        assert_eq!(locked.rejected, vec!["mnema-web-0.8.1.zip".to_owned()]);
+        assert!(path.exists(), "a read failure does not delete the file");
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+        let again = Store::load(Some(&d), Some(&bundle(&Spec::new("0.8.0"))), &trusted(7));
+        assert_eq!(again.newest().unwrap().bundle.version, Version(0, 8, 1));
         let _ = std::fs::remove_dir_all(&d);
     }
 

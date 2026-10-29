@@ -537,17 +537,7 @@ pub(crate) fn parse_community_name(bytes: &[u8]) -> Option<String> {
 const MAX_NAME_CHARS: usize = 80;
 
 fn clean_name(raw: &str) -> Option<String> {
-    let cleaned: String = raw
-        .chars()
-        .map(|c| if c.is_control() { ' ' } else { c })
-        .collect();
-    let name: String = cleaned
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ")
-        .chars()
-        .take(MAX_NAME_CHARS)
-        .collect();
+    let name = super::web_notify::clean(raw, MAX_NAME_CHARS);
     (!name.is_empty()).then_some(name)
 }
 
@@ -556,7 +546,6 @@ pub(crate) async fn discover(origin: &Url) -> Result<(ServerInfo, Option<String>
     let bytes = fetch_health(origin).await?;
     Ok((parse_health(&bytes)?, parse_community_name(&bytes)))
 }
-
 
 /// Why the instance could not be reached, in words the person can act on. The
 /// innermost cause (for SChannel the HRESULT text) is kept, short, so a report
@@ -640,11 +629,7 @@ async fn fetch_health(origin: &Url) -> Result<Vec<u8>, String> {
         return Err(UNAVAILABLE.into());
     }
     let mut bytes = Vec::new();
-    while let Some(chunk) = response
-        .chunk()
-        .await
-        .map_err(|_| CHECK_FAILED)?
-    {
+    while let Some(chunk) = response.chunk().await.map_err(|_| CHECK_FAILED)? {
         if chunk.len() > MAX_DISCOVERY_BYTES.saturating_sub(bytes.len()) {
             return Err(INVALID_RESPONSE.into());
         }
@@ -1283,7 +1268,10 @@ mod tests {
         assert!(unreachable_reason(&timeout).starts_with("The instance did not answer"));
         let dns = layered(
             "error sending request",
-            Layer("dns error: failed to lookup address information".into(), None),
+            Layer(
+                "dns error: failed to lookup address information".into(),
+                None,
+            ),
         );
         assert!(unreachable_reason(&dns).starts_with("The instance address could not be resolved"));
         let other = Layer("something odd".into(), None);
@@ -1310,8 +1298,13 @@ mod tests {
             "https://letsencrypt.org/",
         ] {
             let response = client.get(host).send().await;
-            let status = response.map(|r| r.status()).map_err(|e| unreachable_reason(&e));
-            assert!(status.as_ref().is_ok_and(|s| s.is_success()), "{host}: {status:?}");
+            let status = response
+                .map(|r| r.status())
+                .map_err(|e| unreachable_reason(&e));
+            assert!(
+                status.as_ref().is_ok_and(|s| s.is_success()),
+                "{host}: {status:?}"
+            );
         }
     }
 
@@ -1349,6 +1342,14 @@ mod tests {
             Some(80)
         );
         assert_eq!(name("not JSON"), None);
+        assert_eq!(
+            name(&format!(
+                r#"{{{ok},"community_name":"\u202eenilno\u200b \u2066x"}}"#
+            ))
+            .as_deref(),
+            Some("enilno x"),
+            "bidi overrides, isolates and zero-width characters are dropped"
+        );
     }
 
     #[test]
@@ -2122,25 +2123,40 @@ mod shared_vectors {
         let sent: BTreeMap<&str, String> = BTreeMap::from([
             ("enterAddress", address("a\u{1}b").unwrap_err()),
             ("invalidAddress", address("a b").unwrap_err()),
-            ("httpsOrigin", address("https://user@example.org").unwrap_err()),
+            (
+                "httpsOrigin",
+                address("https://user@example.org").unwrap_err(),
+            ),
             ("initHttps", NO_HTTPS.to_owned()),
             ("refused", reach(ErrorKind::ConnectionRefused)),
             ("timeout", reach(ErrorKind::TimedOut)),
-            ("dns", plain("dns error: failed to lookup address information")),
+            (
+                "dns",
+                plain("dns error: failed to lookup address information"),
+            ),
             ("certificate", plain("the certificate is not trusted")),
             ("unreachable", plain("odd")),
             ("unavailable", UNAVAILABLE.to_owned()),
             ("checkFailed", CHECK_FAILED.to_owned()),
             ("invalidResponse", INVALID_RESPONSE.to_owned()),
             ("instanceNeedsUpdate", parse_health(b"{}").unwrap_err()),
-            ("notCompatible", parse_health(br#"{"status":"down"}"#).unwrap_err()),
+            (
+                "notCompatible",
+                parse_health(br#"{"status":"down"}"#).unwrap_err(),
+            ),
             ("noBundle", Refusal::NoBundle.to_string()),
             ("serverNewer", Refusal::ServerNewer.to_string()),
             (
                 "serverTooOld",
-                Refusal::ServerTooOld { needs: Version(0, 8, 9) }.to_string(),
+                Refusal::ServerTooOld {
+                    needs: Version(0, 8, 9),
+                }
+                .to_string(),
             ),
-            ("contractRetired", Refusal::ServerContractRetired.to_string()),
+            (
+                "contractRetired",
+                Refusal::ServerContractRetired.to_string(),
+            ),
             ("signerWithdrawn", Refusal::SignerWithdrawn.to_string()),
             ("rolledBack", Refusal::RolledBack.to_string()),
             ("alreadyListed", AddError::Known(String::new()).to_string()),
@@ -2154,7 +2170,13 @@ mod shared_vectors {
             .as_array()
             .unwrap()
             .iter()
-            .filter(|s| s["clients"].as_array().unwrap().iter().any(|c| *c == "rust"))
+            .filter(|s| {
+                s["clients"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|c| *c == "rust")
+            })
             .collect();
         let mut ids: Vec<&str> = mine.iter().map(|s| s["id"].as_str().unwrap()).collect();
         ids.sort_unstable();
