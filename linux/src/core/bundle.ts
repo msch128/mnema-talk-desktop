@@ -131,11 +131,11 @@ export class Bundle {
 
 export class BundleError extends Error {}
 
-/** A release the store deliberately turned down (already held, below the floor): looked at, not a failure to retry. */
+/** A release turned down for good (already held, below the floor, fails verification): looked at, not a failure to retry. */
 export class BundleRefused extends BundleError {}
 
 function fail(message: string): never {
-  throw new BundleError(message)
+  throw new BundleRefused(message)
 }
 
 function readEntry(zip: ZipArchive, index: number, limit: number): Uint8Array {
