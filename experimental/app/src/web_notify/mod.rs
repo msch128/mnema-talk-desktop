@@ -305,7 +305,11 @@ async fn show(app: &tauri::AppHandle, server: &str, toast: Toast) -> Result<bool
             let slot = registry.slot(server).ok_or("No instance is selected.")?;
             (
                 slot.generation.clone(),
-                tagged(&toast.title, &slot.name(), registry.len() > 1),
+                tagged(
+                    &toast.title,
+                    &registry.display_name(slot),
+                    registry.len() > 1,
+                ),
             )
         };
         platform::show(

@@ -8,7 +8,7 @@ import { BaseWindow, BrowserWindow, Menu, app, dialog, shell, type WebContents }
 import { prepareAttachment } from './sessions.ts'
 import { RendererRecovery } from '../core/recovery.ts'
 import { TITLE } from '../core/title.ts'
-import { APP_URL, appApi, bundled, parseUrl, pickerUi, updateUi } from '../core/origin.ts'
+import { APP_URL, appApi, bundled, dialogUi, parseUrl, pickerUi, updateUi } from '../core/origin.ts'
 import { externalAllowed } from '../core/client.ts'
 import { PARTITIONS, attachmentPartition, type Context, type Role } from './context.ts'
 
@@ -30,6 +30,7 @@ function allowed(role: Role, url: URL): boolean {
     case 'attachment': return appApi(url)
     case 'updater': return updateUi(url)
     case 'picker': return pickerUi(url)
+    case 'dialog': return dialogUi(url)
   }
 }
 
@@ -116,6 +117,10 @@ export function appPreload(): string {
 
 export function railPreload(): string {
   return join(import.meta.dirname, '..', 'preload', 'rail.cjs')
+}
+
+export function dialogPreload(): string {
+  return join(import.meta.dirname, '..', 'preload', 'dialog.cjs')
 }
 
 interface Options {

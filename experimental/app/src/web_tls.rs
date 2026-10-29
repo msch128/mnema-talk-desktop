@@ -197,7 +197,7 @@ pub(crate) mod tests {
     #[tokio::test]
     async fn health_is_read_from_a_server_that_offers_only_tls_1_3() {
         let origin = serve(TLS13_ONLY, Serves::Health, true).await;
-        let (info, name) = crate::web_client::discover(&origin).await.unwrap();
+        let (info, name, _) = crate::web_client::discover(&origin).await.unwrap();
         assert_eq!(name.as_deref(), Some("Tls Test"));
         assert_eq!(info.version, Some(crate::web_bundle::Version(1, 3, 0)));
     }

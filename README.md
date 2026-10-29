@@ -49,7 +49,16 @@ There is no external security audit.
   Ctrl+1 to Ctrl+9 (Cmd on macOS), drag or Alt+arrow to reorder, and remove one
   from its menu (right-click or Delete). The same menu sets your notification
   level for that server (all messages, only mentions, mute) on servers that
-  support it (Mnema Talk 1.2 and newer). One account per server, no federation:
+  support it (Mnema Talk 1.2 and newer). Group servers in folders (drop one
+  server onto another, or "Add to folder" in the menu), name a folder and give it
+  a colour, close it to a small grid of its servers with the total of its
+  mentions, and rename a server for this device only: the name the server gives
+  itself stays in the tooltip. The menu is the system's own, so it is never cut
+  off by the server's page. Where the server's Owner has set an icon for the
+  community, the rail shows it (fetched from that server only, as a png or webp
+  of at most 1 MiB, kept next to the other data of the server). Folders, names
+  and order are kept in the list of servers, next to the exe in the portable
+  build. One account per server, no federation:
   every server has its own session in the keychain, its own browser storage
   (a WebView2 profile per server on Windows, a data store per server on macOS
   14 and newer, a session partition on Linux) and its own connection. Removing a

@@ -1,5 +1,6 @@
 import { readBody, send } from './http.ts'
 import { parseCommunityName, parseHealth } from './client.ts'
+import { iconWanted } from './icon.ts'
 import type { ServerInfo } from './store.ts'
 
 const MAX_DISCOVERY_BYTES = 16 * 1024
@@ -49,5 +50,5 @@ export async function discover(origin: URL, timeoutMs = 10_000): Promise<ServerI
   }
   const bytes = await readBody(response, MAX_DISCOVERY_BYTES)
   if (!bytes) throw new Error(INVALID_RESPONSE)
-  return { ...parseHealth(bytes), communityName: parseCommunityName(bytes) }
+  return { ...parseHealth(bytes), communityName: parseCommunityName(bytes), communityIcon: iconWanted(bytes) }
 }

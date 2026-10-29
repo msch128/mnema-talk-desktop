@@ -3,7 +3,7 @@ import type { SelfUpdater } from '../core/selfupdate.ts'
 import type { Trusted } from '../core/trusted.ts'
 
 /** The kinds of page, each with its own session, handler and commands. */
-export type Role = 'rail' | 'selector' | 'instance' | 'attachment' | 'updater' | 'picker'
+export type Role = 'rail' | 'selector' | 'instance' | 'attachment' | 'updater' | 'picker' | 'dialog'
 
 /** Fixed partitions of the host's own pages. A server's page and attachment window get theirs from its id (`serverPartition`). */
 export const PARTITIONS = {
@@ -11,6 +11,7 @@ export const PARTITIONS = {
   selector: 'mnema-selector',
   updater: 'mnema-updater',
   picker: 'mnema-picker',
+  dialog: 'mnema-dialog',
 } as const
 
 /** The partition of the single-server client: it belongs to no one server, so its browser storage (end-to-end state) is wiped, never handed on. */

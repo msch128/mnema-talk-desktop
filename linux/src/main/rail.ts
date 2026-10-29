@@ -5,12 +5,14 @@
  * they send.
  */
 import type { IpcMainInvokeEvent } from 'electron'
-import { type Args, wholeNumber } from '../core/ipcargs.ts'
+import { type Args } from '../core/ipcargs.ts'
 import { localOrigin } from '../core/origin.ts'
 import { validId } from '../core/instances.ts'
+import { parseDialogSpec, parseEdit, parseMenuSpec } from '../core/railui.ts'
 import type { Context } from './context.ts'
 import { handle, mainFrameUrl } from './handle.ts'
-import { activate, cancelAdding, moveServer, railSnapshot, reconnect, removeServer, startAdding } from './shell.ts'
+import { showDialog, showMenu } from './railui.ts'
+import { activate, cancelAdding, editLayout, railSnapshot, reconnect, removeServer, startAdding } from './shell.ts'
 
 function fromRail(ctx: Context, event: IpcMainInvokeEvent): boolean {
   const rail = ctx.shell.rail
@@ -25,15 +27,30 @@ function serverId(args: Args): string {
   return value
 }
 
+function specText(args: Args): string {
+  const value = args.spec
+  if (typeof value !== 'string' || value.length > 8192) throw new Error('invalid arguments')
+  return value
+}
+
+function coordinate(args: Args, name: string): number {
+  const value = args[name]
+  if (typeof value !== 'number' || !Number.isFinite(value) || Math.abs(value) > 100_000) throw new Error('invalid arguments')
+  return value
+}
+
 async function run(ctx: Context, command: string, args: Args): Promise<unknown> {
   switch (command) {
     case 'rail_state': return railSnapshot(ctx)
     case 'rail_activate': activate(ctx, serverId(args)); return null
     case 'rail_add': startAdding(ctx); return null
     case 'rail_cancel_add': cancelAdding(ctx); return null
-    case 'rail_move': {
-      moveServer(ctx, serverId(args), wholeNumber(args, 'to'))
-      return null
+    case 'rail_edit': editLayout(ctx, parseEdit(args)); return null
+    case 'rail_menu': showMenu(ctx, parseMenuSpec(specText(args)), coordinate(args, 'x'), coordinate(args, 'y')); return null
+    case 'rail_dialog': return showDialog(ctx, parseDialogSpec(specText(args)))
+    case 'rail_icon': {
+      const id = serverId(args)
+      return ctx.trusted.registry.contains(id) ? ctx.trusted.icons.dataUrl(id) : null
     }
     case 'rail_remove': await removeServer(ctx, serverId(args)); return null
     case 'rail_reconnect': await reconnect(ctx, serverId(args)); return null

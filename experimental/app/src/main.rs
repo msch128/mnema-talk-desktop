@@ -7,6 +7,14 @@ mod local_route;
 #[cfg(feature = "web-client")]
 mod native_updates;
 #[cfg(feature = "web-client")]
+mod rail_dialog;
+#[cfg(feature = "web-client")]
+mod rail_icon;
+#[cfg(feature = "web-client")]
+mod rail_layout;
+#[cfg(feature = "web-client")]
+mod rail_menu;
+#[cfg(feature = "web-client")]
 mod rail_notify;
 #[cfg(feature = "multi-selftest")]
 mod selftest_multi;
