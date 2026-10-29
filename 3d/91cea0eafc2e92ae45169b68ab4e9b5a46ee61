@@ -1,0 +1,23 @@
+linux/src/core/discover.ts
+  s_06fcde5dbef956::t_5b69685199a3e7 7-26,36-37
+linux/test/discover.test.ts
+  s_06fcde5dbef956::t_214fc0f1e8440a 1-25
+linux/test/e2e/app.e2e.ts
+  s_06fcde5dbef956::t_cd192d75547fb0 95
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3d91cea0eafc2e92ae45169b68ab4e9b5a46ee61",
+  "prompts": {},
+  "sessions": {
+    "s_06fcde5dbef956": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "94b73314-95fe-4e96-8c43-d20b0f28358d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}
