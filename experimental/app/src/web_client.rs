@@ -382,9 +382,13 @@ pub fn identity_script(app: &tauri::AppHandle, role: &str, held: Option<&Held>) 
         "capabilities": capabilities(role),
     });
     format!(
-        "if(window===window.top)Object.defineProperty(window,'__MNEMA_TRUSTED_APP__',{{value:Object.freeze({identity})}});"
+        "{BUFFERED_BODIES}\nif(window===window.top)Object.defineProperty(window,'__MNEMA_TRUSTED_APP__',{{value:Object.freeze({identity})}});"
     )
 }
+
+/// Makes the page read a picked file itself before it sends it: the webviews
+/// hand the host no file bodies (WebView2 an empty one). See the file.
+pub const BUFFERED_BODIES: &str = include_str!("../page-shim/buffered-bodies.js");
 
 fn loopback(url: &Url) -> bool {
     match url.host() {

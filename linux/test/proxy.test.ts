@@ -7,6 +7,8 @@ import { verifyBundle } from '../src/core/bundle.ts'
 import { Jar, MAX_COOKIES, type Vault } from '../src/core/cookies.ts'
 import { APP_CSP, RANGE_WINDOW, clampRange, LEGACY_APP_CSP, appCsp, LARGE_BODY_BUDGET, Limits, MAX_BODY, SMALL_BODY, forward, inlineSafe, mimeFor, payloadTooLarge, serveBundle, target, type Instance, type Resp } from '../src/core/proxy.ts'
 import { bundle, spec, trusted } from './helpers/fixtures.ts'
+import { appHandler } from '../src/main/protocol.ts'
+import type { Trusted } from '../src/core/trusted.ts'
 import { reply, serve, type TestServer } from './helpers/server.ts'
 
 const servers: TestServer[] = []
@@ -407,3 +409,68 @@ test('a waiter that gives up lets the smaller ones behind it through', async () 
   assert.equal(await head, null)
   assert.ok(await tail, 'the tail is granted when the head times out, not only when the first transfer ends')
 })
+
+/** Every route through which the web app uploads one picture. */
+const PICTURE_ROUTES = [
+  '/api/users/me/avatar',
+  '/api/users/me/banner',
+  '/api/admin/community/icon',
+  '/api/admin/bots/3f0c1b2e-0000-4000-8000-000000000000/avatar',
+  '/api/admin/webhooks/3f0c1b2e-0000-4000-8000-000000000000/avatar',
+  '/api/events/3f0c1b2e-0000-4000-8000-000000000000/cover',
+]
+
+test('every picture route takes the 5 MiB the server allows, the other JSON routes stay small', () => {
+  const limits = new Limits()
+  for (const route of PICTURE_ROUTES) assert.equal(limits.requestCap(route), (5 << 20) + OVERHEAD, route)
+  assert.equal(limits.requestCap('/api/admin/emoji'), 2 << 20)
+  assert.equal(limits.requestCap('/api/users/me/avatar/x'), 2 << 20)
+  assert.equal(limits.requestCap('/api/admin/bots//avatar'), 2 << 20)
+  assert.equal(limits.requestCap('/api/admin/bots/a/b/avatar'), 2 << 20)
+})
+
+/** Bytes that survive no accidental text handling: every value, no repeats within a block. */
+function image(size: number): Buffer {
+  const bytes = Buffer.alloc(size)
+  for (let i = 0; i < size; i++) bytes[i] = (i * 31 + (i >> 8)) & 0xff
+  return bytes
+}
+
+/** A page-side `FormData` upload, as the web app makes it, arriving at the protocol handler. */
+async function uploadThroughHost(route: string, bytes: Buffer, chunked: boolean) {
+  const sink = await serve(reply(200, { 'content-type': 'application/json' }, '{}'))
+  servers.push(sink)
+  const instance = await instanceFor(sink)
+  const trustedStub = { session: () => ({ instance, held: { bundle: served } }) } as unknown as Trusted
+  const handler = appHandler('instance', trustedStub)
+  const form = new FormData()
+  form.append('avatar', new Blob([new Uint8Array(bytes)], { type: 'image/png' }), 'me.png')
+  const multipart = new Request('mnema://localhost/', { method: 'POST', body: form })
+  const type = multipart.headers.get('content-type') as string
+  const raw = Buffer.from(await multipart.arrayBuffer())
+  const body = chunked
+    ? new ReadableStream<Uint8Array>({
+      start(controller) {
+        for (let at = 0; at < raw.length; at += 64 << 10) controller.enqueue(raw.subarray(at, at + (64 << 10)))
+        controller.close()
+      },
+    })
+    : raw
+  const init: RequestInit & { duplex: 'half' } = { method: 'POST', headers: { 'content-type': type, ...(chunked ? {} : { 'content-length': String(raw.length) }) }, body, duplex: 'half' }
+  const resp = await handler(new Request(`mnema://localhost${route}`, init))
+  return { resp, sent: raw, seen: sink.requests[0] }
+}
+
+for (const route of PICTURE_ROUTES) {
+  for (const size of [1 << 10, (1 << 20) - 1, (1 << 20) + 1, (3 << 20) + 17]) {
+    for (const chunked of [false, true]) {
+      test(`a ${size} byte picture to ${route.replace(/[0-9a-f-]{36}/, ':id')} reaches the server unchanged (${chunked ? 'chunked' : 'fixed length'})`, async () => {
+        const { resp, sent, seen } = await uploadThroughHost(route, image(size), chunked)
+        assert.equal(resp.status, 200)
+        assert.ok(seen)
+        assert.ok(seen.body.equals(sent), 'the server receives the same bytes')
+        assert.match(String(seen.headers['content-type']), /^multipart\/form-data; boundary=/)
+      })
+    }
+  }
+}

@@ -192,8 +192,20 @@ class Budget {
   }
 }
 
-function routeKind(path: string): 'avatar' | 'upload' | 'json' {
-  if (path === '/api/users/me/avatar') return 'avatar'
+/**
+ * Routes that take one picture, parsed in memory by the server: its member
+ * avatar and banner, the community icon, and the avatar of a bot or webhook,
+ * or the cover of an event (each with an id between the fixed parts).
+ */
+const PICTURE_ROUTES = [
+  /^\/api\/users\/me\/(?:avatar|banner)$/,
+  /^\/api\/admin\/community\/icon$/,
+  /^\/api\/admin\/(?:bots|webhooks)\/[^/]+\/avatar$/,
+  /^\/api\/events\/[^/]+\/cover$/,
+]
+
+function routeKind(path: string): 'picture' | 'upload' | 'json' {
+  if (PICTURE_ROUTES.some(route => route.test(path))) return 'picture'
   const rest = path.startsWith('/api/channels/') ? path.slice('/api/channels/'.length) : null
   const id = rest !== null && rest.endsWith('/upload') ? rest.slice(0, -'/upload'.length) : null
   return id !== null && id !== '' && !id.includes('/') ? 'upload' : 'json'
@@ -227,7 +239,7 @@ export class Limits {
    */
   requestCap(path: string): number {
     const kind = routeKind(path)
-    if (kind === 'avatar') return MAX_AVATAR_BODY
+    if (kind === 'picture') return MAX_AVATAR_BODY
     if (kind === 'json') return MAX_JSON_BODY
     // Never above what the memory budget can lend: a larger body could
     // only wait for permits that do not exist.
