@@ -1,0 +1,18 @@
+.github/workflows/desktop-client.yml
+  h_0ff4f4713441f4 372-385,388,409-410,412-419
+README.md
+  h_0ff4f4713441f4 96
+experimental/app/src/storage.rs
+  h_0ff4f4713441f4 15-18,108-111,114-115,117-126,128-130,133-144,147,149,151-155,157,159-165,167-168,171,234,238-308
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3ad247cacd77a0e7d37961ee5835b423e065203f",
+  "prompts": {},
+  "humans": {
+    "h_0ff4f4713441f4": {
+      "author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}
