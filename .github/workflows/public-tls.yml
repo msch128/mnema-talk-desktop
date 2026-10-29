@@ -1,0 +1,92 @@
+name: Public TLS
+
+# The desktop clients reach a real public server on a port that is not 443,
+# with a Let's Encrypt certificate (badssl.com's test servers, one request per
+# job). It depends on a third party staying up, so it is no required check:
+# it runs daily, on request, and on changes to the connect and TLS code.
+# The tests skip unless MNEMA_PUBLIC_TLS=1, so `cargo test` and `npm test`
+# elsewhere never touch the network.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 5 * * *'
+  pull_request:
+    paths:
+      - experimental/app/src/web_client.rs
+      - experimental/app/src/web_proxy.rs
+      - experimental/app/src/web_ws.rs
+      - experimental/app/Cargo.toml
+      - experimental/app/Cargo.lock
+      - linux/src/core/discover.ts
+      - linux/src/core/http.ts
+      - linux/test/public-tls.test.ts
+      - .github/workflows/public-tls.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: public-tls-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  host:
+    name: public-tls (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: windows
+            runner: windows-2025
+          - name: macos
+            runner: macos-15
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 40
+    env:
+      RUST_VERSION: 1.99.1
+      CARGO_TARGET_DIR: ${{ github.workspace }}/experimental/app/target
+      MNEMA_PUBLIC_TLS: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26
+      - name: Select pinned Rust toolchain
+        shell: bash
+        run: |
+          rustup toolchain install "$RUST_VERSION" --profile minimal
+          rustup default "$RUST_VERSION"
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: experimental/app -> target
+          key: ${{ hashFiles('**/Cargo.lock') }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Stage the signed web bundle
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/stage-web-bundle.sh
+      - name: A public certificate on a non-default port is trusted
+        shell: bash
+        run: |
+          cargo test --locked --manifest-path experimental/app/Cargo.toml --features shell,web-client,custom-protocol a_public_certificate_on_a_non_default_port_is_trusted -- --exact web_client::shared_vectors::a_public_certificate_on_a_non_default_port_is_trusted --nocapture
+
+  linux:
+    name: public-tls (linux)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      MNEMA_PUBLIC_TLS: '1'
+    defaults:
+      run:
+        working-directory: linux
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26
+      - run: node --test test/public-tls.test.ts
