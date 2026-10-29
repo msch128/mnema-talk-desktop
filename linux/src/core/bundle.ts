@@ -131,6 +131,9 @@ export class Bundle {
 
 export class BundleError extends Error {}
 
+/** A release the store deliberately turned down (already held, below the floor): looked at, not a failure to retry. */
+export class BundleRefused extends BundleError {}
+
 function fail(message: string): never {
   throw new BundleError(message)
 }

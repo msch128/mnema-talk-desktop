@@ -6,7 +6,7 @@
  */
 import { rmSync } from 'node:fs'
 import { join } from 'node:path'
-import { type TrustedKey, BundleError, parseKey } from './bundle.ts'
+import { type TrustedKey, BundleRefused, parseKey } from './bundle.ts'
 import { parseAddress } from './client.ts'
 import { Jar, type Vault } from './cookies.ts'
 import { discover } from './discover.ts'
@@ -214,8 +214,8 @@ export class Trusted {
           this.store.markChecked(this.deps.now())
           this.reached = true
         } catch (error) {
-          // A release the store turned down (older than what is held, below the floor) was looked at: repeating it would download it again every retry.
-          if (error instanceof BundleError) {
+          // A release the store turned down (already held, below the floor) was looked at: repeating it would download it again every retry.
+          if (error instanceof BundleRefused) {
             this.store.markChecked(this.deps.now())
             this.reached = true
           }

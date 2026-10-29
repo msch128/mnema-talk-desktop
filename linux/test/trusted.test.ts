@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, test } from 'node:test'
 import { readFileSync } from 'node:fs'
-import { BundleError } from '../src/core/bundle.ts'
+import { BundleError, BundleRefused } from '../src/core/bundle.ts'
 import { appApi, bundled, localOrigin, pickerUi, updateUi } from '../src/core/origin.ts'
 import { Trusted, type TrustedDeps, WITHDRAWN, defaultDeps, pinnedKeys } from '../src/core/trusted.ts'
 import { NO_FLOOR, parseUtc } from '../src/core/trust.ts'
@@ -273,7 +273,7 @@ test('a round without a fresh statement is repeated soon even when the update ch
 test('a release the store turned down counts as a look, so it is not downloaded again every retry', async () => {
   const refused = new Trusted(null, null, deps({
     fetchTrust: () => Promise.resolve({ doc, sig }),
-    installNewer: () => Promise.reject(new BundleError('below the security floor')),
+    installNewer: () => Promise.reject(new BundleRefused('below the security floor')),
   }))
   await refused.refresh(true)
   assert.equal(refused.reached, true)
@@ -284,4 +284,16 @@ test('a release the store turned down counts as a look, so it is not downloaded 
   }))
   await offline.refresh(true)
   assert.equal(offline.reached, false)
+})
+
+test('a failed write or verification does not use up the update check', async () => {
+  for (const message of ['cannot write the bundle', 'cannot create the cache directory', 'signature mismatch']) {
+    const failed = new Trusted(null, null, deps({
+      fetchTrust: () => Promise.resolve({ doc, sig }),
+      installNewer: () => Promise.reject(new BundleError(message)),
+    }))
+    await failed.refresh(true)
+    assert.equal(failed.reached, false, message)
+    assert.equal(failed.store.checkDue(NOW), true, message)
+  }
 })
