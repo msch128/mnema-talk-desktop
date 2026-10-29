@@ -1,0 +1,20 @@
+linux/src/core/bundle.ts
+  h_0ff4f4713441f4 134-136
+linux/src/core/store.ts
+  h_0ff4f4713441f4 9,258,260
+linux/src/core/trusted.ts
+  h_0ff4f4713441f4 9,217-218
+linux/test/trusted.test.ts
+  h_0ff4f4713441f4 7,276,288-299
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4ff347bc54c9dae55eae183b5ba045f42fc406ef",
+  "prompts": {},
+  "humans": {
+    "h_0ff4f4713441f4": {
+      "author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}
