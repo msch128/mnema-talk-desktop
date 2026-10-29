@@ -1,0 +1,39 @@
+experimental/app/update-ui/index.html
+  s_06fcde5dbef956::t_7c900a01178e9a 16,22
+experimental/app/update-ui/update.css
+  s_06fcde5dbef956::t_71300af6d0e0b3 28-29,33,49
+experimental/app/update-ui/update.js
+  s_06fcde5dbef956::t_78c5a26eaf8625 21-22,40-41,45-73,76-77,130,132-134,150,161-167
+linux/assets/update-ui/index.html
+  s_06fcde5dbef956::t_28dbd860c66b2d 16,22
+linux/assets/update-ui/update.css
+  s_06fcde5dbef956::t_c87a4e9444cb18 28-29,33,49
+linux/assets/update-ui/update.js
+  s_06fcde5dbef956::t_d517c9e5db6a5d 21-22,40-41,45-73,76-77,130,132-134,150,161-167
+linux/src/core/pinned.ts
+  s_06fcde5dbef956::t_a17136925a9fa1 7,24-29
+linux/src/main/errorbox.ts
+  s_06fcde5dbef956::t_a7a85b920cee8d 1-21
+linux/src/main/ipc.ts
+  s_06fcde5dbef956::t_0c16f65641c6ff 13,138-139
+linux/test/pinned.test.ts
+  s_06fcde5dbef956::t_ca19c36758772c 4,29-33
+linux/test/rail.test.ts
+  s_06fcde5dbef956::t_6d2a6c8f8775a0 77
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a26be46b7b3dc9fe38789cf3f5aade844cf1185b",
+  "prompts": {},
+  "sessions": {
+    "s_06fcde5dbef956": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "94b73314-95fe-4e96-8c43-d20b0f28358d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}
