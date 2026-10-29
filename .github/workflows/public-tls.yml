@@ -15,6 +15,7 @@ on:
       - experimental/app/src/web_client.rs
       - experimental/app/src/web_proxy.rs
       - experimental/app/src/web_ws.rs
+      - experimental/app/src/web_tls.rs
       - experimental/app/Cargo.toml
       - experimental/app/Cargo.lock
       - linux/src/core/discover.ts

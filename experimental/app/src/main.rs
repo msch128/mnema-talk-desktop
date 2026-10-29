@@ -27,6 +27,8 @@ mod web_proxy;
 #[cfg(feature = "web-client")]
 mod web_shell;
 #[cfg(feature = "web-client")]
+mod web_tls;
+#[cfg(feature = "web-client")]
 mod web_trust;
 #[cfg(feature = "web-client")]
 mod web_updates;
