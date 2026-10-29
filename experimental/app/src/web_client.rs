@@ -510,6 +510,59 @@ fn parse_health(bytes: &[u8]) -> Result<ServerInfo, String> {
     }
 }
 
+/// Why the instance could not be reached, in words the person can act on. The
+/// innermost cause (for SChannel the HRESULT text) is kept, short, so a report
+/// shows what the system's TLS stack refused rather than a masked sentence.
+fn unreachable_reason(error: &(dyn std::error::Error + 'static)) -> String {
+    let mut causes = Vec::new();
+    let mut kind = None;
+    let mut timed_out = false;
+    let mut current = Some(error);
+    while let Some(e) = current {
+        timed_out |= e
+            .downcast_ref::<reqwest::Error>()
+            .is_some_and(reqwest::Error::is_timeout);
+        if let Some(io) = e.downcast_ref::<std::io::Error>() {
+            kind = Some(io.kind());
+        }
+        causes.push(e.to_string());
+        current = e.source();
+    }
+    let detail = causes
+        .last()
+        .map(|c| c.chars().take(160).collect::<String>())
+        .filter(|c| !c.is_empty());
+    let joined = causes.join(" ").to_ascii_lowercase();
+    let tls = [
+        "certificate",
+        "schannel",
+        "tls",
+        "ssl",
+        "handshake",
+        "security",
+    ]
+    .iter()
+    .any(|word| joined.contains(word));
+    let reason = if timed_out || kind == Some(std::io::ErrorKind::TimedOut) {
+        "The instance did not answer in time. Check the address, the port and your network."
+    } else if joined.contains("dns error") || joined.contains("lookup address") {
+        "The instance address could not be resolved. Check the address and your network."
+    } else if kind == Some(std::io::ErrorKind::ConnectionRefused) {
+        "The instance refused the connection. Check the address and the port."
+    } else if tls {
+        "This computer does not trust the instance's HTTPS certificate. Check the system clock, \
+         and that no antivirus or network filter intercepts HTTPS."
+    } else {
+        "Unable to reach the instance using trusted HTTPS."
+    };
+    match detail {
+        Some(detail) if reason.starts_with("This computer") || reason.starts_with("Unable") => {
+            format!("{reason} ({detail})")
+        }
+        _ => reason.to_owned(),
+    }
+}
+
 pub(crate) async fn discover(origin: &Url) -> Result<ServerInfo, String> {
     let client = crate::web_proxy::client_builder()
         .redirect(Policy::none())
@@ -524,7 +577,7 @@ pub(crate) async fn discover(origin: &Url) -> Result<ServerInfo, String> {
         )
         .send()
         .await
-        .map_err(|_| "Unable to reach the instance using trusted HTTPS.")?;
+        .map_err(|e| unreachable_reason(&e))?;
     if response.status() != reqwest::StatusCode::OK {
         return Err("The instance is unavailable or redirects to a different address.".into());
     }
@@ -1123,6 +1176,71 @@ mod tests {
         for role in ["selector", "surface", "probe", ""] {
             assert!(capabilities(role).is_empty(), "{role}");
         }
+    }
+
+    #[derive(Debug)]
+    struct Layer(String, Option<Box<dyn std::error::Error + 'static>>);
+
+    impl std::fmt::Display for Layer {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.write_str(&self.0)
+        }
+    }
+
+    impl std::error::Error for Layer {
+        fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+            self.1.as_deref()
+        }
+    }
+
+    fn layered(top: &str, inner: impl std::error::Error + 'static) -> Layer {
+        Layer(top.into(), Some(Box::new(inner)))
+    }
+
+    #[test]
+    fn a_distrusted_certificate_is_named_with_the_system_cause() {
+        let cause = Layer(
+            "The certificate chain was issued by an untrusted authority. (0x800B0109)".into(),
+            None,
+        );
+        let text = unreachable_reason(&layered(
+            "error sending request",
+            layered("client error (Connect)", cause),
+        ));
+        assert!(text.starts_with("This computer does not trust"), "{text}");
+        assert!(text.ends_with("(0x800B0109))"), "{text}");
+    }
+
+    #[test]
+    fn network_failures_are_told_apart() {
+        use std::io::{Error, ErrorKind};
+        let refused = layered(
+            "error sending request",
+            Error::from(ErrorKind::ConnectionRefused),
+        );
+        assert!(unreachable_reason(&refused).starts_with("The instance refused"));
+        let timeout = layered("error sending request", Error::from(ErrorKind::TimedOut));
+        assert!(unreachable_reason(&timeout).starts_with("The instance did not answer"));
+        let dns = layered(
+            "error sending request",
+            Layer("dns error: failed to lookup address information".into(), None),
+        );
+        assert!(unreachable_reason(&dns).starts_with("The instance address could not be resolved"));
+        let other = Layer("something odd".into(), None);
+        assert_eq!(
+            unreachable_reason(&other),
+            "Unable to reach the instance using trusted HTTPS. (something odd)"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_closed_port_reports_the_refusal() {
+        let closed = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = closed.local_addr().unwrap().port();
+        drop(closed);
+        let origin = Url::parse(&format!("http://127.0.0.1:{port}/")).unwrap();
+        let reason = discover(&origin).await.unwrap_err();
+        assert!(reason.starts_with("The instance refused"), "{reason}");
     }
 
     #[test]
