@@ -258,6 +258,8 @@ test('request caps follow the announced upload limit', () => {
   assert.equal(limits.requestCap(UPLOAD), (10 << 20) + OVERHEAD)
   assert.equal(limits.requestCap('/api/channels/x/messages'), 2 << 20)
   assert.equal(limits.requestCap('/api/users/me/avatar'), (5 << 20) + OVERHEAD)
+  assert.equal(limits.requestCap('/api/channels/x/attachments'), (10 << 20) + OVERHEAD)
+  assert.equal(limits.requestCap('/api/channels/x/attachments/y'), 2 << 20)
   assert.equal(limits.requestCap('/api/channels//upload'), 2 << 20)
   assert.equal(limits.requestCap('/api/channels/a/b/upload'), 2 << 20)
   // A lowered limit does not make existing files undownloadable.

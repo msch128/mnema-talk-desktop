@@ -514,7 +514,10 @@ impl Route {
         }
         let is_upload = path
             .strip_prefix("/api/channels/")
-            .and_then(|rest| rest.strip_suffix("/upload"))
+            .and_then(|rest| {
+                rest.strip_suffix("/upload")
+                    .or_else(|| rest.strip_suffix("/attachments"))
+            })
             .is_some_and(|id| !id.is_empty() && !id.contains('/'));
         if is_upload {
             Route::Upload
@@ -2159,6 +2162,14 @@ mod tests {
             MAX_JSON_BODY
         );
         assert_eq!(limits.request_cap("/api/users/me/avatar"), MAX_AVATAR_BODY);
+        assert_eq!(
+            limits.request_cap("/api/channels/x/attachments"),
+            (10 << 20) + MULTIPART_OVERHEAD
+        );
+        assert_eq!(
+            limits.request_cap("/api/channels/x/attachments/y"),
+            MAX_JSON_BODY
+        );
         assert_eq!(limits.request_cap("/api/channels//upload"), MAX_JSON_BODY);
         assert_eq!(
             limits.request_cap("/api/channels/a/b/upload"),

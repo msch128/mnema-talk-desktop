@@ -207,7 +207,8 @@ const PICTURE_ROUTES = [
 function routeKind(path: string): 'picture' | 'upload' | 'json' {
   if (PICTURE_ROUTES.some(route => route.test(path))) return 'picture'
   const rest = path.startsWith('/api/channels/') ? path.slice('/api/channels/'.length) : null
-  const id = rest !== null && rest.endsWith('/upload') ? rest.slice(0, -'/upload'.length) : null
+  const suffix = rest?.endsWith('/upload') ? '/upload' : rest?.endsWith('/attachments') ? '/attachments' : null
+  const id = rest !== null && suffix !== null ? rest.slice(0, -suffix.length) : null
   return id !== null && id !== '' && !id.includes('/') ? 'upload' : 'json'
 }
 
