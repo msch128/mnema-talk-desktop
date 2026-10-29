@@ -90,3 +90,12 @@ test('an attachment window closes once when its download is under way', () => {
   handlers.get('done')?.()
   assert.equal(closed, 1)
 })
+
+test('a blob that cannot be read is an error, only a missing one is absent', () => {
+  const dir = tmp()
+  const vault = createVault(dir, storage())
+  assert.equal(vault.load(ACCOUNT), null)
+  // A directory under the name makes the read fail with something other than ENOENT.
+  mkdirSync(join(dir, 'vault', `${ACCOUNT}.bin`), { recursive: true })
+  assert.throws(() => vault.load(ACCOUNT))
+})
