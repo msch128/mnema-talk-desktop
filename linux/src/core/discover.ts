@@ -4,7 +4,7 @@ import type { ServerInfo } from './store.ts'
 
 const MAX_DISCOVERY_BYTES = 16 * 1024
 
-const NAT_HINT = 'If the server is in your own network, your router may not support reaching it through its public address (NAT loopback/hairpin); try from outside or use the local address.'
+const NAT_HINT = 'If the server runs in your own network, your router may not support reaching it through its public address (NAT loopback/hairpin) — try the local address or another network.'
 const CERTIFICATE_CODE = /^(CERT_|ERR_TLS_CERT|UNABLE_TO_|DEPTH_ZERO_|SELF_SIGNED_)/
 
 /**

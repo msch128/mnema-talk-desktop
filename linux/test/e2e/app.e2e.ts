@@ -86,7 +86,7 @@ test('a page never reaches the network itself', async () => {
   assert.equal(await selector.evaluate("fetch('/api/health').then((r) => r.status)"), 404)
 })
 
-const HINT = 'If the server is in your own network, your router may not support reaching it through its public address (NAT loopback/hairpin); try from outside or use the local address.'
+const HINT = 'If the server runs in your own network, your router may not support reaching it through its public address (NAT loopback/hairpin) — try the local address or another network.'
 
 test('commands are refused to windows that may not call them', async () => {
   const call = (page: Page, command: string, args = '{}') => page.evaluate<string>(`window.__TAURI_INTERNALS__.invoke('${command}', ${args}).then(() => 'ok', (e) => String(e))`)

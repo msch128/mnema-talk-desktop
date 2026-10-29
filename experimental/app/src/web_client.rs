@@ -546,18 +546,18 @@ fn unreachable_reason(error: &(dyn std::error::Error + 'static)) -> String {
     let reason = if timed_out || kind == Some(std::io::ErrorKind::TimedOut) {
         concat!(
             "The instance did not answer in time. Check the address, the port and your network. ",
-            "If the server is in your own network, your router may not support reaching it ",
-            "through its public address (NAT loopback/hairpin); try from outside or use the ",
-            "local address."
+            "If the server runs in your own network, your router may not support reaching it ",
+            "through its public address (NAT loopback/hairpin) — try the local address or ",
+            "another network."
         )
     } else if joined.contains("dns error") || joined.contains("lookup address") {
         "The instance address could not be resolved. Check the address and your network."
     } else if kind == Some(std::io::ErrorKind::ConnectionRefused) {
         concat!(
             "The instance refused the connection. Check the address and the port. ",
-            "If the server is in your own network, your router may not support reaching it ",
-            "through its public address (NAT loopback/hairpin); try from outside or use the ",
-            "local address."
+            "If the server runs in your own network, your router may not support reaching it ",
+            "through its public address (NAT loopback/hairpin) — try the local address or ",
+            "another network."
         )
     } else if tls {
         "This computer does not trust the instance's HTTPS certificate. Check the system clock, \
