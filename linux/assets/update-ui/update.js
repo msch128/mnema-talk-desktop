@@ -50,6 +50,40 @@ function button(label, action, primary) {
   return b;
 }
 
+// What the detail line says for a phase; a function takes the version.
+const DETAIL = {
+  downloading: (s) => (s.mode === 'later' ? T.downloading_later : T.downloading_now),
+  ready: () => T.ready,
+  failed: (s) => T.errors[s.error] || T.errors.unknown,
+};
+
+function detailFor(s) {
+  let detail;
+  if (s.phase === 'available') detail = s.portable ? T.portable : s.external ? T.external : T.available;
+  else detail = DETAIL[s.phase] ? DETAIL[s.phase](s) : T[s.phase] || '';
+  return typeof detail === 'function' ? detail(s.version || '') : detail;
+}
+
+// The buttons for a phase, as [label, action, primary] triples.
+function actionsFor(s) {
+  const close = [T.close, 'close'];
+  switch (s.phase) {
+    case 'available':
+      return s.external || s.portable ? [[T.downloadPage, 'download_page', true], close] : [[T.now, 'now', true], [T.later, 'later']];
+    case 'ready':
+      return [[T.installNow, 'now', true], close];
+    case 'failed': {
+      const retriable = s.version && !s.external && !s.portable;
+      return [[T.retry, retriable ? (s.mode === 'later' ? 'later' : 'now') : 'check', true], close];
+    }
+    case 'up_to_date':
+    case 'idle':
+      return [[T.check, 'check'], close];
+    default:
+      return [];
+  }
+}
+
 function render(s) {
   const key = JSON.stringify(s);
   if (key === last) return;
@@ -58,16 +92,7 @@ function render(s) {
   document.title = T.title[s.phase] || T.title.idle;
   $('title').textContent = T.title[s.phase] || T.title.idle;
   document.querySelector('.mark').className = 'mark' + (s.phase === 'failed' ? ' err' : '');
-  const v = s.version || '';
-  let detail;
-  if (s.phase === 'available' && s.portable) detail = T.portable(v);
-  else if (s.phase === 'available' && s.external) detail = T.external(v);
-  else if (s.phase === 'available') detail = T.available(v);
-  else if (s.phase === 'downloading') detail = (s.mode === 'later' ? T.downloading_later : T.downloading_now)(v);
-  else if (s.phase === 'ready') detail = T.ready(v);
-  else if (s.phase === 'failed') detail = T.errors[s.error] || T.errors.unknown;
-  else detail = T[s.phase] || '';
-  $('detail').textContent = typeof detail === 'function' ? detail(v) : detail;
+  $('detail').textContent = detailFor(s);
   const notes = $('notes');
   notes.hidden = !(s.notes && (s.phase === 'available' || s.phase === 'ready'));
   notes.textContent = s.notes || '';
@@ -78,19 +103,7 @@ function render(s) {
   const pct = s.phase === 'downloading' && s.total ? Math.min(100, Math.round((s.received / s.total) * 100)) : 0;
   $('fill').style.width = pct ? pct + '%' : '';
   if (pct) bar.setAttribute('aria-valuenow', String(pct)); else bar.removeAttribute('aria-valuenow');
-  const actions = $('actions');
-  actions.replaceChildren();
-  if (s.phase === 'available' && (s.external || s.portable)) {
-    actions.append(button(T.downloadPage, 'download_page', true), button(T.close, 'close'));
-  } else if (s.phase === 'available') {
-    actions.append(button(T.now, 'now', true), button(T.later, 'later'));
-  } else if (s.phase === 'ready') {
-    actions.append(button(T.installNow, 'now', true), button(T.close, 'close'));
-  } else if (s.phase === 'failed') {
-    actions.append(button(T.retry, s.version && !s.external && !s.portable ? (s.mode === 'later' ? 'later' : 'now') : 'check', true), button(T.close, 'close'));
-  } else if (s.phase === 'up_to_date' || s.phase === 'idle') {
-    actions.append(button(T.check, 'check'), button(T.close, 'close'));
-  }
+  $('actions').replaceChildren(...actionsFor(s).map(([label, action, primary]) => button(label, action, primary)));
   const skippable = s.version && (s.phase === 'available' || s.phase === 'failed');
   $('skip').hidden = !skippable;
   $('skip').textContent = T.skip;
