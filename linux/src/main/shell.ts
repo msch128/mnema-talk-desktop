@@ -26,6 +26,7 @@ import { setLauncherBadge, toastsClosed } from './notify.ts'
 import { prepare, prepareServer } from './sessions.ts'
 import { appHandler, assetHandler, HOST_PAGE_CSP } from './protocol.ts'
 import { loadAssets } from './assets.ts'
+import { pageShown, railShown } from '../core/visibility.ts'
 import { appPreload, harden, pagePreferences, railPreload } from './windows.ts'
 
 export const RAIL_WIDTH = 68
@@ -38,16 +39,18 @@ function frontKey(ctx: Context): string | null {
   return active !== null && !registry.adding() ? active : null
 }
 
-/** Puts the rail on the left, the page in front next to it and hides the others. Hidden pages keep running, the engine only stops painting them. */
+/** Puts the rail on the left, the page in front next to it and hides the others (all of them while the window is minimised). Hidden pages keep running, throttled: the engine stops painting them and slows their timers. */
 export function layout(ctx: Context): void {
   const { window, rail, selector, pages } = ctx.shell
   if (!window || window.isDestroyed()) return
   const { width, height } = window.getContentBounds()
+  const minimized = window.isMinimized()
   rail?.setBounds({ x: 0, y: 0, width: RAIL_WIDTH, height })
+  rail?.setVisible(railShown(minimized))
   const content = { x: RAIL_WIDTH, y: 0, width: Math.max(1, width - RAIL_WIDTH), height }
   const front = frontKey(ctx)
-  if (selector) { selector.setBounds(content); selector.setVisible(front === null) }
-  for (const [id, view] of pages) { view.setBounds(content); view.setVisible(id === front) }
+  if (selector) { selector.setBounds(content); selector.setVisible(pageShown(null, front, minimized)) }
+  for (const [id, view] of pages) { view.setBounds(content); view.setVisible(pageShown(id, front, minimized)) }
 }
 
 export function focusFront(ctx: Context): void {
@@ -158,6 +161,8 @@ export function createShell(ctx: Context, assets: (name: string) => ReturnType<t
   void selector.webContents.loadURL(APP_URL)
 
   window.on('resize', () => layout(ctx))
+  window.on('minimize', () => layout(ctx))
+  window.on('restore', () => layout(ctx))
   window.on('focus', () => focusFront(ctx))
   window.on('closed', () => shutDown(ctx))
   sweepOrphans(ctx)
