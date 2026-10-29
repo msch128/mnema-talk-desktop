@@ -75,6 +75,17 @@ There is no external security audit.
   reference, including the anti-cheat safety statement. The gaming integration is Windows
   only. macOS and Linux ship the client without it.
 
+## Troubleshooting
+
+On Windows and macOS every connection the client makes to a server (and to
+GitHub for updates) uses TLS 1.2 or 1.3, and the certificate is checked by the
+operating system's own trust store, including roots you or your administrator
+added. A certificate the system rejects is rejected here too.
+
+* **A TLS 1.3-only server is unreachable** (the error says "bad protocol
+  version" or `os error -2146893054`): this affected versions before 1.2.12 on
+  Windows 10 and macOS. Update to 1.2.12 or later.
+
 ## Get it
 
 Download `Mnema-Desktop-DEV_<version>_x64-setup.exe` from the
@@ -192,8 +203,9 @@ Two things update, both from GitHub, both verified before use:
   then every six hours (the same interval as the bundles). When a newer
   version exists, a small window offers **Update now** (download, install,
   restart), **On next start** (download now, install when the client is next
-  started) and **Skip this version**; the menu entry **Update** reopens it. A
-  failed attempt shows what went wrong and can be retried. `MNEMA_DESKTOP_NO_UPDATE_CHECK=1`
+  started) and **Skip this version**; the menu entry **Update** reopens it. The
+  window links to the release page. A failed attempt shows what went wrong,
+  lets you copy the error, and can be retried. `MNEMA_DESKTOP_NO_UPDATE_CHECK=1`
   turns both checks off.
 
 An update is installed only if its minisign signature verifies against the
