@@ -6,7 +6,7 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, unlinkSync } from 'node:fs'
 import { join } from 'node:path'
 import { writeFileAtomic } from './atomic.ts'
-import { MAX_ZIP, type Bundle, type TrustedKey, BundleError, verifyBundle } from './bundle.ts'
+import { MAX_ZIP, type Bundle, type TrustedKey, BundleError, BundleRefused, verifyBundle } from './bundle.ts'
 import { type Version, ZERO, compareVersions, formatVersion, maxVersion, minVersion, parseVersion } from './version.ts'
 
 const MAX_CACHED_FILES = 16
@@ -255,9 +255,9 @@ export class Store {
       compareVersions(h.bundle.version, version) === 0 ||
       (h.bundle.webClientApi === bundle.webClientApi && compareVersions(h.bundle.version, version) > 0)
     if (this.heldBundles.some(held)) {
-      throw new BundleError('a bundle of this version or newer is already held')
+      throw new BundleRefused('a bundle of this version or newer is already held')
     }
-    if (compareVersions(version, maxVersion(this.floorInForce, bundle.securityFloor)) < 0) throw new BundleError('below the security floor')
+    if (compareVersions(version, maxVersion(this.floorInForce, bundle.securityFloor)) < 0) throw new BundleRefused('below the security floor')
     if (this.dir) {
       try {
         mkdirSync(this.dir, { recursive: true, mode: 0o700 })
