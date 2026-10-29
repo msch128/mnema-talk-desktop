@@ -1,5 +1,10 @@
 # Security review for 1.2: ECDSA port, advisories, toolchain
 
+> Historical record: the native research code reviewed below
+> (`experimental/vendor/openmls` and the other native research crates) was
+> removed in #102. The paths named here no longer exist; this document is kept
+> unchanged as the record of what was checked at the time.
+>
 > Later change: the vendored OpenMLS workspace, the protected SDK and the other
 > native research crates reviewed below were dormant (no shipped build reached
 > them) and have been removed from the repository, together with the local GLib

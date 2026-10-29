@@ -159,6 +159,48 @@ describe('update page', () => {
     expect(document.querySelector('#actions button')).toBe(first)
   })
 
+  // Every phase and flag combination the host can send, with what the page shows.
+  const views: Array<[string, Partial<Snapshot> & { external?: boolean; portable?: boolean }, { detail: string; buttons: string[]; skip: boolean; notes: boolean; bar: boolean; err: boolean }]> = [
+    ['idle', {}, { detail: 'Checking whether a newer version exists.', buttons: ['Check again', 'Close'], skip: false, notes: false, bar: false, err: false }],
+    ['checking', { phase: 'checking' }, { detail: 'This only takes a moment.', buttons: [], skip: false, notes: false, bar: true, err: false }],
+    ['up to date', { phase: 'up_to_date', notes: 'n' }, { detail: 'No newer version is available.', buttons: ['Check again', 'Close'], skip: false, notes: false, bar: false, err: false }],
+    ['available', { phase: 'available', version: '2', notes: 'n' }, { detail: 'Version 2 is available. The update is signed and verified before it is installed.', buttons: ['Update now', 'On next start'], skip: true, notes: true, bar: false, err: false }],
+    ['available, package managed', { phase: 'available', version: '2', external: true }, { detail: 'Version 2 is available. This installation is managed by your package manager: download the new package from the release page.', buttons: ['Open release page', 'Close'], skip: true, notes: false, bar: false, err: false }],
+    ['available, portable', { phase: 'available', version: '2', portable: true, external: true }, { detail: 'Version 2 is available. This portable copy does not update itself: download the new portable ZIP from the release page.', buttons: ['Open release page', 'Close'], skip: true, notes: false, bar: false, err: false }],
+    ['downloading now', { phase: 'downloading', version: '2', mode: 'now', received: 1, total: 4 }, { detail: 'Downloading version 2. The app restarts afterwards.', buttons: [], skip: false, notes: false, bar: true, err: false }],
+    ['downloading later', { phase: 'downloading', version: '2', mode: 'later' }, { detail: 'Downloading version 2 in the background. You can keep working.', buttons: [], skip: false, notes: false, bar: true, err: false }],
+    ['ready', { phase: 'ready', version: '2', notes: 'n' }, { detail: 'Version 2 is downloaded and installs the next time Mnema Desktop starts.', buttons: ['Install now', 'Close'], skip: false, notes: true, bar: false, err: false }],
+    ['installing', { phase: 'installing' }, { detail: 'The app closes shortly and restarts.', buttons: [], skip: false, notes: false, bar: true, err: false }],
+    ['failed with a version', { phase: 'failed', version: '2', error: 'untrusted', notes: 'n' }, { detail: 'The current trust statement could not be fetched. Check your connection and try again.', buttons: ['Retry', 'Close'], skip: true, notes: false, bar: false, err: true }],
+    ['failed on a managed install', { phase: 'failed', version: '2', external: true, mode: 'now' }, { detail: 'Something went wrong while updating.', buttons: ['Retry', 'Close'], skip: true, notes: false, bar: false, err: true }],
+    ['failed on a portable copy', { phase: 'failed', version: '2', portable: true, error: 'install' }, { detail: 'Installation failed. The installed version is unchanged.', buttons: ['Retry', 'Close'], skip: true, notes: false, bar: false, err: true }],
+    ['failed without a version', { phase: 'failed', error: 'offline' }, { detail: 'The update server cannot be reached. Check your connection.', buttons: ['Retry', 'Close'], skip: false, notes: false, bar: false, err: true }]
+  ]
+
+  it.each(views)('shows the %s state', async (_name, snapshot, want) => {
+    await open(snapshot)
+    expect(text('detail')).toBe(want.detail)
+    expect(buttons()).toEqual(want.buttons)
+    expect(document.getElementById('skip')!.hidden).toBe(!want.skip)
+    expect(document.getElementById('notes')!.hidden).toBe(!want.notes)
+    expect(document.getElementById('bar')!.hidden).toBe(!want.bar)
+    expect(document.querySelector('.mark')!.classList.contains('err')).toBe(want.err)
+  })
+
+  it('sends the retry and download actions of the managed states', async () => {
+    const first = async (snapshot: Partial<Snapshot> & { external?: boolean; portable?: boolean }) => {
+      await open(snapshot)
+      invoke.mockClear()
+      document.querySelector<HTMLButtonElement>('#actions button')!.click()
+      return invoke.mock.calls.filter((c) => c[0] === 'native_update_action').map((c) => c[1])
+    }
+    expect(await first({ phase: 'available', version: '2', external: true })).toEqual([{ action: 'download_page' }])
+    expect(await first({ phase: 'available', version: '2', portable: true })).toEqual([{ action: 'download_page' }])
+    expect(await first({ phase: 'failed', version: '2', external: true, mode: 'later' })).toEqual([{ action: 'check' }])
+    expect(await first({ phase: 'failed', version: '2', portable: true })).toEqual([{ action: 'check' }])
+    expect(await first({ phase: 'ready', version: '2' })).toEqual([{ action: 'now' }])
+  })
+
   it('ships no inline script or handler, and loads nothing remote', () => {
     expect(html).not.toMatch(/<script(?![^>]*\ssrc=)|\son\w+=|https?:\/\//i)
     expect(script).not.toMatch(/fetch\(|XMLHttpRequest|innerHTML|eval\(/)
