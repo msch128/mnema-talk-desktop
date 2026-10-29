@@ -547,6 +547,70 @@ pub(crate) async fn discover(origin: &Url) -> Result<(ServerInfo, Option<String>
     Ok((parse_health(&bytes)?, parse_community_name(&bytes)))
 }
 
+
+/// Why the instance could not be reached, in words the person can act on. The
+/// innermost cause (for SChannel the HRESULT text) is kept, short, so a report
+/// shows what the system's TLS stack refused rather than a masked sentence.
+fn unreachable_reason(error: &(dyn std::error::Error + 'static)) -> String {
+    let mut causes = Vec::new();
+    let mut kind = None;
+    let mut timed_out = false;
+    let mut current = Some(error);
+    while let Some(e) = current {
+        timed_out |= e
+            .downcast_ref::<reqwest::Error>()
+            .is_some_and(reqwest::Error::is_timeout);
+        if let Some(io) = e.downcast_ref::<std::io::Error>() {
+            kind = Some(io.kind());
+        }
+        causes.push(e.to_string());
+        current = e.source();
+    }
+    let detail = causes
+        .last()
+        .map(|c| c.chars().take(160).collect::<String>())
+        .filter(|c| !c.is_empty());
+    let joined = causes.join(" ").to_ascii_lowercase();
+    let tls = [
+        "certificate",
+        "schannel",
+        "tls",
+        "ssl",
+        "handshake",
+        "security",
+    ]
+    .iter()
+    .any(|word| joined.contains(word));
+    let reason = if timed_out || kind == Some(std::io::ErrorKind::TimedOut) {
+        concat!(
+            "The instance did not answer in time. Check the address, the port and your network. ",
+            "If the server runs in your own network, your router may not support reaching it ",
+            "through its public address (NAT loopback/hairpin) — try the local address or ",
+            "another network."
+        )
+    } else if joined.contains("dns error") || joined.contains("lookup address") {
+        "The instance address could not be resolved. Check the address and your network."
+    } else if kind == Some(std::io::ErrorKind::ConnectionRefused) {
+        concat!(
+            "The instance refused the connection. Check the address and the port. ",
+            "If the server runs in your own network, your router may not support reaching it ",
+            "through its public address (NAT loopback/hairpin) — try the local address or ",
+            "another network."
+        )
+    } else if tls {
+        "This computer does not trust the instance's HTTPS certificate. Check the system clock, \
+         and that no antivirus or network filter intercepts HTTPS."
+    } else {
+        "Unable to reach the instance using trusted HTTPS."
+    };
+    match detail {
+        Some(detail) if reason.starts_with("This computer") || reason.starts_with("Unable") => {
+            format!("{reason} ({detail})")
+        }
+        _ => reason.to_owned(),
+    }
+}
+
 async fn fetch_health(origin: &Url) -> Result<Vec<u8>, String> {
     let client = crate::web_proxy::client_builder()
         .redirect(Policy::none())
@@ -561,7 +625,7 @@ async fn fetch_health(origin: &Url) -> Result<Vec<u8>, String> {
         )
         .send()
         .await
-        .map_err(|_| "Unable to reach the instance using trusted HTTPS.")?;
+        .map_err(|e| unreachable_reason(&e))?;
     if response.status() != reqwest::StatusCode::OK {
         return Err("The instance is unavailable or redirects to a different address.".into());
     }
@@ -1160,6 +1224,95 @@ mod tests {
         for role in ["selector", "surface", "probe", ""] {
             assert!(capabilities(role).is_empty(), "{role}");
         }
+    }
+
+    #[derive(Debug)]
+    struct Layer(String, Option<Box<dyn std::error::Error + 'static>>);
+
+    impl std::fmt::Display for Layer {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.write_str(&self.0)
+        }
+    }
+
+    impl std::error::Error for Layer {
+        fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+            self.1.as_deref()
+        }
+    }
+
+    fn layered(top: &str, inner: impl std::error::Error + 'static) -> Layer {
+        Layer(top.into(), Some(Box::new(inner)))
+    }
+
+    #[test]
+    fn a_distrusted_certificate_is_named_with_the_system_cause() {
+        let cause = Layer(
+            "The certificate chain was issued by an untrusted authority. (0x800B0109)".into(),
+            None,
+        );
+        let text = unreachable_reason(&layered(
+            "error sending request",
+            layered("client error (Connect)", cause),
+        ));
+        assert!(text.starts_with("This computer does not trust"), "{text}");
+        assert!(text.ends_with("(0x800B0109))"), "{text}");
+    }
+
+    #[test]
+    fn network_failures_are_told_apart() {
+        use std::io::{Error, ErrorKind};
+        let refused = layered(
+            "error sending request",
+            Error::from(ErrorKind::ConnectionRefused),
+        );
+        let refused = unreachable_reason(&refused);
+        assert!(refused.starts_with("The instance refused"));
+        assert!(refused.contains("NAT loopback/hairpin"));
+        let timeout = layered("error sending request", Error::from(ErrorKind::TimedOut));
+        assert!(unreachable_reason(&timeout).starts_with("The instance did not answer"));
+        let dns = layered(
+            "error sending request",
+            Layer("dns error: failed to lookup address information".into(), None),
+        );
+        assert!(unreachable_reason(&dns).starts_with("The instance address could not be resolved"));
+        let other = Layer("something odd".into(), None);
+        assert_eq!(
+            unreachable_reason(&other),
+            "Unable to reach the instance using trusted HTTPS. (something odd)"
+        );
+    }
+
+    /// The app's own HTTPS client against public hosts on the current Let's
+    /// Encrypt chains (ECDSA root X2 and RSA root X1). Needs the network, so CI
+    /// runs it on Windows and macOS with `--ignored`; it catches a system TLS
+    /// stack that cannot build or revocation-check a new public chain.
+    #[tokio::test]
+    #[ignore = "needs the network"]
+    async fn public_https_hosts_are_reachable() {
+        let client = crate::web_proxy::client_builder()
+            .timeout(Duration::from_secs(30))
+            .build()
+            .unwrap();
+        for host in [
+            "https://valid-isrgrootx2.letsencrypt.org/",
+            "https://valid-isrgrootx1.letsencrypt.org/",
+            "https://letsencrypt.org/",
+        ] {
+            let response = client.get(host).send().await;
+            let status = response.map(|r| r.status()).map_err(|e| unreachable_reason(&e));
+            assert!(status.as_ref().is_ok_and(|s| s.is_success()), "{host}: {status:?}");
+        }
+    }
+
+    #[tokio::test]
+    async fn a_closed_port_reports_the_refusal() {
+        let closed = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = closed.local_addr().unwrap().port();
+        drop(closed);
+        let origin = Url::parse(&format!("http://127.0.0.1:{port}/")).unwrap();
+        let reason = discover(&origin).await.unwrap_err();
+        assert!(reason.starts_with("The instance refused"), "{reason}");
     }
 
     #[test]

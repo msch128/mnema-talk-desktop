@@ -169,6 +169,8 @@ jobs:
           # Tauri installs the main binary under the crate name unless told otherwise.
           $exe = Get-ChildItem $env:LOCALAPPDATA -Include 'mnema-native-client-preview.exe','Mnema Desktop DEV.exe' -Recurse -Depth 3 -ErrorAction SilentlyContinue | Select-Object -First 1
           if (!$exe) { throw 'Installed program not found in the user profile' }
+          # An installed copy updates itself: it must not carry the portable marker.
+          if (Test-Path (Join-Path $exe.DirectoryName 'mnema-portable.marker')) { throw 'The installer put the portable marker next to the program' }
           $process = Start-Process -FilePath $exe.FullName -PassThru
           try {
             $ready = $false
@@ -490,7 +492,12 @@ jobs:
             # shellcheck disable=SC2086
             UPDATER_PUBKEYS="$keys" node scripts/verify-updater-signatures.mjs release/latest.json release $platforms
           fi
+          # The marker tells the program it is the portable copy, which must never
+          # run the installer. Only this ZIP carries it, never the installer.
+          printf 'portable\n' > "portable/mnema-portable.marker"
           (cd portable && zip -qr "../release/Mnema-Desktop-DEV-${TAG}-windows-x64-portable.zip" .)
+          unzip -Z1 "release/Mnema-Desktop-DEV-${TAG}-windows-x64-portable.zip" | grep -Fx mnema-portable.marker \
+            || { echo '::error::the portable ZIP lacks mnema-portable.marker'; exit 1; }
           (cd release && sha256sum -- *.exe *.zip *.dmg *.app.tar.gz *.AppImage *.deb > SHA256SUMS)
           if [ "$EVENT" != push ]; then
             # Rehearsal: keep what a release would carry, publish nothing.

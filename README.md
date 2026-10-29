@@ -82,7 +82,7 @@ Download `Mnema-Desktop-DEV_<version>_x64-setup.exe` from the
 and run it once. It installs for the current user only (no administrator
 prompt) and updates itself from then on. SmartScreen warns because the installer
 has no Authenticode certificate; the self-update does not depend on one (see
-below). The portable ZIP of each release does not update itself. To build from
+below). The portable ZIP of each release does not update itself; it tells you when a newer version exists and opens the release page. To build from
 source, see [experimental/README.md](experimental/README.md#mnema-desktop-dev):
 Rust and Node, with mnema-talk checked out next to this repository. The older
 Windows DEV ZIP attached to

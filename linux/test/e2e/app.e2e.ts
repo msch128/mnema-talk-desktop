@@ -86,13 +86,15 @@ test('a page never reaches the network itself', async () => {
   assert.equal(await selector.evaluate("fetch('/api/health').then((r) => r.status)"), 404)
 })
 
+const HINT = 'If the server runs in your own network, your router may not support reaching it through its public address (NAT loopback/hairpin) — try the local address or another network.'
+
 test('commands are refused to windows that may not call them', async () => {
   const call = (page: Page, command: string, args = '{}') => page.evaluate<string>(`window.__TAURI_INTERNALS__.invoke('${command}', ${args}).then(() => 'ok', (e) => String(e))`)
   assert.equal(await call(selector, 'native_update_state'), 'Not allowed.')
   assert.equal(await call(selector, 'desktop_ws_send', '{ id: 1, data: "x" }'), 'Not allowed.')
   assert.equal(await call(selector, 'desktop_gaming_sync'), 'Unknown command.')
   assert.equal(await call(selector, 'desktop_open_instance', '{ address: "https://user@community.example" }'), 'Use an HTTPS origin without credentials, a path or query.')
-  assert.equal(await call(selector, 'desktop_open_instance', '{ address: "http://127.0.0.1:9" }'), 'Unable to reach the instance using trusted HTTPS.')
+  assert.equal(await call(selector, 'desktop_open_instance', '{ address: "http://127.0.0.1:9" }'), `The instance refused the connection. Check the address and the port. ${HINT}`)
   assert.equal(await call(selector, 'desktop_open_instance', '{}'), 'invalid arguments')
 })
 
