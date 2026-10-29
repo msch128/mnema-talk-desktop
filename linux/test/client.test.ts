@@ -28,7 +28,11 @@ test('the name a server gives itself is cleaned before it is shown', () => {
 
 test('external links cannot launch files, scripts or credentialed targets', () => {
   assert.ok(externalAllowed(new URL('https://example.invalid/page?q=value')))
-  for (const raw of ['file:///tmp/example', 'javascript:alert(1)', 'mailto:user@example.invalid', 'https://user:password@example.invalid/', 'http://example.invalid/']) {
+  assert.ok(externalAllowed(new URL('mailto:user@example.invalid')))
+  assert.ok(externalAllowed(new URL('mailto:user@example.invalid?subject=Hi%20there')))
+  assert.ok(!externalAllowed(new URL('mailto:')))
+  assert.ok(!externalAllowed(new URL(`mailto:${'a'.repeat(2100)}@example.invalid`)))
+  for (const raw of ['file:///tmp/example', 'javascript:alert(1)', 'tel:+4930123456', 'https://user:password@example.invalid/', 'http://example.invalid/']) {
     assert.ok(!externalAllowed(new URL(raw)), raw)
   }
 })

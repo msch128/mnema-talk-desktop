@@ -913,6 +913,14 @@ pub(super) fn app_api(url: &Url) -> bool {
     local_origin(url).is_some() && url.path().starts_with("/api/")
 }
 
+/// A `blob:` address the page made itself (`blob:<app origin>/<id>`), as the
+/// recovery codes' download uses.
+#[cfg_attr(not(any(target_os = "macos", test)), allow(dead_code))]
+pub(super) fn own_blob(url: &Url) -> bool {
+    url.scheme() == "blob"
+        && Url::parse(url.path()).is_ok_and(|inner| local_origin(&inner).is_some())
+}
+
 /// Verifies updates in the background; a bundle that arrives while no bundle
 /// is usable (first start without a built-in one) is picked up at once.
 fn refresh_in_background(app: &tauri::AppHandle) {
@@ -1094,14 +1102,37 @@ fn startup_error() {
 }
 
 fn external_allowed(url: &Url) -> bool {
-    url.scheme() == "https"
-        && url.host_str().is_some()
-        && url.username().is_empty()
-        && url.password().is_none()
-        && url.as_str().len() <= 4096
+    match url.scheme() {
+        "https" => {
+            url.host_str().is_some()
+                && url.username().is_empty()
+                && url.password().is_none()
+                && url.as_str().len() <= 4096
+        }
+        // The web app links an e-mail address in a message as `mailto:`. No
+        // other scheme (tel:, file:, an app's own) leaves the app.
+        "mailto" => {
+            !url.path().is_empty()
+                && url.as_str().len() <= 2048
+                && !url.as_str().chars().any(char::is_control)
+        }
+        _ => false,
+    }
 }
 
-/// Asks before a link leaves the app, then hands it to the system browser.
+/// Lets a navigation of a server's page happen when it stays in the app;
+/// a `mailto:` link goes to the mail program after a confirmation instead.
+pub(super) fn navigation_allowed(url: &Url) -> bool {
+    if bundled(url) || app_api(url) {
+        return true;
+    }
+    if url.scheme() == "mailto" {
+        open_external(url);
+    }
+    false
+}
+
+/// Asks before a link leaves the app, then hands it to the system browser (a mailto: address to the mail program).
 pub(super) fn open_external(url: &Url) {
     if !external_allowed(url) {
         return;
@@ -1171,6 +1202,12 @@ pub(crate) fn confirm_add(link: &Url) -> bool {
 }
 
 fn confirm_text(url: &Url) -> String {
+    if url.scheme() == "mailto" {
+        return format!(
+            "Write to this address in your mail program?\n\n{}",
+            url.path()
+        );
+    }
     format!("Open this link in your browser?\n\n{}", url.as_str())
 }
 
@@ -1294,7 +1331,7 @@ mod windows_dialog {
 
     pub(super) fn open(target: &str) {
         let (operation, target) = (wide("open"), wide(target));
-        // SAFETY: the target is a bounded HTTPS URL without credentials; no
+        // SAFETY: the target is a bounded HTTPS URL without credentials or a mailto: address; no
         // executable arguments or command shell are supplied. Buffers stay live.
         unsafe {
             ShellExecuteW(
@@ -1529,7 +1566,6 @@ mod tests {
         for raw in [
             "file:///tmp/example",
             "javascript:alert(1)",
-            "mailto:user@example.invalid",
             "https://user:password@example.invalid/",
             "http://example.invalid/",
         ] {
@@ -1697,6 +1733,54 @@ mod tests {
         let a = local_origin(&app("/")).unwrap();
         assert_eq!(Some(a), local_origin(&app("/c/1")));
         assert_eq!(local_origin(&url("https://community.example/")), None);
+    }
+
+    #[test]
+    fn only_https_links_and_mail_addresses_leave_the_app() {
+        for ok in [
+            "https://example.org/x?y=1",
+            "mailto:alice@example.org",
+            "mailto:alice@example.org?subject=Hi%20there",
+        ] {
+            assert!(external_allowed(&url(ok)), "{ok}");
+        }
+        for refused in [
+            "http://example.org/",
+            "tel:+4930123456",
+            "sms:+4930123456",
+            "file:///etc/passwd",
+            "javascript:alert(1)",
+            "mnema://localhost/api/x",
+            "https://user:pw@example.org/",
+            "mailto:",
+        ] {
+            assert!(!external_allowed(&url(refused)), "{refused}");
+        }
+        let long = format!("mailto:{}@example.org", "a".repeat(2100));
+        assert!(!external_allowed(&url(&long)));
+    }
+
+    #[test]
+    fn a_navigation_inside_the_app_is_allowed_and_a_foreign_one_is_not() {
+        assert!(navigation_allowed(&app("/c/general")));
+        assert!(navigation_allowed(&app("/api/media/x")));
+        assert!(!navigation_allowed(&url("https://example.org/")));
+        assert!(!navigation_allowed(&app("/other.html")));
+    }
+
+    #[test]
+    fn a_blob_of_the_app_origin_is_the_pages_own_download() {
+        let id = "0b9d63a2-3f8e-4d6e-9a10-2f4c1c1e7f11";
+        assert!(own_blob(&url(&format!("blob:mnema://localhost/{id}"))));
+        for foreign in [
+            format!("blob:https://example.org/{id}"),
+            format!("blob:mnema://evil.example/{id}"),
+            "blob:null/x".to_owned(),
+            "blob:".to_owned(),
+            "mnema://localhost/api/x".to_owned(),
+        ] {
+            assert!(!own_blob(&url(&foreign)), "{foreign}");
+        }
     }
 
     /// 2026-11-01T00:00:00Z

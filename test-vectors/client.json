@@ -221,6 +221,10 @@
   },
   {
    "url": "mailto:user@example.invalid",
+   "allowed": true
+  },
+  {
+   "url": "tel:+4930123456",
    "allowed": false
   },
   {

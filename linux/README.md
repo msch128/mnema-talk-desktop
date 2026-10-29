@@ -53,7 +53,7 @@ Added by Electron: context isolation, the renderer sandbox (a start without it i
 refused), no Node in any page, a CSP of the Mnema SPA, a privileged secure
 scheme (`mnema://localhost`), no network from any page (`webRequest` cancels
 everything but `mnema:`, `blob:`, `data:`), no navigation or new window outside
-the app (HTTPS links open in the system browser after a confirmation),
+the app (HTTPS links open in the system browser, `mailto:` addresses in the mail program, after a confirmation),
 permissions only for the app's own pages in the instance window (microphone,
 camera, screen, notifications, clipboard write, output device, fullscreen;
 microphone and camera only for the page itself, never for a frame inside it).

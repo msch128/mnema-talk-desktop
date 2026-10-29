@@ -36,11 +36,11 @@ function allowed(role: Role, url: URL): boolean {
   }
 }
 
-/** Asks, then opens an HTTPS link in the system browser. */
+/** Asks, then opens an HTTPS link in the system browser, or a mailto: address in the mail program. */
 export async function openExternal(parent: BaseWindow | undefined, url: URL, ctx?: Context): Promise<void> {
   if (!externalAllowed(url)) return
   if (ctx && await offerServer(ctx, parent, url)) return
-  const options = { type: 'question' as const, buttons: ['Open', 'Cancel'], defaultId: 1, cancelId: 1, title: TITLE, message: 'Open this link in your browser?', detail: url.href, noLink: true }
+  const options = { type: 'question' as const, buttons: ['Open', 'Cancel'], defaultId: 1, cancelId: 1, title: TITLE, message: url.protocol === 'mailto:' ? 'Write to this address in your mail program?' : 'Open this link in your browser?', detail: url.protocol === 'mailto:' ? url.pathname : url.href, noLink: true }
   const { response } = parent && !parent.isDestroyed() ? await dialog.showMessageBox(parent, options) : await dialog.showMessageBox(options)
   if (response === 0) await shell.openExternal(url.href).catch(() => undefined)
 }
