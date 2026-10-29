@@ -1,0 +1,20 @@
+experimental/app/src/web_client.rs
+  h_0ff4f4713441f4 547-552,556-561,1231-1233
+linux/src/core/discover.ts
+  h_0ff4f4713441f4 7,17,20
+linux/test/discover.test.ts
+  h_0ff4f4713441f4 8,10
+linux/test/e2e/app.e2e.ts
+  h_0ff4f4713441f4 89-90,97
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "767d9e549efc010eb61ce60e03dc19696b25b844",
+  "prompts": {},
+  "humans": {
+    "h_0ff4f4713441f4": {
+      "author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}
