@@ -2291,4 +2291,28 @@ mod shared_vectors {
             );
         }
     }
+
+    /// The system's TLS stack (SChannel, Secure Transport) against a real
+    /// public server on a port that is not 443, with a Let's Encrypt
+    /// certificate (badssl.com's test servers; one request per run). The
+    /// server is no Mnema instance, so the check ends at "answered, but not
+    /// with a health document", never at a certificate or reachability
+    /// sentence. Opt-in (MNEMA_TEST_PUBLIC_TLS=1, set by CI): it needs the
+    /// internet.
+    #[tokio::test]
+    async fn a_public_certificate_on_a_non_default_port_is_trusted() {
+        if std::env::var("MNEMA_TEST_PUBLIC_TLS").as_deref() != Ok("1") {
+            return;
+        }
+        let origin = Url::parse("https://tls-v1-2.badssl.com:1012/").unwrap();
+        let error = fetch_health(&origin).await.unwrap_err();
+        assert_eq!(error, UNAVAILABLE, "TLS to host:1012 must succeed");
+        // The same check must be able to fail: an expired certificate is named.
+        let expired = Url::parse("https://expired.badssl.com/").unwrap();
+        let error = fetch_health(&expired).await.unwrap_err();
+        assert!(
+            error.starts_with("This computer does not trust"),
+            "an expired certificate is refused: {error}"
+        );
+    }
 }

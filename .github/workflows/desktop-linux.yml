@@ -89,6 +89,9 @@ jobs:
           npm run lint
           npm run typecheck
       - name: Shared vectors are current, unit tests
+        env:
+          # One request to a public Let's Encrypt server on port 1012 (test/public-tls.test.ts).
+          MNEMA_TEST_PUBLIC_TLS: '1'
         run: |
           npm run vectors:check
           npm test
