@@ -329,6 +329,17 @@ fn holds(store: &Store, running: &Held) -> bool {
 }
 
 /// Why a server's tab stopped when its bundle was withdrawn.
+// What the connect page shows for these is translated by the web app, which
+// matches the exact sentences in `test-vectors/host-errors.json`.
+pub(crate) const NEEDS_UPDATE: &str = "This instance needs an update for the desktop client.";
+pub(crate) const NOT_COMPATIBLE: &str = "This instance is not compatible with this desktop client.";
+pub(crate) const NO_HTTPS: &str = "Unable to initialize HTTPS.";
+pub(crate) const UNAVAILABLE: &str =
+    "The instance is unavailable or redirects to a different address.";
+pub(crate) const CHECK_FAILED: &str = "Instance check failed.";
+pub(crate) const INVALID_RESPONSE: &str = "Invalid instance response.";
+pub(crate) const SELECTOR_ONLY: &str = "Only the instance selector may open an instance.";
+
 pub(crate) const WITHDRAWN: &str =
     "The web app of this server was withdrawn. Restart the client to get a current one.";
 
@@ -498,15 +509,14 @@ struct Health {
 }
 
 fn parse_health(bytes: &[u8]) -> Result<ServerInfo, String> {
-    let health: Health = crate::web_json::parse(bytes)
-        .ok_or("This instance needs an update for the desktop client.")?;
+    let health: Health = crate::web_json::parse(bytes).ok_or(NEEDS_UPDATE)?;
     match (health.status.as_str(), health.web_client_api) {
         ("ok", Some(web_client_api)) if web_client_api >= 1 => Ok(ServerInfo {
             version: Version::parse(&health.version),
             web_client_api,
         }),
-        ("ok", _) => Err("This instance needs an update for the desktop client.".into()),
-        _ => Err("This instance is not compatible with this desktop client.".into()),
+        ("ok", _) => Err(NEEDS_UPDATE.into()),
+        _ => Err(NOT_COMPATIBLE.into()),
     }
 }
 
@@ -616,7 +626,7 @@ async fn fetch_health(origin: &Url) -> Result<Vec<u8>, String> {
         .redirect(Policy::none())
         .timeout(Duration::from_secs(10))
         .build()
-        .map_err(|_| "Unable to initialize HTTPS.")?;
+        .map_err(|_| NO_HTTPS)?;
     let mut response = client
         .get(
             origin
@@ -627,16 +637,16 @@ async fn fetch_health(origin: &Url) -> Result<Vec<u8>, String> {
         .await
         .map_err(|e| unreachable_reason(&e))?;
     if response.status() != reqwest::StatusCode::OK {
-        return Err("The instance is unavailable or redirects to a different address.".into());
+        return Err(UNAVAILABLE.into());
     }
     let mut bytes = Vec::new();
     while let Some(chunk) = response
         .chunk()
         .await
-        .map_err(|_| "Instance check failed.")?
+        .map_err(|_| CHECK_FAILED)?
     {
         if chunk.len() > MAX_DISCOVERY_BYTES.saturating_sub(bytes.len()) {
-            return Err("Invalid instance response.".into());
+            return Err(INVALID_RESPONSE.into());
         }
         bytes.extend_from_slice(&chunk);
     }
@@ -2092,6 +2102,82 @@ mod shared_vectors {
     fn load() -> Value {
         serde_json::from_str(include_str!("../../../test-vectors/client.json"))
             .expect("the vector file is JSON")
+    }
+
+    /// The connect page translates the sentences this host sends by exact
+    /// text. They are the ones in `test-vectors/host-errors.json`, which the
+    /// Linux client and the web app read too.
+    #[test]
+    fn connect_page_sentences() {
+        use crate::instances::{AddError, MAX_INSTANCES};
+        use crate::web_bundle::Refusal;
+        use std::collections::BTreeMap;
+        use std::io::{Error, ErrorKind};
+
+        let list: Value =
+            serde_json::from_str(include_str!("../../../test-vectors/host-errors.json"))
+                .expect("the vector file is JSON");
+        let reach = |kind: ErrorKind| unreachable_reason(&Error::from(kind));
+        let plain = |text: &str| unreachable_reason(&Error::other(text.to_owned()));
+        let sent: BTreeMap<&str, String> = BTreeMap::from([
+            ("enterAddress", address("a\u{1}b").unwrap_err()),
+            ("invalidAddress", address("a b").unwrap_err()),
+            ("httpsOrigin", address("https://user@example.org").unwrap_err()),
+            ("initHttps", NO_HTTPS.to_owned()),
+            ("refused", reach(ErrorKind::ConnectionRefused)),
+            ("timeout", reach(ErrorKind::TimedOut)),
+            ("dns", plain("dns error: failed to lookup address information")),
+            ("certificate", plain("the certificate is not trusted")),
+            ("unreachable", plain("odd")),
+            ("unavailable", UNAVAILABLE.to_owned()),
+            ("checkFailed", CHECK_FAILED.to_owned()),
+            ("invalidResponse", INVALID_RESPONSE.to_owned()),
+            ("instanceNeedsUpdate", parse_health(b"{}").unwrap_err()),
+            ("notCompatible", parse_health(br#"{"status":"down"}"#).unwrap_err()),
+            ("noBundle", Refusal::NoBundle.to_string()),
+            ("serverNewer", Refusal::ServerNewer.to_string()),
+            (
+                "serverTooOld",
+                Refusal::ServerTooOld { needs: Version(0, 8, 9) }.to_string(),
+            ),
+            ("contractRetired", Refusal::ServerContractRetired.to_string()),
+            ("signerWithdrawn", Refusal::SignerWithdrawn.to_string()),
+            ("rolledBack", Refusal::RolledBack.to_string()),
+            ("alreadyListed", AddError::Known(String::new()).to_string()),
+            ("maxServers", AddError::Full.to_string()),
+            ("withdrawn", WITHDRAWN.to_owned()),
+            ("needsMacos", crate::web_shell::NEEDS_NEWER_MACOS.to_owned()),
+            ("selectorOnly", SELECTOR_ONLY.to_owned()),
+        ]);
+        let hint = list["natHint"].as_str().unwrap();
+        let mine: Vec<&Value> = list["sentences"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|s| s["clients"].as_array().unwrap().iter().any(|c| *c == "rust"))
+            .collect();
+        let mut ids: Vec<&str> = mine.iter().map(|s| s["id"].as_str().unwrap()).collect();
+        ids.sort_unstable();
+        assert_eq!(ids, sent.keys().copied().collect::<Vec<_>>());
+        for entry in mine {
+            let id = entry["id"].as_str().unwrap();
+            let expected = entry["text"]
+                .as_str()
+                .unwrap()
+                .replace("{version}", "0.8.9")
+                .replace("{count}", &MAX_INSTANCES.to_string());
+            let got = &sent[id];
+            if entry["withHint"] == true {
+                assert_eq!(got, &format!("{expected} {hint}"), "{id}");
+            } else if entry["withDetail"] == true {
+                assert!(
+                    *got == expected || got.starts_with(&format!("{expected} (")),
+                    "{id}: {got}"
+                );
+            } else {
+                assert_eq!(got, &expected, "{id}");
+            }
+        }
     }
 
     /// The same health document in forms a strict reader refuses: byte order

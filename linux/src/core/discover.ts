@@ -3,8 +3,10 @@ import { parseCommunityName, parseHealth } from './client.ts'
 import type { ServerInfo } from './store.ts'
 
 const MAX_DISCOVERY_BYTES = 16 * 1024
+export const UNAVAILABLE = 'The instance is unavailable or redirects to a different address.'
+export const INVALID_RESPONSE = 'Invalid instance response.'
 
-const NAT_HINT = 'If the server runs in your own network, your router may not support reaching it through its public address (NAT loopback/hairpin) — try the local address or another network.'
+export const NAT_HINT = 'If the server runs in your own network, your router may not support reaching it through its public address (NAT loopback/hairpin) — try the local address or another network.'
 const CERTIFICATE_CODE = /^(CERT_|ERR_TLS_CERT|UNABLE_TO_|DEPTH_ZERO_|SELF_SIGNED_)/
 
 /**
@@ -39,13 +41,13 @@ export async function discover(origin: URL, timeoutMs = 10_000): Promise<ServerI
   }
   if (response.status !== 200) {
     response.destroy()
-    throw new Error('The instance is unavailable or redirects to a different address.')
+    throw new Error(UNAVAILABLE)
   }
   if (response.contentLength !== null && response.contentLength > MAX_DISCOVERY_BYTES) {
     response.destroy()
-    throw new Error('Invalid instance response.')
+    throw new Error(INVALID_RESPONSE)
   }
   const bytes = await readBody(response, MAX_DISCOVERY_BYTES)
-  if (!bytes) throw new Error('Invalid instance response.')
+  if (!bytes) throw new Error(INVALID_RESPONSE)
   return { ...parseHealth(bytes), communityName: parseCommunityName(bytes) }
 }

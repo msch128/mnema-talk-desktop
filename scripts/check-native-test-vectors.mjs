@@ -6,12 +6,12 @@
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
-export const SHARED_VECTORS = ['bundle', 'client', 'json', 'minisign', 'proxy', 'store', 'trust', 'zip'].map(name => `test-vectors/${name}.json`);
+export const SHARED_VECTORS = ['bundle', 'client', 'host-errors', 'json', 'minisign', 'proxy', 'store', 'trust', 'zip'].map(name => `test-vectors/${name}.json`);
 
 function main() {
   const args = process.argv.slice(2);
   if (args.length) throw new Error('Usage: check-native-test-vectors.mjs');
-  const tracked = execFileSync('git', ['ls-files', 'test-vectors']).toString('utf8').split('\n').filter(f => /^test-vectors\/[a-z]+\.json$/.test(f)).sort();
+  const tracked = execFileSync('git', ['ls-files', 'test-vectors']).toString('utf8').split('\n').filter(f => /^test-vectors\/[a-z-]+\.json$/.test(f)).sort();
   if (JSON.stringify(tracked) !== JSON.stringify([...SHARED_VECTORS].sort())) throw new Error(`test-vectors/*.json does not match SHARED_VECTORS: ${tracked.join(', ')}`);
   console.log(`Verified ${SHARED_VECTORS.length} shared test-vector files.`);
 }

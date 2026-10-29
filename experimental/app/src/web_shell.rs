@@ -44,7 +44,7 @@ const PRODUCT: &str = "Mnema Desktop DEV";
 const PROFILES: &str = "profiles";
 const WIPE_ATTEMPTS: u32 = 20;
 
-const NEEDS_NEWER_MACOS: &str = "Several servers at once need macOS 14 or newer.";
+pub(crate) const NEEDS_NEWER_MACOS: &str = "Several servers at once need macOS 14 or newer.";
 
 // ----------------------------------------------------------------- rail page
 
@@ -890,7 +890,7 @@ fn make_session(
         community,
         sockets: Arc::new(Sockets::default()),
         instance: Arc::new(Instance {
-            client: client().map_err(|_| "Unable to initialize HTTPS.")?,
+            client: client().map_err(|_| crate::web_client::NO_HTTPS)?,
             jar: Jar::in_vault(trusted.jar_file(&origin), Arc::new(Os), now()),
             origin,
             limits: Limits::default(),
@@ -1187,7 +1187,7 @@ pub async fn desktop_open_instance(
     address: String,
 ) -> Result<(), String> {
     if !local_page(&webview, ADD) {
-        return Err("Only the instance selector may open an instance.".into());
+        return Err(crate::web_client::SELECTOR_ONLY.into());
     }
     add_server(webview.app_handle(), &state, &address).await
 }
