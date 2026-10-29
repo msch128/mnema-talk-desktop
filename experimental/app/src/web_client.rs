@@ -1233,6 +1233,28 @@ mod tests {
         );
     }
 
+    /// The app's own HTTPS client against public hosts on the current Let's
+    /// Encrypt chains (ECDSA root X2 and RSA root X1). Needs the network, so CI
+    /// runs it on Windows and macOS with `--ignored`; it catches a system TLS
+    /// stack that cannot build or revocation-check a new public chain.
+    #[tokio::test]
+    #[ignore = "needs the network"]
+    async fn public_https_hosts_are_reachable() {
+        let client = crate::web_proxy::client_builder()
+            .timeout(Duration::from_secs(30))
+            .build()
+            .unwrap();
+        for host in [
+            "https://valid-isrgrootx2.letsencrypt.org/",
+            "https://valid-isrgrootx1.letsencrypt.org/",
+            "https://letsencrypt.org/",
+        ] {
+            let response = client.get(host).send().await;
+            let status = response.map(|r| r.status()).map_err(|e| unreachable_reason(&e));
+            assert!(status.as_ref().is_ok_and(|s| s.is_success()), "{host}: {status:?}");
+        }
+    }
+
     #[tokio::test]
     async fn a_closed_port_reports_the_refusal() {
         let closed = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
