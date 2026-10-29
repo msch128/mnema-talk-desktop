@@ -271,7 +271,7 @@ export class Trusted {
     const held = await this.choose(server)
     const name = this.jarName(origin)
     const jar = new Jar(this.dataDir ? join(this.dataDir, 'sessions', `${name}.json`) : null, this.deps.vault ? { vault: this.deps.vault, account: name } : null, this.deps.now())
-    return { id: name, instance: { origin, jar, limits: new Limits(), now: this.deps.now }, held, sockets: new Sockets() }
+    return { id: name, instance: { origin, jar, limits: new Limits(), now: this.deps.now }, held, community: server.communityName ?? null, sockets: new Sockets() }
   }
 
   /** Forgets the stored session of a server that never started in this run (the keychain entry and the fallback file). */

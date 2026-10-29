@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, test } from 'node:test'
 import { Jar, type Vault } from '../src/core/cookies.ts'
-import { AddError, MAX_COUNT, MAX_INSTANCES, Registry, emptyStored, idFor, loadStored, saveStored, type Session } from '../src/core/instances.ts'
+import { AddError, MAX_COUNT, MAX_INSTANCES, Registry, emptyStored, idFor, loadStored, nameOf, saveStored, type Session } from '../src/core/instances.ts'
 import { Limits, forward } from '../src/core/proxy.ts'
 import { Sockets } from '../src/core/sockets.ts'
 import type { Held } from '../src/core/store.ts'
@@ -290,4 +290,22 @@ test('a list that could not be read in full proves nothing about the servers mis
   assert.equal(Registry.restore(registry('a.example').stored()).readInFull, true)
   // An unreadable file that is not simply absent (here: a directory) is not an empty list.
   assert.equal(Registry.restore(loadStored(tmp())).readInFull, false)
+})
+
+test('the rail names a server as it names itself, and the address otherwise', () => {
+  const r = registry('a.example')
+  const slot = r.slot(id('a.example'))!
+  assert.equal(r.rail(true).instances[0]!.name, 'a.example')
+  const named = (community: string | null): Session => ({ ...session(r, id('a.example'), new Memory()), community })
+  slot.phase = { kind: 'ready', session: named('Lantern Fox') }
+  assert.equal(nameOf(slot), 'Lantern Fox')
+  assert.equal(r.rail(true).instances[0]!.name, 'Lantern Fox')
+  assert.equal(r.rail(true).instances[0]!.initial, 'L')
+  // A server that only repeats its host keeps the address, and one that says nothing too.
+  slot.phase = { kind: 'ready', session: named('A.Example') }
+  assert.equal(nameOf(slot), 'a.example')
+  slot.phase = { kind: 'ready', session: named(null) }
+  assert.equal(nameOf(slot), 'a.example')
+  slot.phase = { kind: 'refused', why: 'no' }
+  assert.equal(nameOf(slot), 'a.example')
 })

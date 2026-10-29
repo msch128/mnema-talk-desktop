@@ -18,7 +18,7 @@ import { AddError, MAX_INSTANCES, idFor } from '../core/instances.ts'
 import { APP_URL } from '../core/origin.ts'
 import { closeSocketsWithDocument } from '../core/pagesockets.ts'
 import { Tickets } from '../core/tickets.ts'
-import { TITLE } from '../core/title.ts'
+import { TITLE, windowTitle } from '../core/title.ts'
 import { orphanPartitions, wipeWithRetry } from '../core/wipe.ts'
 import { LEGACY_PARTITION, PARTITIONS, serverPartition, type Context } from './context.ts'
 import { buildMenu } from './menu.ts'
@@ -65,9 +65,12 @@ const pushed = new WeakMap<Context, string>()
 
 /** Shows the rail what it should draw. */
 export function pushRail(ctx: Context): void {
-  const state = JSON.stringify(railSnapshot(ctx))
+  const snapshot = railSnapshot(ctx)
+  const state = JSON.stringify(snapshot)
   if (pushed.get(ctx) === state) return
   pushed.set(ctx, state)
+  const window = ctx.shell.window
+  if (window && !window.isDestroyed()) window.setTitle(windowTitle(snapshot))
   const rail = ctx.shell.rail
   if (rail && !rail.webContents.isDestroyed()) {
     void rail.webContents.executeJavaScript(`window.mnemaRail&&window.mnemaRail.set(${state})`).catch(() => undefined)

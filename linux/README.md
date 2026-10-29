@@ -150,6 +150,10 @@ Tauri host), and next to it the page of one server or the page for adding one.
 Each page is a `WebContentsView`. Up to nine servers, switched with Ctrl+1 to
 Ctrl+9 or the rail, added with Ctrl+Shift+N, reordered by dragging or Alt+arrow
 and removed from the rail's menu. No federation: one account per server.
+A server is named on the rail, in the menu, in toasts and in the window title
+by what it calls itself (`community_name` of `GET /api/health`, the name its
+Owner chose or its host), shown as plain text; the address stands in for a
+server that sends none or cannot be served.
 
 How the servers are kept apart:
 

@@ -119,6 +119,29 @@ export function parseHealth(bytes: Uint8Array): ServerInfo {
   return { version: parseVersion(version ?? ''), webClientApi: api }
 }
 
+const MAX_NAME_CHARS = 80
+
+/**
+ * The name a server gives itself in `/api/health` (its Owner's community name,
+ * else its host), or null. It is only ever shown as text, so control
+ * characters become spaces and it is capped. Port of `parse_community_name`
+ * in `experimental/app/src/web_client.rs`.
+ */
+export function parseCommunityName(bytes: Uint8Array): string | null {
+  let health: unknown
+  try {
+    health = parseStrictJson(bytes)
+  } catch {
+    return null
+  }
+  if (typeof health !== 'object' || health === null || Array.isArray(health)) return null
+  const raw = (health as Record<string, unknown>)['community_name']
+  if (typeof raw !== 'string') return null
+  // eslint-disable-next-line no-control-regex
+  const name = Array.from(raw.replace(/[\u0000-\u001f\u007f-\u009f]/g, ' ').split(/\s+/).filter(Boolean).join(' ')).slice(0, MAX_NAME_CHARS).join('')
+  return name === '' ? null : name
+}
+
 /** Links that may leave the app, after a confirmation: HTTPS to a host, no credentials, bounded. */
 export function externalAllowed(url: URL): boolean {
   return url.protocol === 'https:' && url.hostname !== '' && url.username === '' && url.password === '' && url.href.length <= 4096

@@ -1,7 +1,7 @@
 import { Menu, app } from 'electron'
 import { menuText } from '../core/selfupdate.ts'
 import { serverMenuAction } from '../core/notify.ts'
-import { slotName } from '../core/instances.ts'
+import { nameOf } from '../core/instances.ts'
 import type { Context } from './context.ts'
 import { activateNth, startAdding } from './shell.ts'
 import { openUpdater } from './windows.ts'
@@ -11,7 +11,7 @@ function serversMenu(ctx: Context): Electron.MenuItemConstructorOptions {
   const slots = ctx.trusted.registry.ids().map((id) => ctx.trusted.registry.slot(id))
   const items: Electron.MenuItemConstructorOptions[] = Array.from({ length: 9 }, (_, index) => {
     const slot = slots[index]
-    return { id: `server-${index + 1}`, label: slot ? `${index + 1} \u2014 ${slotName(slot.origin)}` : `Server ${index + 1}`, accelerator: `CmdOrCtrl+${index + 1}`, enabled: slot !== undefined, click: () => serverMenuClicked(ctx, `server-${index + 1}`) }
+    return { id: `server-${index + 1}`, label: slot ? `${index + 1} \u2014 ${nameOf(slot)}` : `Server ${index + 1}`, accelerator: `CmdOrCtrl+${index + 1}`, enabled: slot !== undefined, click: () => serverMenuClicked(ctx, `server-${index + 1}`) }
   })
   items.push({ type: 'separator' }, { id: 'server-add', label: 'Add server\u2026', accelerator: 'CmdOrCtrl+Shift+N', click: () => serverMenuClicked(ctx, 'server-add') })
   return { label: 'Servers', submenu: items }

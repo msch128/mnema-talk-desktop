@@ -1,5 +1,5 @@
 import { readBody, send } from './http.ts'
-import { parseHealth } from './client.ts'
+import { parseCommunityName, parseHealth } from './client.ts'
 import type { ServerInfo } from './store.ts'
 
 const MAX_DISCOVERY_BYTES = 16 * 1024
@@ -28,7 +28,7 @@ export function unreachableReason(error: unknown): string {
 }
 
 /**
- * Reads `version` and `web_client_api` from `/api/health` (bounded, no
+ * Reads `version`, `web_client_api` and the server's own name from `/api/health` (bounded, no
  * redirects, system TLS). The answer only chooses among bundles the client
  * already verified; it never supplies code.
  */
@@ -49,5 +49,5 @@ export async function discover(origin: URL, timeoutMs = 10_000): Promise<ServerI
   }
   const bytes = await readBody(response, MAX_DISCOVERY_BYTES)
   if (!bytes) throw new Error(INVALID_RESPONSE)
-  return parseHealth(bytes)
+  return { ...parseHealth(bytes), communityName: parseCommunityName(bytes) }
 }

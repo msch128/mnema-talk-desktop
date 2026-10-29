@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { appPath, externalAllowed, inviteCode, parseAddress, parseHealth } from '../src/core/client.ts'
+import { appPath, externalAllowed, inviteCode, parseAddress, parseCommunityName, parseHealth } from '../src/core/client.ts'
 
 const ID = '11111111-1111-1111-1111-111111111111'
 
@@ -12,6 +12,18 @@ test('health decides what the server is', () => {
     assert.throws(() => parseHealth(Buffer.from(raw)), /needs an update/, raw)
   }
   assert.throws(() => parseHealth(Buffer.from('{"status":"unavailable","web_client_api":1}')), /not compatible/)
+})
+
+test('the name a server gives itself is cleaned before it is shown', () => {
+  const name = (body: string) => parseCommunityName(Buffer.from(body))
+  const ok = '"status":"ok","version":"1.3.0","web_client_api":1'
+  assert.equal(name(`{${ok},"community_name":"  Lantern\\n Fox "}`), 'Lantern Fox')
+  assert.equal(name(`{${ok}}`), null)
+  assert.equal(name(`{${ok},"community_name":"   "}`), null)
+  assert.equal(name(`{${ok},"community_name":7}`), null)
+  assert.equal(Array.from(name(`{${ok},"community_name":"${'x'.repeat(200)}"}`) ?? '').length, 80)
+  assert.equal(name('not JSON'), null)
+  assert.equal(name(`{${ok},"community_name":"a","community_name":"b"}`), null)
 })
 
 test('external links cannot launch files, scripts or credentialed targets', () => {

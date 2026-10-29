@@ -31,6 +31,8 @@ pub struct Session {
     pub id: String,
     pub instance: Arc<Instance>,
     pub held: Held,
+    /// What the server calls itself (`/api/health`), when it says.
+    pub community: Option<String>,
     /// Sockets this server's pages hold open; the budget is per server.
     pub sockets: Arc<Sockets>,
 }
@@ -112,9 +114,17 @@ impl Slot {
         }
     }
 
-    /// The name on the rail: the host of the address.
+    /// The name on the rail: what the server calls itself once it answered
+    /// (the Owner's community name), else the host of the address. A server
+    /// that only repeats its host keeps the address with its port.
     pub fn name(&self) -> String {
         let host = self.origin.host_str().unwrap_or_default();
+        if let Phase::Ready(session) = &self.phase
+            && let Some(name) = session.community.as_deref()
+            && !name.eq_ignore_ascii_case(host)
+        {
+            return name.to_owned();
+        }
         match self.origin.port() {
             Some(port) => format!("{host}:{port}"),
             None => host.to_owned(),
@@ -597,6 +607,7 @@ mod tests {
                 limits: Limits::default(),
             }),
             held: held(),
+            community: None,
             sockets: Arc::new(Sockets::default()),
         })
     }
@@ -848,6 +859,35 @@ mod tests {
         assert!(vault.load(&id("b.example")).found().is_some());
         // The label of the removed server leads nowhere.
         assert!(registry.session(&id("a.example")).is_none());
+    }
+
+    #[test]
+    fn the_rail_names_a_server_as_it_names_itself() {
+        let vault = Arc::new(Memory::default());
+        let mut registry = registry(&["a.example"]);
+        let a = id("a.example");
+        assert_eq!(registry.slot(&a).unwrap().name(), "a.example");
+        let named = |community: Option<&str>| {
+            let mut s = session(&registry, &a, &vault, 0);
+            Arc::get_mut(&mut s).unwrap().community = community.map(str::to_owned);
+            s
+        };
+        let (fox, same, none) = (
+            named(Some("Lantern Fox")),
+            named(Some("A.Example")),
+            named(None),
+        );
+        let slot = registry.slot_mut(&a).unwrap();
+        slot.settle(Phase::Ready(fox));
+        assert_eq!(slot.name(), "Lantern Fox");
+        // A server that only repeats its host keeps the address.
+        slot.settle(Phase::Ready(same));
+        assert_eq!(slot.name(), "a.example");
+        slot.settle(Phase::Ready(none));
+        assert_eq!(slot.name(), "a.example");
+        // A server that cannot be served is named by its address.
+        slot.settle(Phase::Refused("no".into()));
+        assert_eq!(slot.name(), "a.example");
     }
 
     #[test]
