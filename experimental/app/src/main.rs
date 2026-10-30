@@ -13,6 +13,8 @@ mod rail_icon;
 #[cfg(feature = "web-client")]
 mod rail_layout;
 #[cfg(feature = "web-client")]
+mod rail_list;
+#[cfg(feature = "web-client")]
 mod rail_menu;
 #[cfg(feature = "web-client")]
 mod rail_notify;

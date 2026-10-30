@@ -58,6 +58,12 @@ body {
 .tile[aria-current="true"] { border-color: var(--accent); border-radius: 10px; }
 .tile.starting { opacity: .55; }
 .tile.refused { border-color: var(--warn); }
+.dot {
+  position: absolute; left: 4px; bottom: 0; width: 11px; height: 11px; border-radius: 50%; background: var(--warn);
+  border: 2px solid var(--canvas); pointer-events: none;
+}
+.mute { position: absolute; right: 6px; top: -4px; color: var(--muted); background: var(--canvas); border-radius: 50%; padding: 1px; pointer-events: none; }
+.list li.muted .tile { opacity: .55; }
 .tile.dragging, .folder-btn.dragging { opacity: .4; }
 .tile .icon { width: 100%; height: 100%; object-fit: cover; border-radius: inherit; pointer-events: none; }
 .tile { overflow: hidden; }

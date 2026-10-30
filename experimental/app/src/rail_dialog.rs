@@ -33,6 +33,37 @@ struct Choice {
     label: String,
 }
 
+/// A list to pick from, with a filter: the quick switcher.
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
+#[serde(deny_unknown_fields)]
+struct List {
+    label: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    placeholder: Option<String>,
+    choices: Vec<Pick>,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
+#[serde(deny_unknown_fields)]
+struct Pick {
+    id: String,
+    text: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    hint: Option<String>,
+}
+
+/// A file of text to read: the list of servers to import.
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
+#[serde(deny_unknown_fields)]
+struct File {
+    label: String,
+    accept: String,
+    max: usize,
+}
+
+/// The most a chosen file may hold.
+const MAX_FILE: usize = 65536;
+
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
 #[serde(deny_unknown_fields)]
 struct Colors {
@@ -62,6 +93,10 @@ pub struct Spec {
     input: Option<Input>,
     #[serde(skip_serializing_if = "Option::is_none")]
     colors: Option<Colors>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    list: Option<List>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    file: Option<File>,
     buttons: Vec<Button>,
     cancel: String,
 }
@@ -89,6 +124,13 @@ fn short(text: &str, most: usize) -> bool {
 
 fn color_ok(value: &str) -> bool {
     value.is_empty() || crate::rail_layout::clean_color(value).is_some_and(|c| c == value)
+}
+
+fn pick_id_ok(id: &str) -> bool {
+    (1..=24).contains(&id.len())
+        && id
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
 }
 
 fn button_id_ok(id: &str) -> bool {
@@ -120,6 +162,26 @@ fn parse(raw: &str) -> Result<Spec, String> {
                     .iter()
                     .all(|k| color_ok(&k.value) && short(&k.label, 40))
         })
+        && spec.list.as_ref().is_none_or(|l| {
+            short(&l.label, 60)
+                && l.placeholder.as_deref().is_none_or(|p| short(p, 40))
+                && (1..=12).contains(&l.choices.len())
+                && l.choices.iter().enumerate().all(|(n, k)| {
+                    pick_id_ok(&k.id)
+                        && short(&k.text, 100)
+                        && !k.text.is_empty()
+                        && k.hint.as_deref().is_none_or(|h| short(h, 60))
+                        && l.choices[..n].iter().all(|before| before.id != k.id)
+                })
+        })
+        && spec
+            .file
+            .as_ref()
+            .is_none_or(|f| short(&f.label, 60) && f.accept == ".json" && f.max <= MAX_FILE)
+        && usize::from(spec.input.is_some())
+            + usize::from(spec.list.is_some())
+            + usize::from(spec.file.is_some())
+            <= 1
         && (1..=3).contains(&spec.buttons.len())
         && spec
             .buttons
@@ -139,10 +201,14 @@ fn cancelled(spec: &Spec) -> Answer {
 
 /// An answer, held to what the spec allowed. Anything else is a cancel.
 fn accept(spec: &Spec, button: &str, value: Option<String>, color: Option<String>) -> Answer {
-    let value_ok = match (&spec.input, &value) {
-        (Some(input), Some(v)) => short(v, input.max),
-        (None, None) | (Some(_), None) => true,
-        (None, Some(_)) => false,
+    let value_ok = match &value {
+        None => true,
+        Some(v) => match (&spec.input, &spec.list, &spec.file) {
+            (Some(input), _, _) => short(v, input.max),
+            (_, Some(list), _) => list.choices.iter().any(|k| k.id == *v),
+            (_, _, Some(file)) => v.len() <= file.max.min(MAX_FILE),
+            _ => false,
+        },
     };
     let color_fine = match (&spec.colors, &color) {
         (Some(colors), Some(c)) => colors.choices.iter().any(|k| k.value == *c),
@@ -166,6 +232,8 @@ fn height(spec: &Spec) -> f64 {
         + if spec.input.is_some() { 70.0 } else { 0.0 }
         + if spec.colors.is_some() { 100.0 } else { 0.0 }
         + if spec.message.is_some() { 40.0 } else { 0.0 }
+        + if spec.list.is_some() { 200.0 } else { 0.0 }
+        + if spec.file.is_some() { 90.0 } else { 0.0 }
 }
 
 fn page_url() -> Url {
@@ -409,8 +477,62 @@ mod tests {
         );
     }
 
+    const SWITCH: &str = r##"{"title":"Switch","list":{"label":"Server","choices":[{"id":"a1","text":"One","hint":"one.example"},{"id":"b-2","text":"Two"}]},
+        "buttons":[{"id":"cancel","text":"Cancel"}],"cancel":"cancel"}"##;
+    const IMPORT: &str = r##"{"title":"Import","file":{"label":"File","accept":".json","max":65536},
+        "buttons":[{"id":"cancel","text":"Cancel"},{"id":"import","text":"Import","primary":true}],"cancel":"cancel"}"##;
+
+    #[test]
+    fn a_list_to_pick_from_and_a_file_to_read_are_taken_as_described() {
+        assert!(parse(SWITCH).is_ok());
+        assert!(parse(IMPORT).is_ok());
+        for bad in [
+            // Only one of input, list and file.
+            r#"{"title":"x","input":{"label":"l","value":"","max":5},"file":{"label":"f","accept":".json","max":5},"buttons":[{"id":"a","text":"A"}],"cancel":"a"}"#,
+            r#"{"title":"x","list":{"label":"l","choices":[{"id":"a","text":"A"}]},"file":{"label":"f","accept":".json","max":5},"buttons":[{"id":"a","text":"A"}],"cancel":"a"}"#,
+            // A list needs choices, with plain distinct ids.
+            r#"{"title":"x","list":{"label":"l","choices":[]},"buttons":[{"id":"a","text":"A"}],"cancel":"a"}"#,
+            r#"{"title":"x","list":{"label":"l","choices":[{"id":"A","text":"A"}]},"buttons":[{"id":"a","text":"A"}],"cancel":"a"}"#,
+            r#"{"title":"x","list":{"label":"l","choices":[{"id":"a","text":"A"},{"id":"a","text":"B"}]},"buttons":[{"id":"a","text":"A"}],"cancel":"a"}"#,
+            r#"{"title":"x","list":{"label":"l","choices":[{"id":"a","text":""}]},"buttons":[{"id":"a","text":"A"}],"cancel":"a"}"#,
+            // A file is a .json of at most 64 KiB.
+            r#"{"title":"x","file":{"label":"f","accept":".exe","max":5},"buttons":[{"id":"a","text":"A"}],"cancel":"a"}"#,
+            r#"{"title":"x","file":{"label":"f","accept":".json","max":65537},"buttons":[{"id":"a","text":"A"}],"cancel":"a"}"#,
+        ] {
+            assert!(parse(bad).is_err(), "{bad}");
+        }
+        let many: Vec<String> = (0..13)
+            .map(|n| format!(r#"{{"id":"i{n}","text":"I"}}"#))
+            .collect();
+        assert!(
+            parse(&format!(
+                r#"{{"title":"x","list":{{"label":"l","choices":[{}]}},"buttons":[{{"id":"a","text":"A"}}],"cancel":"a"}}"#,
+                many.join(",")
+            ))
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn a_pick_or_a_file_the_dialog_could_not_have_given_is_a_cancel() {
+        let switch = parse(SWITCH).unwrap();
+        let pick = |v: &str| accept(&switch, "cancel", Some(v.into()), None).value;
+        assert_eq!(pick("b-2").as_deref(), Some("b-2"));
+        assert_eq!(pick("zz"), None);
+        let import = parse(IMPORT).unwrap();
+        let file = |v: String| accept(&import, "import", Some(v), None);
+        assert_eq!(file("{}".into()).button, "import");
+        assert_eq!(file("x".repeat(65537)).button, "cancel");
+        // Text where the spec asked for none.
+        let confirm =
+            parse(r#"{"title":"x","buttons":[{"id":"a","text":"A"}],"cancel":"a"}"#).unwrap();
+        assert_eq!(accept(&confirm, "a", Some("x".into()), None).value, None);
+    }
+
     #[test]
     fn the_window_is_as_tall_as_what_it_shows() {
+        assert_eq!(height(&parse(SWITCH).unwrap()), 390.0);
+        assert_eq!(height(&parse(IMPORT).unwrap()), 280.0);
         assert_eq!(height(&parse(RENAME).unwrap()), 260.0);
         assert_eq!(height(&parse(FOLDER).unwrap()), 400.0);
     }

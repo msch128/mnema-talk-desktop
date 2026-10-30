@@ -63,10 +63,11 @@ export class ToastGates {
 }
 
 /** What a menu entry of the Servers menu does. */
-export type ServerMenuAction = { kind: 'nth', number: number } | { kind: 'add' }
+export type ServerMenuAction = { kind: 'nth', number: number } | { kind: 'add' } | { kind: 'switch' }
 
 export function serverMenuAction(id: string): ServerMenuAction | null {
   if (id === 'server-add') return { kind: 'add' }
+  if (id === 'server-switch') return { kind: 'switch' }
   const match = /^server-([1-9])$/.exec(id)
   return match ? { kind: 'nth', number: Number(match[1]) } : null
 }

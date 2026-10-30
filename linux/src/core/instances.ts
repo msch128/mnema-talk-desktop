@@ -24,6 +24,10 @@ export const MAX_INSTANCES = 9
 export const MAX_COUNT = MAX_BADGE
 const STORE_VERSION = 1
 const MAX_STORE_BYTES = 32 * 1024
+/** A mute may last a year and a day at most; -1 is for ever. */
+const MAX_MUTE_SECONDS = 366 * 24 * 3600
+/** What an imported list may weigh. */
+export const MAX_IMPORT_BYTES = 64 * 1024
 
 /** A server the client talks to and the verified bundle its pages run. */
 export interface Session {
@@ -65,6 +69,8 @@ export interface Slot {
   generation: string
   /** The version of the community icon on disk (see `core/icon.ts`), or none. */
   icon: string | null
+  /** Notifications are off until then (epoch seconds), or for ever (-1); none: not muted. */
+  mutedUntil: number | null
   /** The page asked for notifications: its callback channel and the next message index it expects. */
   clicks: { channel: number, index: number } | null
 }
@@ -97,6 +103,8 @@ interface RailInstance {
   mentions: number
   /** The version of the community icon (`rail_icon` fetches it), or none. */
   icon: string | null
+  /** Muted until this time (epoch seconds), for ever (-1), or not muted. */
+  muted_until: number | null
 }
 
 export interface RailState {
@@ -140,6 +148,8 @@ export interface Stored {
   /** The layout as written (`Layout.load` makes sense of it): absent in a list from before folders. */
   items?: unknown
   aliases?: unknown
+  /** Server id to the time (epoch seconds, -1 for ever) its notifications are off until. */
+  muted?: unknown
   /** False when the file was there but could not be read in full (unreadable, too large, unknown version, an address that did not hold up): the list may be shorter than what the person had. */
   complete?: boolean
 }
@@ -164,9 +174,14 @@ export function loadStored(file: string | null): Stored {
     // No file is a list that was never written; any other failure is a list that exists and could not be read.
     return (error as NodeJS.ErrnoException).code === 'ENOENT' ? emptyStored() : partial()
   }
-  if (typeof raw !== 'object' || raw === null) return partial()
-  const { version, servers, active, items, aliases } = raw as Record<string, unknown>
-  if (version !== STORE_VERSION || !Array.isArray(servers)) return partial()
+  return storedFrom(raw) ?? partial()
+}
+
+/** The list in a JSON value; null when it is not a list of this version at all. Addresses are checked exactly like those typed in by hand. */
+export function storedFrom(raw: unknown): Stored | null {
+  if (typeof raw !== 'object' || raw === null) return null
+  const { version, servers, active, items, aliases, muted } = raw as Record<string, unknown>
+  if (version !== STORE_VERSION || !Array.isArray(servers)) return null
   const list: URL[] = []
   let complete = true
   for (const address of servers) {
@@ -180,18 +195,44 @@ export function loadStored(file: string | null): Stored {
   if (typeof active === 'string') {
     try { front = list.find((u) => u.href === parseAddress(active).href) ?? null } catch { front = null }
   }
-  return complete ? { servers: list, active: front, items, aliases } : { ...partial(list, front), items, aliases }
+  return complete ? { servers: list, active: front, items, aliases, muted } : { ...partial(list, front), items, aliases, muted }
+}
+
+/** The list as it is written to disk, and as it is exported: addresses, names, layout and mutes, nothing else. */
+export function storedText(stored: Stored): string {
+  return JSON.stringify({
+    version: STORE_VERSION,
+    servers: stored.servers.map((u) => u.href),
+    active: stored.active?.href ?? null,
+    ...(stored.items !== undefined ? { items: stored.items } : {}),
+    ...(stored.aliases !== undefined ? { aliases: stored.aliases } : {}),
+    ...(stored.muted !== undefined ? { muted: stored.muted } : {}),
+  })
 }
 
 export function saveStored(file: string | null, stored: Stored): void {
   if (!file) return
   try {
-    writeFileAtomic(file, Buffer.from(JSON.stringify({ version: STORE_VERSION, servers: stored.servers.map((u) => u.href), active: stored.active?.href ?? null, ...(stored.items !== undefined ? { items: stored.items } : {}), ...(stored.aliases !== undefined ? { aliases: stored.aliases } : {}) })), { dirMode: 0o700 })
+    writeFileAtomic(file, Buffer.from(storedText(stored)), { dirMode: 0o700 })
   } catch { /* the list is a convenience; the sessions do not depend on it */ }
 }
 
+/** The mutes of a stored list that still stand at `now`, for the servers in `known`. */
+function liveMutes(raw: unknown, known: (id: string) => boolean, now: number): Map<string, number> {
+  const out = new Map<string, number>()
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return out
+  for (const [id, until] of Object.entries(raw)) {
+    if (known(id) && typeof until === 'number' && Number.isFinite(until) && (until === -1 || (until > now && until <= now + MAX_MUTE_SECONDS))) out.set(id, Math.trunc(until))
+  }
+  return out
+}
+
+function nowSeconds(): number {
+  return Math.floor(Date.now() / 1000)
+}
+
 function fresh(origin: URL): Slot {
-  return { id: idFor(origin), origin, phase: { kind: 'starting' }, unread: 0, mentions: 0, reported: false, generation: randomBytes(16).toString('hex'), icon: null, clicks: null }
+  return { id: idFor(origin), origin, phase: { kind: 'starting' }, unread: 0, mentions: 0, reported: false, generation: randomBytes(16).toString('hex'), icon: null, mutedUntil: null, clicks: null }
 }
 
 export class Registry {
@@ -210,6 +251,7 @@ export class Registry {
     }
     registry.layout = Layout.load(stored.items, stored.aliases, registry.ids(), registry.ids())
     registry.sort()
+    for (const [id, until] of liveMutes(stored.muted, (x) => registry.contains(x), nowSeconds())) registry.mute(id, until)
     const wanted = stored.active ? idFor(stored.active) : null
     registry.front = wanted !== null && registry.contains(wanted) ? wanted : (registry.slots[0]?.id ?? null)
     registry.addingNow = registry.front === null
@@ -319,6 +361,51 @@ export class Registry {
     return this.layout.aliases.get(slot.id) ?? nameOf(slot)
   }
 
+  /** Turns a server's notifications off until `until` (epoch seconds; -1 for ever), or on again (0). False: refused, nothing changed. */
+  mute(id: string, until: number, now = nowSeconds()): boolean {
+    const slot = this.slot(id)
+    if (!slot || !Number.isFinite(until)) return false
+    if (until === 0) slot.mutedUntil = null
+    else if (until === -1 || (until > now && until <= now + MAX_MUTE_SECONDS)) slot.mutedUntil = Math.trunc(until)
+    else return false
+    return true
+  }
+
+  /** Whether a server's notifications are off at `now`. */
+  isMuted(id: string, now = nowSeconds()): boolean {
+    return this.mutedAt(this.slot(id), now) !== null
+  }
+
+  private mutedAt(slot: Slot | undefined, now: number): number | null {
+    const until = slot?.mutedUntil ?? null
+    return until === -1 || (until !== null && until > now) ? until : null
+  }
+
+  /**
+   * Takes in a list somebody exported: servers that are not here join at the
+   * end (as far as there is room) and are returned, aliases and mutes are
+   * applied, and the layout of the file is laid over all of them. The server in
+   * front and the pages stay as they are.
+   */
+  merge(stored: Stored, now = nowSeconds()): Slot[] {
+    const added: Slot[] = []
+    for (const origin of stored.servers) {
+      try {
+        const id = this.add(origin)
+        const slot = this.slot(id)
+        if (slot) added.push(slot)
+      } catch { /* known, or no room */ }
+    }
+    const here = this.layout
+    const inFile = stored.servers.map(idFor)
+    const order = [...inFile, ...this.ids().filter((id) => !inFile.includes(id))].filter((id) => this.contains(id))
+    const aliases = { ...Object.fromEntries(here.aliases), ...(typeof stored.aliases === 'object' && stored.aliases !== null && !Array.isArray(stored.aliases) ? stored.aliases : {}) }
+    this.layout = Layout.load(stored.items ?? structuredClone(here.items), aliases, this.ids(), order)
+    this.sort()
+    for (const [id, until] of liveMutes(stored.muted, (x) => this.contains(x), now)) this.mute(id, until, now)
+    return added
+  }
+
   setIcon(id: string, token: string | null): boolean {
     const slot = this.slot(id)
     if (!slot || slot.icon === token) return false
@@ -357,9 +444,9 @@ export class Registry {
     slot.generation = randomBytes(16).toString('hex')
   }
 
-  /** Mentions over all servers: the number on the launcher icon. */
-  badge(): number {
-    return Math.min(MAX_COUNT, this.slots.reduce((sum, s) => sum + s.mentions, 0))
+  /** Mentions over all servers that are not muted: the number on the launcher icon. */
+  badge(now = nowSeconds()): number {
+    return Math.min(MAX_COUNT, this.slots.reduce((sum, s) => sum + (this.mutedAt(s, now) === null ? s.mentions : 0), 0))
   }
 
   /** The slot a toast belongs to, by the generation it was shown for. */
@@ -367,7 +454,7 @@ export class Registry {
     return generation === '' ? undefined : this.slots.find((s) => s.generation === generation)
   }
 
-  rail(canAdd: boolean): RailState {
+  rail(canAdd: boolean, now = nowSeconds()): RailState {
     return {
       active: this.front,
       adding: this.addingNow,
@@ -389,6 +476,7 @@ export class Registry {
           unread: slot.unread,
           mentions: slot.mentions,
           icon: slot.icon,
+          muted_until: this.mutedAt(slot, now),
         }
       }),
     }
@@ -396,6 +484,8 @@ export class Registry {
 
   stored(): Stored {
     const front = this.front ? this.slot(this.front) : undefined
-    return { servers: this.slots.map((s) => s.origin), active: front?.origin ?? null, items: structuredClone(this.layout.items), aliases: Object.fromEntries(this.layout.aliases) }
+    const now = nowSeconds()
+    const muted = Object.fromEntries(this.slots.flatMap((s) => { const until = this.mutedAt(s, now); return until === null ? [] : [[s.id, until]] }))
+    return { servers: this.slots.map((s) => s.origin), active: front?.origin ?? null, items: structuredClone(this.layout.items), aliases: Object.fromEntries(this.layout.aliases), muted }
   }
 }

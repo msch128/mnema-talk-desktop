@@ -216,7 +216,7 @@ test('the rail has the shape the rail page reads', () => {
   assert.equal(rail.instances[1]!.message, 'Too old.')
   assert.ok(rail.instances.every((i) => i.hue >= 0 && i.hue < 360))
   assert.deepEqual(Object.keys(rail).sort(), ['active', 'adding', 'can_add', 'instances', 'items'])
-  assert.deepEqual(Object.keys(rail.instances[0]!).sort(), ['alias', 'hue', 'icon', 'id', 'initial', 'mentions', 'message', 'name', 'original', 'status', 'unread'])
+  assert.deepEqual(Object.keys(rail.instances[0]!).sort(), ['alias', 'hue', 'icon', 'id', 'initial', 'mentions', 'message', 'muted_until', 'name', 'original', 'status', 'unread'])
   assert.equal(r.rail(false).can_add, false)
 })
 
