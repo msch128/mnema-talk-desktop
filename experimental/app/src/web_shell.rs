@@ -330,9 +330,11 @@ pub(crate) async fn open_default_page(
     let window = app.get_window(SHELL).ok_or("The window is gone.")?;
     let page = window
         .add_child(
-            WebviewBuilder::new(label, WebviewUrl::CustomProtocol(app_url()))
-                .use_https_scheme(true)
-                .on_navigation(bundled),
+            crate::storage::webview_on_default_storage(
+                WebviewBuilder::new(label, WebviewUrl::CustomProtocol(app_url()))
+                    .use_https_scheme(true)
+                    .on_navigation(bundled),
+            ),
             LogicalPosition::new(0.0, 0.0),
             LogicalSize::new(1.0, 1.0),
         )
@@ -442,6 +444,8 @@ struct Frame {
     scale_bits: u64,
     front: String,
     pages: Vec<String>,
+    /// The window is minimised: nothing on it can be seen.
+    asleep: bool,
 }
 
 #[derive(Default)]
@@ -459,6 +463,13 @@ enum Place {
     ShowFront,
     /// The front page is already up. Move bounds, and do not activate it.
     KeepFront,
+    /// The window is minimised. Every page is hidden, so the engine treats
+    /// each as a background page (`visibilityState` is `hidden`, no frames are
+    /// produced); sockets, timers at the browser's background rate and the
+    /// audio of a call go on.
+    Sleep,
+    /// The window is back: the rail and the front page are shown again.
+    Wake,
 }
 
 /// Whether this instant may hand focus to the page. A repeat inside the hold
@@ -476,6 +487,13 @@ fn handoff_due(handed: &mut Option<Instant>, now: Instant) -> bool {
 fn place(prev: &mut Option<Frame>, next: &Frame) -> Place {
     let decision = match prev.as_ref() {
         Some(current) if current == next => Place::Same,
+        // Resizing a minimised window changes nothing that is visible. A page
+        // that appears meanwhile is created showing, so it is hidden too.
+        Some(current) if current.asleep && next.asleep && current.pages == next.pages => {
+            Place::Same
+        }
+        _ if next.asleep => Place::Sleep,
+        Some(current) if current.asleep => Place::Wake,
         Some(current)
             if current.front == next.front
                 && current.pages.iter().any(|label| label == &next.front) =>
@@ -503,8 +521,9 @@ fn present_pages(app: &tauri::AppHandle) -> Vec<String> {
 }
 
 /// Puts the rail on the left, the page in front next to it and hides the
-/// others. Hidden pages keep running (their sockets and counters stay alive),
-/// the engine only stops painting them.
+/// others. Hidden pages are not suspended: their sockets and counters stay
+/// alive (they feed the rail's dots and the toasts), the engine only stops
+/// painting them and slows their timers. A minimised window hides all of them.
 pub fn layout(app: &tauri::AppHandle) {
     let Some(window) = app.get_window(SHELL) else {
         return;
@@ -519,10 +538,24 @@ pub fn layout(app: &tauri::AppHandle) {
         scale_bits: scale.to_bits(),
         front: front_label(app),
         pages: present_pages(app),
+        asleep: window.is_minimized().unwrap_or(false),
     };
     let place = take_frame(app, &frame);
     if place == Place::Same {
         return;
+    }
+    if place == Place::Sleep {
+        for label in std::iter::once(RAIL.to_owned()).chain(content_labels(app)) {
+            if let Some(page) = app.get_webview(&label) {
+                let _ = page.hide();
+            }
+        }
+        return;
+    }
+    if place == Place::Wake
+        && let Some(rail) = app.get_webview(RAIL)
+    {
+        let _ = rail.show();
     }
     let (width, height) = (
         f64::from(frame.width) / scale,
@@ -537,7 +570,7 @@ pub fn layout(app: &tauri::AppHandle) {
         };
         let _ = page.set_bounds(rect(RAIL_WIDTH, (width - RAIL_WIDTH).max(1.0), height));
         if label == frame.front {
-            if place == Place::ShowFront {
+            if matches!(place, Place::ShowFront | Place::Wake) {
                 let _ = page.show();
             }
         } else {
@@ -829,7 +862,12 @@ pub fn create(app: &tauri::AppHandle) -> tauri::Result<()> {
         tauri::WindowEvent::Resized(_) | tauri::WindowEvent::ScaleFactorChanged { .. } => {
             layout(&events);
         }
-        tauri::WindowEvent::Focused(true) => on_window_focused(&events),
+        // Minimising and restoring do not always come with a resize.
+        tauri::WindowEvent::Focused(true) => {
+            layout(&events);
+            on_window_focused(&events);
+        }
+        tauri::WindowEvent::Focused(false) => layout(&events),
         // macOS keeps the program running behind a closed window (a call, the
         // Dock badge and the toasts go on); the Dock icon brings it back.
         #[cfg(target_os = "macos")]
@@ -1216,6 +1254,7 @@ fn new_window(
         let downloads = app.clone();
         builder.on_download(move |_, event| save_download(&downloads, event))
     };
+    let builder = crate::storage::window_on_default_storage(builder);
     let child = super::web_permissions::with_probe_args(app, &label, builder).build();
     match child {
         Ok(window) => Create { window },
@@ -1650,6 +1689,7 @@ mod tests {
             scale_bits: 1.0f64.to_bits(),
             front: front.to_owned(),
             pages: pages.iter().map(|label| (*label).to_owned()).collect(),
+            asleep: false,
         }
     }
 
@@ -1668,6 +1708,39 @@ mod tests {
         assert_eq!(place(&mut prev, &scaled), Place::KeepFront);
         scaled.width += 1;
         assert_eq!(place(&mut prev, &scaled), Place::KeepFront);
+    }
+
+    #[test]
+    fn a_minimised_window_hides_every_page_and_wakes_them_once() {
+        let mut prev = None;
+        let up = frame("i-1", &["main", "i-1"], 1200);
+        assert_eq!(place(&mut prev, &up), Place::ShowFront);
+        let mut down = up.clone();
+        down.asleep = true;
+        down.width = 0;
+        assert_eq!(place(&mut prev, &down), Place::Sleep);
+        assert_eq!(place(&mut prev, &down), Place::Same);
+        // A resize while minimised, or a repeated event, changes nothing.
+        down.width = 160;
+        assert_eq!(place(&mut prev, &down), Place::Same);
+        assert_eq!(place(&mut prev, &up), Place::Wake);
+        assert_eq!(place(&mut prev, &up), Place::Same);
+    }
+
+    #[test]
+    fn a_page_that_arrives_while_minimised_stays_hidden() {
+        let mut prev = None;
+        let mut down = frame("i-1", &["main"], 0);
+        down.asleep = true;
+        assert_eq!(place(&mut prev, &down), Place::Sleep);
+        let mut arrived = frame("i-1", &["main", "i-1"], 0);
+        arrived.asleep = true;
+        assert_eq!(place(&mut prev, &arrived), Place::Sleep);
+        assert_eq!(place(&mut prev, &arrived), Place::Same);
+        assert_eq!(
+            place(&mut prev, &frame("i-1", &["main", "i-1"], 1200)),
+            Place::Wake
+        );
     }
 
     #[test]

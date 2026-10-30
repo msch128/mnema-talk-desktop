@@ -115,11 +115,7 @@ where
     if !safe_profile_label(label) {
         return None;
     }
-    let dir = app
-        .path()
-        .app_local_data_dir()
-        .ok()?
-        .join(format!("webview-probe-{label}"));
+    let dir = crate::storage::data_dir(app.app_handle())?.join(format!("webview-probe-{label}"));
     std::fs::create_dir_all(&dir).ok()?;
     Some(dir)
 }

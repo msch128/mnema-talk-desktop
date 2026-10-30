@@ -19,6 +19,8 @@ mod rail_notify;
 #[cfg(feature = "multi-selftest")]
 mod selftest_multi;
 #[cfg(feature = "web-client")]
+mod storage;
+#[cfg(feature = "web-client")]
 mod web_bundle;
 #[cfg(feature = "web-client")]
 mod web_client;
