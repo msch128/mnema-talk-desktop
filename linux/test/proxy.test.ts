@@ -311,6 +311,55 @@ test('an open-ended range reaches the instance as a bounded one', async () => {
   assert.equal(clampRange('bytes=0-99'), 'bytes=0-99')
 })
 
+test('a resumed range carries its validator and the piece keeps its framing', async () => {
+  const { resp, request } = await call(reply(206, { 'content-type': 'audio/ogg', 'content-range': 'bytes 4-7/4096', 'accept-ranges': 'bytes', etag: '"v7"' }, 'data'),
+    'GET', '/api/media/x', [['Range', 'bytes=4-7'], ['If-Range', '"v7"']])
+  assert.equal(request?.headers.range, 'bytes=4-7')
+  assert.equal(request?.headers['if-range'], '"v7"')
+  assert.deepEqual([resp.status, header(resp, 'content-range'), header(resp, 'accept-ranges'), header(resp, 'etag'), header(resp, 'content-type')], [206, 'bytes 4-7/4096', 'bytes', '"v7"', 'audio/ogg'])
+  assert.equal(Buffer.from(resp.body).toString(), 'data')
+})
+
+test('an unsatisfiable range reaches the page as a 416', async () => {
+  const { resp } = await call(reply(416, { 'content-type': 'application/json', 'content-range': 'bytes */10' }, '{}'), 'GET', '/api/media/x', [['Range', 'bytes=50-']])
+  assert.deepEqual([resp.status, header(resp, 'content-range')], [416, 'bytes */10'])
+})
+
+test('put, patch, delete and post carry their bodies and content type', async () => {
+  for (const method of ['PUT', 'PATCH', 'DELETE', 'POST']) {
+    const body = JSON.stringify({ method, text: '\u{1F468}\u200D\u{1F469} \u4F60\u597D' })
+    const { resp, request } = await call(reply(200, { 'content-type': 'application/json' }, '{}'), method, '/api/channels/c/messages/m', [['Content-Type', 'application/json']], Buffer.from(body))
+    assert.equal(resp.status, 200, method)
+    assert.equal(request?.method, method)
+    assert.equal(request?.headers['content-type'], 'application/json')
+    assert.equal(request?.body.toString(), body, method)
+  }
+})
+
+test('a json body up to the cap goes through and one byte more is refused', async () => {
+  const atCap = Buffer.alloc(2 << 20, 'a')
+  const { resp, request } = await call(reply(200, { 'content-type': 'application/json' }, '{}'), 'POST', '/api/channels/c/messages', [['Content-Type', 'application/json']], atCap)
+  assert.equal(resp.status, 200)
+  assert.equal(request?.body.length, atCap.length)
+  const instance: Instance = { origin: new URL('http://127.0.0.1:9'), jar: new Jar(null, null, 0), limits: new Limits(), now: () => 0 }
+  assert.equal((await forward(instance, 'POST', '/api/channels/c/messages', [], new Uint8Array(atCap.length + 1))).status, 413)
+})
+
+test('every kind of redirect becomes a gateway error and is never followed', async () => {
+  for (const status of [301, 302, 303, 307, 308]) {
+    const { resp } = await call(reply(status, { location: 'https://elsewhere.example/x' }, ''), 'GET', '/api/x')
+    assert.equal(resp.status, 502, String(status))
+    assert.equal(header(resp, 'location'), undefined)
+  }
+})
+
+test('a download keeps its name whatever the characters', async () => {
+  const disposition = "attachment; filename*=utf-8''%E4%BD%A0%E5%A5%BD%20%F0%9F%91%A8%E2%80%8D%F0%9F%91%A9.pdf"
+  const { resp } = await call(reply(200, { 'content-type': 'application/pdf', 'content-disposition': disposition }, '%PDF'), 'GET', '/api/media/x')
+  assert.equal(header(resp, 'content-disposition'), disposition)
+  assert.equal(header(resp, 'content-type'), 'application/octet-stream')
+})
+
 test('large bodies borrow memory and wait for each other', async () => {
   const limits = new Limits(50)
   assert.ok(await limits.lend(SMALL_BODY))

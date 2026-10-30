@@ -675,6 +675,9 @@ const FORWARDED_REQUEST: &[&str] = &[
     "accept",
     "accept-language",
     "range",
+    // With a Range: the resume or seek of a file the browser already holds a
+    // part of; without it the instance could answer a piece of a newer file.
+    "if-range",
     "if-none-match",
     "if-modified-since",
     "x-request-id",
@@ -1902,6 +1905,163 @@ mod tests {
         .await;
         assert!(String::from_utf8_lossy(&resp.body).contains("too large for this client"));
         assert_eq!(resp.status, 502);
+    }
+
+    #[tokio::test]
+    async fn a_resumed_range_carries_its_validator_and_the_piece_keeps_its_framing() {
+        let (resp, request, _) = call(
+            reply(
+                "206 Partial Content",
+                &[
+                    "content-type: audio/ogg",
+                    "content-range: bytes 4-7/4096",
+                    "accept-ranges: bytes",
+                    "etag: \"v7\"",
+                ],
+                "data",
+            ),
+            "GET",
+            "/api/media/x",
+            &[("Range", "bytes=4-7"), ("If-Range", "\"v7\"")],
+            b"",
+            Jar::new(None, 0),
+        )
+        .await;
+        let request = request.to_ascii_lowercase();
+        assert!(request.contains("range: bytes=4-7"), "{request}");
+        assert!(request.contains("if-range: \"v7\""), "{request}");
+        assert_eq!(resp.status, 206);
+        assert_eq!(header(&resp, "content-range"), Some("bytes 4-7/4096"));
+        assert_eq!(header(&resp, "accept-ranges"), Some("bytes"));
+        assert_eq!(header(&resp, "etag"), Some("\"v7\""));
+        assert_eq!(header(&resp, "content-type"), Some("audio/ogg"));
+        assert_eq!(resp.body, b"data");
+    }
+
+    #[tokio::test]
+    async fn an_unsatisfiable_range_reaches_the_page_as_a_416() {
+        let (resp, _, _) = call(
+            reply(
+                "416 Range Not Satisfiable",
+                &[
+                    "content-type: application/json",
+                    "content-range: bytes */10",
+                ],
+                "{}",
+            ),
+            "GET",
+            "/api/media/x",
+            &[("Range", "bytes=50-")],
+            b"",
+            Jar::new(None, 0),
+        )
+        .await;
+        assert_eq!(resp.status, 416);
+        assert_eq!(header(&resp, "content-range"), Some("bytes */10"));
+    }
+
+    #[tokio::test]
+    async fn put_patch_and_delete_carry_their_bodies_and_content_type() {
+        for method in ["PUT", "PATCH", "DELETE", "POST"] {
+            let body = format!(
+                r#"{{"method":"{method}","text":"\u{{1F468}}\u200d\u{{1F469}} \u4f60\u597d"}}"#
+            );
+            let (resp, request, _) = call(
+                reply("200 OK", &["content-type: application/json"], "{}"),
+                method,
+                "/api/channels/c/messages/m",
+                &[("Content-Type", "application/json")],
+                body.as_bytes(),
+                Jar::new(None, 0),
+            )
+            .await;
+            assert_eq!(resp.status, 200, "{method}");
+            let lower = request.to_ascii_lowercase();
+            assert!(
+                lower.starts_with(&format!("{} /api/", method.to_ascii_lowercase())),
+                "{request}"
+            );
+            assert!(
+                lower.contains("content-type: application/json"),
+                "{request}"
+            );
+            assert!(request.ends_with(&body), "{method}: {request}");
+        }
+    }
+
+    #[tokio::test]
+    async fn a_json_body_up_to_the_cap_goes_through_and_one_byte_more_is_refused() {
+        let at_cap = vec![b'a'; MAX_JSON_BODY];
+        let (resp, request, _) = call(
+            reply("200 OK", &["content-type: application/json"], "{}"),
+            "POST",
+            "/api/channels/c/messages",
+            &[("Content-Type", "application/json")],
+            &at_cap,
+            Jar::new(None, 0),
+        )
+        .await;
+        assert_eq!(resp.status, 200);
+        assert!(request.len() > MAX_JSON_BODY);
+        let instance = instance_at(Url::parse("http://127.0.0.1:9").unwrap());
+        let over = forward(
+            &instance,
+            "POST",
+            "/api/channels/c/messages",
+            &[],
+            vec![b'a'; MAX_JSON_BODY + 1],
+        )
+        .await;
+        assert_eq!(over.status, 413);
+    }
+
+    #[tokio::test]
+    async fn every_kind_of_redirect_becomes_a_gateway_error_and_never_follows() {
+        for status in [
+            "301 Moved Permanently",
+            "302 Found",
+            "303 See Other",
+            "307 Temporary Redirect",
+            "308 Permanent Redirect",
+        ] {
+            let (resp, _, _) = call(
+                reply(status, &["location: https://elsewhere.example/x"], ""),
+                "GET",
+                "/api/x",
+                &[],
+                b"",
+                Jar::new(None, 0),
+            )
+            .await;
+            assert_eq!(resp.status, 502, "{status}");
+            assert!(header(&resp, "location").is_none(), "{status}");
+        }
+    }
+
+    #[tokio::test]
+    async fn a_download_keeps_its_name_whatever_the_characters() {
+        let disposition = "content-disposition: attachment; filename*=utf-8''%E4%BD%A0%E5%A5%BD%20%F0%9F%91%A8%E2%80%8D%F0%9F%91%A9.pdf";
+        let (resp, _, _) = call(
+            reply(
+                "200 OK",
+                &["content-type: application/pdf", disposition],
+                "%PDF",
+            ),
+            "GET",
+            "/api/media/x",
+            &[],
+            b"",
+            Jar::new(None, 0),
+        )
+        .await;
+        assert_eq!(
+            header(&resp, "content-disposition"),
+            Some(disposition.trim_start_matches("content-disposition: "))
+        );
+        assert_eq!(
+            header(&resp, "content-type"),
+            Some("application/octet-stream")
+        );
     }
 
     #[tokio::test]

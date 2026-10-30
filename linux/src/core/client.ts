@@ -142,9 +142,13 @@ export function parseCommunityName(bytes: Uint8Array): string | null {
   return name === '' ? null : name
 }
 
-/** Links that may leave the app, after a confirmation: HTTPS to a host, no credentials, bounded. */
+/** Links that may leave the app, after a confirmation: HTTPS to a host without credentials, or a mailto: address; bounded. */
 export function externalAllowed(url: URL): boolean {
-  return url.protocol === 'https:' && url.hostname !== '' && url.username === '' && url.password === '' && url.href.length <= 4096
+  if (url.protocol === 'https:') return url.hostname !== '' && url.username === '' && url.password === '' && url.href.length <= 4096
+  // The web app links an e-mail address in a message as `mailto:`. No other scheme (tel:, file:, an app's own) leaves the app.
+  // eslint-disable-next-line no-control-regex
+  if (url.protocol === 'mailto:') return url.pathname !== '' && url.href.length <= 2048 && !/[\u0000-\u001f\u007f]/.test(url.href)
+  return false
 }
 
 function isId(value: string): boolean {
@@ -188,4 +192,9 @@ export function appPath(path: string): boolean {
       return first === 'v' && slug(second) && third === 'chat' && fourth === 'm' && id(fifth)
     default: return false
   }
+}
+
+/** What the confirmation shows before a link leaves the app: the whole address, so a mailto: cannot hide a cc, bcc or body. */
+export function externalPrompt(url: URL): { message: string, detail: string } {
+  return { message: url.protocol === 'mailto:' ? 'Write to this address in your mail program?' : 'Open this link in your browser?', detail: url.href }
 }

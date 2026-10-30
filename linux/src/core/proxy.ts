@@ -289,7 +289,7 @@ export interface Instance {
   now(): number
 }
 
-const FORWARDED_REQUEST = new Set(['content-type', 'accept', 'accept-language', 'range', 'if-none-match', 'if-modified-since', 'x-request-id'])
+const FORWARDED_REQUEST = new Set(['content-type', 'accept', 'accept-language', 'range', 'if-range', 'if-none-match', 'if-modified-since', 'x-request-id'])
 
 const FORWARDED_RESPONSE = new Set(['content-disposition', 'etag', 'last-modified', 'cache-control', 'content-range', 'accept-ranges', 'content-language', 'retry-after', 'x-request-id'])
 

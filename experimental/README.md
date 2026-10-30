@@ -85,9 +85,10 @@ media on real hardware are still outstanding.
 
 Microphone/camera permission requests follow WebView2's browser permission flow.
 HTTPS chat links to other sites open in the default Windows browser after an
-explicit confirmation. Same-origin attachments open in a restricted child window sharing the app session;
+explicit confirmation, and a `mailto:` address opens in the mail program the
+same way. Same-origin attachments open in a restricted child window sharing the app session;
 the chat window remains open. Non-HTTPS
-external links and custom URI schemes are blocked in this DEV build.
+external links and other custom URI schemes (`tel:`, `file:`, ...) are blocked in this DEV build.
 Voice uses the instance's browser path: DTLS-SRTP to the SFU, with microphone,
 camera and screen payloads sealed in WebView2 before the SFU forwards them
 (trust limits: mnema-talk `SECURITY.md`). Sealed media is not yet qualified

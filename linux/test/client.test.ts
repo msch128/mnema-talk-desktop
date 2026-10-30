@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { appPath, externalAllowed, inviteCode, parseAddress, parseCommunityName, parseHealth } from '../src/core/client.ts'
+import { appPath, externalAllowed, externalPrompt, inviteCode, parseAddress, parseCommunityName, parseHealth } from '../src/core/client.ts'
 
 const ID = '11111111-1111-1111-1111-111111111111'
 
@@ -28,7 +28,11 @@ test('the name a server gives itself is cleaned before it is shown', () => {
 
 test('external links cannot launch files, scripts or credentialed targets', () => {
   assert.ok(externalAllowed(new URL('https://example.invalid/page?q=value')))
-  for (const raw of ['file:///tmp/example', 'javascript:alert(1)', 'mailto:user@example.invalid', 'https://user:password@example.invalid/', 'http://example.invalid/']) {
+  assert.ok(externalAllowed(new URL('mailto:user@example.invalid')))
+  assert.ok(externalAllowed(new URL('mailto:user@example.invalid?subject=Hi%20there')))
+  assert.ok(!externalAllowed(new URL('mailto:')))
+  assert.ok(!externalAllowed(new URL(`mailto:${'a'.repeat(2100)}@example.invalid`)))
+  for (const raw of ['file:///tmp/example', 'javascript:alert(1)', 'tel:+4930123456', 'https://user:password@example.invalid/', 'http://example.invalid/']) {
     assert.ok(!externalAllowed(new URL(raw)), raw)
   }
 })
@@ -71,4 +75,12 @@ test('actual vue routes stay local without allowing other pages or encoded paths
     '/invite', '/invite/', '/invite/abc', '/invite/abc234xyz789/extra', '/INVITE/abc234xyz789', `/invite/${'a'.repeat(65)}`]) {
     assert.ok(!appPath(path), path)
   }
+})
+
+test('the confirmation shows the whole mailto address, including hidden recipients', () => {
+  const prompt = externalPrompt(new URL('mailto:alice@example.invalid?bcc=eve@example.invalid&body=hello'))
+  assert.match(prompt.detail, /bcc=eve@example\.invalid/)
+  assert.match(prompt.detail, /body=hello/)
+  assert.match(prompt.message, /mail program/)
+  assert.match(externalPrompt(new URL('https://example.invalid/x')).message, /browser/)
 })

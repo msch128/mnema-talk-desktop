@@ -844,7 +844,7 @@ function clientVectors(): Json {
         return { input, ok: { version: info.version === null ? null : formatVersion(info.version), api: info.webClientApi } }
       } catch (error) { return { input, error: (error as Error).message } }
     })
-  const externals = ['https://example.invalid/page?q=value', 'file:///tmp/example', 'javascript:alert(1)', 'mailto:user@example.invalid', 'https://user:password@example.invalid/', 'http://example.invalid/', 'https://example.invalid/' + 'a'.repeat(5000)]
+  const externals = ['https://example.invalid/page?q=value', 'file:///tmp/example', 'javascript:alert(1)', 'mailto:user@example.invalid', 'tel:+4930123456', 'https://user:password@example.invalid/', 'http://example.invalid/', 'https://example.invalid/' + 'a'.repeat(5000)]
     .map((url) => ({ url, allowed: externalAllowed(new URL(url)) }))
   const ID = '11111111-1111-1111-1111-111111111111'
   const paths = ['', '/', '/index.html', '/login', '/admin', '/admin/users', '/admin/channels', '/admin/invites', '/admin/media', '/admin/system', `/c/${ID}`, `/c/${ID}/m/${ID}`, `/c/${ID}/t/${ID}`, `/v/${ID}`, `/v/${ID}/chat`,

@@ -1148,7 +1148,7 @@ fn page_builder(
         ))
         // Routes of the app, and the API paths that downloads and attachment
         // links navigate to. The proxy answers the latter.
-        .on_navigation(move |url| bundled(url) || app_api(url))
+        .on_navigation(crate::web_client::navigation_allowed)
         // A reload or navigation ends the document that opened the host-side
         // sockets; nothing else would close them. Only app routes count: a
         // download navigation keeps the document, and its sockets, alive. A
@@ -1172,19 +1172,26 @@ fn page_builder(
     #[cfg(target_os = "macos")]
     let builder = {
         let downloads = app.clone();
-        builder.on_download(move |_, event| save_download(&downloads, event))
+        builder.on_download(move |webview, event| save_download(&downloads, webview.label(), event))
     };
     isolate(builder, app, id)
 }
 
-/// Takes a download of the app's own API into the Downloads folder, under a
-/// name that cannot leave it and does not overwrite anything.
+/// Takes a download of the app's own API, or of a file the page made itself
+/// (a `blob:` of the app origin), into the Downloads folder, under a name that
+/// cannot leave it and does not overwrite anything. The window an attachment
+/// link opened has nothing to show once the file is saved and closes.
 #[cfg(target_os = "macos")]
-fn save_download(app: &tauri::AppHandle, event: tauri::webview::DownloadEvent<'_>) -> bool {
+fn save_download(
+    app: &tauri::AppHandle,
+    label: &str,
+    event: tauri::webview::DownloadEvent<'_>,
+) -> bool {
     use tauri::webview::DownloadEvent::{Finished, Requested};
     match event {
         Requested { url, destination } => {
-            let Some(dir) = app.path().download_dir().ok().filter(|_| app_api(&url)) else {
+            let own = |u: &Url| app_api(u) || crate::web_client::own_blob(u);
+            let Some(dir) = app.path().download_dir().ok().filter(|_| own(&url)) else {
                 return false;
             };
             let suggested = destination
@@ -1194,7 +1201,14 @@ fn save_download(app: &tauri::AppHandle, event: tauri::webview::DownloadEvent<'_
             *destination = download_target(&dir, &suggested, |p| p.exists());
             true
         }
-        Finished { .. } => true,
+        Finished { .. } => {
+            if crate::instances::id_of_attachment_label(label).is_some()
+                && let Some(window) = app.get_webview_window(label)
+            {
+                let _ = window.close();
+            }
+            true
+        }
         _ => false,
     }
 }
@@ -1303,7 +1317,7 @@ fn new_window(
     #[cfg(target_os = "macos")]
     let builder = {
         let downloads = app.clone();
-        builder.on_download(move |_, event| save_download(&downloads, event))
+        builder.on_download(move |webview, event| save_download(&downloads, webview.label(), event))
     };
     let builder = crate::storage::window_on_default_storage(builder);
     let child = super::web_permissions::with_probe_args(app, &label, builder).build();
