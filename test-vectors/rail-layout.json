@@ -1,0 +1,3431 @@
+{
+ "format": 1,
+ "note": "The layout of the server rail: folders, order and local names. Read by the Rust host and the TypeScript client. start is the stored items (null: none stored) and start_aliases the stored names; every case is loaded (normalised), then its ops run in order (ok false: refused and nothing changes), then items, flat (the order of the servers on the rail) and aliases are compared. Folders made by group and new_folder get the id in the op's folder field (the host picks a random one).",
+ "cases": [
+  {
+   "name": "a list without a layout becomes the stored order, no folders",
+   "known": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "order": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "start": null,
+   "start_aliases": {},
+   "ops": [],
+   "items": [
+    {
+     "kind": "server",
+     "id": "a"
+    },
+    {
+     "kind": "server",
+     "id": "b"
+    },
+    {
+     "kind": "server",
+     "id": "c"
+    },
+    {
+     "kind": "server",
+     "id": "d"
+    }
+   ],
+   "flat": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "aliases": {}
+  },
+  {
+   "name": "unknown and repeated servers are dropped, missing ones follow in stored order",
+   "known": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "order": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "start": [
+    {
+     "kind": "server",
+     "id": "a"
+    },
+    {
+     "kind": "server",
+     "id": "x"
+    },
+    {
+     "kind": "server",
+     "id": "a"
+    },
+    {
+     "kind": "folder",
+     "id": "f-1",
+     "name": "",
+     "color": null,
+     "collapsed": false,
+     "servers": [
+      "c",
+      "x",
+      "a"
+     ]
+    }
+   ],
+   "start_aliases": {},
+   "ops": [],
+   "items": [
+    {
+     "kind": "server",
+     "id": "a"
+    },
+    {
+     "kind": "folder",
+     "id": "f-1",
+     "name": "",
+     "color": null,
+     "collapsed": false,
+     "servers": [
+      "c"
+     ]
+    },
+    {
+     "kind": "server",
+     "id": "b"
+    },
+    {
+     "kind": "server",
+     "id": "d"
+    }
+   ],
+   "flat": [
+    "a",
+    "c",
+    "b",
+    "d"
+   ],
+   "aliases": {}
+  },
+  {
+   "name": "names are trimmed and cut to 40, colours must be #rrggbb, empty folders go",
+   "known": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "order": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "start": [
+    {
+     "kind": "folder",
+     "id": "f-1",
+     "name": "  Work  ",
+     "color": "#AABBCC",
+     "collapsed": false,
+     "servers": [
+      "a"
+     ]
+    },
+    {
+     "kind": "folder",
+     "id": "f-2",
+     "name": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+     "color": "blue",
+     "collapsed": false,
+     "servers": [
+      "b"
+     ]
+    },
+    {
+     "kind": "folder",
+     "id": "f-3",
+     "name": "",
+     "color": null,
+     "collapsed": false,
+     "servers": []
+    }
+   ],
+   "start_aliases": {},
+   "ops": [],
+   "items": [
+    {
+     "kind": "folder",
+     "id": "f-1",
+     "name": "Work",
+     "color": "#aabbcc",
+     "collapsed": false,
+     "servers": [
+      "a"
+     ]
+    },
+    {
+     "kind": "folder",
+     "id": "f-2",
+     "name": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+     "color": null,
+     "collapsed": false,
+     "servers": [
+      "b"
+     ]
+    },
+    {
+     "kind": "server",
+     "id": "c"
+    },
+    {
+     "kind": "server",
+     "id": "d"
+    }
+   ],
+   "flat": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "aliases": {}
+  },
+  {
+   "name": "a repeated folder id is dropped, its servers fall back to the end",
+   "known": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "order": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "start": [
+    {
+     "kind": "folder",
+     "id": "f-1",
+     "name": "",
+     "color": null,
+     "collapsed": false,
+     "servers": [
+      "a"
+     ]
+    },
+    {
+     "kind": "folder",
+     "id": "f-1",
+     "name": "",
+     "color": null,
+     "collapsed": false,
+     "servers": [
+      "b"
+     ]
+    }
+   ],
+   "start_aliases": {},
+   "ops": [],
+   "items": [
+    {
+     "kind": "folder",
+     "id": "f-1",
+     "name": "",
+     "color": null,
+     "collapsed": false,
+     "servers": [
+      "a"
+     ]
+    },
+    {
+     "kind": "server",
+     "id": "b"
+    },
+    {
+     "kind": "server",
+     "id": "c"
+    },
+    {
+     "kind": "server",
+     "id": "d"
+    }
+   ],
+   "flat": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "aliases": {}
+  },
+  {
+   "name": "a folder with one server stays",
+   "known": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "order": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "start": [
+    {
+     "kind": "folder",
+     "id": "f-1",
+     "name": "",
+     "color": null,
+     "collapsed": false,
+     "servers": [
+      "a"
+     ]
+    }
+   ],
+   "start_aliases": {},
+   "ops": [],
+   "items": [
+    {
+     "kind": "folder",
+     "id": "f-1",
+     "name": "",
+     "color": null,
+     "collapsed": false,
+     "servers": [
+      "a"
+     ]
+    },
+    {
+     "kind": "server",
+     "id": "b"
+    },
+    {
+     "kind": "server",
+     "id": "c"
+    },
+    {
+     "kind": "server",
+     "id": "d"
+    }
+   ],
+   "flat": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "aliases": {}
+  },
+  {
+   "name": "dropping a server on a top level server makes a folder at that place",
+   "known": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "order": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "start": [
+    {
+     "kind": "server",
+     "id": "a"
+    },
+    {
+     "kind": "server",
+     "id": "b"
+    },
+    {
+     "kind": "server",
+     "id": "c"
+    },
+    {
+     "kind": "server",
+     "id": "d"
+    }
+   ],
+   "start_aliases": {},
+   "ops": [
+    {
+     "op": "group",
+     "id": "d",
+     "target": "a",
+     "folder": "f-1"
+    }
+   ],
+   "items": [
+    {
+     "kind": "folder",
+     "id": "f-1",
+     "name": "",
+     "color": null,
+     "collapsed": false,
+     "servers": [
+      "a",
+      "d"
+     ]
+    },
+    {
+     "kind": "server",
+     "id": "b"
+    },
+    {
+     "kind": "server",
+     "id": "c"
+    }
+   ],
+   "flat": [
+    "a",
+    "d",
+    "b",
+    "c"
+   ],
+   "aliases": {}
+  },
+  {
+   "name": "dropping a server on a member joins that folder right after the member",
+   "known": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "order": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "start": [
+    {
+     "kind": "folder",
+     "id": "f-1",
+     "name": "",
+     "color": null,
+     "collapsed": false,
+     "servers": [
+      "a",
+      "b"
+     ]
+    },
+    {
+     "kind": "server",
+     "id": "c"
+    },
+    {
+     "kind": "server",
+     "id": "d"
+    }
+   ],
+   "start_aliases": {},
+   "ops": [
+    {
+     "op": "group",
+     "id": "d",
+     "target": "a"
+    }
+   ],
+   "items": [
+    {
+     "kind": "folder",
+     "id": "f-1",
+     "name": "",
+     "color": null,
+     "collapsed": false,
+     "servers": [
+      "a",
+      "d",
+      "b"
+     ]
+    },
+    {
+     "kind": "server",
+     "id": "c"
+    }
+   ],
+   "flat": [
+    "a",
+    "d",
+    "b",
+    "c"
+   ],
+   "aliases": {}
+  },
+  {
+   "name": "grouping from a folder empties and removes the old one",
+   "known": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "order": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "start": [
+    {
+     "kind": "folder",
+     "id": "f-1",
+     "name": "",
+     "color": null,
+     "collapsed": false,
+     "servers": [
+      "a"
+     ]
+    },
+    {
+     "kind": "folder",
+     "id": "f-2",
+     "name": "",
+     "color": null,
+     "collapsed": false,
+     "servers": [
+      "c",
+      "d"
+     ]
+    },
+    {
+     "kind": "server",
+     "id": "b"
+    }
+   ],
+   "start_aliases": {},
+   "ops": [
+    {
+     "op": "group",
+     "id": "a",
+     "target": "c"
+    }
+   ],
+   "items": [
+    {
+     "kind": "folder",
+     "id": "f-2",
+     "name": "",
+     "color": null,
+     "collapsed": false,
+     "servers": [
+      "c",
+      "a",
+      "d"
+     ]
+    },
+    {
+     "kind": "server",
+     "id": "b"
+    }
+   ],
+   "flat": [
+    "c",
+    "a",
+    "d",
+    "b"
+   ],
+   "aliases": {}
+  },
+  {
+   "name": "grouping a server with itself or a folder with anything does nothing",
+   "known": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "order": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "start": [
+    {
+     "kind": "folder",
+     "id": "f-1",
+     "name": "",
+     "color": null,
+     "collapsed": false,
+     "servers": [
+      "a"
+     ]
+    },
+    {
+     "kind": "server",
+     "id": "b"
+    },
+    {
+     "kind": "server",
+     "id": "c"
+    },
+    {
+     "kind": "server",
+     "id": "d"
+    }
+   ],
+   "start_aliases": {},
+   "ops": [
+    {
+     "op": "group",
+     "id": "b",
+     "target": "b",
+     "ok": false
+    },
+    {
+     "op": "group",
+     "id": "f-1",
+     "target": "b",
+     "folder": "f-9",
+     "ok": false
+    },
+    {
+     "op": "group",
+     "id": "b",
+     "target": "f-1",
+     "ok": false
+    },
+    {
+     "op": "group",
+     "id": "zz",
+     "target": "b",
+     "ok": false
+    }
+   ],
+   "items": [
+    {
+     "kind": "folder",
+     "id": "f-1",
+     "name": "",
+     "color": null,
+     "collapsed": false,
+     "servers": [
+      "a"
+     ]
+    },
+    {
+     "kind": "server",
+     "id": "b"
+    },
+    {
+     "kind": "server",
+     "id": "c"
+    },
+    {
+     "kind": "server",
+     "id": "d"
+    }
+   ],
+   "flat": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "aliases": {}
+  },
+  {
+   "name": "place before a top level anchor",
+   "known": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "order": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "start": [
+    {
+     "kind": "server",
+     "id": "a"
+    },
+    {
+     "kind": "server",
+     "id": "b"
+    },
+    {
+     "kind": "server",
+     "id": "c"
+    },
+    {
+     "kind": "server",
+     "id": "d"
+    }
+   ],
+   "start_aliases": {},
+   "ops": [
+    {
+     "op": "place",
+     "id": "d",
+     "target": "",
+     "before": "b"
+    }
+   ],
+   "items": [
+    {
+     "kind": "server",
+     "id": "a"
+    },
+    {
+     "kind": "server",
+     "id": "d"
+    },
+    {
+     "kind": "server",
+     "id": "b"
+    },
+    {
+     "kind": "server",
+     "id": "c"
+    }
+   ],
+   "flat": [
+    "a",
+    "d",
+    "b",
+    "c"
+   ],
+   "aliases": {}
+  },
+  {
+   "name": "place with an empty anchor goes to the end",
+   "known": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "order": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "start": [
+    {
+     "kind": "server",
+     "id": "a"
+    },
+    {
+     "kind": "server",
+     "id": "b"
+    },
+    {
+     "kind": "server",
+     "id": "c"
+    },
+    {
+     "kind": "server",
+     "id": "d"
+    }
+   ],
+   "start_aliases": {},
+   "ops": [
+    {
+     "op": "place",
+     "id": "a",
+     "target": "",
+     "before": ""
+    }
+   ],
+   "items": [
+    {
+     "kind": "server",
+     "id": "b"
+    },
+    {
+     "kind": "server",
+     "id": "c"
+    },
+    {
+     "kind": "server",
+     "id": "d"
+    },
+    {
+     "kind": "server",
+     "id": "a"
+    }
+   ],
+   "flat": [
+    "b",
+    "c",
+    "d",
+    "a"
+   ],
+   "aliases": {}
+  },
+  {
+   "name": "an anchor that is not in the container means the end",
+   "known": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "order": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "start": [
+    {
+     "kind": "server",
+     "id": "a"
+    },
+    {
+     "kind": "server",
+     "id": "b"
+    },
+    {
+     "kind": "server",
+     "id": "c"
+    },
+    {
+     "kind": "server",
+     "id": "d"
+    }
+   ],
+   "start_aliases": {},
+   "ops": [
+    {
+     "op": "place",
+     "id": "a",
+     "target": "",
+     "before": "zzz"
+    }
+   ],
+   "items": [
+    {
+     "kind": "server",
+     "id": "b"
+    },
+    {
+     "kind": "server",
+     "id": "c"
+    },
+    {
+     "kind": "server",
+     "id": "d"
+    },
+    {
+     "kind": "server",
+     "id": "a"
+    }
+   ],
+   "flat": [
+    "b",
+    "c",
+    "d",
+    "a"
+   ],
+   "aliases": {}
+  },
+  {
+   "name": "placing before itself changes nothing",
+   "known": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "order": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "start": [
+    {
+     "kind": "server",
+     "id": "a"
+    },
+    {
+     "kind": "server",
+     "id": "b"
+    },
+    {
+     "kind": "server",
+     "id": "c"
+    },
+    {
+     "kind": "server",
+     "id": "d"
+    }
+   ],
+   "start_aliases": {},
+   "ops": [
+    {
+     "op": "place",
+     "id": "b",
+     "target": "",
+     "before": "b"
+    }
+   ],
+   "items": [
+    {
+     "kind": "server",
+     "id": "a"
+    },
+    {
+     "kind": "server",
+     "id": "b"
+    },
+    {
+     "kind": "server",
+     "id": "c"
+    },
+    {
+     "kind": "server",
+     "id": "d"
+    }
+   ],
+   "flat": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "aliases": {}
+  },
+  {
+   "name": "place into a folder before a member",
+   "known": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "order": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "start": [
+    {
+     "kind": "folder",
+     "id": "f-1",
+     "name": "",
+     "color": null,
+     "collapsed": false,
+     "servers": [
+      "b",
+      "c"
+     ]
+    },
+    {
+     "kind": "server",
+     "id": "a"
+    },
+    {
+     "kind": "server",
+     "id": "d"
+    }
+   ],
+   "start_aliases": {},
+   "ops": [
+    {
+     "op": "place",
+     "id": "a",
+     "target": "f-1",
+     "before": "c"
+    }
+   ],
+   "items": [
+    {
+     "kind": "folder",
+     "id": "f-1",
+     "name": "",
+     "color": null,
+     "collapsed": false,
+     "servers": [
+      "b",
+      "a",
+      "c"
+     ]
+    },
+    {
+     "kind": "server",
+     "id": "d"
+    }
+   ],
+   "flat": [
+    "b",
+    "a",
+    "c",
+    "d"
+   ],
+   "aliases": {}
+  },
+  {
+   "name": "place into a folder at the end",
+   "known": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "order": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "start": [
+    {
+     "kind": "folder",
+     "id": "f-1",
+     "name": "",
+     "color": null,
+     "collapsed": false,
+     "servers": [
+      "b",
+      "c"
+     ]
+    },
+    {
+     "kind": "server",
+     "id": "a"
+    },
+    {
+     "kind": "server",
+     "id": "d"
+    }
+   ],
+   "start_aliases": {},
+   "ops": [
+    {
+     "op": "place",
+     "id": "a",
+     "target": "f-1",
+     "before": ""
+    }
+   ],
+   "items": [
+    {
+     "kind": "folder",
+     "id": "f-1",
+     "name": "",
+     "color": null,
+     "collapsed": false,
+     "servers": [
+      "b",
+      "c",
+      "a"
+     ]
+    },
+    {
+     "kind": "server",
+     "id": "d"
+    }
+   ],
+   "flat": [
+    "b",
+    "c",
+    "a",
+    "d"
+   ],
+   "aliases": {}
+  },
+  {
+   "name": "taking the last member out removes the folder",
+   "known": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "order": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "start": [
+    {
+     "kind": "folder",
+     "id": "f-1",
+     "name": "",
+     "color": null,
+     "collapsed": false,
+     "servers": [
+      "a"
+     ]
+    },
+    {
+     "kind": "server",
+     "id": "b"
+    },
+    {
+     "kind": "server",
+     "id": "c"
+    },
+    {
+     "kind": "server",
+     "id": "d"
+    }
+   ],
+   "start_aliases": {},
+   "ops": [
+    {
+     "op": "place",
+     "id": "a",
+     "target": "",
+     "before": "c"
+    }
+   ],
+   "items": [
+    {
+     "kind": "server",
+     "id": "b"
+    },
+    {
+     "kind": "server",
+     "id": "a"
+    },
+    {
+     "kind": "server",
+     "id": "c"
+    },
+    {
+     "kind": "server",
+     "id": "d"
+    }
+   ],
+   "flat": [
+    "b",
+    "a",
+    "c",
+    "d"
+   ],
+   "aliases": {}
+  },
+  {
+   "name": "a folder moves among the top level items",
+   "known": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "order": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "start": [
+    {
+     "kind": "server",
+     "id": "a"
+    },
+    {
+     "kind": "folder",
+     "id": "f-1",
+     "name": "",
+     "color": null,
+     "collapsed": false,
+     "servers": [
+      "b",
+      "c"
+     ]
+    },
+    {
+     "kind": "server",
+     "id": "d"
+    }
+   ],
+   "start_aliases": {},
+   "ops": [
+    {
+     "op": "place",
+     "id": "f-1",
+     "target": "",
+     "before": "a"
+    }
+   ],
+   "items": [
+    {
+     "kind": "folder",
+     "id": "f-1",
+     "name": "",
+     "color": null,
+     "collapsed": false,
+     "servers": [
+      "b",
+      "c"
+     ]
+    },
+    {
+     "kind": "server",
+     "id": "a"
+    },
+    {
+     "kind": "server",
+     "id": "d"
+    }
+   ],
+   "flat": [
+    "b",
+    "c",
+    "a",
+    "d"
+   ],
+   "aliases": {}
+  },
+  {
+   "name": "a folder cannot go into a folder, an unknown folder or id is refused",
+   "known": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "order": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "start": [
+    {
+     "kind": "server",
+     "id": "a"
+    },
+    {
+     "kind": "folder",
+     "id": "f-1",
+     "name": "",
+     "color": null,
+     "collapsed": false,
+     "servers": [
+      "b"
+     ]
+    },
+    {
+     "kind": "folder",
+     "id": "f-2",
+     "name": "",
+     "color": null,
+     "collapsed": false,
+     "servers": [
+      "c"
+     ]
+    },
+    {
+     "kind": "server",
+     "id": "d"
+    }
+   ],
+   "start_aliases": {},
+   "ops": [
+    {
+     "op": "place",
+     "id": "f-1",
+     "target": "f-2",
+     "before": "",
+     "ok": false
+    },
+    {
+     "op": "place",
+     "id": "a",
+     "target": "f-9",
+     "before": "",
+     "ok": false
+    },
+    {
+     "op": "place",
+     "id": "zz",
+     "target": "",
+     "before": "",
+     "ok": false
+    }
+   ],
+   "items": [
+    {
+     "kind": "server",
+     "id": "a"
+    },
+    {
+     "kind": "folder",
+     "id": "f-1",
+     "name": "",
+     "color": null,
+     "collapsed": false,
+     "servers": [
+      "b"
+     ]
+    },
+    {
+     "kind": "folder",
+     "id": "f-2",
+     "name": "",
+     "color": null,
+     "collapsed": false,
+     "servers": [
+      "c"
+     ]
+    },
+    {
+     "kind": "server",
+     "id": "d"
+    }
+   ],
+   "flat": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "aliases": {}
+  },
+  {
+   "name": "ungroup puts the server right after its folder",
+   "known": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "order": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "start": [
+    {
+     "kind": "folder",
+     "id": "f-1",
+     "name": "",
+     "color": null,
+     "collapsed": false,
+     "servers": [
+      "a",
+      "b"
+     ]
+    },
+    {
+     "kind": "server",
+     "id": "c"
+    },
+    {
+     "kind": "server",
+     "id": "d"
+    }
+   ],
+   "start_aliases": {},
+   "ops": [
+    {
+     "op": "ungroup",
+     "id": "a"
+    }
+   ],
+   "items": [
+    {
+     "kind": "folder",
+     "id": "f-1",
+     "name": "",
+     "color": null,
+     "collapsed": false,
+     "servers": [
+      "b"
+     ]
+    },
+    {
+     "kind": "server",
+     "id": "a"
+    },
+    {
+     "kind": "server",
+     "id": "c"
+    },
+    {
+     "kind": "server",
+     "id": "d"
+    }
+   ],
+   "flat": [
+    "b",
+    "a",
+    "c",
+    "d"
+   ],
+   "aliases": {}
+  },
+  {
+   "name": "ungrouping the last member removes the folder",
+   "known": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "order": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "start": [
+    {
+     "kind": "folder",
+     "id": "f-1",
+     "name": "",
+     "color": null,
+     "collapsed": false,
+     "servers": [
+      "a"
+     ]
+    },
+    {
+     "kind": "server",
+     "id": "b"
+    },
+    {
+     "kind": "server",
+     "id": "c"
+    },
+    {
+     "kind": "server",
+     "id": "d"
+    }
+   ],
+   "start_aliases": {},
+   "ops": [
+    {
+     "op": "ungroup",
+     "id": "a"
+    }
+   ],
+   "items": [
+    {
+     "kind": "server",
+     "id": "a"
+    },
+    {
+     "kind": "server",
+     "id": "b"
+    },
+    {
+     "kind": "server",
+     "id": "c"
+    },
+    {
+     "kind": "server",
+     "id": "d"
+    }
+   ],
+   "flat": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "aliases": {}
+  },
+  {
+   "name": "ungrouping a top level server is refused",
+   "known": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "order": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "start": [
+    {
+     "kind": "server",
+     "id": "a"
+    },
+    {
+     "kind": "server",
+     "id": "b"
+    },
+    {
+     "kind": "server",
+     "id": "c"
+    },
+    {
+     "kind": "server",
+     "id": "d"
+    }
+   ],
+   "start_aliases": {},
+   "ops": [
+    {
+     "op": "ungroup",
+     "id": "a",
+     "ok": false
+    }
+   ],
+   "items": [
+    {
+     "kind": "server",
+     "id": "a"
+    },
+    {
+     "kind": "server",
+     "id": "b"
+    },
+    {
+     "kind": "server",
+     "id": "c"
+    },
+    {
+     "kind": "server",
+     "id": "d"
+    }
+   ],
+   "flat": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "aliases": {}
+  },
+  {
+   "name": "a new folder takes the server where it was",
+   "known": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "order": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "start": [
+    {
+     "kind": "server",
+     "id": "a"
+    },
+    {
+     "kind": "server",
+     "id": "b"
+    },
+    {
+     "kind": "server",
+     "id": "c"
+    },
+    {
+     "kind": "server",
+     "id": "d"
+    }
+   ],
+   "start_aliases": {},
+   "ops": [
+    {
+     "op": "new_folder",
+     "id": "b",
+     "folder": "f-1"
+    }
+   ],
+   "items": [
+    {
+     "kind": "server",
+     "id": "a"
+    },
+    {
+     "kind": "folder",
+     "id": "f-1",
+     "name": "",
+     "color": null,
+     "collapsed": false,
+     "servers": [
+      "b"
+     ]
+    },
+    {
+     "kind": "server",
+     "id": "c"
+    },
+    {
+     "kind": "server",
+     "id": "d"
+    }
+   ],
+   "flat": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "aliases": {}
+  },
+  {
+   "name": "a new folder from a member sits right after the old one",
+   "known": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "order": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "start": [
+    {
+     "kind": "folder",
+     "id": "f-1",
+     "name": "",
+     "color": null,
+     "collapsed": false,
+     "servers": [
+      "a",
+      "b"
+     ]
+    },
+    {
+     "kind": "server",
+     "id": "c"
+    },
+    {
+     "kind": "server",
+     "id": "d"
+    }
+   ],
+   "start_aliases": {},
+   "ops": [
+    {
+     "op": "new_folder",
+     "id": "a",
+     "folder": "f-2"
+    }
+   ],
+   "items": [
+    {
+     "kind": "folder",
+     "id": "f-1",
+     "name": "",
+     "color": null,
+     "collapsed": false,
+     "servers": [
+      "b"
+     ]
+    },
+    {
+     "kind": "folder",
+     "id": "f-2",
+     "name": "",
+     "color": null,
+     "collapsed": false,
+     "servers": [
+      "a"
+     ]
+    },
+    {
+     "kind": "server",
+     "id": "c"
+    },
+    {
+     "kind": "server",
+     "id": "d"
+    }
+   ],
+   "flat": [
+    "b",
+    "a",
+    "c",
+    "d"
+   ],
+   "aliases": {}
+  },
+  {
+   "name": "a new folder from the only member replaces the old one",
+   "known": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "order": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "start": [
+    {
+     "kind": "folder",
+     "id": "f-1",
+     "name": "",
+     "color": null,
+     "collapsed": false,
+     "servers": [
+      "a"
+     ]
+    },
+    {
+     "kind": "server",
+     "id": "b"
+    },
+    {
+     "kind": "server",
+     "id": "c"
+    },
+    {
+     "kind": "server",
+     "id": "d"
+    }
+   ],
+   "start_aliases": {},
+   "ops": [
+    {
+     "op": "new_folder",
+     "id": "a",
+     "folder": "f-2"
+    }
+   ],
+   "items": [
+    {
+     "kind": "folder",
+     "id": "f-2",
+     "name": "",
+     "color": null,
+     "collapsed": false,
+     "servers": [
+      "a"
+     ]
+    },
+    {
+     "kind": "server",
+     "id": "b"
+    },
+    {
+     "kind": "server",
+     "id": "c"
+    },
+    {
+     "kind": "server",
+     "id": "d"
+    }
+   ],
+   "flat": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "aliases": {}
+  },
+  {
+   "name": "a folder id in use or a folder as subject is refused",
+   "known": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "order": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "start": [
+    {
+     "kind": "folder",
+     "id": "f-1",
+     "name": "",
+     "color": null,
+     "collapsed": false,
+     "servers": [
+      "a"
+     ]
+    },
+    {
+     "kind": "server",
+     "id": "b"
+    },
+    {
+     "kind": "server",
+     "id": "c"
+    },
+    {
+     "kind": "server",
+     "id": "d"
+    }
+   ],
+   "start_aliases": {},
+   "ops": [
+    {
+     "op": "new_folder",
+     "id": "b",
+     "folder": "f-1",
+     "ok": false
+    },
+    {
+     "op": "new_folder",
+     "id": "f-1",
+     "folder": "f-2",
+     "ok": false
+    }
+   ],
+   "items": [
+    {
+     "kind": "folder",
+     "id": "f-1",
+     "name": "",
+     "color": null,
+     "collapsed": false,
+     "servers": [
+      "a"
+     ]
+    },
+    {
+     "kind": "server",
+     "id": "b"
+    },
+    {
+     "kind": "server",
+     "id": "c"
+    },
+    {
+     "kind": "server",
+     "id": "d"
+    }
+   ],
+   "flat": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "aliases": {}
+  },
+  {
+   "name": "step moves a top level server by one",
+   "known": [
+    "a",
+    "b",
+    "c"
+   ],
+   "order": [
+    "a",
+    "b",
+    "c"
+   ],
+   "start": [
+    {
+     "kind": "server",
+     "id": "a"
+    },
+    {
+     "kind": "server",
+     "id": "b"
+    },
+    {
+     "kind": "server",
+     "id": "c"
+    }
+   ],
+   "start_aliases": {},
+   "ops": [
+    {
+     "op": "step",
+     "id": "a",
+     "delta": 1
+    }
+   ],
+   "items": [
+    {
+     "kind": "server",
+     "id": "b"
+    },
+    {
+     "kind": "server",
+     "id": "a"
+    },
+    {
+     "kind": "server",
+     "id": "c"
+    }
+   ],
+   "flat": [
+    "b",
+    "a",
+    "c"
+   ],
+   "aliases": {}
+  },
+  {
+   "name": "step at the edge does nothing",
+   "known": [
+    "a",
+    "b",
+    "c"
+   ],
+   "order": [
+    "a",
+    "b",
+    "c"
+   ],
+   "start": [
+    {
+     "kind": "server",
+     "id": "a"
+    },
+    {
+     "kind": "server",
+     "id": "b"
+    },
+    {
+     "kind": "server",
+     "id": "c"
+    }
+   ],
+   "start_aliases": {},
+   "ops": [
+    {
+     "op": "step",
+     "id": "a",
+     "delta": -1,
+     "ok": false
+    },
+    {
+     "op": "step",
+     "id": "c",
+     "delta": 1,
+     "ok": false
+    }
+   ],
+   "items": [
+    {
+     "kind": "server",
+     "id": "a"
+    },
+    {
+     "kind": "server",
+     "id": "b"
+    },
+    {
+     "kind": "server",
+     "id": "c"
+    }
+   ],
+   "flat": [
+    "a",
+    "b",
+    "c"
+   ],
+   "aliases": {}
+  },
+  {
+   "name": "step hops over a whole folder",
+   "known": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "order": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "start": [
+    {
+     "kind": "server",
+     "id": "a"
+    },
+    {
+     "kind": "folder",
+     "id": "f-1",
+     "name": "",
+     "color": null,
+     "collapsed": false,
+     "servers": [
+      "b",
+      "c"
+     ]
+    },
+    {
+     "kind": "server",
+     "id": "d"
+    }
+   ],
+   "start_aliases": {},
+   "ops": [
+    {
+     "op": "step",
+     "id": "a",
+     "delta": 1
+    }
+   ],
+   "items": [
+    {
+     "kind": "folder",
+     "id": "f-1",
+     "name": "",
+     "color": null,
+     "collapsed": false,
+     "servers": [
+      "b",
+      "c"
+     ]
+    },
+    {
+     "kind": "server",
+     "id": "a"
+    },
+    {
+     "kind": "server",
+     "id": "d"
+    }
+   ],
+   "flat": [
+    "b",
+    "c",
+    "a",
+    "d"
+   ],
+   "aliases": {}
+  },
+  {
+   "name": "step up hops over a folder from below",
+   "known": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "order": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "start": [
+    {
+     "kind": "server",
+     "id": "a"
+    },
+    {
+     "kind": "folder",
+     "id": "f-1",
+     "name": "",
+     "color": null,
+     "collapsed": false,
+     "servers": [
+      "b",
+      "c"
+     ]
+    },
+    {
+     "kind": "server",
+     "id": "d"
+    }
+   ],
+   "start_aliases": {},
+   "ops": [
+    {
+     "op": "step",
+     "id": "d",
+     "delta": -1
+    }
+   ],
+   "items": [
+    {
+     "kind": "server",
+     "id": "a"
+    },
+    {
+     "kind": "server",
+     "id": "d"
+    },
+    {
+     "kind": "folder",
+     "id": "f-1",
+     "name": "",
+     "color": null,
+     "collapsed": false,
+     "servers": [
+      "b",
+      "c"
+     ]
+    }
+   ],
+   "flat": [
+    "a",
+    "d",
+    "b",
+    "c"
+   ],
+   "aliases": {}
+  },
+  {
+   "name": "step inside a folder swaps neighbours",
+   "known": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "order": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "start": [
+    {
+     "kind": "folder",
+     "id": "f-1",
+     "name": "",
+     "color": null,
+     "collapsed": false,
+     "servers": [
+      "a",
+      "b",
+      "c"
+     ]
+    },
+    {
+     "kind": "server",
+     "id": "d"
+    }
+   ],
+   "start_aliases": {},
+   "ops": [
+    {
+     "op": "step",
+     "id": "b",
+     "delta": -1
+    }
+   ],
+   "items": [
+    {
+     "kind": "folder",
+     "id": "f-1",
+     "name": "",
+     "color": null,
+     "collapsed": false,
+     "servers": [
+      "b",
+      "a",
+      "c"
+     ]
+    },
+    {
+     "kind": "server",
+     "id": "d"
+    }
+   ],
+   "flat": [
+    "b",
+    "a",
+    "c",
+    "d"
+   ],
+   "aliases": {}
+  },
+  {
+   "name": "step up from the first member leaves the folder above it",
+   "known": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "order": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "start": [
+    {
+     "kind": "folder",
+     "id": "f-1",
+     "name": "",
+     "color": null,
+     "collapsed": false,
+     "servers": [
+      "a",
+      "b",
+      "c"
+     ]
+    },
+    {
+     "kind": "server",
+     "id": "d"
+    }
+   ],
+   "start_aliases": {},
+   "ops": [
+    {
+     "op": "step",
+     "id": "a",
+     "delta": -1
+    }
+   ],
+   "items": [
+    {
+     "kind": "server",
+     "id": "a"
+    },
+    {
+     "kind": "folder",
+     "id": "f-1",
+     "name": "",
+     "color": null,
+     "collapsed": false,
+     "servers": [
+      "b",
+      "c"
+     ]
+    },
+    {
+     "kind": "server",
+     "id": "d"
+    }
+   ],
+   "flat": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "aliases": {}
+  },
+  {
+   "name": "step down from the last member leaves the folder below it",
+   "known": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "order": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "start": [
+    {
+     "kind": "folder",
+     "id": "f-1",
+     "name": "",
+     "color": null,
+     "collapsed": false,
+     "servers": [
+      "a",
+      "b",
+      "c"
+     ]
+    },
+    {
+     "kind": "server",
+     "id": "d"
+    }
+   ],
+   "start_aliases": {},
+   "ops": [
+    {
+     "op": "step",
+     "id": "c",
+     "delta": 1
+    }
+   ],
+   "items": [
+    {
+     "kind": "folder",
+     "id": "f-1",
+     "name": "",
+     "color": null,
+     "collapsed": false,
+     "servers": [
+      "a",
+      "b"
+     ]
+    },
+    {
+     "kind": "server",
+     "id": "c"
+    },
+    {
+     "kind": "server",
+     "id": "d"
+    }
+   ],
+   "flat": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "aliases": {}
+  },
+  {
+   "name": "a single member stepping out removes the folder",
+   "known": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "order": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "start": [
+    {
+     "kind": "folder",
+     "id": "f-1",
+     "name": "",
+     "color": null,
+     "collapsed": false,
+     "servers": [
+      "a"
+     ]
+    },
+    {
+     "kind": "server",
+     "id": "b"
+    },
+    {
+     "kind": "server",
+     "id": "c"
+    },
+    {
+     "kind": "server",
+     "id": "d"
+    }
+   ],
+   "start_aliases": {},
+   "ops": [
+    {
+     "op": "step",
+     "id": "a",
+     "delta": 1
+    }
+   ],
+   "items": [
+    {
+     "kind": "server",
+     "id": "a"
+    },
+    {
+     "kind": "server",
+     "id": "b"
+    },
+    {
+     "kind": "server",
+     "id": "c"
+    },
+    {
+     "kind": "server",
+     "id": "d"
+    }
+   ],
+   "flat": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "aliases": {}
+  },
+  {
+   "name": "step moves a folder as a whole",
+   "known": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "order": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "start": [
+    {
+     "kind": "server",
+     "id": "a"
+    },
+    {
+     "kind": "folder",
+     "id": "f-1",
+     "name": "",
+     "color": null,
+     "collapsed": false,
+     "servers": [
+      "b"
+     ]
+    },
+    {
+     "kind": "server",
+     "id": "c"
+    },
+    {
+     "kind": "server",
+     "id": "d"
+    }
+   ],
+   "start_aliases": {},
+   "ops": [
+    {
+     "op": "step",
+     "id": "f-1",
+     "delta": -1
+    }
+   ],
+   "items": [
+    {
+     "kind": "folder",
+     "id": "f-1",
+     "name": "",
+     "color": null,
+     "collapsed": false,
+     "servers": [
+      "b"
+     ]
+    },
+    {
+     "kind": "server",
+     "id": "a"
+    },
+    {
+     "kind": "server",
+     "id": "c"
+    },
+    {
+     "kind": "server",
+     "id": "d"
+    }
+   ],
+   "flat": [
+    "b",
+    "a",
+    "c",
+    "d"
+   ],
+   "aliases": {}
+  },
+  {
+   "name": "step with a delta other than one is refused",
+   "known": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "order": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "start": [
+    {
+     "kind": "server",
+     "id": "a"
+    },
+    {
+     "kind": "server",
+     "id": "b"
+    },
+    {
+     "kind": "server",
+     "id": "c"
+    },
+    {
+     "kind": "server",
+     "id": "d"
+    }
+   ],
+   "start_aliases": {},
+   "ops": [
+    {
+     "op": "step",
+     "id": "a",
+     "delta": 0,
+     "ok": false
+    },
+    {
+     "op": "step",
+     "id": "a",
+     "delta": 2,
+     "ok": false
+    }
+   ],
+   "items": [
+    {
+     "kind": "server",
+     "id": "a"
+    },
+    {
+     "kind": "server",
+     "id": "b"
+    },
+    {
+     "kind": "server",
+     "id": "c"
+    },
+    {
+     "kind": "server",
+     "id": "d"
+    }
+   ],
+   "flat": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "aliases": {}
+  },
+  {
+   "name": "toggle sets or flips",
+   "known": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "order": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "start": [
+    {
+     "kind": "folder",
+     "id": "f-1",
+     "name": "",
+     "color": null,
+     "collapsed": false,
+     "servers": [
+      "a"
+     ]
+    },
+    {
+     "kind": "server",
+     "id": "b"
+    },
+    {
+     "kind": "server",
+     "id": "c"
+    },
+    {
+     "kind": "server",
+     "id": "d"
+    }
+   ],
+   "start_aliases": {},
+   "ops": [
+    {
+     "op": "toggle",
+     "id": "f-1",
+     "flag": true
+    },
+    {
+     "op": "toggle",
+     "id": "f-1",
+     "flag": null
+    },
+    {
+     "op": "toggle",
+     "id": "f-9",
+     "flag": true,
+     "ok": false
+    }
+   ],
+   "items": [
+    {
+     "kind": "folder",
+     "id": "f-1",
+     "name": "",
+     "color": null,
+     "collapsed": false,
+     "servers": [
+      "a"
+     ]
+    },
+    {
+     "kind": "server",
+     "id": "b"
+    },
+    {
+     "kind": "server",
+     "id": "c"
+    },
+    {
+     "kind": "server",
+     "id": "d"
+    }
+   ],
+   "flat": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "aliases": {}
+  },
+  {
+   "name": "toggle leaves it collapsed",
+   "known": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "order": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "start": [
+    {
+     "kind": "folder",
+     "id": "f-1",
+     "name": "",
+     "color": null,
+     "collapsed": false,
+     "servers": [
+      "a"
+     ]
+    },
+    {
+     "kind": "server",
+     "id": "b"
+    },
+    {
+     "kind": "server",
+     "id": "c"
+    },
+    {
+     "kind": "server",
+     "id": "d"
+    }
+   ],
+   "start_aliases": {},
+   "ops": [
+    {
+     "op": "toggle",
+     "id": "f-1",
+     "flag": true
+    }
+   ],
+   "items": [
+    {
+     "kind": "folder",
+     "id": "f-1",
+     "name": "",
+     "color": null,
+     "collapsed": true,
+     "servers": [
+      "a"
+     ]
+    },
+    {
+     "kind": "server",
+     "id": "b"
+    },
+    {
+     "kind": "server",
+     "id": "c"
+    },
+    {
+     "kind": "server",
+     "id": "d"
+    }
+   ],
+   "flat": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "aliases": {}
+  },
+  {
+   "name": "a folder is renamed and coloured",
+   "known": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "order": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "start": [
+    {
+     "kind": "folder",
+     "id": "f-1",
+     "name": "",
+     "color": null,
+     "collapsed": false,
+     "servers": [
+      "a"
+     ]
+    },
+    {
+     "kind": "server",
+     "id": "b"
+    },
+    {
+     "kind": "server",
+     "id": "c"
+    },
+    {
+     "kind": "server",
+     "id": "d"
+    }
+   ],
+   "start_aliases": {},
+   "ops": [
+    {
+     "op": "folder_edit",
+     "id": "f-1",
+     "name": "  Team  ",
+     "color": "#12AB34"
+    }
+   ],
+   "items": [
+    {
+     "kind": "folder",
+     "id": "f-1",
+     "name": "Team",
+     "color": "#12ab34",
+     "collapsed": false,
+     "servers": [
+      "a"
+     ]
+    },
+    {
+     "kind": "server",
+     "id": "b"
+    },
+    {
+     "kind": "server",
+     "id": "c"
+    },
+    {
+     "kind": "server",
+     "id": "d"
+    }
+   ],
+   "flat": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "aliases": {}
+  },
+  {
+   "name": "a colour can be cleared, a bad colour is refused, an unknown folder too",
+   "known": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "order": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "start": [
+    {
+     "kind": "folder",
+     "id": "f-1",
+     "name": "Team",
+     "color": "#12ab34",
+     "collapsed": false,
+     "servers": [
+      "a"
+     ]
+    },
+    {
+     "kind": "server",
+     "id": "b"
+    },
+    {
+     "kind": "server",
+     "id": "c"
+    },
+    {
+     "kind": "server",
+     "id": "d"
+    }
+   ],
+   "start_aliases": {},
+   "ops": [
+    {
+     "op": "folder_edit",
+     "id": "f-1",
+     "name": "Team",
+     "color": "red",
+     "ok": false
+    },
+    {
+     "op": "folder_edit",
+     "id": "f-1",
+     "name": "Team",
+     "color": null
+    },
+    {
+     "op": "folder_edit",
+     "id": "f-9",
+     "name": "x",
+     "color": null,
+     "ok": false
+    }
+   ],
+   "items": [
+    {
+     "kind": "folder",
+     "id": "f-1",
+     "name": "Team",
+     "color": null,
+     "collapsed": false,
+     "servers": [
+      "a"
+     ]
+    },
+    {
+     "kind": "server",
+     "id": "b"
+    },
+    {
+     "kind": "server",
+     "id": "c"
+    },
+    {
+     "kind": "server",
+     "id": "d"
+    }
+   ],
+   "flat": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "aliases": {}
+  },
+  {
+   "name": "deleting a folder puts its servers back at its place",
+   "known": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "order": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "start": [
+    {
+     "kind": "server",
+     "id": "a"
+    },
+    {
+     "kind": "folder",
+     "id": "f-1",
+     "name": "",
+     "color": null,
+     "collapsed": false,
+     "servers": [
+      "b",
+      "c"
+     ]
+    },
+    {
+     "kind": "server",
+     "id": "d"
+    }
+   ],
+   "start_aliases": {},
+   "ops": [
+    {
+     "op": "folder_delete",
+     "id": "f-1"
+    }
+   ],
+   "items": [
+    {
+     "kind": "server",
+     "id": "a"
+    },
+    {
+     "kind": "server",
+     "id": "b"
+    },
+    {
+     "kind": "server",
+     "id": "c"
+    },
+    {
+     "kind": "server",
+     "id": "d"
+    }
+   ],
+   "flat": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "aliases": {}
+  },
+  {
+   "name": "deleting an unknown folder is refused",
+   "known": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "order": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "start": [
+    {
+     "kind": "server",
+     "id": "a"
+    },
+    {
+     "kind": "server",
+     "id": "b"
+    },
+    {
+     "kind": "server",
+     "id": "c"
+    },
+    {
+     "kind": "server",
+     "id": "d"
+    }
+   ],
+   "start_aliases": {},
+   "ops": [
+    {
+     "op": "folder_delete",
+     "id": "f-1",
+     "ok": false
+    }
+   ],
+   "items": [
+    {
+     "kind": "server",
+     "id": "a"
+    },
+    {
+     "kind": "server",
+     "id": "b"
+    },
+    {
+     "kind": "server",
+     "id": "c"
+    },
+    {
+     "kind": "server",
+     "id": "d"
+    }
+   ],
+   "flat": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "aliases": {}
+  },
+  {
+   "name": "a new server joins at the end",
+   "known": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "order": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "start": [
+    {
+     "kind": "server",
+     "id": "a"
+    },
+    {
+     "kind": "server",
+     "id": "b"
+    },
+    {
+     "kind": "server",
+     "id": "c"
+    },
+    {
+     "kind": "server",
+     "id": "d"
+    }
+   ],
+   "start_aliases": {},
+   "ops": [
+    {
+     "op": "add",
+     "id": "e"
+    }
+   ],
+   "items": [
+    {
+     "kind": "server",
+     "id": "a"
+    },
+    {
+     "kind": "server",
+     "id": "b"
+    },
+    {
+     "kind": "server",
+     "id": "c"
+    },
+    {
+     "kind": "server",
+     "id": "d"
+    },
+    {
+     "kind": "server",
+     "id": "e"
+    }
+   ],
+   "flat": [
+    "a",
+    "b",
+    "c",
+    "d",
+    "e"
+   ],
+   "aliases": {}
+  },
+  {
+   "name": "removing a server leaves its folder, which goes when it is empty",
+   "known": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "order": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "start": [
+    {
+     "kind": "server",
+     "id": "a"
+    },
+    {
+     "kind": "folder",
+     "id": "f-1",
+     "name": "",
+     "color": null,
+     "collapsed": false,
+     "servers": [
+      "b",
+      "c"
+     ]
+    },
+    {
+     "kind": "server",
+     "id": "d"
+    }
+   ],
+   "start_aliases": {},
+   "ops": [
+    {
+     "op": "remove",
+     "id": "b"
+    },
+    {
+     "op": "remove",
+     "id": "c"
+    },
+    {
+     "op": "remove",
+     "id": "zz",
+     "ok": false
+    }
+   ],
+   "items": [
+    {
+     "kind": "server",
+     "id": "a"
+    },
+    {
+     "kind": "server",
+     "id": "d"
+    }
+   ],
+   "flat": [
+    "a",
+    "d"
+   ],
+   "aliases": {}
+  },
+  {
+   "name": "a server is renamed locally and the alias can be cleared",
+   "known": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "order": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "start": [
+    {
+     "kind": "server",
+     "id": "a"
+    },
+    {
+     "kind": "server",
+     "id": "b"
+    },
+    {
+     "kind": "server",
+     "id": "c"
+    },
+    {
+     "kind": "server",
+     "id": "d"
+    }
+   ],
+   "start_aliases": {},
+   "ops": [
+    {
+     "op": "rename",
+     "id": "a",
+     "name": "  Lantern\u0007 Fox "
+    },
+    {
+     "op": "rename",
+     "id": "b",
+     "name": "Other"
+    },
+    {
+     "op": "rename",
+     "id": "b",
+     "name": "   "
+    },
+    {
+     "op": "rename",
+     "id": "zz",
+     "name": "x",
+     "ok": false
+    }
+   ],
+   "items": [
+    {
+     "kind": "server",
+     "id": "a"
+    },
+    {
+     "kind": "server",
+     "id": "b"
+    },
+    {
+     "kind": "server",
+     "id": "c"
+    },
+    {
+     "kind": "server",
+     "id": "d"
+    }
+   ],
+   "flat": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "aliases": {
+    "a": "Lantern Fox"
+   }
+  },
+  {
+   "name": "an alias is cut to 40 characters",
+   "known": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "order": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "start": [
+    {
+     "kind": "server",
+     "id": "a"
+    },
+    {
+     "kind": "server",
+     "id": "b"
+    },
+    {
+     "kind": "server",
+     "id": "c"
+    },
+    {
+     "kind": "server",
+     "id": "d"
+    }
+   ],
+   "start_aliases": {},
+   "ops": [
+    {
+     "op": "rename",
+     "id": "c",
+     "name": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy"
+    }
+   ],
+   "items": [
+    {
+     "kind": "server",
+     "id": "a"
+    },
+    {
+     "kind": "server",
+     "id": "b"
+    },
+    {
+     "kind": "server",
+     "id": "c"
+    },
+    {
+     "kind": "server",
+     "id": "d"
+    }
+   ],
+   "flat": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "aliases": {
+    "c": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy"
+   }
+  },
+  {
+   "name": "aliases of unknown servers do not survive a load",
+   "known": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "order": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "start": [
+    {
+     "kind": "server",
+     "id": "a"
+    },
+    {
+     "kind": "server",
+     "id": "b"
+    },
+    {
+     "kind": "server",
+     "id": "c"
+    },
+    {
+     "kind": "server",
+     "id": "d"
+    }
+   ],
+   "start_aliases": {
+    "a": "Keep",
+    "zz": "Gone",
+    "b": "  "
+   },
+   "ops": [],
+   "items": [
+    {
+     "kind": "server",
+     "id": "a"
+    },
+    {
+     "kind": "server",
+     "id": "b"
+    },
+    {
+     "kind": "server",
+     "id": "c"
+    },
+    {
+     "kind": "server",
+     "id": "d"
+    }
+   ],
+   "flat": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "aliases": {
+    "a": "Keep"
+   }
+  },
+  {
+   "name": "an empty colour, as the rail sends for None, means no colour",
+   "known": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "order": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "start": [
+    {
+     "kind": "folder",
+     "id": "f-1",
+     "name": "Team",
+     "color": "#12ab34",
+     "collapsed": false,
+     "servers": [
+      "a"
+     ]
+    },
+    {
+     "kind": "server",
+     "id": "b"
+    },
+    {
+     "kind": "server",
+     "id": "c"
+    },
+    {
+     "kind": "server",
+     "id": "d"
+    }
+   ],
+   "start_aliases": {},
+   "ops": [
+    {
+     "op": "folder_edit",
+     "id": "f-1",
+     "name": "Team",
+     "color": ""
+    }
+   ],
+   "items": [
+    {
+     "kind": "folder",
+     "id": "f-1",
+     "name": "Team",
+     "color": null,
+     "collapsed": false,
+     "servers": [
+      "a"
+     ]
+    },
+    {
+     "kind": "server",
+     "id": "b"
+    },
+    {
+     "kind": "server",
+     "id": "c"
+    },
+    {
+     "kind": "server",
+     "id": "d"
+    }
+   ],
+   "flat": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "aliases": {}
+  }
+ ]
+}

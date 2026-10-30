@@ -33,8 +33,8 @@ use url::Url;
 
 /// The rail's width in logical pixels.
 pub const RAIL_WIDTH: f64 = 68.0;
-const SHELL: &str = "shell";
-const RAIL: &str = "rail";
+pub(crate) const SHELL: &str = "shell";
+pub(crate) const RAIL: &str = "rail";
 /// The page for adding a server keeps the label of the old instance selector.
 const ADD: &str = "main";
 /// The Windows startup check looks for a window of this name.
@@ -51,6 +51,9 @@ pub(crate) const NEEDS_NEWER_MACOS: &str = "Several servers at once need macOS 1
 const INDEX: &str = include_str!("../rail-ui/index.html");
 const STYLE: &str = include_str!("../rail-ui/rail.css");
 const SCRIPT: &str = include_str!("../rail-ui/rail.js");
+const DIALOG_INDEX: &str = include_str!("../rail-ui/dialog.html");
+const DIALOG_SCRIPT: &str = include_str!("../rail-ui/dialog.js");
+const DIALOG_STYLE: &str = include_str!("../rail-ui/dialog.css");
 
 /// What the rail page may do: load itself and talk to the host.
 pub const RAIL_CSP: &str = concat!(
@@ -59,12 +62,15 @@ pub const RAIL_CSP: &str = concat!(
     "base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
 );
 
-/// The files of the rail page.
+/// The files of the rail page and of the dialog it opens.
 pub fn rail_asset(method: &str, path: &str) -> Resp {
     let (kind, body) = match path {
         "/" | "/index.html" => ("text/html; charset=utf-8", INDEX),
         "/rail.css" => ("text/css; charset=utf-8", STYLE),
         "/rail.js" => ("text/javascript; charset=utf-8", SCRIPT),
+        "/dialog.html" => ("text/html; charset=utf-8", DIALOG_INDEX),
+        "/dialog.css" => ("text/css; charset=utf-8", DIALOG_STYLE),
+        "/dialog.js" => ("text/javascript; charset=utf-8", DIALOG_SCRIPT),
         _ => return text(404, "Not found."),
     };
     if method != "GET" && method != "HEAD" {
@@ -375,6 +381,18 @@ fn sweep_orphans(app: &tauri::AppHandle) {
     }
 }
 
+/// Icons of servers that are not in the list go, as the storage of such
+/// servers does (and only when the list was read in full).
+fn sweep_icons(app: &tauri::AppHandle) {
+    let trusted = app.state::<Trusted>();
+    if trusted.list_unreadable() {
+        return;
+    }
+    if let Some(dir) = trusted.icons_dir() {
+        crate::rail_icon::sweep(&dir, &registry_ids(app));
+    }
+}
+
 // -------------------------------------------------------------------- layout
 
 fn content_labels(app: &tauri::AppHandle) -> Vec<String> {
@@ -426,6 +444,8 @@ struct Frame {
     scale_bits: u64,
     front: String,
     pages: Vec<String>,
+    /// The window is minimised: nothing on it can be seen.
+    asleep: bool,
 }
 
 #[derive(Default)]
@@ -443,6 +463,13 @@ enum Place {
     ShowFront,
     /// The front page is already up. Move bounds, and do not activate it.
     KeepFront,
+    /// The window is minimised. Every page is hidden, so the engine treats
+    /// each as a background page (`visibilityState` is `hidden`, no frames are
+    /// produced); sockets, timers at the browser's background rate and the
+    /// audio of a call go on.
+    Sleep,
+    /// The window is back: the rail and the front page are shown again.
+    Wake,
 }
 
 /// Whether this instant may hand focus to the page. A repeat inside the hold
@@ -460,6 +487,13 @@ fn handoff_due(handed: &mut Option<Instant>, now: Instant) -> bool {
 fn place(prev: &mut Option<Frame>, next: &Frame) -> Place {
     let decision = match prev.as_ref() {
         Some(current) if current == next => Place::Same,
+        // Resizing a minimised window changes nothing that is visible. A page
+        // that appears meanwhile is created showing, so it is hidden too.
+        Some(current) if current.asleep && next.asleep && current.pages == next.pages => {
+            Place::Same
+        }
+        _ if next.asleep => Place::Sleep,
+        Some(current) if current.asleep => Place::Wake,
         Some(current)
             if current.front == next.front
                 && current.pages.iter().any(|label| label == &next.front) =>
@@ -487,8 +521,9 @@ fn present_pages(app: &tauri::AppHandle) -> Vec<String> {
 }
 
 /// Puts the rail on the left, the page in front next to it and hides the
-/// others. Hidden pages keep running (their sockets and counters stay alive),
-/// the engine only stops painting them.
+/// others. Hidden pages are not suspended: their sockets and counters stay
+/// alive (they feed the rail's dots and the toasts), the engine only stops
+/// painting them and slows their timers. A minimised window hides all of them.
 pub fn layout(app: &tauri::AppHandle) {
     let Some(window) = app.get_window(SHELL) else {
         return;
@@ -503,10 +538,24 @@ pub fn layout(app: &tauri::AppHandle) {
         scale_bits: scale.to_bits(),
         front: front_label(app),
         pages: present_pages(app),
+        asleep: window.is_minimized().unwrap_or(false),
     };
     let place = take_frame(app, &frame);
     if place == Place::Same {
         return;
+    }
+    if place == Place::Sleep {
+        for label in std::iter::once(RAIL.to_owned()).chain(content_labels(app)) {
+            if let Some(page) = app.get_webview(&label) {
+                let _ = page.hide();
+            }
+        }
+        return;
+    }
+    if place == Place::Wake
+        && let Some(rail) = app.get_webview(RAIL)
+    {
+        let _ = rail.show();
     }
     let (width, height) = (
         f64::from(frame.width) / scale,
@@ -521,7 +570,7 @@ pub fn layout(app: &tauri::AppHandle) {
         };
         let _ = page.set_bounds(rect(RAIL_WIDTH, (width - RAIL_WIDTH).max(1.0), height));
         if label == frame.front {
-            if place == Place::ShowFront {
+            if matches!(place, Place::ShowFront | Place::Wake) {
                 let _ = page.show();
             }
         } else {
@@ -581,6 +630,7 @@ fn rail_snapshot(app: &tauri::AppHandle) -> RailState {
             adding: true,
             can_add: false,
             instances: Vec::new(),
+            items: Vec::new(),
         },
     }
 }
@@ -629,7 +679,7 @@ pub fn counts_changed(app: &tauri::AppHandle) {
     push_rail(app);
 }
 
-fn changed(app: &tauri::AppHandle) {
+pub(crate) fn changed(app: &tauri::AppHandle) {
     app.state::<Trusted>().save_instances();
     layout(app);
     push_rail(app);
@@ -708,6 +758,9 @@ pub fn servers_menu(app: &tauri::AppHandle) -> tauri::Result<Submenu<tauri::Wry>
 
 /// A menu entry was chosen.
 pub fn menu_clicked(app: &tauri::AppHandle, id: &str) {
+    if crate::rail_menu::chosen(app, id) {
+        return;
+    }
     if id == "server-add" {
         start_adding(app);
     } else if let Some(number) = id
@@ -734,7 +787,17 @@ fn local_page(webview: &Webview, label: &str) -> bool {
 }
 
 fn host_page(app: &tauri::AppHandle, label: &str, role: &str) -> WebviewBuilder<tauri::Wry> {
-    let builder = WebviewBuilder::new(label, WebviewUrl::CustomProtocol(app_url()))
+    host_page_at(app, label, role, WebviewUrl::CustomProtocol(app_url()))
+}
+
+/// A page of the host at a place of its own (the dialog of the rail).
+pub(crate) fn host_page_at(
+    app: &tauri::AppHandle,
+    label: &str,
+    role: &str,
+    url: WebviewUrl,
+) -> WebviewBuilder<tauri::Wry> {
+    let builder = WebviewBuilder::new(label, url)
         .use_https_scheme(true)
         .on_navigation(bundled)
         .on_new_window(|_, _| tauri::webview::NewWindowResponse::Deny)
@@ -757,6 +820,8 @@ fn host_page(app: &tauri::AppHandle, label: &str, role: &str) -> WebviewBuilder<
 /// the servers of the list.
 pub fn create(app: &tauri::AppHandle) -> tauri::Result<()> {
     app.manage(Mutex::new(ShellPlacement::default()));
+    app.manage(crate::rail_menu::Open::default());
+    app.manage(crate::rail_dialog::Open::default());
     let menu = menu(app)?;
     let window = WindowBuilder::new(app, SHELL)
         .title(TITLE)
@@ -797,7 +862,12 @@ pub fn create(app: &tauri::AppHandle) -> tauri::Result<()> {
         tauri::WindowEvent::Resized(_) | tauri::WindowEvent::ScaleFactorChanged { .. } => {
             layout(&events);
         }
-        tauri::WindowEvent::Focused(true) => on_window_focused(&events),
+        // Minimising and restoring do not always come with a resize.
+        tauri::WindowEvent::Focused(true) => {
+            layout(&events);
+            on_window_focused(&events);
+        }
+        tauri::WindowEvent::Focused(false) => layout(&events),
         // macOS keeps the program running behind a closed window (a call, the
         // Dock badge and the toasts go on); the Dock icon brings it back.
         #[cfg(target_os = "macos")]
@@ -820,7 +890,9 @@ pub fn create(app: &tauri::AppHandle) -> tauri::Result<()> {
         });
     }
     sweep_orphans(app);
+    sweep_icons(app);
     for id in registry_ids(app) {
+        show_cached_icon(app, &id);
         spawn_start(app, id);
     }
     layout(app);
@@ -919,7 +991,7 @@ async fn start_server(app: &tauri::AppHandle, id: &str) {
     };
     push_rail(app);
     let outcome = if room_for(position) {
-        connect(&trusted, id, &origin).await
+        connect(app, &trusted, id, &origin).await
     } else {
         Err(NEEDS_NEWER_MACOS.to_owned())
     };
@@ -960,8 +1032,14 @@ async fn start_server(app: &tauri::AppHandle, id: &str) {
     push_rail(app);
 }
 
-async fn connect(trusted: &Trusted, id: &str, origin: &Url) -> Result<Arc<Session>, String> {
-    let (server, community) = discover(origin).await?;
+async fn connect(
+    app: &tauri::AppHandle,
+    trusted: &Trusted,
+    id: &str,
+    origin: &Url,
+) -> Result<Arc<Session>, String> {
+    let (server, community, icon) = discover(origin).await?;
+    refresh_icon(app, id, origin, icon);
     let held = choose(trusted, &server).await?;
     make_session(trusted, id, origin.clone(), held, community)
 }
@@ -1220,9 +1298,10 @@ pub async fn add_server(
         return Ok(());
     }
     check_room(state)?;
-    let (server, community) = discover(&origin).await?;
+    let (server, community, icon) = discover(&origin).await?;
     let held = choose(state, &server).await?;
     let session = make_session(state, &id, origin.clone(), held, community)?;
+    let origin_listed = origin.clone();
     let won = {
         let mut registry = state.registry.lock().map_err(|_| "busy")?;
         match registry.add(origin) {
@@ -1258,7 +1337,9 @@ pub async fn add_server(
     if existed {
         offer_invite(&app, &id, invite.as_deref());
     }
+    refresh_icon(&app, &id, &origin_listed, icon);
     changed(&app);
+    show_cached_icon(&app, &id);
     focus_front(&app);
     Ok(())
 }
@@ -1294,7 +1375,7 @@ fn check_room(state: &Trusted) -> Result<(), String> {
 }
 
 /// Only the rail may drive the list.
-fn from_rail(webview: &Webview) -> Result<tauri::AppHandle, String> {
+pub(crate) fn from_rail(webview: &Webview) -> Result<tauri::AppHandle, String> {
     if local_page(webview, RAIL) {
         Ok(webview.app_handle().clone())
     } else {
@@ -1354,16 +1435,106 @@ pub fn rail_cancel_add(webview: Webview) -> Result<(), String> {
     Ok(())
 }
 
+/// The rail changes how it is laid out: order, folders, a server's local name.
+/// See `rail_layout::apply` for what is asked and what is refused.
 #[tauri::command]
-pub fn rail_move(webview: Webview, id: String, to: u32) -> Result<(), String> {
+#[allow(clippy::too_many_arguments)]
+pub fn rail_edit(
+    webview: Webview,
+    op: String,
+    id: Option<String>,
+    target: Option<String>,
+    before: Option<String>,
+    delta: Option<i32>,
+    flag: Option<bool>,
+    name: Option<String>,
+    color: Option<String>,
+) -> Result<(), String> {
     let app = from_rail(&webview)?;
-    app.state::<Trusted>()
+    let edit = crate::rail_layout::Edit {
+        op,
+        id,
+        target,
+        before,
+        delta,
+        flag,
+        name,
+        color,
+    };
+    let mut outcome = Ok(());
+    let done = app
+        .state::<Trusted>()
         .registry
         .lock()
         .map_err(|_| "busy")?
-        .move_to(&id, to as usize);
-    changed(&app);
-    Ok(())
+        .edit(|layout| {
+            outcome = crate::rail_layout::apply(layout, &edit, crate::rail_layout::new_folder_id);
+            outcome.is_ok()
+        });
+    if done {
+        changed(&app);
+    }
+    outcome
+}
+
+/// The community icon of a server as a data URL, from the cache; the rail
+/// asks once for every new name `RailInstance::icon` gives.
+#[tauri::command]
+pub fn rail_icon(webview: Webview, id: String) -> Result<Option<String>, String> {
+    let app = from_rail(&webview)?;
+    let trusted = app.state::<Trusted>();
+    let known = trusted.registry.lock().map_err(|_| "busy")?.contains(&id);
+    Ok(known
+        .then(|| trusted.icons_dir())
+        .flatten()
+        .and_then(|dir| crate::rail_icon::read(&dir, &id))
+        .map(|(kind, bytes)| crate::rail_icon::data_url(kind, &bytes)))
+}
+
+/// Brings the cached icon of a server up to date with what the server says
+/// now, in the background; the rail is told when it changed.
+fn refresh_icon(app: &tauri::AppHandle, id: &str, origin: &Url, wanted: bool) {
+    let Some(dir) = app.state::<Trusted>().icons_dir() else {
+        return;
+    };
+    let (app, id, origin) = (app.clone(), id.to_owned(), origin.clone());
+    tauri::async_runtime::spawn(async move {
+        crate::rail_icon::refresh(&dir, &id, &origin, wanted).await;
+        // A server removed while its icon was on the way takes the icon with it.
+        let listed = app
+            .state::<Trusted>()
+            .registry
+            .lock()
+            .is_ok_and(|r| r.contains(&id));
+        if listed {
+            show_cached_icon(&app, &id);
+        } else {
+            crate::rail_icon::clear(&dir, &id);
+        }
+    });
+}
+
+/// Gives the rail the name of the icon in the cache, if that changed.
+fn show_cached_icon(app: &tauri::AppHandle, id: &str) {
+    let trusted = app.state::<Trusted>();
+    let token = trusted
+        .icons_dir()
+        .and_then(|dir| crate::rail_icon::cached_token(&dir, id));
+    let changed = trusted
+        .registry
+        .lock()
+        .ok()
+        .and_then(|mut r| {
+            r.slot_mut(id).map(|slot| {
+                let differs = slot.icon != token;
+                slot.icon = token;
+                differs
+            })
+        })
+        .unwrap_or(false);
+    if changed {
+        push_rail(app);
+    }
 }
 
 #[tauri::command]
@@ -1461,6 +1632,9 @@ pub(crate) async fn remove_server(app: &tauri::AppHandle, id: &str) {
     let Some(slot) = slot else {
         return;
     };
+    if let Some(dir) = trusted.icons_dir() {
+        crate::rail_icon::clear(&dir, id);
+    }
     match &slot.phase {
         Phase::Ready(session) => {
             session.sockets.close_all();
@@ -1515,6 +1689,7 @@ mod tests {
             scale_bits: 1.0f64.to_bits(),
             front: front.to_owned(),
             pages: pages.iter().map(|label| (*label).to_owned()).collect(),
+            asleep: false,
         }
     }
 
@@ -1536,6 +1711,39 @@ mod tests {
     }
 
     #[test]
+    fn a_minimised_window_hides_every_page_and_wakes_them_once() {
+        let mut prev = None;
+        let up = frame("i-1", &["main", "i-1"], 1200);
+        assert_eq!(place(&mut prev, &up), Place::ShowFront);
+        let mut down = up.clone();
+        down.asleep = true;
+        down.width = 0;
+        assert_eq!(place(&mut prev, &down), Place::Sleep);
+        assert_eq!(place(&mut prev, &down), Place::Same);
+        // A resize while minimised, or a repeated event, changes nothing.
+        down.width = 160;
+        assert_eq!(place(&mut prev, &down), Place::Same);
+        assert_eq!(place(&mut prev, &up), Place::Wake);
+        assert_eq!(place(&mut prev, &up), Place::Same);
+    }
+
+    #[test]
+    fn a_page_that_arrives_while_minimised_stays_hidden() {
+        let mut prev = None;
+        let mut down = frame("i-1", &["main"], 0);
+        down.asleep = true;
+        assert_eq!(place(&mut prev, &down), Place::Sleep);
+        let mut arrived = frame("i-1", &["main", "i-1"], 0);
+        arrived.asleep = true;
+        assert_eq!(place(&mut prev, &arrived), Place::Sleep);
+        assert_eq!(place(&mut prev, &arrived), Place::Same);
+        assert_eq!(
+            place(&mut prev, &frame("i-1", &["main", "i-1"], 1200)),
+            Place::Wake
+        );
+    }
+
+    #[test]
     fn a_front_page_that_appears_after_the_first_layout_is_shown() {
         let mut prev = None;
         let waiting = frame("i-1", &["main"], 1200);
@@ -1547,7 +1755,15 @@ mod tests {
 
     #[test]
     fn the_rail_page_is_served_with_its_own_strict_policy_and_nothing_else() {
-        for path in ["/", "/index.html", "/rail.css", "/rail.js"] {
+        for path in [
+            "/",
+            "/index.html",
+            "/rail.css",
+            "/rail.js",
+            "/dialog.html",
+            "/dialog.css",
+            "/dialog.js",
+        ] {
             let resp = rail_asset("GET", path);
             assert_eq!(resp.status, 200, "{path}");
             let csp = resp
@@ -1566,6 +1782,9 @@ mod tests {
             "/api/health",
             "/c/1",
             "/rail.js/",
+            "/dialog",
+            "/dialog.html/",
+            "/icons/x.png",
             "/index.html?x",
             "/../x",
             "",
@@ -1636,16 +1855,20 @@ mod tests {
             initial: "L".into(),
             hue: 0,
             name: name.into(),
+            original: "lantern.example".into(),
+            alias: None,
             status: "ready",
             message: None,
             unread: 0,
             mentions: 0,
+            icon: None,
         };
         let mut state = RailState {
             active: None,
             adding: false,
             can_add: true,
             instances: vec![instance("a", "Lantern Fox"), instance("b", "b.example")],
+            items: Vec::new(),
         };
         assert_eq!(window_title(&state), TITLE);
         state.active = Some("b".into());
@@ -1668,7 +1891,8 @@ mod tests {
     fn the_commands_are_split_between_the_rail_the_pages_and_the_selector() {
         let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("capabilities");
         let mut rail_seen = false;
-        for entry in std::fs::read_dir(dir).unwrap() {
+        let mut dialog_seen = false;
+        for entry in std::fs::read_dir(&dir).unwrap() {
             let path = entry.unwrap().path();
             let json: serde_json::Value =
                 serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
@@ -1685,9 +1909,21 @@ mod tests {
                 assert_eq!(json["webviews"], serde_json::json!(["rail"]));
                 assert!(json.get("windows").is_none());
                 assert!(permissions.iter().all(|p| p.starts_with("allow-rail-")));
-                assert_eq!(permissions.len(), 9);
+                assert_eq!(permissions.len(), 12);
+                for command in ["edit", "menu", "dialog", "icon"] {
+                    assert!(permissions.contains(&format!("allow-rail-{command}").as_str()));
+                }
+                assert!(!permissions.contains(&"allow-rail-move"));
+            } else if id == "rail-dialog" {
+                // The dialog can hand back its answer and nothing else, and it
+                // is reached by its webview alone.
+                dialog_seen = true;
+                assert_eq!(json["webviews"], serde_json::json!(["rail-dialog"]));
+                assert!(json.get("windows").is_none());
+                assert_eq!(permissions, ["allow-dialog-done"]);
             } else {
                 assert!(!names("allow-rail-"), "{id} may drive the list");
+                assert!(!names("allow-dialog-"), "{id} may answer the dialog");
             }
             if json["webviews"] == serde_json::json!(["i-*"]) {
                 assert!(
@@ -1700,7 +1936,22 @@ mod tests {
                 );
             }
         }
-        assert!(rail_seen);
+        assert!(rail_seen && dialog_seen);
+        // Every capability file is in force: tauri.conf.json names it.
+        let conf: serde_json::Value =
+            serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+        let named: Vec<&str> = conf["app"]["security"]["capabilities"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|c| c.as_str())
+            .collect();
+        for entry in std::fs::read_dir(&dir).unwrap() {
+            let json: serde_json::Value =
+                serde_json::from_str(&std::fs::read_to_string(entry.unwrap().path()).unwrap())
+                    .unwrap();
+            assert!(named.contains(&json["identifier"].as_str().unwrap()));
+        }
         // The pages of servers, the rail and the selector are different
         // webviews, so no capability can reach two of them by accident.
         assert_ne!(RAIL, ADD);

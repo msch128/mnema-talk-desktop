@@ -10,11 +10,13 @@
  * argument. The rail is a page of the host, independent of any bundle and of
  * any server; it is the only one that can switch, reorder or remove a server.
  */
+import { randomBytes } from 'node:crypto'
 import { existsSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { BaseWindow, WebContentsView, app, session } from 'electron'
 import { inviteCode, parseAddress } from '../core/client.ts'
 import { AddError, MAX_INSTANCES, idFor } from '../core/instances.ts'
+import type { Edit } from '../core/layout.ts'
 import { APP_URL } from '../core/origin.ts'
 import { closeSocketsWithDocument } from '../core/pagesockets.ts'
 import { Tickets } from '../core/tickets.ts'
@@ -26,6 +28,7 @@ import { setLauncherBadge, toastsClosed } from './notify.ts'
 import { prepare, prepareServer } from './sessions.ts'
 import { appHandler, assetHandler, HOST_PAGE_CSP } from './protocol.ts'
 import { loadAssets } from './assets.ts'
+import { pageShown, railShown } from '../core/visibility.ts'
 import { appPreload, harden, pagePreferences, railPreload } from './windows.ts'
 
 export const RAIL_WIDTH = 68
@@ -38,16 +41,18 @@ function frontKey(ctx: Context): string | null {
   return active !== null && !registry.adding() ? active : null
 }
 
-/** Puts the rail on the left, the page in front next to it and hides the others. Hidden pages keep running, the engine only stops painting them. */
+/** Puts the rail on the left, the page in front next to it and hides the others (all of them while the window is minimised). Hidden pages keep running, throttled: the engine stops painting them and slows their timers. */
 export function layout(ctx: Context): void {
   const { window, rail, selector, pages } = ctx.shell
   if (!window || window.isDestroyed()) return
   const { width, height } = window.getContentBounds()
+  const minimized = window.isMinimized()
   rail?.setBounds({ x: 0, y: 0, width: RAIL_WIDTH, height })
+  rail?.setVisible(railShown(minimized))
   const content = { x: RAIL_WIDTH, y: 0, width: Math.max(1, width - RAIL_WIDTH), height }
   const front = frontKey(ctx)
-  if (selector) { selector.setBounds(content); selector.setVisible(front === null) }
-  for (const [id, view] of pages) { view.setBounds(content); view.setVisible(id === front) }
+  if (selector) { selector.setBounds(content); selector.setVisible(pageShown(null, front, minimized)) }
+  for (const [id, view] of pages) { view.setBounds(content); view.setVisible(pageShown(id, front, minimized)) }
 }
 
 export function focusFront(ctx: Context): void {
@@ -126,9 +131,27 @@ export function cancelAdding(ctx: Context): void {
   focusFront(ctx)
 }
 
-export function moveServer(ctx: Context, id: string, to: number): void {
-  ctx.trusted.registry.moveTo(id, to)
+/** Folders and local names: a change of how the servers sit on the rail. The id a new folder gets is the host's. A refused change is an error. */
+export function editLayout(ctx: Context, edit: Edit): void {
+  const registry = ctx.trusted.registry
+  const fresh = (): string => `f-${randomBytes(4).toString('hex')}`
+  let folder = fresh()
+  while (registry.hasFolder(folder)) folder = fresh()
+  if (!registry.edit(edit, folder)) throw new Error('The change was refused.')
   changed(ctx)
+}
+
+/** Asks a running server for its community icon, from the server itself, without holding anything up. */
+function refreshIcon(ctx: Context, id: string): void {
+  const { registry, icons } = ctx.trusted
+  const slot = registry.slot(id)
+  const session = registry.session(id)
+  if (!slot || !session) return
+  ctx.trusted.refreshIcon(id, slot.origin, session.iconWanted ?? true).then((moved) => {
+    // A server removed while its icon was on the way takes the icon with it.
+    if (!registry.contains(id)) icons.clear(id)
+    else if (moved) pushRail(ctx)
+  }, () => undefined)
 }
 
 // ------------------------------------------------------------------- windows
@@ -158,6 +181,8 @@ export function createShell(ctx: Context, assets: (name: string) => ReturnType<t
   void selector.webContents.loadURL(APP_URL)
 
   window.on('resize', () => layout(ctx))
+  window.on('minimize', () => layout(ctx))
+  window.on('restore', () => layout(ctx))
   window.on('focus', () => focusFront(ctx))
   window.on('closed', () => shutDown(ctx))
   sweepOrphans(ctx)
@@ -238,6 +263,7 @@ export async function startServer(ctx: Context, id: string): Promise<void> {
     if (!current || !starts.current(id, ticket)) { session.sockets.closeAll(); return }
     registry.restart(id)
     current.phase = { kind: 'ready', session }
+    refreshIcon(ctx, id)
   } catch (error) {
     if (!starts.current(id, ticket)) return
     const current = registry.slot(id)
@@ -280,6 +306,7 @@ export async function addServer(ctx: Context, address: string): Promise<void> {
   }
   const slot = registry.slot(id)
   if (slot) { registry.restart(id); slot.phase = { kind: 'ready', session } }
+  refreshIcon(ctx, id)
   registry.activate(id)
   try {
     openPage(ctx, id, code)
@@ -337,6 +364,7 @@ export async function removeServer(ctx: Context, id: string): Promise<void> {
   } else {
     trusted.forgetStoredSession(slot.origin)
   }
+  trusted.icons.clear(id)
   toastsClosed(id, slot.generation)
   const attachment = ctx.shell.attachments.get(id)
   const stores = [attachment?.webContents.session]

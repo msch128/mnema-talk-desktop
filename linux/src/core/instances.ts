@@ -10,6 +10,7 @@
 import { createHash, randomBytes } from 'node:crypto'
 import { readFileSync, statSync } from 'node:fs'
 import { writeFileAtomic } from './atomic.ts'
+import { type Edit, type Item, Layout } from './layout.ts'
 import { parseAddress } from './client.ts'
 import { MAX_BADGE, badgeCount } from './notify.ts'
 import { isLowerHex } from './encoding.ts'
@@ -22,7 +23,7 @@ export const MAX_INSTANCES = 9
 /** What the badge and the rail show at most. */
 export const MAX_COUNT = MAX_BADGE
 const STORE_VERSION = 1
-const MAX_STORE_BYTES = 16 * 1024
+const MAX_STORE_BYTES = 32 * 1024
 
 /** A server the client talks to and the verified bundle its pages run. */
 export interface Session {
@@ -31,6 +32,8 @@ export interface Session {
   readonly held: Held
   /** What the server calls itself, when it says (`community_name` of `/api/health`). */
   readonly community?: string | null
+  /** Whether the server's health answer leaves room for a community icon (see `core/icon.ts`). */
+  readonly iconWanted?: boolean
   /** Sockets this server's pages hold open; the budget is per server. */
   readonly sockets: Sockets
 }
@@ -60,6 +63,8 @@ export interface Slot {
   reported: boolean
   /** Names the run of this server's page: a toast keeps the generation it was shown for. */
   generation: string
+  /** The version of the community icon on disk (see `core/icon.ts`), or none. */
+  icon: string | null
   /** The page asked for notifications: its callback channel and the next message index it expects. */
   clicks: { channel: number, index: number } | null
 }
@@ -78,20 +83,30 @@ export class AddError extends Error {
 /** What the rail draws for one server (the shape the rail page reads). */
 interface RailInstance {
   id: string
+  /** What the rail calls it: the local name if there is one, else `original`. */
   name: string
+  /** What the server calls itself, or its address. */
+  original: string
+  /** The local name the person gave it. */
+  alias: string | null
   initial: string
   hue: number
   status: 'starting' | 'ready' | 'refused'
   message: string | null
   unread: number
   mentions: number
+  /** The version of the community icon (`rail_icon` fetches it), or none. */
+  icon: string | null
 }
 
 export interface RailState {
   active: string | null
   adding: boolean
   can_add: boolean
+  /** In the order they stand on the rail. */
   instances: RailInstance[]
+  /** The structure of the rail: servers on their own and folders. */
+  items: Item[]
 }
 
 /** The address as a name: the host, with its port when it has one. */
@@ -122,6 +137,9 @@ function hue(id: string): number {
 export interface Stored {
   servers: URL[]
   active: URL | null
+  /** The layout as written (`Layout.load` makes sense of it): absent in a list from before folders. */
+  items?: unknown
+  aliases?: unknown
   /** False when the file was there but could not be read in full (unreadable, too large, unknown version, an address that did not hold up): the list may be shorter than what the person had. */
   complete?: boolean
 }
@@ -147,7 +165,7 @@ export function loadStored(file: string | null): Stored {
     return (error as NodeJS.ErrnoException).code === 'ENOENT' ? emptyStored() : partial()
   }
   if (typeof raw !== 'object' || raw === null) return partial()
-  const { version, servers, active } = raw as Record<string, unknown>
+  const { version, servers, active, items, aliases } = raw as Record<string, unknown>
   if (version !== STORE_VERSION || !Array.isArray(servers)) return partial()
   const list: URL[] = []
   let complete = true
@@ -162,22 +180,23 @@ export function loadStored(file: string | null): Stored {
   if (typeof active === 'string') {
     try { front = list.find((u) => u.href === parseAddress(active).href) ?? null } catch { front = null }
   }
-  return complete ? { servers: list, active: front } : partial(list, front)
+  return complete ? { servers: list, active: front, items, aliases } : { ...partial(list, front), items, aliases }
 }
 
 export function saveStored(file: string | null, stored: Stored): void {
   if (!file) return
   try {
-    writeFileAtomic(file, Buffer.from(JSON.stringify({ version: STORE_VERSION, servers: stored.servers.map((u) => u.href), active: stored.active?.href ?? null })), { dirMode: 0o700 })
+    writeFileAtomic(file, Buffer.from(JSON.stringify({ version: STORE_VERSION, servers: stored.servers.map((u) => u.href), active: stored.active?.href ?? null, ...(stored.items !== undefined ? { items: stored.items } : {}), ...(stored.aliases !== undefined ? { aliases: stored.aliases } : {}) })), { dirMode: 0o700 })
   } catch { /* the list is a convenience; the sessions do not depend on it */ }
 }
 
 function fresh(origin: URL): Slot {
-  return { id: idFor(origin), origin, phase: { kind: 'starting' }, unread: 0, mentions: 0, reported: false, generation: randomBytes(16).toString('hex'), clicks: null }
+  return { id: idFor(origin), origin, phase: { kind: 'starting' }, unread: 0, mentions: 0, reported: false, generation: randomBytes(16).toString('hex'), icon: null, clicks: null }
 }
 
 export class Registry {
   private slots: Slot[] = []
+  private layout = new Layout()
   private front: string | null = null
   private addingNow = false
   /** Whether the list this one was restored from was read in full (see `Stored.complete`). */
@@ -189,6 +208,8 @@ export class Registry {
     for (const origin of stored.servers) {
       try { registry.add(origin) } catch { /* a duplicate */ }
     }
+    registry.layout = Layout.load(stored.items, stored.aliases, registry.ids(), registry.ids())
+    registry.sort()
     const wanted = stored.active ? idFor(stored.active) : null
     registry.front = wanted !== null && registry.contains(wanted) ? wanted : (registry.slots[0]?.id ?? null)
     registry.addingNow = registry.front === null
@@ -235,6 +256,7 @@ export class Registry {
     if (this.contains(id)) throw new AddError('known', id)
     if (this.slots.length >= MAX_INSTANCES) throw new AddError('full')
     this.slots.push(fresh(origin))
+    this.layout.add(id)
     return id
   }
 
@@ -243,6 +265,8 @@ export class Registry {
     const index = this.slots.findIndex((s) => s.id === id)
     if (index < 0) return null
     const [slot] = this.slots.splice(index, 1)
+    this.layout.remove(id)
+    this.sort()
     if (this.front === id) this.front = this.slots[Math.min(index, this.slots.length - 1)]?.id ?? null
     this.addingNow = this.slots.length === 0 || (this.addingNow && this.front !== null)
     return slot ?? null
@@ -273,11 +297,32 @@ export class Registry {
     this.addingNow = this.front === null
   }
 
-  moveTo(id: string, to: number): boolean {
-    const from = this.slots.findIndex((s) => s.id === id)
-    if (from < 0) return false
-    const [slot] = this.slots.splice(from, 1)
-    this.slots.splice(Math.min(Math.max(0, Math.trunc(to)), this.slots.length), 0, slot as Slot)
+  /** The servers stand in the order of the rail, so Ctrl+1 is the one at the top. */
+  private sort(): void {
+    const order = this.layout.flat()
+    this.slots.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id))
+  }
+
+  /** Changes how the servers sit on the rail. `folder` is the id a new folder gets. False: refused, nothing changed. */
+  edit(edit: Edit, folder: string): boolean {
+    if (!this.layout.apply(edit, folder)) return false
+    this.sort()
+    return true
+  }
+
+  hasFolder(id: string): boolean {
+    return this.layout.hasFolder(id)
+  }
+
+  /** What the rail calls a server: the local name if it has one, else what the server calls itself. */
+  displayName(slot: Pick<Slot, 'id' | 'origin' | 'phase'>): string {
+    return this.layout.aliases.get(slot.id) ?? nameOf(slot)
+  }
+
+  setIcon(id: string, token: string | null): boolean {
+    const slot = this.slot(id)
+    if (!slot || slot.icon === token) return false
+    slot.icon = token
     return true
   }
 
@@ -327,17 +372,23 @@ export class Registry {
       active: this.front,
       adding: this.addingNow,
       can_add: canAdd && this.slots.length < MAX_INSTANCES,
+      items: structuredClone(this.layout.items),
       instances: this.slots.map((slot) => {
-        const name = nameOf(slot)
+        const original = nameOf(slot)
+        const alias = this.layout.aliases.get(slot.id) ?? null
+        const name = alias ?? original
         return {
           id: slot.id,
           name,
+          original,
+          alias,
           initial: initial(name),
           hue: hue(slot.id),
           status: slot.phase.kind,
           message: slot.phase.kind === 'refused' ? slot.phase.why : null,
           unread: slot.unread,
           mentions: slot.mentions,
+          icon: slot.icon,
         }
       }),
     }
@@ -345,6 +396,6 @@ export class Registry {
 
   stored(): Stored {
     const front = this.front ? this.slot(this.front) : undefined
-    return { servers: this.slots.map((s) => s.origin), active: front?.origin ?? null }
+    return { servers: this.slots.map((s) => s.origin), active: front?.origin ?? null, items: structuredClone(this.layout.items), aliases: Object.fromEntries(this.layout.aliases) }
   }
 }

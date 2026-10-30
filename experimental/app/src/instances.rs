@@ -8,13 +8,14 @@
 //! that the isolation rules can be tested: the shell (`web_shell`) turns it
 //! into webviews.
 use crate::{
+    rail_layout::{Item, Layout},
     web_bundle::{Held, is_hex_id16},
     web_proxy::Instance,
     web_ws::Sockets,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::{path::Path, sync::Arc};
+use std::{collections::BTreeMap, path::Path, sync::Arc};
 use url::Url;
 
 /// Ctrl+1 to Ctrl+9 reach the servers, so there are at most nine.
@@ -97,6 +98,8 @@ pub struct Slot {
     pub generation: String,
     /// The page of this slot asked for notifications (a channel is open).
     pub clicks: Option<tauri::ipc::Channel<crate::web_notify::Click>>,
+    /// Names the community icon the server set, as cached on this device.
+    pub icon: Option<String>,
 }
 
 impl Slot {
@@ -111,6 +114,7 @@ impl Slot {
             reported: false,
             generation: uuid::Uuid::new_v4().simple().to_string(),
             clicks: None,
+            icon: None,
         }
     }
 
@@ -178,7 +182,9 @@ impl std::fmt::Display for AddError {
 
 #[derive(Default)]
 pub struct Registry {
+    /// In the order the rail shows them (folders opened up).
     slots: Vec<Slot>,
+    layout: Layout,
     active: Option<String>,
     /// The page for adding a server is in front.
     adding: bool,
@@ -188,7 +194,11 @@ pub struct Registry {
 #[derive(Serialize, Debug, PartialEq, Eq)]
 pub struct RailInstance {
     pub id: String,
+    /// What the rail calls it: the local name when there is one.
     pub name: String,
+    /// What the server calls itself (or its address): the name without the local one.
+    pub original: String,
+    pub alias: Option<String>,
     pub initial: String,
     /// 0 to 359, for the tile colour.
     pub hue: u16,
@@ -197,6 +207,8 @@ pub struct RailInstance {
     pub message: Option<String>,
     pub unread: u32,
     pub mentions: u32,
+    /// Names the community icon in the cache, if the server set one.
+    pub icon: Option<String>,
 }
 
 #[derive(Serialize, Debug, PartialEq, Eq)]
@@ -204,7 +216,10 @@ pub struct RailState {
     pub active: Option<String>,
     pub adding: bool,
     pub can_add: bool,
+    /// In the order of the rail, folders opened up.
     pub instances: Vec<RailInstance>,
+    /// How the rail is structured: servers and folders.
+    pub items: Vec<Item>,
 }
 
 fn initial(name: &str) -> String {
@@ -227,6 +242,10 @@ impl Registry {
         for origin in &stored.servers {
             let _ = registry.add(origin.clone());
         }
+        let order = registry.ids();
+        registry.layout =
+            Layout::load(stored.items.clone(), stored.aliases.clone(), &order, &order);
+        registry.sort_slots();
         registry.active = stored
             .active
             .as_ref()
@@ -293,7 +312,34 @@ impl Registry {
             return Err(AddError::Full);
         }
         self.slots.push(Slot::new(origin));
+        self.layout.add(&id);
         Ok(id)
+    }
+
+    /// The slots follow the rail: Ctrl+1 is the first server shown.
+    fn sort_slots(&mut self) {
+        let order = self.layout.flat();
+        self.slots
+            .sort_by_key(|s| order.iter().position(|id| *id == s.id));
+    }
+
+    /// Changes how the rail is laid out. Whatever the change says, the order of
+    /// the slots follows it afterwards; `false` means it was refused.
+    pub fn edit(&mut self, change: impl FnOnce(&mut Layout) -> bool) -> bool {
+        let done = change(&mut self.layout);
+        if done {
+            self.sort_slots();
+        }
+        done
+    }
+
+    /// The name the rail, the title and the toasts use for a server.
+    pub fn display_name(&self, slot: &Slot) -> String {
+        self.layout
+            .aliases
+            .get(&slot.id)
+            .cloned()
+            .unwrap_or_else(|| slot.name())
     }
 
     /// Takes a server out of the list and gives its slot back to be wiped. The
@@ -301,6 +347,7 @@ impl Registry {
     pub fn remove(&mut self, id: &str) -> Option<Slot> {
         let index = self.slots.iter().position(|s| s.id == id)?;
         let slot = self.slots.remove(index);
+        self.layout.remove(id);
         if self.active.as_deref() == Some(id) {
             self.active = self
                 .slots
@@ -339,17 +386,6 @@ impl Registry {
     /// Back from the page for adding a server, to the one that was in front.
     pub fn stop_adding(&mut self) {
         self.adding = self.active.is_none();
-    }
-
-    /// Puts a server at another place of the list (0 is the top of the rail).
-    pub fn move_to(&mut self, id: &str, to: usize) -> bool {
-        let Some(from) = self.slots.iter().position(|s| s.id == id) else {
-            return false;
-        };
-        let to = to.min(self.slots.len() - 1);
-        let slot = self.slots.remove(from);
-        self.slots.insert(to, slot);
-        true
     }
 
     /// The count a page reported. Both numbers are bounded, whatever the page
@@ -403,7 +439,9 @@ impl Registry {
                 .slots
                 .iter()
                 .map(|slot| {
-                    let name = slot.name();
+                    let original = slot.name();
+                    let alias = self.layout.aliases.get(&slot.id).cloned();
+                    let name = alias.clone().unwrap_or_else(|| original.clone());
                     let (status, message) = match &slot.phase {
                         Phase::Starting => ("starting", None),
                         Phase::Ready(_) => ("ready", None),
@@ -414,13 +452,17 @@ impl Registry {
                         initial: initial(&name),
                         hue: hue(&slot.id),
                         name,
+                        original,
+                        alias,
                         status,
                         message,
                         unread: slot.unread,
                         mentions: slot.mentions,
+                        icon: slot.icon.clone(),
                     }
                 })
                 .collect(),
+            items: self.layout.items.clone(),
         }
     }
 
@@ -434,6 +476,8 @@ impl Registry {
                 .as_deref()
                 .and_then(|id| self.slot(id))
                 .map(|s| s.origin.clone()),
+            items: Some(self.layout.items.clone()),
+            aliases: self.layout.aliases.clone(),
         }
     }
 }
@@ -444,6 +488,10 @@ pub struct Stored {
     version: u32,
     pub servers: Vec<Url>,
     pub active: Option<Url>,
+    /// How the rail is structured; none for a list written before folders.
+    pub items: Option<Vec<Item>>,
+    /// Local names, by server id.
+    pub aliases: BTreeMap<String, String>,
     /// A list file exists but could not be used (unreadable, damaged, too
     /// large or written by another version). The list is then empty, but that
     /// is not the person's choice: nothing may be cleaned up on its strength.
@@ -455,6 +503,12 @@ struct StoredFile {
     version: u32,
     servers: Vec<String>,
     active: Option<String>,
+    /// Added after version 1 was first written: older files have neither, and
+    /// older clients ignore both. Entries that do not read are dropped.
+    #[serde(default)]
+    items: Option<Vec<serde_json::Value>>,
+    #[serde(default)]
+    aliases: BTreeMap<String, String>,
 }
 
 impl Stored {
@@ -463,6 +517,8 @@ impl Stored {
             version: STORE_VERSION,
             servers: Vec::new(),
             active: None,
+            items: None,
+            aliases: BTreeMap::new(),
             unreadable: false,
         }
     }
@@ -517,10 +573,18 @@ impl Stored {
             .active
             .and_then(|a| crate::web_client::address(&a).ok())
             .filter(|a| servers.contains(a));
+        let items = stored.items.map(|items| {
+            items
+                .into_iter()
+                .filter_map(|item| serde_json::from_value(item).ok())
+                .collect()
+        });
         Stored {
             version: STORE_VERSION,
             servers,
             active,
+            items,
+            aliases: stored.aliases,
             unreadable: false,
         }
     }
@@ -534,6 +598,13 @@ impl Stored {
             version: self.version,
             servers: self.servers.iter().map(|u| u.as_str().to_owned()).collect(),
             active: self.active.as_ref().map(|u| u.as_str().to_owned()),
+            items: self.items.as_ref().map(|items| {
+                items
+                    .iter()
+                    .filter_map(|i| serde_json::to_value(i).ok())
+                    .collect()
+            }),
+            aliases: self.aliases.clone(),
         };
         let raw = serde_json::to_vec(&stored)?;
         if let Some(parent) = file.parent() {
@@ -724,13 +795,63 @@ mod tests {
     #[test]
     fn reordering_moves_only_the_one_server() {
         let mut registry = registry(&["a.example", "b.example", "c.example"]);
-        assert!(registry.move_to(&id("c.example"), 0));
-        let order: Vec<String> = registry.ids();
-        assert_eq!(order, [id("c.example"), id("a.example"), id("b.example")]);
-        assert!(registry.move_to(&id("c.example"), 99));
-        assert_eq!(registry.ids().last(), Some(&id("c.example")));
-        assert!(!registry.move_to("0000000000000000", 0));
+        let (a, b, c) = (id("a.example"), id("b.example"), id("c.example"));
+        assert!(registry.edit(|l| l.place(&c, "", &a)));
+        assert_eq!(registry.ids(), [c.clone(), a.clone(), b.clone()]);
+        assert!(registry.edit(|l| l.place(&c, "", "")));
+        assert_eq!(registry.ids().last(), Some(&c));
+        assert!(!registry.edit(|l| l.place("0000000000000000", "", "")));
         assert_eq!(registry.len(), 3);
+    }
+
+    #[test]
+    fn the_servers_follow_the_rail_into_and_out_of_folders() {
+        let mut registry = registry(&["a.example", "b.example", "c.example", "d.example"]);
+        let (a, b, c, d) = (
+            id("a.example"),
+            id("b.example"),
+            id("c.example"),
+            id("d.example"),
+        );
+        registry.activate(&c);
+        assert!(registry.edit(|l| l.group(&d, &a, "f-1")));
+        // Ctrl+1 to Ctrl+4 follow what the rail shows; the front stays.
+        assert_eq!(registry.ids(), [a.clone(), d.clone(), b.clone(), c.clone()]);
+        assert_eq!(registry.activate_nth(2), Some(d.clone()));
+        registry.activate(&c);
+        assert_eq!(registry.active(), Some(c.as_str()));
+        let rail = registry.rail(true);
+        assert_eq!(rail.items.len(), 3);
+        assert_eq!(
+            rail.instances
+                .iter()
+                .map(|i| i.id.clone())
+                .collect::<Vec<_>>(),
+            registry.ids()
+        );
+        // A server that leaves takes its place in a folder with it.
+        registry.remove(&a);
+        registry.remove(&d);
+        assert_eq!(registry.rail(true).items.len(), 2);
+        // One that joins goes to the end.
+        registry.add(url("https://e.example/")).unwrap();
+        assert_eq!(registry.ids().last(), Some(&id("e.example")));
+    }
+
+    #[test]
+    fn a_local_name_leads_the_rail_and_keeps_the_original_beside_it() {
+        let mut registry = registry(&["a.example", "b.example"]);
+        let a = id("a.example");
+        assert!(registry.edit(|l| l.rename(&a, "  Lantern  ")));
+        let rail = registry.rail(true);
+        assert_eq!(rail.instances[0].name, "Lantern");
+        assert_eq!(rail.instances[0].original, "a.example");
+        assert_eq!(rail.instances[0].alias.as_deref(), Some("Lantern"));
+        assert_eq!(rail.instances[0].initial, "L");
+        assert_eq!(rail.instances[1].alias, None);
+        assert_eq!(registry.display_name(registry.slot(&a).unwrap()), "Lantern");
+        assert!(registry.edit(|l| l.rename(&a, "")));
+        assert_eq!(registry.rail(true).instances[0].name, "a.example");
     }
 
     #[test]
@@ -961,6 +1082,78 @@ mod tests {
         assert_eq!(restored.active(), Some(id("b.example").as_str()));
         assert!(!restored.adding());
         assert!(Registry::restore(&Stored::empty()).adding());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn folders_and_names_survive_a_restart_in_the_same_file() {
+        let dir = scratch("layout");
+        let file = dir.join("instances.json");
+        let mut registry = registry(&["a.example", "b.example", "c.example"]);
+        let (a, b, c) = (id("a.example"), id("b.example"), id("c.example"));
+        assert!(registry.edit(|l| l.group(&c, &a, "f-1")));
+        assert!(registry.edit(|l| l.folder_edit("f-1", "Work", Some("#2da771"))));
+        assert!(registry.edit(|l| l.toggle("f-1", Some(true))));
+        assert!(registry.edit(|l| l.rename(&b, "Fox")));
+        registry.stored().save(Some(&file)).unwrap();
+        let restored = Registry::restore(&Stored::load(Some(&file)));
+        assert_eq!(restored.ids(), [a, c, b]);
+        assert_eq!(restored.rail(true).items, registry.rail(true).items);
+        assert_eq!(restored.rail(true).instances[2].name, "Fox");
+        // The addresses are still first in the file, in the order of the rail.
+        let text = std::fs::read_to_string(&file).unwrap();
+        let json: serde_json::Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(json["version"], 1);
+        assert_eq!(json["servers"][1], "https://c.example/");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_list_from_before_folders_keeps_its_order_and_gets_no_folders() {
+        let dir = scratch("migrate");
+        let file = dir.join("instances.json");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            &file,
+            r#"{"version":1,"servers":["https://b.example/","https://a.example/","https://c.example/"],"active":"https://a.example/"}"#,
+        )
+        .unwrap();
+        let stored = Stored::load(Some(&file));
+        assert!(!stored.unreadable() && stored.items.is_none() && stored.aliases.is_empty());
+        let restored = Registry::restore(&stored);
+        assert_eq!(
+            restored.ids(),
+            [id("b.example"), id("a.example"), id("c.example")]
+        );
+        let rail = restored.rail(true);
+        assert!(rail.items.iter().all(|i| matches!(i, Item::Server { .. })));
+        assert_eq!(rail.items.len(), 3);
+        assert_eq!(restored.active(), Some(id("a.example").as_str()));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_damaged_layout_is_repaired_and_never_makes_the_list_unreadable() {
+        let dir = scratch("damaged");
+        let file = dir.join("instances.json");
+        std::fs::create_dir_all(&dir).unwrap();
+        let a = id("a.example");
+        let text = format!(
+            r#"{{"version":1,"servers":["https://a.example/","https://b.example/"],"active":null,
+            "items":[7,{{"kind":"folder"}},{{"kind":"server","id":"{a}"}},{{"kind":"server","id":"ffffffffffffffff"}},
+                     {{"kind":"folder","id":"f-1","name":"{long}","color":"nope","collapsed":false,"servers":["{a}","{a}"]}}],
+            "aliases":{{"{a}":" Fox ","ffffffffffffffff":"Gone"}}}}"#,
+            long = "n".repeat(60)
+        );
+        std::fs::write(&file, text).unwrap();
+        let stored = Stored::load(Some(&file));
+        assert!(!stored.unreadable());
+        let restored = Registry::restore(&stored);
+        assert_eq!(restored.ids(), [a.clone(), id("b.example")]);
+        let rail = restored.rail(true);
+        assert_eq!(rail.items.len(), 2);
+        assert_eq!(rail.instances[0].alias.as_deref(), Some("Fox"));
+        assert_eq!(rail.instances.len(), 2);
         let _ = std::fs::remove_dir_all(dir);
     }
 

@@ -91,13 +91,84 @@ test('removing the front server hands the front to its neighbour', () => {
   assert.equal(r.remove(id('a.example')), null)
 })
 
-test('reordering moves only the one server', () => {
+test('reordering moves only the one server, and the number keys follow the rail', () => {
   const r = registry('a.example', 'b.example', 'c.example')
-  assert.ok(r.moveTo(id('c.example'), 0))
+  assert.ok(r.edit({ op: 'place', id: id('c.example'), target: '', before: id('a.example') }, 'f-00000001'))
   assert.deepEqual(r.ids(), [id('c.example'), id('a.example'), id('b.example')])
-  assert.ok(r.moveTo(id('c.example'), 99))
+  assert.equal(r.activateNth(1), id('c.example'))
+  assert.ok(r.edit({ op: 'place', id: id('c.example'), target: '', before: '' }, 'f-00000001'))
   assert.equal(r.ids().at(-1), id('c.example'))
-  assert.equal(r.moveTo('0000000000000000', 0), false)
+  assert.equal(r.edit({ op: 'step', id: '0000000000000000', delta: 1 }, 'f-00000001'), false)
+})
+
+test('folders keep their servers together in the order of the rail and fall away with the last one', () => {
+  const r = registry('a.example', 'b.example', 'c.example')
+  assert.ok(r.edit({ op: 'group', id: id('c.example'), target: id('a.example') }, 'f-0000000a'))
+  assert.deepEqual(r.ids(), [id('a.example'), id('c.example'), id('b.example')])
+  const rail = r.rail(true)
+  assert.deepEqual(rail.items, [{ kind: 'folder', id: 'f-0000000a', name: '', color: null, collapsed: false, servers: [id('a.example'), id('c.example')] }, { kind: 'server', id: id('b.example') }])
+  assert.deepEqual(rail.instances.map((i) => i.id), r.ids())
+  r.remove(id('a.example'))
+  r.remove(id('c.example'))
+  assert.deepEqual(r.rail(true).items, [{ kind: 'server', id: id('b.example') }])
+  assert.equal(r.hasFolder('f-0000000a'), false)
+})
+
+test('a local name leads the rail, the title and the menu, and the original stays known', () => {
+  const r = registry('a.example')
+  const slot = r.slot(id('a.example'))!
+  assert.ok(r.edit({ op: 'rename', id: id('a.example'), name: '  Home  ' }, 'f-00000001'))
+  const shown = r.rail(true).instances[0]!
+  assert.deepEqual([shown.name, shown.original, shown.alias, shown.initial], ['Home', 'a.example', 'Home', 'H'])
+  assert.equal(r.displayName(slot), 'Home')
+  assert.ok(r.edit({ op: 'rename', id: id('a.example'), name: '' }, 'f-00000001'))
+  assert.deepEqual([r.displayName(slot), r.rail(true).instances[0]!.alias], ['a.example', null])
+})
+
+test('the community icon of a server is a version the rail can ask for', () => {
+  const r = registry('a.example')
+  assert.equal(r.rail(true).instances[0]!.icon, null)
+  assert.equal(r.setIcon(id('a.example'), '0123456789abcdef'), true)
+  assert.equal(r.setIcon(id('a.example'), '0123456789abcdef'), false)
+  assert.equal(r.rail(true).instances[0]!.icon, '0123456789abcdef')
+  assert.equal(r.setIcon(id('zz.example'), 'x'), false)
+})
+
+test('folders, order and local names survive a restart', () => {
+  const file = join(tmp(), 'instances.json')
+  const r = registry('a.example', 'b.example', 'c.example')
+  r.edit({ op: 'group', id: id('c.example'), target: id('a.example') }, 'f-0000000a')
+  r.edit({ op: 'folder_edit', id: 'f-0000000a', name: 'Work', color: '#12ab34' }, 'f-0000000b')
+  r.edit({ op: 'toggle', id: 'f-0000000a', flag: true }, 'f-0000000b')
+  r.edit({ op: 'rename', id: id('b.example'), name: 'Home' }, 'f-0000000b')
+  saveStored(file, r.stored())
+  const back = Registry.restore(loadStored(file))
+  assert.deepEqual(back.ids(), r.ids())
+  assert.deepEqual(back.rail(true).items, r.rail(true).items)
+  assert.equal(back.rail(true).instances.find((i) => i.id === id('b.example'))!.name, 'Home')
+  assert.equal(back.readInFull, true)
+})
+
+test('a list from before folders becomes the same order without folders or names', () => {
+  const file = join(tmp(), 'instances.json')
+  writeFileSync(file, JSON.stringify({ version: 1, servers: ['https://b.example/', 'https://a.example/'], active: 'https://a.example/' }))
+  const r = Registry.restore(loadStored(file))
+  assert.deepEqual(r.ids(), [id('b.example'), id('a.example')])
+  assert.deepEqual(r.rail(true).items, [{ kind: 'server', id: id('b.example') }, { kind: 'server', id: id('a.example') }])
+  assert.deepEqual(r.rail(true).instances.map((i) => i.alias), [null, null])
+  assert.equal(r.readInFull, true)
+  assert.equal(r.active(), id('a.example'))
+})
+
+test('a layout that does not hold up is mended and does not make the list unreadable', () => {
+  const file = join(tmp(), 'instances.json')
+  const junk = { kind: 'folder', id: 'x', servers: 7 }
+  writeFileSync(file, JSON.stringify({ version: 1, servers: ['https://a.example/', 'https://b.example/'], active: null, items: [junk, 5, { kind: 'server', id: 'nope' }, { kind: 'server', id: id('b.example') }], aliases: [1] }))
+  const r = Registry.restore(loadStored(file))
+  assert.deepEqual(r.ids(), [id('b.example'), id('a.example')])
+  assert.equal(r.readInFull, true)
+  writeFileSync(file, JSON.stringify({ version: 1, servers: ['https://a.example/'], active: null, items: 'x', aliases: 'y' }))
+  assert.deepEqual(Registry.restore(loadStored(file)).ids(), [id('a.example')])
 })
 
 test('counts belong to the server that reported them and are bounded', () => {
@@ -144,8 +215,8 @@ test('the rail has the shape the rail page reads', () => {
   assert.deepEqual(rail.instances.map((i) => i.status), ['starting', 'refused', 'starting'])
   assert.equal(rail.instances[1]!.message, 'Too old.')
   assert.ok(rail.instances.every((i) => i.hue >= 0 && i.hue < 360))
-  assert.deepEqual(Object.keys(rail).sort(), ['active', 'adding', 'can_add', 'instances'])
-  assert.deepEqual(Object.keys(rail.instances[0]!).sort(), ['hue', 'id', 'initial', 'mentions', 'message', 'name', 'status', 'unread'])
+  assert.deepEqual(Object.keys(rail).sort(), ['active', 'adding', 'can_add', 'instances', 'items'])
+  assert.deepEqual(Object.keys(rail.instances[0]!).sort(), ['alias', 'hue', 'icon', 'id', 'initial', 'mentions', 'message', 'name', 'original', 'status', 'unread'])
   assert.equal(r.rail(false).can_add, false)
 })
 
@@ -267,7 +338,9 @@ test('a list that names a server to keep the old storage is read without it: no 
   const stored = loadStored(file)
   assert.equal('legacy' in stored, false)
   const r = Registry.restore(stored)
-  assert.deepEqual(r.stored(), { servers: [new URL('https://a.example/')], active: new URL('https://a.example/') })
+  const kept = r.stored()
+  assert.deepEqual([kept.servers, kept.active], [[new URL('https://a.example/')], new URL('https://a.example/')])
+  assert.equal('legacy' in kept, false)
 })
 
 test('a list that could not be read in full proves nothing about the servers missing from it', () => {

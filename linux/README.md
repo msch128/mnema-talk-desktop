@@ -149,7 +149,13 @@ One window: the server rail of the host on the left (the same page as in the
 Tauri host), and next to it the page of one server or the page for adding one.
 Each page is a `WebContentsView`. Up to nine servers, switched with Ctrl+1 to
 Ctrl+9 or the rail, added with Ctrl+Shift+N, reordered by dragging or Alt+arrow
-and removed from the rail's menu. No federation: one account per server.
+and removed from the rail's menu. Servers can be grouped in folders (name,
+colour, open or closed, kept across restarts) and renamed for this device; the
+menu is the system's own popup (`Menu.popup`) and the questions (rename, folder,
+remove) get a small window of their own, so a server's page can never cover
+them. The community icon a server's Owner sets is fetched from that server only
+(`GET /api/community/icon`, png or webp, at most 1 MiB, checked before it is
+kept). No federation: one account per server.
 A server is named on the rail, in the menu, in toasts and in the window title
 by what it calls itself (`community_name` of `GET /api/health`, the name its
 Owner chose or its host), shown as plain text; the address stands in for a

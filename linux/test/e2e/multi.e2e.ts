@@ -155,7 +155,7 @@ test('a report from the server in the background raises its own count while the 
 
 test('the list is reordered from the rail and written down with addresses only', async () => {
   const before = (await state()).instances.map((i) => i.id)
-  await railCall('rail_move', `{ id: '${before[1]}', to: 0 }`)
+  await railCall('rail_edit', `{ op: 'step', id: '${before[1]}', delta: -1 }`)
   assert.deepEqual((await state()).instances.map((i) => i.id), [before[1], before[0]])
   const file = join(app.dataDir, 'instances.json')
   const text = readFileSync(file, 'utf8')

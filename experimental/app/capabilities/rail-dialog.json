@@ -1,0 +1,10 @@
+{
+  "identifier": "rail-dialog",
+  "description": "The small dialog of the server rail, a page of the host. It can only hand back its answer.",
+  "webviews": [
+    "rail-dialog"
+  ],
+  "permissions": [
+    "allow-dialog-done"
+  ]
+}
