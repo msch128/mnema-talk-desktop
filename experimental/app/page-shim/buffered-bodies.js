@@ -38,29 +38,19 @@
 
   async function bytesOfForm(form) {
     const edge = boundary()
+    // The files stay references inside the Blob until the single read below,
+    // so the bytes are held once (not once per file and again joined).
     const parts = []
-    let length = 0
-    const push = (chunk) => {
-      parts.push(chunk)
-      length += chunk.length
-    }
     for (const [name, value] of form.entries()) {
       if (typeof value === 'string') {
-        push(text.encode(`--${edge}\r\nContent-Disposition: form-data; name="${quoted(name)}"\r\n\r\n${crlf(value)}\r\n`))
+        parts.push(text.encode(`--${edge}\r\nContent-Disposition: form-data; name="${quoted(name)}"\r\n\r\n${crlf(value)}\r\n`))
       } else {
         const type = value.type || 'application/octet-stream'
-        push(text.encode(`--${edge}\r\nContent-Disposition: form-data; name="${quoted(name)}"; filename="${quoted(value.name)}"\r\nContent-Type: ${type}\r\n\r\n`))
-        push(new Uint8Array(await value.arrayBuffer()))
-        push(text.encode('\r\n'))
+        parts.push(text.encode(`--${edge}\r\nContent-Disposition: form-data; name="${quoted(name)}"; filename="${quoted(value.name)}"\r\nContent-Type: ${type}\r\n\r\n`), value, text.encode('\r\n'))
       }
     }
-    push(text.encode(`--${edge}--\r\n`))
-    const bytes = new Uint8Array(length)
-    let at = 0
-    for (const chunk of parts) {
-      bytes.set(chunk, at)
-      at += chunk.length
-    }
+    parts.push(text.encode(`--${edge}--\r\n`))
+    const bytes = new Uint8Array(await new Blob(parts).arrayBuffer())
     return { bytes, type: `multipart/form-data; boundary=${edge}` }
   }
 

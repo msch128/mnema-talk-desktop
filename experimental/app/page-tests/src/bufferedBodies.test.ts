@@ -100,7 +100,7 @@ describe('files in a request body', () => {
 
   it('passes the failure of an unreadable file on instead of sending an empty body', async () => {
     const gone = new File(['x'], 'gone.png')
-    Object.defineProperty(gone, 'arrayBuffer', { value: () => Promise.reject(new DOMException('gone', 'NotFoundError')) })
+    vi.spyOn(Blob.prototype, 'arrayBuffer').mockRejectedValue(new DOMException('gone', 'NotFoundError'))
     const form = new FormData()
     form.append('avatar', gone)
     await expect(window.fetch('/api/users/me/avatar', { method: 'POST', body: form })).rejects.toThrow('gone')
