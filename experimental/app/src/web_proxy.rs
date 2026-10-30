@@ -485,19 +485,39 @@ fn create_private_dir(dir: &std::path::Path) {
 
 /// The kinds of request body the proxy tells apart.
 enum Route {
-    Avatar,
+    /// One picture the server parses in memory: avatar, banner, community
+    /// icon, the avatar of a bot or webhook, the cover of an event.
+    Picture,
     Upload,
     Json,
 }
 
 impl Route {
+    fn is_picture(path: &str) -> bool {
+        // `<id>` is one path segment between the fixed parts.
+        let between = |prefix: &str, suffix: &str| {
+            path.strip_prefix(prefix)
+                .and_then(|rest| rest.strip_suffix(suffix))
+                .is_some_and(|id| !id.is_empty() && !id.contains('/'))
+        };
+        matches!(
+            path,
+            "/api/users/me/avatar" | "/api/users/me/banner" | "/api/admin/community/icon"
+        ) || between("/api/admin/bots/", "/avatar")
+            || between("/api/admin/webhooks/", "/avatar")
+            || between("/api/events/", "/cover")
+    }
+
     fn of(path: &str) -> Route {
-        if path == "/api/users/me/avatar" {
-            return Route::Avatar;
+        if Route::is_picture(path) {
+            return Route::Picture;
         }
         let is_upload = path
             .strip_prefix("/api/channels/")
-            .and_then(|rest| rest.strip_suffix("/upload"))
+            .and_then(|rest| {
+                rest.strip_suffix("/upload")
+                    .or_else(|| rest.strip_suffix("/attachments"))
+            })
             .is_some_and(|id| !id.is_empty() && !id.contains('/'));
         if is_upload {
             Route::Upload
@@ -548,7 +568,7 @@ impl Limits {
     /// applies to uploads.
     pub fn request_cap(&self, path: &str) -> usize {
         match Route::of(path) {
-            Route::Avatar => MAX_AVATAR_BODY,
+            Route::Picture => MAX_AVATAR_BODY,
             Route::Json => MAX_JSON_BODY,
             // Never above what the memory budget can lend: a larger body
             // could only wait for permits that do not exist.
@@ -563,7 +583,7 @@ impl Limits {
     fn too_large(&self, path: &str, cap: usize) -> Resp {
         let message = match Route::of(path) {
             Route::Json => "request too large".to_owned(),
-            Route::Avatar | Route::Upload => format!(
+            Route::Picture | Route::Upload => format!(
                 "file exceeds the {} MB limit{}",
                 (cap - MULTIPART_OVERHEAD.min(cap)) >> 20,
                 // The cap can sit below the instance's limit: this client
@@ -1977,6 +1997,147 @@ mod tests {
         (url, rx)
     }
 
+    /// One-shot HTTP server that keeps the request's head and body byte for
+    /// byte (the body by its `content-length`, or chunk by chunk when the
+    /// request is chunked).
+    async fn keep_request(
+        reply: Vec<u8>,
+    ) -> (Url, tokio::sync::oneshot::Receiver<(String, Vec<u8>)>) {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = Url::parse(&format!("http://{}", listener.local_addr().unwrap())).unwrap();
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut buf = vec![0u8; 65536];
+            let mut raw = Vec::new();
+            let (head, body) = loop {
+                let n = socket.read(&mut buf).await.unwrap();
+                raw.extend_from_slice(&buf[..n]);
+                let Some(at) = raw.windows(4).position(|w| w == b"\r\n\r\n") else {
+                    assert!(n > 0, "closed inside the head");
+                    continue;
+                };
+                let head = String::from_utf8_lossy(&raw[..at]).to_ascii_lowercase();
+                let rest = &raw[at + 4..];
+                if let Some(length) = head.lines().find_map(|l| {
+                    l.strip_prefix("content-length:")
+                        .map(|v| v.trim().parse::<usize>().unwrap())
+                }) {
+                    if rest.len() >= length {
+                        break (head, rest[..length].to_vec());
+                    }
+                } else if head.contains("transfer-encoding: chunked") {
+                    // Complete when the zero-size chunk has arrived.
+                    if rest.ends_with(b"0\r\n\r\n") {
+                        let mut body = Vec::new();
+                        let mut at = 0;
+                        loop {
+                            let eol = rest[at..].windows(2).position(|w| w == b"\r\n").unwrap();
+                            let size = usize::from_str_radix(
+                                std::str::from_utf8(&rest[at..at + eol]).unwrap(),
+                                16,
+                            )
+                            .unwrap();
+                            at += eol + 2;
+                            if size == 0 {
+                                break;
+                            }
+                            body.extend_from_slice(&rest[at..at + size]);
+                            at += size + 2;
+                        }
+                        break (head, body);
+                    }
+                } else {
+                    break (head, Vec::new());
+                }
+                assert!(n > 0, "closed inside the body");
+            };
+            let _ = tx.send((head, body));
+            socket.write_all(&reply).await.unwrap();
+            let _ = socket.shutdown().await;
+        });
+        (url, rx)
+    }
+
+    /// A multipart body as the web app's `FormData` serializes it, around
+    /// `size` bytes of an image that no text handling would leave alone.
+    fn multipart_image(field: &str, size: usize) -> (String, Vec<u8>) {
+        let boundary = "----MnemaFormBoundary7MA4YWxkTrZu0gW";
+        let mut body = format!(
+            "--{boundary}\r\nContent-Disposition: form-data; name=\"{field}\"; filename=\"me.png\"\r\nContent-Type: image/png\r\n\r\n"
+        )
+        .into_bytes();
+        body.extend((0..size).map(|i| (i.wrapping_mul(31) ^ (i >> 8)) as u8));
+        body.extend_from_slice(format!("\r\n--{boundary}--\r\n").as_bytes());
+        (format!("multipart/form-data; boundary={boundary}"), body)
+    }
+
+    #[tokio::test]
+    async fn every_upload_route_hands_the_server_the_pictures_bytes_unchanged() {
+        let id = "3f0c1b2e-0000-4000-8000-000000000000";
+        let routes = [
+            ("POST", "avatar", "/api/users/me/avatar".to_owned()),
+            ("PUT", "banner", "/api/users/me/banner".to_owned()),
+            ("PUT", "icon", "/api/admin/community/icon".to_owned()),
+            ("POST", "avatar", format!("/api/admin/bots/{id}/avatar")),
+            ("POST", "avatar", format!("/api/admin/webhooks/{id}/avatar")),
+            ("POST", "cover", format!("/api/events/{id}/cover")),
+            ("POST", "file", format!("/api/channels/{id}/upload")),
+        ];
+        // Around the megabyte the first server-side size classes meet, and
+        // above the 2 MiB a JSON route is allowed.
+        for size in [1 << 10, (1 << 20) - 1, (1 << 20) + 1, (3 << 20) + 17] {
+            for (method, field, path) in &routes {
+                let (content_type, body) = multipart_image(field, size);
+                let ok = reply("200 OK", &["content-type: application/json"], "{}");
+                let (origin, seen) = keep_request(ok).await;
+                let instance = instance_at(origin);
+                let resp = forward(
+                    &instance,
+                    method,
+                    path,
+                    &[("content-type".into(), content_type.clone())],
+                    body.clone(),
+                )
+                .await;
+                assert_eq!(resp.status, 200, "{path} at {size}: {:?}", resp.body);
+                let (head, received) = seen.await.unwrap();
+                assert!(received == body, "{path} at {size}: other bytes arrived");
+                assert!(head.contains(&format!(
+                    "content-type: {}",
+                    content_type.to_ascii_lowercase()
+                )));
+                assert!(!head.contains("transfer-encoding"), "{head}");
+            }
+        }
+    }
+
+    #[test]
+    fn every_picture_route_takes_what_the_server_allows_and_other_routes_stay_small() {
+        let limits = Limits::default();
+        let id = "3f0c1b2e-0000-4000-8000-000000000000";
+        for path in [
+            "/api/users/me/avatar".to_owned(),
+            "/api/users/me/banner".to_owned(),
+            "/api/admin/community/icon".to_owned(),
+            format!("/api/admin/bots/{id}/avatar"),
+            format!("/api/admin/webhooks/{id}/avatar"),
+            format!("/api/events/{id}/cover"),
+        ] {
+            assert_eq!(limits.request_cap(&path), MAX_AVATAR_BODY, "{path}");
+        }
+        for path in [
+            "/api/admin/emoji",
+            "/api/users/me/avatar/x",
+            "/api/admin/bots//avatar",
+            "/api/admin/bots/a/b/avatar",
+            "/api/events//cover",
+            "/api/events/a/b/cover",
+        ] {
+            assert_eq!(limits.request_cap(path), MAX_JSON_BODY, "{path}");
+        }
+    }
+
     fn instance_at(origin: Url) -> Instance {
         Instance {
             origin,
@@ -2001,6 +2162,14 @@ mod tests {
             MAX_JSON_BODY
         );
         assert_eq!(limits.request_cap("/api/users/me/avatar"), MAX_AVATAR_BODY);
+        assert_eq!(
+            limits.request_cap("/api/channels/x/attachments"),
+            (10 << 20) + MULTIPART_OVERHEAD
+        );
+        assert_eq!(
+            limits.request_cap("/api/channels/x/attachments/y"),
+            MAX_JSON_BODY
+        );
         assert_eq!(limits.request_cap("/api/channels//upload"), MAX_JSON_BODY);
         assert_eq!(
             limits.request_cap("/api/channels/a/b/upload"),
