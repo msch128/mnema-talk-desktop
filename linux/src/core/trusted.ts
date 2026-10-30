@@ -9,6 +9,7 @@ import { join } from 'node:path'
 import { type TrustedKey, BundleRefused, parseKey } from './bundle.ts'
 import { parseAddress } from './client.ts'
 import { Jar, type Vault } from './cookies.ts'
+import { IconCache, refreshIcon } from './icon.ts'
 import { discover } from './discover.ts'
 import { Registry, type Session, emptyStored, idFor, loadStored, saveStored } from './instances.ts'
 import { Limits } from './proxy.ts'
@@ -62,6 +63,8 @@ export class Trusted {
   readonly store: Store
   /** The servers, their sessions and their counters. */
   readonly registry: Registry
+  /** The community icons the servers set, at rest next to the other per-server data. */
+  readonly icons: IconCache
   private keys: TrustedKey[]
   private readonly trust: TrustState
   /**
@@ -85,6 +88,10 @@ export class Trusted {
     this.keys = this.trust.effectiveKeys(deps.pinned())
     this.store = Store.load(dataDir ? join(dataDir, 'web-bundles') : null, builtin, this.keys)
     this.registry = Registry.restore(dataDir ? loadStored(this.instancesFile()) : emptyStored())
+    this.icons = new IconCache(dataDir)
+    // Icons of servers that are gone go at the next start; only when the list was read in full (a list that could not be says nothing about who is gone).
+    if (this.registry.readInFull) this.icons.sweep(new Set(this.registry.ids()))
+    for (const id of this.registry.ids()) this.registry.setIcon(id, this.icons.token(id))
   }
 
   dataDirectory(): string | null {
@@ -279,7 +286,13 @@ export class Trusted {
     const held = await this.choose(server)
     const name = this.jarName(origin)
     const jar = new Jar(this.dataDir ? join(this.dataDir, 'sessions', `${name}.json`) : null, this.deps.vault ? { vault: this.deps.vault, account: name } : null, this.deps.now())
-    return { id: name, instance: { origin, jar, limits: new Limits(), now: this.deps.now }, held, community: server.communityName ?? null, sockets: new Sockets() }
+    return { id: name, instance: { origin, jar, limits: new Limits(), now: this.deps.now }, held, community: server.communityName ?? null, iconWanted: server.communityIcon ?? true, sockets: new Sockets() }
+  }
+
+  /** Asks a server for its community icon (from the server itself, nothing else). True when what the rail shows for it changed. */
+  async refreshIcon(id: string, origin: URL, wanted: boolean): Promise<boolean> {
+    if (!(await refreshIcon(this.icons, id, origin, wanted))) return false
+    return this.registry.setIcon(id, this.icons.token(id))
   }
 
   /** Forgets the stored session of a server that never started in this run (the keychain entry and the fallback file). */

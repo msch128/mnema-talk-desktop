@@ -310,6 +310,11 @@ impl Trusted {
         self.data_dir.as_deref()
     }
 
+    /// Where the community icons of the servers are kept.
+    pub(crate) fn icons_dir(&self) -> Option<std::path::PathBuf> {
+        Some(self.data_dir.as_ref()?.join("icons"))
+    }
+
     pub(crate) fn jar_file(&self, origin: &Url) -> Option<std::path::PathBuf> {
         let name = crate::instances::id_for(origin);
         Some(
@@ -547,9 +552,14 @@ fn clean_name(raw: &str) -> Option<String> {
 }
 
 /// Asks the server what it is: its health and the name it gives itself.
-pub(crate) async fn discover(origin: &Url) -> Result<(ServerInfo, Option<String>), String> {
+/// The last is whether its health answer wants the community icon fetched.
+pub(crate) async fn discover(origin: &Url) -> Result<(ServerInfo, Option<String>, bool), String> {
     let bytes = fetch_health(origin).await?;
-    Ok((parse_health(&bytes)?, parse_community_name(&bytes)))
+    Ok((
+        parse_health(&bytes)?,
+        parse_community_name(&bytes),
+        super::rail_icon::wanted(&bytes),
+    ))
 }
 
 /// Why the instance could not be reached, in words the person can act on. The
@@ -814,7 +824,7 @@ async fn handle(
         },
         // The server rail: the host's own page, independent of the web bundle
         // and of every server.
-        "rail" if !api => super::web_shell::rail_asset(&method, &path),
+        "rail" | "rail-dialog" if !api => super::web_shell::rail_asset(&method, &path),
         "main" | "sidepeek" | "gaming-overlay" | "gaming-settings" if !api => {
             match trusted.view() {
                 Some(held) => serve_bundle(&held.bundle, &method, &path),
@@ -828,7 +838,7 @@ async fn handle(
                 }
             }
         }
-        "main" | "rail" | "sidepeek" | "gaming-overlay" | "gaming-settings" => {
+        "main" | "rail" | "rail-dialog" | "sidepeek" | "gaming-overlay" | "gaming-settings" => {
             plain(404, "Not found.")
         }
         _ => plain(403, "Forbidden."),
@@ -997,7 +1007,11 @@ pub(super) fn run() {
             super::web_shell::rail_activate,
             super::web_shell::rail_add,
             super::web_shell::rail_cancel_add,
-            super::web_shell::rail_move,
+            super::web_shell::rail_edit,
+            super::rail_menu::rail_menu,
+            super::rail_dialog::rail_dialog,
+            super::rail_dialog::dialog_done,
+            super::web_shell::rail_icon,
             super::web_shell::rail_remove,
             super::web_shell::rail_reconnect,
             super::web_shell::rail_notify_get,

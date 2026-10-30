@@ -12,6 +12,7 @@
       "capabilities": [
         "main",
         "server-rail",
+        "rail-dialog",
         "trusted-instance",
         "gaming-remote",
         "gaming-surfaces",

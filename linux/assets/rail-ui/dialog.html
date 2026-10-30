@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mnema Desktop</title>
+<link rel="stylesheet" href="rail.css">
+<link rel="stylesheet" href="dialog.css">
+</head>
+<body class="dialog">
+<main id="dialog" role="dialog" aria-modal="true" aria-labelledby="title" aria-describedby="message">
+  <h1 id="title"></h1>
+  <p id="message" class="message" hidden></p>
+  <label id="field" class="field" hidden><span id="label"></span><input id="input" type="text" autocomplete="off" spellcheck="false"></label>
+  <div id="colors" class="colors" hidden>
+    <span id="colors-label"></span>
+    <div id="swatches" class="swatches" role="radiogroup" aria-labelledby="colors-label"></div>
+  </div>
+  <div id="actions" class="actions"></div>
+</main>
+<script src="dialog.js"></script>
+</body>
+</html>

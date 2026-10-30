@@ -6,7 +6,7 @@
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
-export const SHARED_VECTORS = ['bundle', 'client', 'host-errors', 'json', 'minisign', 'proxy', 'store', 'trust', 'zip'].map(name => `test-vectors/${name}.json`);
+export const SHARED_VECTORS = ['bundle', 'client', 'host-errors', 'json', 'minisign', 'proxy', 'rail-icon', 'rail-layout', 'store', 'trust', 'zip'].map(name => `test-vectors/${name}.json`);
 
 function main() {
   const args = process.argv.slice(2);

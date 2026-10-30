@@ -36,6 +36,11 @@ export function updateUi(url: URL): boolean {
   return localOrigin(url) !== null && url.pathname.startsWith(UI_PREFIX)
 }
 
+/** The small dialog of the rail (rename, confirm): its one page, nothing else. */
+export function dialogUi(url: URL): boolean {
+  return localOrigin(url) !== null && url.pathname === '/dialog.html'
+}
+
 export function pickerUi(url: URL): boolean {
   return localOrigin(url) !== null && url.pathname.startsWith(PICKER_PREFIX)
 }

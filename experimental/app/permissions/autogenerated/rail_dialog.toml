@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-rail-dialog"
+description = "Enables the rail_dialog command without any pre-configured scope."
+commands.allow = ["rail_dialog"]
+
+[[permission]]
+identifier = "deny-rail-dialog"
+description = "Denies the rail_dialog command without any pre-configured scope."
+commands.deny = ["rail_dialog"]

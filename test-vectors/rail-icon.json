@@ -1,0 +1,182 @@
+{
+ "format": 1,
+ "note": "What the desktop accepts as the icon a server sets for its community (GET /api/community/icon): png or webp, at most 1 MiB (limit), at most 2048 px each way, the bytes must be what the content type says and well formed, nothing else (no svg). body is base64. Read by the Rust host and the TypeScript client; both also build a png of exactly limit and limit+1 bytes (padded with a tEXt chunk) for the size rule.",
+ "limit": 1048576,
+ "max_side": 2048,
+ "cases": [
+  {
+   "name": "a png",
+   "content_type": "image/png",
+   "body": "iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAL0lEQVR4nO3OIQEAAAgDMDQ5yURdiHEzMb/qnUsqAQEBAQEBAQEBAQEBAQGBdOABQzEMeVvBNAIAAAAASUVORK5CYII=",
+   "ok": true,
+   "kind": "png",
+   "width": 32,
+   "height": 32
+  },
+  {
+   "name": "a png with a charset parameter and upper case",
+   "content_type": "Image/PNG; charset=binary",
+   "body": "iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAL0lEQVR4nO3OIQEAAAgDMDQ5yURdiHEzMb/qnUsqAQEBAQEBAQEBAQEBAQGBdOABQzEMeVvBNAIAAAAASUVORK5CYII=",
+   "ok": true,
+   "kind": "png",
+   "width": 32,
+   "height": 32
+  },
+  {
+   "name": "a lossy webp",
+   "content_type": "image/webp",
+   "body": "UklGRiIAAABXRUJQVlA4IBYAAAAwAQCdASoBAAEADsD+JaQAA3AAAAAA",
+   "ok": true,
+   "kind": "webp",
+   "width": 1,
+   "height": 1
+  },
+  {
+   "name": "a lossless webp",
+   "content_type": "image/webp",
+   "body": "UklGRhoAAABXRUJQVlA4TA0AAAAvAAAAEAcQERGIiP4HAA==",
+   "ok": true,
+   "kind": "webp",
+   "width": 1,
+   "height": 1
+  },
+  {
+   "name": "a webp with alpha (extended format)",
+   "content_type": "image/webp",
+   "body": "UklGRkoAAABXRUJQVlA4WAoAAAAQAAAAAAAAAAAAQUxQSAwAAAARBxAR/Q9ERP8DAABWUDggGAAAABQBAJ0BKgEAAQAAAP4AAA3AAP7mtQAAAA==",
+   "ok": true,
+   "kind": "webp",
+   "width": 1,
+   "height": 1
+  },
+  {
+   "name": "the largest size allowed",
+   "content_type": "image/png",
+   "body": "iVBORw0KGgoAAAANSUhEUgAACAAAAAABCAYAAABKFE7yAAAAJUlEQVR4nO3DQQkAAAgEMN/mNNPV1RzCBqvOrKqqqqqqqqr6+wGPNRjxs3IjdQAAAABJRU5ErkJggg==",
+   "ok": true,
+   "kind": "png",
+   "width": 2048,
+   "height": 1
+  },
+  {
+   "name": "too wide",
+   "content_type": "image/png",
+   "body": "iVBORw0KGgoAAAANSUhEUgAACAEAAAABCAYAAACl1iXMAAAAJUlEQVR4nO3DQQkAAAgEMN/mNNPV1RzCBqvOrKqqqqqqqqr6/wH2qhr0isfntQAAAABJRU5ErkJggg==",
+   "ok": false
+  },
+  {
+   "name": "too tall",
+   "content_type": "image/png",
+   "body": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAgBCAYAAAAs+oruAAAALElEQVR4nO3EMQ0AAAgDsN3oRBN2QQdJezQ1vZEkSZIkSZIkSZIkSZIkSe860P4a9N6to4MAAAAASUVORK5CYII=",
+   "ok": false
+  },
+  {
+   "name": "zero width",
+   "content_type": "image/png",
+   "body": "iVBORw0KGgoAAAANSUhEUgAAAAAAAAABCAYAAADw16+3AAAACUlEQVR4nGMAAAABAAFe/335AAAAAElFTkSuQmCC",
+   "ok": false
+  },
+  {
+   "name": "a header that claims far more pixels than the data holds",
+   "content_type": "image/png",
+   "body": "iVBORw0KGgoAAAANSUhEUgAA6mAAAOpgCAYAAACA0nVCAAAADElEQVR4nGNgoAwAAABAAAG3NHzvAAAAAElFTkSuQmCC",
+   "ok": false
+  },
+  {
+   "name": "a png whose header checksum is wrong",
+   "content_type": "image/png",
+   "body": "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAYAAADED76KAAAAEklEQVR4nGPgmpbyHx9mGBkKABJGgMF9G7e2AAAAAElFTkSuQmCC",
+   "ok": false
+  },
+  {
+   "name": "a png without image data",
+   "content_type": "image/png",
+   "body": "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAYAAADED76LAAAAAElFTkSuQmCC",
+   "ok": false
+  },
+  {
+   "name": "a png without its end",
+   "content_type": "image/png",
+   "body": "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAYAAADED76LAAAAEklEQVR4nGPgmpbyHx9mGBkKABJGgMF9G7e2",
+   "ok": false
+  },
+  {
+   "name": "a png cut short",
+   "content_type": "image/png",
+   "body": "iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAL0lEQQ==",
+   "ok": false
+  },
+  {
+   "name": "a png followed by more bytes",
+   "content_type": "image/png",
+   "body": "iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAL0lEQVR4nO3OIQEAAAgDMDQ5yURdiHEzMb/qnUsqAQEBAQEBAQEBAQEBAQGBdOABQzEMeVvBNAIAAAAASUVORK5CYIJ4",
+   "ok": false
+  },
+  {
+   "name": "a png that is a different format",
+   "content_type": "image/png",
+   "body": "R0lGODlhAAAAAAANSUhEUgAAAAgAAAAICAYAAADED76LAAAAEklEQVR4nGPgmpbyHx9mGBkKABJGgMF9G7e2AAAAAElFTkSuQmCC",
+   "ok": false
+  },
+  {
+   "name": "png bytes under a webp type",
+   "content_type": "image/webp",
+   "body": "iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAL0lEQVR4nO3OIQEAAAgDMDQ5yURdiHEzMb/qnUsqAQEBAQEBAQEBAQEBAQGBdOABQzEMeVvBNAIAAAAASUVORK5CYII=",
+   "ok": false
+  },
+  {
+   "name": "webp bytes under a png type",
+   "content_type": "image/png",
+   "body": "UklGRiIAAABXRUJQVlA4IBYAAAAwAQCdASoBAAEADsD+JaQAA3AAAAAA",
+   "ok": false
+  },
+  {
+   "name": "a webp cut short",
+   "content_type": "image/webp",
+   "body": "UklGRhoAAABXRUJQVlA4TA0AAAA=",
+   "ok": false
+  },
+  {
+   "name": "a webp whose riff size lies",
+   "content_type": "image/webp",
+   "body": "UklGRg8nAABXRUJQVlA4TA0AAAAvAAAAEAcQERGIiP4HAA==",
+   "ok": false
+  },
+  {
+   "name": "an svg",
+   "content_type": "image/svg+xml",
+   "body": "PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI4IiBoZWlnaHQ9IjgiPjxzY3JpcHQ+YWxlcnQoMSk8L3NjcmlwdD48L3N2Zz4=",
+   "ok": false
+  },
+  {
+   "name": "an svg under a png type",
+   "content_type": "image/png",
+   "body": "PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciLz4=",
+   "ok": false
+  },
+  {
+   "name": "html",
+   "content_type": "text/html",
+   "body": "PCFkb2N0eXBlIGh0bWw+PHRpdGxlPng8L3RpdGxlPg==",
+   "ok": false
+  },
+  {
+   "name": "a gif",
+   "content_type": "image/gif",
+   "body": "R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAICRAEAOw==",
+   "ok": false
+  },
+  {
+   "name": "no content type",
+   "content_type": null,
+   "body": "iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAL0lEQVR4nO3OIQEAAAgDMDQ5yURdiHEzMb/qnUsqAQEBAQEBAQEBAQEBAQGBdOABQzEMeVvBNAIAAAAASUVORK5CYII=",
+   "ok": false
+  },
+  {
+   "name": "nothing",
+   "content_type": "image/png",
+   "body": "",
+   "ok": false
+  }
+ ]
+}

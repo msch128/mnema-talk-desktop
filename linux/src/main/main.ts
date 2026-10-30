@@ -22,6 +22,7 @@ import { registerIpc } from './ipc.ts'
 import { buildMenu } from './menu.ts'
 import { HOST_PAGE_CSP, assetHandler } from './protocol.ts'
 import { registerRailIpc } from './rail.ts'
+import { registerDialogIpc } from './railui.ts'
 import { prepare } from './sessions.ts'
 import { bundlesChanged, createShell, legacyStorageWaits, raiseWindow, wipeLegacyStorage } from './shell.ts'
 import { SANDBOX_MESSAGE, debuggingAccepted, debuggingRequested, sandboxAccepted, sandboxDisabled } from './sandbox.ts'
@@ -92,6 +93,8 @@ async function start(): Promise<void> {
   prepare(ctx, PARTITIONS.picker, 'picker', assetHandler(PICKER_PREFIX, assets('picker-ui'), HOST_PAGE_CSP))
   registerIpc(ctx)
   registerRailIpc(ctx)
+  registerDialogIpc(ctx)
+  prepare(ctx, PARTITIONS.dialog, 'dialog', assetHandler('/', assets('rail-ui'), HOST_PAGE_CSP))
 
   let restarting = false
   ctx.updater = createUpdater(ctx, () => { restarting = true })
