@@ -148,7 +148,7 @@ test('a dialog may hold a list or a file to choose, one of them, and is answered
   assert.equal(dialogHeight(file), 190 + 90)
   assert.equal(checkDialogResult(file, { button: 'cancel', value: '{"a":1}' }).value, '{"a":1}')
   assert.equal(checkDialogResult(file, { button: 'cancel', value: 'x'.repeat(101) }).value, null)
-  assert.equal(checkDialogResult(file, { button: 'cancel', value: 'ä'.repeat(51) }).value, null)
+  assert.equal(checkDialogResult(file, { button: 'cancel', value: '\u00e4'.repeat(51) }).value, null)
   assert.equal(checkDialogResult(file, { button: 'cancel', value: 'bad \ud800' }).value, null)
 })
 
