@@ -291,7 +291,7 @@ test('a look-alike host is a different server: it is offered as itself, never ta
 test('the link is handled by the decision before the browser question, with the host shown as the browser would', () => {
   const windows = readFileSync(new URL('../src/main/windows.ts', import.meta.url), 'utf8')
   assert.ok(windows.indexOf('offerServer(ctx, parent, url)') > windows.indexOf('if (!externalAllowed(url)) return'))
-  assert.ok(windows.indexOf('offerServer(ctx, parent, url)') < windows.indexOf("message: 'Open this link in your browser?'"))
+  assert.ok(windows.indexOf('offerServer(ctx, parent, url)') < windows.indexOf('...externalPrompt(url)'))
   assert.match(windows, /message: 'Add this server\?', detail: url\.host/)
   assert.match(windows, /openExternal\(parent\(\), url, ctx\)/)
   assert.match(windows, /openExternal\(parent\(\), target, ctx\)/)
