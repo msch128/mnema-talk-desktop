@@ -193,3 +193,8 @@ export function appPath(path: string): boolean {
     default: return false
   }
 }
+
+/** What the confirmation shows before a link leaves the app: the whole address, so a mailto: cannot hide a cc, bcc or body. */
+export function externalPrompt(url: URL): { message: string, detail: string } {
+  return { message: url.protocol === 'mailto:' ? 'Write to this address in your mail program?' : 'Open this link in your browser?', detail: url.href }
+}

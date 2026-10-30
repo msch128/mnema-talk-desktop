@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { appPath, externalAllowed, inviteCode, parseAddress, parseCommunityName, parseHealth } from '../src/core/client.ts'
+import { appPath, externalAllowed, externalPrompt, inviteCode, parseAddress, parseCommunityName, parseHealth } from '../src/core/client.ts'
 
 const ID = '11111111-1111-1111-1111-111111111111'
 
@@ -75,4 +75,12 @@ test('actual vue routes stay local without allowing other pages or encoded paths
     '/invite', '/invite/', '/invite/abc', '/invite/abc234xyz789/extra', '/INVITE/abc234xyz789', `/invite/${'a'.repeat(65)}`]) {
     assert.ok(!appPath(path), path)
   }
+})
+
+test('the confirmation shows the whole mailto address, including hidden recipients', () => {
+  const prompt = externalPrompt(new URL('mailto:alice@example.invalid?bcc=eve@example.invalid&body=hello'))
+  assert.match(prompt.detail, /bcc=eve@example\.invalid/)
+  assert.match(prompt.detail, /body=hello/)
+  assert.match(prompt.message, /mail program/)
+  assert.match(externalPrompt(new URL('https://example.invalid/x')).message, /browser/)
 })

@@ -1202,10 +1202,12 @@ pub(crate) fn confirm_add(link: &Url) -> bool {
 }
 
 fn confirm_text(url: &Url) -> String {
+    // The whole address, query included: a mailto: can carry cc, bcc and a
+    // body the person would not see otherwise.
     if url.scheme() == "mailto" {
         return format!(
             "Write to this address in your mail program?\n\n{}",
-            url.path()
+            url.as_str()
         );
     }
     format!("Open this link in your browser?\n\n{}", url.as_str())
@@ -1758,6 +1760,15 @@ mod tests {
         }
         let long = format!("mailto:{}@example.org", "a".repeat(2100));
         assert!(!external_allowed(&url(&long)));
+    }
+
+    #[test]
+    fn the_confirmation_shows_the_whole_mailto_including_hidden_recipients() {
+        let text = confirm_text(&url(
+            "mailto:alice@example.org?bcc=eve@example.org&body=hello",
+        ));
+        assert!(text.contains("bcc=eve@example.org"), "{text}");
+        assert!(text.contains("body=hello"), "{text}");
     }
 
     #[test]
