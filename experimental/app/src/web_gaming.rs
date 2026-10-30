@@ -862,7 +862,7 @@ fn announced_game(
 }
 /// The title of a window, read only for Java runtimes (a shared runtime is a
 /// Minecraft candidate only by its title). The window belongs to another
-/// program and may be stuck, so it is asked with a timeout; a stuck one has no title.
+/// program, so only the caption the system keeps is read; nothing is sent to it.
 #[cfg(windows)]
 fn window_title(hwnd: *mut std::ffi::c_void) -> String {
     super::ui_watch::hung_window::title(hwnd as usize, TITLE_TIMEOUT).unwrap_or_default()

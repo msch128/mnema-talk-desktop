@@ -7,8 +7,10 @@
 use std::time::Duration;
 use windows_sys::Win32::{
     Foundation::{HWND, LPARAM},
+    System::Threading::GetCurrentProcessId,
     UI::WindowsAndMessaging::{
-        EnumThreadWindows, SMTO_ABORTIFHUNG, SMTO_BLOCK, SendMessageTimeoutW, WM_GETTEXT, WM_NULL,
+        EnumThreadWindows, GetWindowTextW, GetWindowThreadProcessId, SMTO_ABORTIFHUNG, SMTO_BLOCK,
+        SendMessageTimeoutW, WM_GETTEXT, WM_NULL,
     },
 };
 
@@ -34,7 +36,21 @@ pub fn answers(window: usize, timeout: Duration) -> bool {
 }
 
 /// The title of a window, or None when its thread did not answer in time.
+/// A window of another process is read with `GetWindowTextW`, which takes the
+/// caption the system keeps for it and sends nothing, so a busy or stuck game
+/// can neither delay it nor blank it. A window of this process may have its
+/// text answered by its own procedure, so that one is asked with a timeout.
 pub fn title(window: usize, timeout: Duration) -> Option<String> {
+    let mut owner = 0u32;
+    // SAFETY: `owner` outlives the call; a stale handle only makes it fail.
+    unsafe { GetWindowThreadProcessId(window as HWND, &mut owner) };
+    if owner != 0 && owner != unsafe { GetCurrentProcessId() } {
+        let mut text = [0u16; 512];
+        // SAFETY: the buffer lives across the call and is `text.len()` wide.
+        let length =
+            unsafe { GetWindowTextW(window as HWND, text.as_mut_ptr(), text.len() as i32) };
+        return Some(String::from_utf16_lossy(&text[..length.max(0) as usize]));
+    }
     let mut text = [0u16; 512];
     let mut length = 0usize;
     // SAFETY: the buffer lives across the call and is `text.len()` wide
