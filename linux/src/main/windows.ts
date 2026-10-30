@@ -107,6 +107,8 @@ export function pagePreferences(partition: string, preload: string | null): Elec
     safeDialogs: true,
     devTools: devTools(),
     spellcheck: false,
+    // Hidden pages are throttled by the engine (the default, kept explicit): a page behind the front one or in a minimised window costs next to nothing.
+    backgroundThrottling: true,
   }
 }
 
