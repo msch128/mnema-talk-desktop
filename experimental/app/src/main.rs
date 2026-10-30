@@ -23,6 +23,8 @@ mod selftest_multi;
 #[cfg(feature = "web-client")]
 mod storage;
 #[cfg(feature = "web-client")]
+mod ui_watch;
+#[cfg(feature = "web-client")]
 mod web_bundle;
 #[cfg(feature = "web-client")]
 mod web_client;

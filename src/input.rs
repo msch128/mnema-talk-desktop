@@ -630,4 +630,28 @@ mod tests {
         assert_eq!(*woke.lock().unwrap(), 2);
         assert!(!source.running);
     }
+
+    /// A game floods the input window with key events. What the input thread does
+    /// per event (decode, apply to the tracker under its lock) must stay trivial,
+    /// so a burst of them is never what delays anything else.
+    #[test]
+    fn an_input_flood_is_cheap_per_event() {
+        let mut t = tracker();
+        let flood = 200_000u32;
+        let begin = std::time::Instant::now();
+        let mut woke = 0u32;
+        for i in 0..flood {
+            let vkey = 0x41 + (i % 26) as u16;
+            if let KeyReport::Key(event) = decode_keyboard(vkey, 0x1e, (i % 2) as u16) {
+                woke += u32::from(t.apply(InputEvent::Key(event)));
+            }
+        }
+        let took = begin.elapsed();
+        // Not one of the 26 letters is a chord key except M: almost nothing wakes the UI.
+        assert!(woke < flood / 10, "{woke} wake-ups for {flood} events");
+        assert!(
+            took < std::time::Duration::from_secs(2),
+            "{flood} events took {took:?}"
+        );
+    }
 }

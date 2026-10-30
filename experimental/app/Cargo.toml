@@ -10,6 +10,8 @@ shell = ["dep:tauri", "dep:tauri-build"]
 web-client = ["shell", "dep:reqwest", "dep:ed25519-dalek", "dep:sha2", "dep:hex", "dep:base64", "dep:zip", "dep:flate2", "dep:cookie", "dep:tokio-tungstenite", "dep:futures-util", "dep:rustls", "dep:rustls-platform-verifier", "dep:keyring-core", "dep:apple-native-keyring-store", "dep:windows-native-keyring-store", "dep:tauri-plugin-updater", "dep:minisign-verify", "dep:tauri-winrt-notification", "dep:windows", "dep:objc2", "dep:objc2-foundation", "dep:objc2-user-notifications", "dep:block2"]
 # Test-only: the app runs two servers side by side against stand-in instances and records the result (src/selftest_multi.rs). Never in a shipped build.
 multi-selftest = ["web-client"]
+# Test-only: a Talk with gaming on is simulated and a stand-in game is known, so the Windows CI can drive focus and input over a full-screen window (src/web_gaming.rs). Never in a shipped build.
+gaming-selftest = ["web-client"]
 # Test-only: the app posts one toast on its own and records the outcome (src/web_notify/selftest.rs). Never in a shipped build.
 notify-selftest = ["web-client"]
 # Test-only: the WebView2 startup check sets MNEMA_WEBVIEW_PROBE to read the permission decision (src/web_permissions.rs). Compiled out of every shipped build.
