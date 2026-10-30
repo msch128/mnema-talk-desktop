@@ -137,6 +137,19 @@ currently down and compares it with your four chords (overlay, mute, deafen,
 push-to-talk); only a change in whether a chord is down wakes the rest of the
 app. A press that begins and ends between two looks is still delivered once.
 
+The UI thread never waits for the system or for a game. The input thread, the
+foreground-window thread and the library scan are threads of their own; the one
+shell question that can take seconds while a game starts (is something in
+exclusive fullscreen?) is asked on a worker thread, spaced two seconds apart, with
+at most one in flight; the toast follows on that thread. A window of another
+program is only ever asked with `SendMessageTimeout` and `SMTO_ABORTIFHUNG`, so a
+stuck game costs the timeout, not a hang. A watchdog thread asks the UI thread to
+answer a message every 100 ms; when it does not within 200 ms it writes what the
+UI thread was doing to `logs/desktop.log` in the data folder (`mnema-data\data\logs`
+beside the program for the portable copy, `%LOCALAPPDATA%\com.mnema.desktop.shareddev\logs`
+for the installed one). The Windows CI keeps a full-screen stand-in game in front
+while sending input and requires the host's windows to keep answering.
+
 The source runs only while you are in a Talk with gaming on, and stops when you leave. On Windows the host asks the
 windowing library to release the process's own raw input registration first,
 because Windows allows one registration per process; if something else still
