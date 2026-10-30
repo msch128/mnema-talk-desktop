@@ -244,6 +244,15 @@ describe('server rail', () => {
       expect(shown().spec.items[0]!.text).toBe('–')
     })
 
+    it('cuts long names between characters, never inside one', async () => {
+      await open({ ...three, instances: [server('a', { name: '😀'.repeat(70), original: '😀'.repeat(70) })] })
+      rightClick(tiles()[0]!)
+      await vi.advanceTimersByTimeAsync(0)
+      const title = shown().spec.items[0]!.text!
+      expect(title.isWellFormed()).toBe(true)
+      expect([...title]).toHaveLength(60)
+    })
+
     it('uses ids and text the host accepts, with unique ids', async () => {
       await open({ ...three, items: [folder('f-1', ['a']), only('b'), only('c')] })
       rightClick(tiles()[1]!)

@@ -247,7 +247,7 @@ export class Layout {
 
   folderEdit(id: string, name: string, color: string | null): boolean {
     const folder = this.folder(id)
-    const clean = cleanColor(color)
+    const clean = cleanColor(color === '' ? null : color)
     if (!folder || clean === undefined) return false
     folder.name = cleanName(name)
     folder.color = clean

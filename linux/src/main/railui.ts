@@ -22,7 +22,8 @@ function template(items: readonly MenuItem[], chosen: (id: string) => void): Ele
   return items.map((item): Electron.MenuItemConstructorOptions => {
     if (item.separator || item.id === undefined) return { type: 'separator' }
     const { id } = item
-    const label = item.text ?? id
+    // An `&` marks a mnemonic in a native label; the name's own is doubled.
+    const label = process.platform === 'darwin' ? (item.text ?? id) : (item.text ?? id).replaceAll('&', '&&')
     const enabled = item.disabled !== true
     if (item.items) return { label, enabled, submenu: template(item.items, chosen) }
     if (item.checked !== undefined) return { label, enabled, type: 'checkbox', checked: item.checked, click: () => chosen(id) }

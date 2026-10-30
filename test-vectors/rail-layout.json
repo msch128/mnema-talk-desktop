@@ -3347,6 +3347,85 @@
    "aliases": {
     "a": "Keep"
    }
+  },
+  {
+   "name": "an empty colour, as the rail sends for None, means no colour",
+   "known": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "order": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "start": [
+    {
+     "kind": "folder",
+     "id": "f-1",
+     "name": "Team",
+     "color": "#12ab34",
+     "collapsed": false,
+     "servers": [
+      "a"
+     ]
+    },
+    {
+     "kind": "server",
+     "id": "b"
+    },
+    {
+     "kind": "server",
+     "id": "c"
+    },
+    {
+     "kind": "server",
+     "id": "d"
+    }
+   ],
+   "start_aliases": {},
+   "ops": [
+    {
+     "op": "folder_edit",
+     "id": "f-1",
+     "name": "Team",
+     "color": ""
+    }
+   ],
+   "items": [
+    {
+     "kind": "folder",
+     "id": "f-1",
+     "name": "Team",
+     "color": null,
+     "collapsed": false,
+     "servers": [
+      "a"
+     ]
+    },
+    {
+     "kind": "server",
+     "id": "b"
+    },
+    {
+     "kind": "server",
+     "id": "c"
+    },
+    {
+     "kind": "server",
+     "id": "d"
+    }
+   ],
+   "flat": [
+    "a",
+    "b",
+    "c",
+    "d"
+   ],
+   "aliases": {}
   }
  ]
 }

@@ -387,7 +387,8 @@ impl Layout {
         let Some(at) = self.folder_at(id) else {
             return false;
         };
-        let color = match color {
+        // An empty colour is none, as the rail sends it for "None".
+        let color = match color.filter(|raw| !raw.is_empty()) {
             Some(raw) => match clean_color(raw) {
                 Some(color) => Some(color),
                 None => return false,

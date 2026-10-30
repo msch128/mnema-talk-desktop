@@ -1260,9 +1260,9 @@ pub async fn add_server(
     }
     check_room(state)?;
     let (server, community, icon) = discover(&origin).await?;
-    refresh_icon(&app, &id, &origin, icon);
     let held = choose(state, &server).await?;
     let session = make_session(state, &id, origin.clone(), held, community)?;
+    let origin_listed = origin.clone();
     let won = {
         let mut registry = state.registry.lock().map_err(|_| "busy")?;
         match registry.add(origin) {
@@ -1298,6 +1298,7 @@ pub async fn add_server(
     if existed {
         offer_invite(&app, &id, invite.as_deref());
     }
+    refresh_icon(&app, &id, &origin_listed, icon);
     changed(&app);
     show_cached_icon(&app, &id);
     focus_front(&app);
@@ -1460,7 +1461,17 @@ fn refresh_icon(app: &tauri::AppHandle, id: &str, origin: &Url, wanted: bool) {
     let (app, id, origin) = (app.clone(), id.to_owned(), origin.clone());
     tauri::async_runtime::spawn(async move {
         crate::rail_icon::refresh(&dir, &id, &origin, wanted).await;
-        show_cached_icon(&app, &id);
+        // A server removed while its icon was on the way takes the icon with it.
+        let listed = app
+            .state::<Trusted>()
+            .registry
+            .lock()
+            .is_ok_and(|r| r.contains(&id));
+        if listed {
+            show_cached_icon(&app, &id);
+        } else {
+            crate::rail_icon::clear(&dir, &id);
+        }
     });
 }
 

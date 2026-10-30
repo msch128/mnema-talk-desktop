@@ -146,10 +146,9 @@ fn items(app: &tauri::AppHandle, token: &str, entries: &[Entry]) -> tauri::Resul
             out.push(Built::Line(PredefinedMenuItem::separator(app)?));
             continue;
         }
-        let (id, text) = (
-            entry.id.as_deref().unwrap_or_default(),
-            entry.text.as_deref().unwrap_or_default(),
-        );
+        let id = entry.id.as_deref().unwrap_or_default();
+        // An `&` marks a mnemonic in a native label; the name's own is doubled.
+        let text = &entry.text.as_deref().unwrap_or_default().replace('&', "&&");
         let enabled = !entry.disabled;
         if let Some(children) = &entry.items {
             let sub = Submenu::new(app, text, enabled)?;

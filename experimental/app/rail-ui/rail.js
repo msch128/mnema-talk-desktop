@@ -88,7 +88,8 @@ const shown = (s) => (s.alias ? `${s.name} (${s.original})` : s.name);
 // Text for a menu or a question: no control characters (the host refuses them), not too long, never empty.
 const short = (text) => {
   const clean = [...String(text)].map((ch) => { const c = ch.codePointAt(0); return c < 32 || (c >= 127 && c < 160) ? ' ' : ch; }).join('').trim() || '–';
-  return clean.length > 60 ? `${clean.slice(0, 59)}…` : clean;
+  const points = [...clean];
+  return points.length > 60 ? `${points.slice(0, 59).join('')}…` : clean;
 };
 
 function label(s) {
@@ -342,7 +343,7 @@ function rename(s) {
   ask({
     title: T.renameTitle,
     message: T.renameNote(s.original),
-    input: { label: T.nameLabel, value: s.alias || '', max: 40, placeholder: short(s.original).slice(0, 40) },
+    input: { label: T.nameLabel, value: s.alias || '', max: 40, placeholder: [...short(s.original)].slice(0, 40).join('') },
     buttons: [{ id: 'save', text: T.save, primary: true }, { id: 'cancel', text: T.cancel }],
     cancel: 'cancel',
   }).then((answer) => {
