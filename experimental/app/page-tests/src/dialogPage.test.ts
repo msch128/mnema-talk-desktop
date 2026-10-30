@@ -15,6 +15,8 @@ interface Spec {
   input?: { label: string, value: string, max: number, placeholder?: string }
   colors?: { label: string, value: string, choices: { value: string, label: string }[] }
   buttons: { id: string, text: string, primary?: boolean, danger?: boolean }[]
+  list?: { label: string, placeholder?: string, choices: { id: string, text: string, hint?: string }[] }
+  file?: { label: string, accept: string, max: number }
   cancel: string
 }
 
@@ -36,6 +38,18 @@ const remove: Spec = {
   title: 'Remove server: a.example',
   message: 'Removes everything.',
   buttons: [{ id: 'remove', text: 'Remove server', danger: true }, { id: 'cancel', text: 'Cancel', primary: true }],
+  cancel: 'cancel',
+}
+
+const switcher: Spec = {
+  title: 'Switch to server',
+  list: { label: 'Server', placeholder: 'Search…', choices: [{ id: 'a', text: 'Home', hint: 'a.example' }, { id: 'b', text: 'Work' }, { id: 'c', text: 'Games', hint: 'Fun' }] },
+  buttons: [{ id: 'pick', text: 'Switch', primary: true }, { id: 'cancel', text: 'Cancel' }],
+  cancel: 'cancel',
+}
+const importer: Spec = {
+  title: 'Import', file: { label: 'File', accept: '.json', max: 100 },
+  buttons: [{ id: 'import', text: 'Import', primary: true }, { id: 'cancel', text: 'Cancel' }],
   cancel: 'cancel',
 }
 
@@ -152,5 +166,71 @@ describe('rail question', () => {
     open(rename)
     done.mockImplementation(() => { throw new Error('gone') })
     expect(() => button('Save').click()).not.toThrow()
+  })
+
+  const options = () => [...document.querySelectorAll<HTMLElement>('#choices li')]
+
+  it('lists the choices, the first marked, and takes the marked one with Enter', () => {
+    open(switcher)
+    expect(options().map((o) => o.textContent)).toEqual(['Homea.example', 'Work', 'GamesFun'])
+    expect(options().map((o) => o.getAttribute('aria-selected'))).toEqual(['true', 'false', 'false'])
+    expect(document.activeElement).toBe(input())
+    press(input(), 'ArrowDown')
+    press(input(), 'ArrowDown')
+    press(input(), 'Enter')
+    expect(done).toHaveBeenCalledWith({ button: 'pick', value: 'c', color: null })
+  })
+
+  it('filters by what is typed, in the name and in the hint, and wraps around with the arrows', () => {
+    open(switcher)
+    input().value = 'fun'
+    input().dispatchEvent(new Event('input'))
+    expect(options().map((o) => o.textContent)).toEqual(['GamesFun'])
+    press(input(), 'ArrowUp')
+    press(input(), 'Enter')
+    expect(done).toHaveBeenCalledWith({ button: 'pick', value: 'c', color: null })
+  })
+
+  it('does not answer with nothing marked, and the switch button waits', () => {
+    open(switcher)
+    input().value = 'zzz'
+    input().dispatchEvent(new Event('input'))
+    expect(options()).toHaveLength(0)
+    expect(button('Switch').disabled).toBe(true)
+    press(input(), 'Enter')
+    expect(done).not.toHaveBeenCalled()
+    press(input(), 'Escape')
+    expect(done).toHaveBeenCalledWith({ button: 'cancel', value: null, color: null })
+  })
+
+  it('takes a choice that is clicked', () => {
+    open(switcher)
+    options()[1]!.click()
+    expect(done).toHaveBeenCalledWith({ button: 'pick', value: 'b', color: null })
+  })
+
+  it('answers with the text of the file that was chosen, and not before', async () => {
+    open(importer)
+    const file = document.getElementById('file') as HTMLInputElement
+    expect(button('Import').disabled).toBe(true)
+    press(document.body, 'Enter')
+    expect(done).not.toHaveBeenCalled()
+    const chosen = { size: 3, text: async () => '{ }' }
+    Object.defineProperty(file, 'files', { value: [chosen], configurable: true })
+    file.dispatchEvent(new Event('change'))
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(button('Import').disabled).toBe(false)
+    button('Import').click()
+    expect(done).toHaveBeenCalledWith({ button: 'import', value: '{ }', color: null })
+  })
+
+  it('refuses a file larger than the limit', async () => {
+    open(importer)
+    const file = document.getElementById('file') as HTMLInputElement
+    Object.defineProperty(file, 'files', { value: [{ size: 101, text: async () => 'x'.repeat(101) }], configurable: true })
+    file.dispatchEvent(new Event('change'))
+    await Promise.resolve()
+    expect(button('Import').disabled).toBe(true)
   })
 })

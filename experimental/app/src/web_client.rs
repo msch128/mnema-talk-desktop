@@ -1123,6 +1123,52 @@ pub(super) fn open_external(url: &Url) {
     }
 }
 
+/// What a link of a server's page that is not part of the app is for.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum Link {
+    /// Open it in the browser, after the usual question.
+    Browser,
+    /// An invite to a server that is in the list: go there and show the join screen.
+    Known { origin: Url, code: String },
+    /// An invite to a server that is not in the list, which has room: offer to add it.
+    Add { code: String },
+}
+
+/// Decides what to do with a link: an invite link (`https://host/invite/code`)
+/// is for the app when its server is in `listed` or can be added (`room`);
+/// anything else, or any invite when the list is full, goes to the browser.
+/// The host is read as the address field would read it.
+pub(crate) fn invite_decision(link: &Url, listed: &[Url], room: bool) -> Link {
+    if !external_allowed(link) || link.scheme() != "https" {
+        return Link::Browser;
+    }
+    let Some(code) = path_invite(link.path()) else {
+        return Link::Browser;
+    };
+    let Ok(origin) = address(link.as_str()) else {
+        return Link::Browser;
+    };
+    if listed.contains(&origin) {
+        Link::Known { origin, code }
+    } else if room {
+        Link::Add { code }
+    } else {
+        Link::Browser
+    }
+}
+
+/// Asks whether to add the server behind an invite link. Blocks: not on the
+/// thread that runs the window.
+pub(crate) fn confirm_add(link: &Url) -> bool {
+    show_dialog(
+        Dialog::Add,
+        &format!(
+            "Add this server?\n\n{}",
+            link.host_str().unwrap_or_default()
+        ),
+    )
+}
+
 fn confirm_text(url: &Url) -> String {
     format!("Open this link in your browser?\n\n{}", url.as_str())
 }
@@ -1136,6 +1182,8 @@ enum Dialog {
     Error,
     /// A question; the default answer is no. Returns whether it was yes.
     Confirm,
+    /// The same question about adding a server (its button says Add).
+    Add,
 }
 
 /// A modal dialog of the platform. `true` unless a question was answered no
@@ -1155,7 +1203,7 @@ fn show_dialog(kind: Dialog, text: &str) -> bool {
             .status();
         match kind {
             Dialog::Error => true,
-            Dialog::Confirm => status.is_ok_and(|s| s.success()),
+            Dialog::Confirm | Dialog::Add => status.is_ok_and(|s| s.success()),
         }
     }
     #[cfg(not(any(target_os = "windows", target_os = "macos")))]
@@ -1181,6 +1229,11 @@ fn osascript_args(kind: Dialog, text: &str) -> Vec<String> {
         Dialog::Confirm => &[
             "on run argv",
             "display dialog (item 1 of argv) with title (item 2 of argv) buttons {\"Cancel\", \"Open\"} default button \"Cancel\" cancel button \"Cancel\" with icon caution",
+            "end run",
+        ],
+        Dialog::Add => &[
+            "on run argv",
+            "display dialog (item 1 of argv) with title (item 2 of argv) buttons {\"Cancel\", \"Add\"} default button \"Cancel\" cancel button \"Cancel\" with icon caution",
             "end run",
         ],
     };
@@ -1226,7 +1279,7 @@ mod windows_dialog {
         // MB_OK | MB_ICONERROR; MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON2.
         let flags = match kind {
             Dialog::Error => 0x10,
-            Dialog::Confirm => 0x124,
+            Dialog::Confirm | Dialog::Add => 0x124,
         };
         let (text, title) = (wide(text), wide(APP_TITLE));
         // SAFETY: both strings are NUL-terminated and live throughout the call.
@@ -1234,7 +1287,7 @@ mod windows_dialog {
             unsafe { MessageBoxW(std::ptr::null_mut(), text.as_ptr(), title.as_ptr(), flags) };
         match kind {
             Dialog::Error => true,
-            Dialog::Confirm => answer == 6,
+            Dialog::Confirm | Dialog::Add => answer == 6,
         }
     }
 
@@ -1740,7 +1793,7 @@ mod tests {
     fn dialogs_pass_their_text_as_arguments_and_name_the_platforms_own_dependency() {
         let link = url("https://example.invalid/a?q=\"x\"&r='y'");
         let text = confirm_text(&link);
-        for kind in [Dialog::Error, Dialog::Confirm] {
+        for kind in [Dialog::Error, Dialog::Confirm, Dialog::Add] {
             let args = osascript_args(kind, &text);
             // The text is data for the script, never part of its source.
             assert_eq!(
@@ -1756,6 +1809,65 @@ mod tests {
         let message = startup_message();
         assert!(message.starts_with(APP_TITLE));
         assert_eq!(message.contains("WebView2"), cfg!(windows));
+    }
+
+    #[test]
+    fn an_invite_link_is_for_the_app_when_its_server_is_in_the_list_or_can_join_it() {
+        let listed = [url("https://talk.example/")];
+        let decide = |link: &str, room: bool| invite_decision(&url(link), &listed, room);
+        let add = |code: &str| Link::Add { code: code.into() };
+        // A server that is not in the list: offered, while there is room.
+        assert_eq!(
+            decide("https://other.example/invite/abc123xyz", true),
+            add("abc123xyz")
+        );
+        assert_eq!(
+            decide("https://other.example/invite/abc123xyz/", true),
+            add("abc123xyz")
+        );
+        assert_eq!(
+            decide("https://other.example:8443/invite/abc123xyz", true),
+            add("abc123xyz")
+        );
+        assert_eq!(
+            decide("https://other.example/invite/abc123xyz", false),
+            Link::Browser
+        );
+        // A server that is: shown there, even with the list full. The port and the path do not matter.
+        let known = Link::Known {
+            origin: url("https://talk.example/"),
+            code: "abc123xyz".into(),
+        };
+        assert_eq!(
+            decide("https://talk.example/invite/abc123xyz", false),
+            known
+        );
+        assert_eq!(
+            decide("https://TALK.example/invite/abc123xyz?x=1#y", true),
+            known
+        );
+        // A look-alike host is another server: offered under its own name, never taken for the listed one.
+        assert_eq!(
+            decide("https://talk.example.evil.test/invite/abc123xyz", true),
+            add("abc123xyz")
+        );
+        assert_eq!(
+            decide("https://talk-example.test/invite/abc123xyz", false),
+            Link::Browser
+        );
+        // Not an invite, not a code, not https, with credentials: the browser's business.
+        for link in [
+            "https://other.example/",
+            "https://other.example/invites/abc123xyz",
+            "https://other.example/invite/abc",
+            "https://other.example/invite/abc123xyz/more",
+            "https://other.example/?invite=abc123xyz",
+            "http://other.example/invite/abc123xyz",
+            "https://user:pw@other.example/invite/abc123xyz",
+            "https://user@talk.example/invite/abc123xyz",
+        ] {
+            assert_eq!(decide(link, true), Link::Browser, "{link}");
+        }
     }
 
     #[test]

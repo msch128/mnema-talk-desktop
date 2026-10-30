@@ -10,6 +10,8 @@ import { RendererRecovery } from '../core/recovery.ts'
 import { TITLE } from '../core/title.ts'
 import { APP_URL, appApi, bundled, dialogUi, parseUrl, pickerUi, updateUi } from '../core/origin.ts'
 import { externalAllowed } from '../core/client.ts'
+import { MAX_INSTANCES } from '../core/instances.ts'
+import { inviteChoice } from '../core/invite.ts'
 import { PARTITIONS, attachmentPartition, type Context, type Role } from './context.ts'
 
 function preloadPath(): string {
@@ -35,11 +37,33 @@ function allowed(role: Role, url: URL): boolean {
 }
 
 /** Asks, then opens an HTTPS link in the system browser. */
-export async function openExternal(parent: BaseWindow | undefined, url: URL): Promise<void> {
+export async function openExternal(parent: BaseWindow | undefined, url: URL, ctx?: Context): Promise<void> {
   if (!externalAllowed(url)) return
+  if (ctx && await offerServer(ctx, parent, url)) return
   const options = { type: 'question' as const, buttons: ['Open', 'Cancel'], defaultId: 1, cancelId: 1, title: TITLE, message: 'Open this link in your browser?', detail: url.href, noLink: true }
   const { response } = parent && !parent.isDestroyed() ? await dialog.showMessageBox(parent, options) : await dialog.showMessageBox(options)
   if (response === 0) await shell.openExternal(url.href).catch(() => undefined)
+}
+
+/**
+ * An invite link of a server that is not in the list offers to add it, instead
+ * of opening the browser; one of a server that is here opens its join screen.
+ * True: the link is dealt with.
+ */
+async function offerServer(ctx: Context, parent: BaseWindow | undefined, url: URL): Promise<boolean> {
+  const registry = ctx.trusted.registry
+  const choice = inviteChoice(url, (id) => registry.contains(id), registry.length < MAX_INSTANCES)
+  if (choice === 'external') return false
+  const { addServer } = await import('./shell.ts')
+  if (choice === 'add') {
+    const options = { type: 'question' as const, buttons: ['Add server', 'Cancel'], defaultId: 1, cancelId: 1, title: TITLE, message: 'Add this server?', detail: url.host, noLink: true }
+    const { response } = parent && !parent.isDestroyed() ? await dialog.showMessageBox(parent, options) : await dialog.showMessageBox(options)
+    if (response !== 0) return true
+  }
+  await addServer(ctx, url.href).catch((error: unknown) => {
+    dialog.showErrorBox(TITLE, error instanceof Error ? error.message.slice(0, 300) : 'The server could not be added.')
+  })
+  return true
 }
 
 function contextMenu(contents: WebContents): void {
@@ -61,7 +85,7 @@ export function harden(ctx: Context, contents: WebContents, role: Role, parent: 
     const url = parseUrl(raw)
     if (url && allowed(role, url)) return
     event.preventDefault()
-    if (url && role === 'instance') void openExternal(parent(), url)
+    if (url && role === 'instance') void openExternal(parent(), url, ctx)
   }
   contents.on('will-navigate', (event, url) => check(event, url))
   contents.on('will-redirect', (event, url) => check(event, url))
@@ -72,7 +96,7 @@ export function harden(ctx: Context, contents: WebContents, role: Role, parent: 
     const server = ctx.servers.get(contents.id)
     if (role === 'instance' && target && server) {
       if (appApi(target)) openAttachment(ctx, server, target)
-      else void openExternal(parent(), target)
+      else void openExternal(parent(), target, ctx)
     }
     return { action: 'deny' }
   })

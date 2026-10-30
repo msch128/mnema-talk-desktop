@@ -2,7 +2,7 @@ import { Menu, app } from 'electron'
 import { menuText } from '../core/selfupdate.ts'
 import { serverMenuAction } from '../core/notify.ts'
 import type { Context } from './context.ts'
-import { activateNth, startAdding } from './shell.ts'
+import { activateNth, quickSwitch, startAdding } from './shell.ts'
 import { openUpdater } from './windows.ts'
 
 /** Ctrl+1 to Ctrl+9 reach the servers, named as the rail names them; Ctrl+Shift+N adds one. */
@@ -12,13 +12,14 @@ function serversMenu(ctx: Context): Electron.MenuItemConstructorOptions {
     const slot = slots[index]
     return { id: `server-${index + 1}`, label: slot ? `${index + 1} \u2014 ${ctx.trusted.registry.displayName(slot)}` : `Server ${index + 1}`, accelerator: `CmdOrCtrl+${index + 1}`, enabled: slot !== undefined, click: () => serverMenuClicked(ctx, `server-${index + 1}`) }
   })
-  items.push({ type: 'separator' }, { id: 'server-add', label: 'Add server\u2026', accelerator: 'CmdOrCtrl+Shift+N', click: () => serverMenuClicked(ctx, 'server-add') })
+  items.push({ type: 'separator' }, { id: 'server-add', label: 'Add server\u2026', accelerator: 'CmdOrCtrl+Shift+N', click: () => serverMenuClicked(ctx, 'server-add') }, { id: 'server-switch', label: 'Quick switcher\u2026', accelerator: 'CmdOrCtrl+K', click: () => serverMenuClicked(ctx, 'server-switch') })
   return { label: 'Servers', submenu: items }
 }
 
 export function serverMenuClicked(ctx: Context, id: string): void {
   const action = serverMenuAction(id)
   if (action?.kind === 'add') startAdding(ctx)
+  else if (action?.kind === 'switch') quickSwitch(ctx)
   else if (action) activateNth(ctx, action.number)
 }
 

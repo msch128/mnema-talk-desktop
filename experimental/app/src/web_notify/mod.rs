@@ -244,6 +244,14 @@ pub async fn desktop_notify(
     .map(|_| ())
 }
 
+/// Whether the person turned the notifications of this server off.
+fn muted(app: &tauri::AppHandle, server: &str) -> bool {
+    app.state::<super::web_client::Trusted>()
+        .registry
+        .lock()
+        .is_ok_and(|registry| registry.is_muted(server, super::web_proxy::now()))
+}
+
 /// The title with the name of the server behind it, once there is more than
 /// one: a toast says which server it is from.
 fn tagged(title: &str, name: &str, several: bool) -> String {
@@ -268,6 +276,10 @@ async fn deliver(
     channel_id: String,
     message_id: String,
 ) -> Result<bool, String> {
+    // Notifications of a muted server are off.
+    if muted(app, server) {
+        return Ok(false);
+    }
     let toast = Toast {
         title: title.to_owned(),
         body: body.to_owned(),
@@ -303,6 +315,10 @@ async fn show(app: &tauri::AppHandle, server: &str, toast: Toast) -> Result<bool
             let trusted = app.state::<super::web_client::Trusted>();
             let registry = trusted.registry.lock().map_err(|_| "busy")?;
             let slot = registry.slot(server).ok_or("No instance is selected.")?;
+            // A toast that was held when the server was muted is not shown.
+            if registry.is_muted(server, super::web_proxy::now()) {
+                return Ok(false);
+            }
             (
                 slot.generation.clone(),
                 tagged(

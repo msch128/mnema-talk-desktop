@@ -10,7 +10,7 @@ const dir = resolve(process.cwd(), '../rail-ui')
 const html = readFileSync(resolve(dir, 'index.html'), 'utf8')
 const script = readFileSync(resolve(dir, 'rail.js'), 'utf8')
 
-interface Server { id: string, name: string, original: string, alias: string | null, initial: string, hue: number, status: string, message: string | null, unread: number, mentions: number, icon: string | null }
+interface Server { id: string, name: string, original: string, alias: string | null, initial: string, hue: number, status: string, message: string | null, unread: number, mentions: number, icon: string | null, muted_until?: number | null }
 type Item = { kind: 'server', id: string } | { kind: 'folder', id: string, name: string, color: string | null, collapsed: boolean, servers: string[] }
 interface State { active: string | null, adding: boolean, can_add: boolean, instances: Server[], items?: Item[] }
 
@@ -47,7 +47,7 @@ const tiles = () => [...document.querySelectorAll<HTMLButtonElement>('.tile')]
 const add = () => document.getElementById('add') as HTMLButtonElement
 const key = (el: Element, k: string, init: KeyboardEventInit = {}) => el.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true, ...init }))
 const calls = (cmd: string) => invoke.mock.calls.filter(([c]) => c === cmd).map(([, args]) => args)
-const rail = () => (window as unknown as { mnemaRail: { set: (s: unknown) => void, chosen: (token: string, id: string) => void } }).mnemaRail
+const rail = () => (window as unknown as { mnemaRail: { set: (s: unknown) => void, chosen: (token: string, id: string) => void, quickSwitch: () => void } }).mnemaRail
 const live = () => document.getElementById('live')!.textContent
 const folderButtons = () => [...document.querySelectorAll<HTMLButtonElement>('.folder-btn')]
 
@@ -98,7 +98,10 @@ describe('server rail', () => {
     expect(items[0]!.className).toBe('unread')
     expect(items[0]!.querySelector('.badge')).toBeNull()
     expect(items[1]!.querySelector('.badge')!.textContent).toBe('5')
-    expect(items[2]!.querySelector('.badge')!.textContent).toBe('!')
+    // A server that cannot be reached shows a dot, not a count.
+    expect(items[2]!.querySelector('.badge')).toBeNull()
+    expect(items[2]!.querySelector('.dot')).not.toBeNull()
+    expect(items[1]!.querySelector('.dot')).toBeNull()
     expect(tiles()[1]!.getAttribute('aria-label')).toBe('b.example, current, 5 mentions')
     expect(tiles()[0]!.getAttribute('aria-label')).toBe('a.example, unread')
     expect(tiles()[2]!.title).toBe('c.example: Too old.')
@@ -205,7 +208,7 @@ describe('server rail', () => {
       await open({ ...three, instances: [server('a'), server('b', { status: 'refused', message: 'x' })] })
       rightClick(tiles()[0]!)
       await vi.advanceTimersByTimeAsync(0)
-      expect(texts(shown().spec.items)).toEqual(['a.example', 'Rename…', 'Add to folder', 'Move up', 'Move down', 'Remove…'])
+      expect(texts(shown().spec.items)).toEqual(['a.example', 'Mark all as read', 'Mute server', 'Rename…', 'Add to folder', 'Move up', 'Move down', 'Remove…'])
       expect(shown().spec.items.find((i) => i.id === 'up')!.disabled).toBe(true)
       expect(shown().spec.items.find((i) => i.id === 'down')!.disabled).toBeFalsy()
       pick('down')
@@ -344,7 +347,7 @@ describe('server rail', () => {
       rightClick(tiles()[0]!)
       await vi.advanceTimersByTimeAsync(0)
       expect(levels()!.map((i) => i.text)).toEqual(['Alle Nachrichten', 'Nur Erwähnungen', 'Stummschalten'])
-      expect(texts(shown().spec.items)).toEqual(['a.example', 'Benachrichtigungen', 'Umbenennen …', 'Zu Ordner hinzufügen', 'Nach oben', 'Nach unten', 'Entfernen …'])
+      expect(texts(shown().spec.items)).toEqual(['a.example', 'Benachrichtigungen', 'Alles als gelesen markieren', 'Server stummschalten', 'Umbenennen …', 'Zu Ordner hinzufügen', 'Nach oben', 'Nach unten', 'Entfernen …'])
     })
   })
 
@@ -605,6 +608,159 @@ describe('server rail', () => {
       await open({ ...three, items: [folder('f-1', ['a'], { name: '<img src=x onerror=alert(1)>' }), only('b'), only('c')] })
       expect(document.querySelector('.folder img')).toBeNull()
       expect(folderButtons()[0]!.getAttribute('aria-label')).toContain('<img')
+    })
+  })
+
+  describe('extras', () => {
+    const later = Math.floor(Date.now() / 1000) + 3600
+
+    it('shows a muted server dimmed with a bell, and counts none of its mentions', async () => {
+      await open({ ...three, active: 'a', instances: [server('a'), server('b', { mentions: 4, muted_until: later } as Partial<Server>), server('c', { unread: 2, muted_until: -1 } as Partial<Server>)] })
+      const items = [...document.querySelectorAll('#list li')]
+      expect(items[1]!.className).toContain('muted')
+      expect(items[1]!.querySelector('.mute')).not.toBeNull()
+      expect(items[1]!.querySelector('.badge')).toBeNull()
+      expect(items[2]!.className).not.toContain('unread')
+      expect(tiles()[1]!.getAttribute('aria-label')).toBe('b.example, muted')
+    })
+
+    it('adds up only the servers that are not muted in a closed folder', async () => {
+      await open({ ...three, instances: [server('a', { mentions: 2 }), server('b', { mentions: 9, muted_until: -1 } as Partial<Server>)], items: [folder('f-1', ['a', 'b'], { collapsed: true })] })
+      expect(document.querySelector('.folder .badge')!.textContent).toBe('2')
+    })
+
+    it('treats a mute that has run out as none, and redraws when it does', async () => {
+      const soon = Math.floor(Date.now() / 1000) + 2
+      await open({ ...three, instances: [server('a', { muted_until: soon } as Partial<Server>)] })
+      expect(document.querySelector('li.muted')).not.toBeNull()
+      await vi.advanceTimersByTimeAsync(3000)
+      expect(document.querySelector('li.muted')).toBeNull()
+      await open({ ...three, instances: [server('a', { muted_until: Math.floor(Date.now() / 1000) - 5 } as Partial<Server>)] })
+      expect(document.querySelector('li.muted')).toBeNull()
+    })
+
+    it('offers four ways to mute and sends the end as epoch seconds', async () => {
+      await open(three)
+      rightClick(tiles()[0]!)
+      await vi.advanceTimersByTimeAsync(0)
+      const ways = shown().spec.items.find((i) => i.id === 'mute')!.items!
+      expect(ways.map((i) => i.text)).toEqual(['For 1 hour', 'For 8 hours', 'Until tomorrow', 'Until I turn it back on'])
+      const now = Math.floor(Date.now() / 1000)
+      pick('mute-0')
+      pick('mute-3')
+      rightClick(tiles()[0]!)
+      await vi.advanceTimersByTimeAsync(0)
+      pick('mute-1')
+      rightClick(tiles()[0]!)
+      await vi.advanceTimersByTimeAsync(0)
+      pick('mute-2')
+      const sent = calls('rail_edit') as { op: string, until: number }[]
+      expect(sent.map((c) => c.op)).toEqual(['mute', 'mute', 'mute'])
+      expect(sent[0]!.until).toBeGreaterThanOrEqual(now + 3600)
+      expect(sent[0]!.until).toBeLessThan(now + 3700)
+      expect(sent[1]!.until).toBeGreaterThanOrEqual(now + 8 * 3600)
+      expect(sent[2]!.until).toBeGreaterThan(now + 60)
+      expect(sent[2]!.until).toBeLessThanOrEqual(now + 32 * 3600)
+      await vi.advanceTimersByTimeAsync(0)
+      expect(live()).toBe('a.example: muted, Until tomorrow')
+    })
+
+    it('forever is -1, and a muted server is unmuted with 0', async () => {
+      await open({ ...three, instances: [server('a'), server('b', { muted_until: -1 } as Partial<Server>)] })
+      rightClick(tiles()[0]!)
+      await vi.advanceTimersByTimeAsync(0)
+      pick('mute-3')
+      expect((calls('rail_edit')[0] as { until: number }).until).toBe(-1)
+      rightClick(tiles()[1]!)
+      await vi.advanceTimersByTimeAsync(0)
+      expect(texts(shown().spec.items)).not.toContain('Mute server')
+      pick('unmute')
+      expect(calls('rail_edit')[1]).toEqual({ op: 'mute', id: 'b', until: 0 })
+      await vi.advanceTimersByTimeAsync(0)
+      expect(live()).toBe('b.example: unmuted')
+    })
+
+    it('marks everything as read on a server that is running, and offers it for no other', async () => {
+      await open({ ...three, instances: [server('a'), server('b', { status: 'refused', message: 'x' })] })
+      rightClick(tiles()[0]!)
+      await vi.advanceTimersByTimeAsync(0)
+      pick('mark-read')
+      expect(calls('rail_edit')).toEqual([{ op: 'mark_read', id: 'a' }])
+      rightClick(tiles()[1]!)
+      await vi.advanceTimersByTimeAsync(0)
+      expect(texts(shown().spec.items)).not.toContain('Mark all as read')
+    })
+
+    it('opens the switcher over the servers in the order of the rail and switches to the one chosen', async () => {
+      await open({ ...three, instances: [server('a', { alias: 'Home', name: 'Home' }), server('b'), server('c')], items: [only('a'), folder('f-1', ['b', 'c'], { name: 'Work' })] })
+      answer({ rail_dialog: { button: 'pick', value: 'c', color: null } })
+      rail().quickSwitch()
+      await vi.advanceTimersByTimeAsync(0)
+      const spec = JSON.parse((calls('rail_dialog')[0] as { spec: string }).spec)
+      expect(spec.list.choices).toEqual([{ id: 'a', text: 'Home (a.example)', hint: 'a.example' }, { id: 'b', text: 'b.example', hint: 'Work' }, { id: 'c', text: 'c.example', hint: 'Work' }])
+      expect(spec.buttons.map((b: { id: string }) => b.id)).toEqual(['pick', 'cancel'])
+      expect(calls('rail_activate')).toEqual([{ id: 'c' }])
+    })
+
+    it('does nothing when the switcher is cancelled, and has nothing to show without servers', async () => {
+      await open(three)
+      answer({ rail_dialog: { button: 'cancel', value: 'c', color: null } })
+      rail().quickSwitch()
+      await vi.advanceTimersByTimeAsync(0)
+      expect(calls('rail_activate')).toHaveLength(0)
+      await open({ active: null, adding: true, can_add: true, instances: [] })
+      rail().quickSwitch()
+      expect(calls('rail_dialog')).toHaveLength(0)
+    })
+
+    it('exports the list and tells where it went', async () => {
+      await open(three, 'en-US', { rail_edit: '/home/me/Downloads/mnema-servers.json', rail_dialog: { button: 'ok', value: null, color: null } })
+      add().dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }))
+      await vi.advanceTimersByTimeAsync(0)
+      expect(texts(shown().spec.items)).toEqual(['Export server list…', 'Import server list…'])
+      pick('export')
+      await vi.advanceTimersByTimeAsync(0)
+      expect(calls('rail_edit')).toEqual([{ op: 'export' }])
+      expect(JSON.parse((calls('rail_dialog')[0] as { spec: string }).spec).message).toBe('Saved to /home/me/Downloads/mnema-servers.json')
+    })
+
+    it('says so when the export fails', async () => {
+      await open(three)
+      answer({ rail_edit: () => { throw new Error('no') } })
+      add().dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }))
+      await vi.advanceTimersByTimeAsync(0)
+      pick('export')
+      await vi.advanceTimersByTimeAsync(0)
+      expect(live()).toBe('The list could not be exported')
+    })
+
+    it('imports the file the person picked and reports how many servers it added', async () => {
+      await open(three)
+      answer({ rail_edit: 2, rail_dialog: { button: 'import', value: '{"version":1}', color: null } })
+      add().dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }))
+      await vi.advanceTimersByTimeAsync(0)
+      pick('import')
+      await vi.advanceTimersByTimeAsync(0)
+      const spec = JSON.parse((calls('rail_dialog')[0] as { spec: string }).spec)
+      expect(spec.file).toEqual({ label: 'File (.json)', accept: '.json', max: 65536 })
+      expect(calls('rail_edit')).toEqual([{ op: 'import', name: '{"version":1}' }])
+      expect(live()).toBe('2 servers added')
+    })
+
+    it('does not import when the question is cancelled, and says so when the host refuses the file', async () => {
+      await open(three)
+      answer({ rail_dialog: { button: 'cancel', value: null, color: null } })
+      add().dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }))
+      await vi.advanceTimersByTimeAsync(0)
+      pick('import')
+      await vi.advanceTimersByTimeAsync(0)
+      expect(calls('rail_edit')).toHaveLength(0)
+      answer({ rail_edit: () => { throw new Error('bad') }, rail_dialog: { button: 'import', value: 'x', color: null } })
+      add().dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }))
+      await vi.advanceTimersByTimeAsync(0)
+      pick('import')
+      await vi.advanceTimersByTimeAsync(0)
+      expect(live()).toBe('The list could not be imported')
     })
   })
 

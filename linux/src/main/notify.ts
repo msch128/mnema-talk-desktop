@@ -37,7 +37,8 @@ export function notify(ctx: Context, server: string, title: string, body: string
   const registry = ctx.trusted.registry
   const slot = registry.slot(server)
   if (!slot) throw new Error('No instance is selected.')
-  if (!Notification.isSupported() || !gates.allow(server, Date.now())) return null
+  // A muted server shows no toast at all.
+  if (registry.isMuted(server) || !Notification.isSupported() || !gates.allow(server, Date.now())) return null
   const generation = slot.generation
   const toast = new Notification({ title: taggedTitle(title, registry.displayName(slot), registry.length > 1), body: cleanText(body, MAX_BODY), silent: false })
   shown.set(toast, generation)

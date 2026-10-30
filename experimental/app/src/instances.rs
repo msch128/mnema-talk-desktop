@@ -185,9 +185,22 @@ pub struct Registry {
     /// In the order the rail shows them (folders opened up).
     slots: Vec<Slot>,
     layout: Layout,
+    /// Servers whose notifications are off, by id: until when (epoch seconds),
+    /// or `FOREVER`. A mute that is over is still here until it is looked at.
+    muted: BTreeMap<String, i64>,
     active: Option<String>,
     /// The page for adding a server is in front.
     adding: bool,
+}
+
+/// A mute with no end.
+pub const FOREVER: i64 = -1;
+/// The longest a mute may last: a year and a day.
+pub const MAX_MUTE_SECS: i64 = 366 * 24 * 3600;
+
+/// Whether a mute that ends at `until` still holds at `now`.
+fn live(until: i64, now: i64) -> bool {
+    until == FOREVER || (until > now && until <= now.saturating_add(MAX_MUTE_SECS))
 }
 
 /// What the rail draws for one server.
@@ -209,6 +222,8 @@ pub struct RailInstance {
     pub mentions: u32,
     /// Names the community icon in the cache, if the server set one.
     pub icon: Option<String>,
+    /// Until when notifications are off (epoch seconds, -1 for good); none if they are on.
+    pub muted_until: Option<i64>,
 }
 
 #[derive(Serialize, Debug, PartialEq, Eq)]
@@ -246,6 +261,7 @@ impl Registry {
         registry.layout =
             Layout::load(stored.items.clone(), stored.aliases.clone(), &order, &order);
         registry.sort_slots();
+        registry.take_mutes(&stored.muted, crate::web_proxy::now());
         registry.active = stored
             .active
             .as_ref()
@@ -333,6 +349,84 @@ impl Registry {
         done
     }
 
+    /// Takes over the mutes of a list that are still on and name a server of this one.
+    fn take_mutes(&mut self, wanted: &BTreeMap<String, i64>, now: i64) {
+        for (id, until) in wanted {
+            if self.contains(id) && live(*until, now) {
+                self.muted.insert(id.clone(), *until);
+            }
+        }
+    }
+
+    /// Turns notifications of a server off until `until` (epoch seconds, `FOREVER`
+    /// for good) or on again (0). Refused for an unknown server and for an end
+    /// that is past or more than a year away.
+    pub fn mute(&mut self, id: &str, until: i64, now: i64) -> bool {
+        if !self.contains(id) {
+            return false;
+        }
+        if until == 0 {
+            self.muted.remove(id);
+        } else if live(until, now) {
+            self.muted.insert(id.to_owned(), until);
+        } else {
+            return false;
+        }
+        true
+    }
+
+    /// Until when a server is muted, if it is at `now`.
+    pub fn muted_until(&self, id: &str, now: i64) -> Option<i64> {
+        self.muted
+            .get(id)
+            .copied()
+            .filter(|until| live(*until, now))
+    }
+
+    pub fn is_muted(&self, id: &str, now: i64) -> bool {
+        self.muted_until(id, now).is_some()
+    }
+
+    /// Takes the servers, names, layout and mutes of an imported list over
+    /// those of this one: servers it names that are not here are added at the
+    /// end (while there is room), names and mutes are set, and the layout of
+    /// the file is applied to all the servers (those it does not name follow
+    /// at the end). The front server and the page for adding stay as they are.
+    /// Gives the ids of the servers that were added.
+    pub fn merge(&mut self, imported: &Stored, now: i64) -> Vec<String> {
+        let before = self.ids();
+        let mut added = Vec::new();
+        for origin in &imported.servers {
+            if self.slots.len() >= MAX_INSTANCES {
+                break;
+            }
+            if let Ok(id) = self.add(origin.clone()) {
+                added.push(id);
+            }
+        }
+        let mut order: Vec<String> = imported
+            .servers
+            .iter()
+            .map(id_for)
+            .filter(|id| self.contains(id))
+            .collect();
+        for id in before {
+            if !order.contains(&id) {
+                order.push(id);
+            }
+        }
+        let known = self.ids();
+        let mut aliases = self.layout.aliases.clone();
+        for (id, name) in &imported.aliases {
+            aliases.insert(id.clone(), name.clone());
+        }
+        // A file without a layout (an older list) gives its order and no folders.
+        self.layout = Layout::load(imported.items.clone(), aliases, &known, &order);
+        self.take_mutes(&imported.muted, now);
+        self.sort_slots();
+        added
+    }
+
     /// The name the rail, the title and the toasts use for a server.
     pub fn display_name(&self, slot: &Slot) -> String {
         self.layout
@@ -348,6 +442,7 @@ impl Registry {
         let index = self.slots.iter().position(|s| s.id == id)?;
         let slot = self.slots.remove(index);
         self.layout.remove(id);
+        self.muted.remove(id);
         if self.active.as_deref() == Some(id) {
             self.active = self
                 .slots
@@ -416,8 +511,11 @@ impl Registry {
 
     /// Mentions over all servers: the number on the taskbar or dock icon.
     pub fn badge(&self) -> u32 {
+        // A muted server adds nothing to the number on the icon.
+        let now = crate::web_proxy::now();
         self.slots
             .iter()
+            .filter(|s| !self.is_muted(&s.id, now))
             .map(|s| s.mentions)
             .sum::<u32>()
             .min(MAX_COUNT)
@@ -431,6 +529,7 @@ impl Registry {
     }
 
     pub fn rail(&self, can_add: bool) -> RailState {
+        let now = crate::web_proxy::now();
         RailState {
             active: self.active.clone(),
             adding: self.adding,
@@ -459,6 +558,7 @@ impl Registry {
                         unread: slot.unread,
                         mentions: slot.mentions,
                         icon: slot.icon.clone(),
+                        muted_until: self.muted_until(&slot.id, now),
                     }
                 })
                 .collect(),
@@ -478,6 +578,12 @@ impl Registry {
                 .map(|s| s.origin.clone()),
             items: Some(self.layout.items.clone()),
             aliases: self.layout.aliases.clone(),
+            muted: self
+                .muted
+                .iter()
+                .filter(|(_, until)| live(**until, crate::web_proxy::now()))
+                .map(|(id, until)| (id.clone(), *until))
+                .collect(),
         }
     }
 }
@@ -492,6 +598,8 @@ pub struct Stored {
     pub items: Option<Vec<Item>>,
     /// Local names, by server id.
     pub aliases: BTreeMap<String, String>,
+    /// Servers whose notifications are off, by id: until when (epoch seconds) or -1.
+    pub muted: BTreeMap<String, i64>,
     /// A list file exists but could not be used (unreadable, damaged, too
     /// large or written by another version). The list is then empty, but that
     /// is not the person's choice: nothing may be cleaned up on its strength.
@@ -509,6 +617,8 @@ struct StoredFile {
     items: Option<Vec<serde_json::Value>>,
     #[serde(default)]
     aliases: BTreeMap<String, String>,
+    #[serde(default)]
+    muted: BTreeMap<String, i64>,
 }
 
 impl Stored {
@@ -519,6 +629,7 @@ impl Stored {
             active: None,
             items: None,
             aliases: BTreeMap::new(),
+            muted: BTreeMap::new(),
             unreadable: false,
         }
     }
@@ -585,6 +696,7 @@ impl Stored {
             active,
             items,
             aliases: stored.aliases,
+            muted: stored.muted,
             unreadable: false,
         }
     }
@@ -594,6 +706,15 @@ impl Stored {
     /// new one, never half of it.
     pub fn save(&self, file: Option<&Path>) -> std::io::Result<()> {
         let Some(file) = file else { return Ok(()) };
+        let raw = self.to_bytes()?;
+        if let Some(parent) = file.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        write_synced(file, &raw)
+    }
+
+    /// The list as it is written: addresses, local names, layout and mutes.
+    pub fn to_bytes(&self) -> std::io::Result<Vec<u8>> {
         let stored = StoredFile {
             version: self.version,
             servers: self.servers.iter().map(|u| u.as_str().to_owned()).collect(),
@@ -605,30 +726,46 @@ impl Stored {
                     .collect()
             }),
             aliases: self.aliases.clone(),
+            muted: self.muted.clone(),
         };
-        let raw = serde_json::to_vec(&stored)?;
-        if let Some(parent) = file.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        static SAVES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-        let temporary = file.with_extension(format!(
-            "{}.{}.tmp",
-            std::process::id(),
-            SAVES.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
-        ));
-        let written = (|| {
-            use std::io::Write;
-            let mut out = std::fs::File::create(&temporary)?;
-            out.write_all(&raw)?;
-            out.sync_all()?;
-            drop(out);
-            std::fs::rename(&temporary, file)
-        })();
-        if written.is_err() {
-            let _ = std::fs::remove_file(&temporary);
-        }
-        written
+        Ok(serde_json::to_vec(&stored)?)
     }
+
+    /// A list handed in from outside (an import), read like the list file: the
+    /// same checks of every address, the same limits. `None` if it is too
+    /// large, not a list or of another version.
+    pub fn parse(raw: &[u8]) -> Option<Stored> {
+        if raw.len() > MAX_IMPORT_BYTES {
+            return None;
+        }
+        let stored = serde_json::from_slice::<StoredFile>(raw).ok()?;
+        (stored.version == STORE_VERSION).then(|| Stored::from_file(stored))
+    }
+}
+
+/// The most an imported list may hold.
+pub const MAX_IMPORT_BYTES: usize = 65536;
+
+/// Writes a file through a temporary one of its own, synced before it replaces the old one.
+fn write_synced(file: &Path, raw: &[u8]) -> std::io::Result<()> {
+    static SAVES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let temporary = file.with_extension(format!(
+        "{}.{}.tmp",
+        std::process::id(),
+        SAVES.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    ));
+    let written = (|| {
+        use std::io::Write;
+        let mut out = std::fs::File::create(&temporary)?;
+        out.write_all(raw)?;
+        out.sync_all()?;
+        drop(out);
+        std::fs::rename(&temporary, file)
+    })();
+    if written.is_err() {
+        let _ = std::fs::remove_file(&temporary);
+    }
+    written
 }
 
 #[cfg(test)]
@@ -1066,6 +1203,115 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         dir
+    }
+
+    #[test]
+    fn the_number_keys_count_the_servers_in_the_order_of_the_rail_folders_opened_up() {
+        let mut registry = registry(&["a.example", "b.example", "c.example"]);
+        let (a, b, c) = (id("a.example"), id("b.example"), id("c.example"));
+        // c joins a in a folder: the rail reads a, c, b.
+        assert!(registry.edit(|l| l.group(&c, &a, "f-0123abcd")));
+        assert_eq!(registry.activate_nth(1).as_deref(), Some(a.as_str()));
+        assert_eq!(registry.activate_nth(2).as_deref(), Some(c.as_str()));
+        assert_eq!(registry.activate_nth(3).as_deref(), Some(b.as_str()));
+        assert!(registry.activate_nth(4).is_none());
+    }
+
+    const HOUR: i64 = 3600;
+
+    #[test]
+    fn a_muted_server_is_muted_until_its_time_and_for_good_when_asked() {
+        let mut registry = registry(&["a.example", "b.example"]);
+        let (a, b) = (id("a.example"), id("b.example"));
+        let now = 1_000_000;
+        assert!(registry.mute(&a, now + HOUR, now));
+        assert_eq!(registry.muted_until(&a, now), Some(now + HOUR));
+        assert!(registry.is_muted(&a, now + HOUR - 1));
+        assert!(!registry.is_muted(&a, now + HOUR), "the mute is over");
+        assert!(!registry.is_muted(&b, now), "only that server");
+        assert!(registry.mute(&b, FOREVER, now));
+        assert!(registry.is_muted(&b, now + 10 * MAX_MUTE_SECS));
+        assert!(registry.mute(&b, 0, now));
+        assert!(
+            !registry.is_muted(&b, now),
+            "0 turns the notifications on again"
+        );
+    }
+
+    #[test]
+    fn a_mute_that_is_past_too_far_away_or_for_nobody_is_refused() {
+        let mut registry = registry(&["a.example"]);
+        let a = id("a.example");
+        let now = 1_000_000;
+        for until in [-2, 1, now, now - 1, now + MAX_MUTE_SECS + 1, i64::MAX] {
+            assert!(!registry.mute(&a, until, now), "{until}");
+        }
+        assert!(registry.mute(&a, now + MAX_MUTE_SECS, now));
+        assert!(
+            !registry.mute("0123456789abcdef", FOREVER, now),
+            "a server that is not in the list"
+        );
+        assert!(registry.muted_until("0123456789abcdef", now).is_none());
+    }
+
+    #[test]
+    fn a_muted_server_leaves_the_number_on_the_icon_and_goes_with_the_server() {
+        let mut registry = registry(&["a.example", "b.example"]);
+        let (a, b) = (id("a.example"), id("b.example"));
+        registry.report(&a, 1, 4);
+        registry.report(&b, 1, 3);
+        assert_eq!(registry.badge(), 7);
+        let now = crate::web_proxy::now();
+        assert!(registry.mute(&a, FOREVER, now));
+        assert_eq!(registry.badge(), 3);
+        // The rail still has both counts and says who is muted.
+        let state = registry.rail(true);
+        assert_eq!(state.instances[0].mentions, 4);
+        assert_eq!(state.instances[0].muted_until, Some(FOREVER));
+        assert_eq!(state.instances[1].muted_until, None);
+        registry.remove(&a);
+        assert!(registry.stored().muted.is_empty());
+    }
+
+    #[test]
+    fn mutes_survive_a_restart_when_they_still_hold_and_name_a_server() {
+        let file = scratch("mutes").join("servers.json");
+        let mut registry = registry(&["a.example", "b.example", "c.example"]);
+        let now = crate::web_proxy::now();
+        assert!(registry.mute(&id("a.example"), FOREVER, now));
+        assert!(registry.mute(&id("b.example"), now + HOUR, now));
+        registry.stored().save(Some(&file)).unwrap();
+        let loaded = Stored::load(Some(&file));
+        assert_eq!(loaded.muted.len(), 2);
+        let restored = Registry::restore(&loaded);
+        assert!(restored.is_muted(&id("a.example"), now));
+        assert!(restored.is_muted(&id("b.example"), now));
+        assert!(!restored.is_muted(&id("c.example"), now));
+        // A list written by hand: an end in the past, one too far away, a server that is not there.
+        let hand = format!(
+            r#"{{"version":1,"servers":["https://a.example/"],"active":null,"muted":{{"{a}":5,"{x}":-1}}}}"#,
+            a = id("a.example"),
+            x = "0123456789abcdef"
+        );
+        std::fs::write(&file, hand).unwrap();
+        let restored = Registry::restore(&Stored::load(Some(&file)));
+        assert!(restored.stored().muted.is_empty());
+        let _ = std::fs::remove_file(&file);
+    }
+
+    #[test]
+    fn a_list_from_before_mutes_loads_with_none() {
+        let file = scratch("old-list").join("servers.json");
+        std::fs::write(
+            &file,
+            r#"{"version":1,"servers":["https://a.example/"],"active":null}"#,
+        )
+        .unwrap();
+        let loaded = Stored::load(Some(&file));
+        assert!(!loaded.unreadable());
+        assert!(loaded.muted.is_empty());
+        assert_eq!(loaded.servers.len(), 1);
+        let _ = std::fs::remove_file(&file);
     }
 
     #[test]

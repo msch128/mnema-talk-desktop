@@ -58,7 +58,11 @@ There is no external security audit.
   community, the rail shows it (fetched from that server only, as a png or webp
   of at most 1 MiB, kept next to the other data of the server). Folders, names
   and order are kept in the list of servers, next to the exe in the portable
-  build. One account per server, no federation:
+  build. Right-click also mutes a server (1 h, 8 h, until tomorrow, for good: no
+  toasts, no count in the badge), marks everything read, and the + button's
+  menu exports and imports the list of servers as a JSON file. Ctrl/Cmd+K
+  opens a quick switcher over the servers. A link to an invite of a server you
+  have not added offers "Add this server". One account per server, no federation:
   every server has its own session in the keychain, its own browser storage
   (a WebView2 profile per server on Windows, a data store per server on macOS
   14 and newer, a session partition on Linux) and its own connection. Removing a

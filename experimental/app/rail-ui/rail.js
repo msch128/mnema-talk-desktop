@@ -28,6 +28,12 @@ const T = de
       folderServers: (n) => (n === 1 ? '1 Server' : `${n} Server`), expanded: 'aufgeklappt', collapsed: 'zugeklappt',
       folderMoved: (name) => `${name} verschoben`, folderDeleted: (name) => `${name} gelöscht`, grouped: (name) => `${name} liegt jetzt im Ordner`,
       editFailed: 'Die Änderung konnte nicht gespeichert werden',
+      muted: 'stummgeschaltet', mute: 'Server stummschalten', unmute: 'Stummschaltung aufheben', muteFor: ['Für 1 Stunde', 'Für 8 Stunden', 'Bis morgen', 'Bis ich sie aufhebe'],
+      muteSet: (name, how) => `${name}: stummgeschaltet, ${how}`, unmuted: (name) => `${name}: Stummschaltung aufgehoben`, markRead: 'Alles als gelesen markieren', markedRead: (name) => `${name}: alles als gelesen markiert`,
+      switchTitle: 'Zu Server wechseln', switchLabel: 'Server', switchHint: 'Suchen …', switchGo: 'Wechseln', noMatch: 'Kein Server gefunden',
+      exportList: 'Serverliste exportieren …', importList: 'Serverliste importieren …', exported: 'Serverliste exportiert', exportedNote: (path) => `Gespeichert unter ${path}`, ok: 'OK',
+      importTitle: 'Serverliste importieren', importNote: 'Wähle eine exportierte Datei. Neue Server werden hinzugefügt, Namen und Ordner übernommen.', importFile: 'Datei (.json)',
+      imported: (n) => (n === 1 ? '1 Server hinzugefügt' : `${n} Server hinzugefügt`), importFailed: 'Die Liste konnte nicht importiert werden', exportFailed: 'Die Liste konnte nicht exportiert werden',
       colors: ['Keine', 'Grün', 'Blau', 'Violett', 'Rosa', 'Orange', 'Gelb', 'Türkis', 'Rot', 'Grau'],
     }
   : {
@@ -48,6 +54,12 @@ const T = de
       folderServers: (n) => (n === 1 ? '1 server' : `${n} servers`), expanded: 'expanded', collapsed: 'collapsed',
       folderMoved: (name) => `${name} moved`, folderDeleted: (name) => `${name} deleted`, grouped: (name) => `${name} is now in the folder`,
       editFailed: 'The change could not be saved',
+      muted: 'muted', mute: 'Mute server', unmute: 'Unmute server', muteFor: ['For 1 hour', 'For 8 hours', 'Until tomorrow', 'Until I turn it back on'],
+      muteSet: (name, how) => `${name}: muted, ${how}`, unmuted: (name) => `${name}: unmuted`, markRead: 'Mark all as read', markedRead: (name) => `${name}: marked all as read`,
+      switchTitle: 'Switch to server', switchLabel: 'Server', switchHint: 'Search…', switchGo: 'Switch', noMatch: 'No server found',
+      exportList: 'Export server list…', importList: 'Import server list…', exported: 'Server list exported', exportedNote: (path) => `Saved to ${path}`, ok: 'OK',
+      importTitle: 'Import server list', importNote: 'Choose an exported file. New servers are added; names and folders are taken over.', importFile: 'File (.json)',
+      imported: (n) => (n === 1 ? '1 server added' : `${n} servers added`), importFailed: 'The list could not be imported', exportFailed: 'The list could not be exported',
       colors: ['None', 'Green', 'Blue', 'Violet', 'Pink', 'Orange', 'Yellow', 'Teal', 'Red', 'Grey'],
     };
 const PALETTE = ['', '#2da771', '#3b82f6', '#a855f7', '#ec4899', '#f97316', '#eab308', '#14b8a6', '#ef4444', '#94a3b8'];
@@ -86,6 +98,8 @@ const folderOf = (serverId) => folders().find((f) => f.servers.includes(serverId
 const folderName = (f) => f.name || T.folder;
 const shown = (s) => (s.alias ? `${s.name} (${s.original})` : s.name);
 // Text for a menu or a question: no control characters (the host refuses them), not too long, never empty.
+// Whether a server's notifications are off right now (the host sends epoch seconds, -1 for good).
+const muted = (s) => s.muted_until === -1 || (typeof s.muted_until === 'number' && s.muted_until * 1000 > Date.now());
 const short = (text) => {
   const clean = [...String(text)].map((ch) => { const c = ch.codePointAt(0); return c < 32 || (c >= 127 && c < 160) ? ' ' : ch; }).join('').trim() || '–';
   const points = [...clean];
@@ -97,7 +111,8 @@ function label(s) {
   if (s.id === state.active && !state.adding) parts.push(T.current);
   if (s.status === 'refused') parts.push(T.refused);
   if (s.status === 'starting') parts.push(T.starting);
-  if (s.mentions > 0) parts.push(T.mentions(s.mentions));
+  if (muted(s)) parts.push(T.muted);
+  else if (s.mentions > 0) parts.push(T.mentions(s.mentions));
   else if (s.unread > 0) parts.push(T.unread);
   return parts.join(', ');
 }
@@ -148,17 +163,48 @@ function badge(item, marker) {
   item.append(el);
 }
 
+// Mentions of the servers that are not muted.
+const mentionsOf = (list) => list.reduce((sum, s) => sum + (muted(s) || s.status === 'refused' ? 0 : s.mentions), 0);
+const unreadOf = (list) => list.some((s) => !muted(s) && (s.unread > 0 || s.mentions > 0));
+
 function markerOf(list) {
-  if (list.some((s) => s.status === 'refused')) return { text: '!', warn: true };
-  const mentions = list.reduce((sum, s) => sum + s.mentions, 0);
+  const mentions = mentionsOf(list);
   return mentions > 0 ? { text: count(mentions), warn: false } : null;
+}
+
+// A dot for a server that cannot be reached, next to the icon.
+function dot(item, list) {
+  if (!list.some((s) => s.status === 'refused')) return;
+  const el = document.createElement('span');
+  el.className = 'dot';
+  el.setAttribute('aria-hidden', 'true');
+  item.append(el);
+}
+
+// A bell with a stroke through it on a muted server.
+function bell(item) {
+  const ns = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg');
+  svg.setAttribute('class', 'mute');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('width', '14');
+  svg.setAttribute('height', '14');
+  svg.setAttribute('aria-hidden', 'true');
+  const path = document.createElementNS(ns, 'path');
+  path.setAttribute('fill', 'none');
+  path.setAttribute('stroke', 'currentColor');
+  path.setAttribute('stroke-width', '2');
+  path.setAttribute('stroke-linecap', 'round');
+  path.setAttribute('d', 'M6 17h12l-1.5-2V11a4.5 4.5 0 0 0-9 0v4zM10 20h4M4 4l16 16');
+  svg.append(path);
+  item.append(svg);
 }
 
 function tile(s, nested) {
   const item = document.createElement('li');
   const front = s.id === state.active && !state.adding;
   if (front) item.className = 'current';
-  else if (s.unread > 0 || s.mentions > 0) item.className = 'unread';
+  else if (unreadOf([s])) item.className = 'unread';
   const button = document.createElement('button');
   button.type = 'button';
   button.className = `tile ${s.status}`;
@@ -177,6 +223,8 @@ function tile(s, nested) {
   item.append(button);
   const marker = markerOf([s]);
   if (marker) badge(item, marker);
+  dot(item, [s]);
+  if (muted(s)) { item.classList.add('muted'); bell(item); }
   if (nested) item.classList.add('nested');
   return item;
 }
@@ -213,9 +261,9 @@ function folderEntry(f) {
   button.title = names ? `${folderName(f)}: ${names}` : folderName(f);
   const parts = [folderName(f), T.folderServers(members.length), f.collapsed ? T.collapsed : T.expanded];
   const marker = markerOf(members);
-  const mentions = members.reduce((sum, s) => sum + s.mentions, 0);
+  const mentions = mentionsOf(members);
   if (mentions > 0) parts.push(T.mentions(mentions));
-  else if (members.some((s) => s.unread > 0)) parts.push(T.unread);
+  else if (unreadOf(members)) parts.push(T.unread);
   button.setAttribute('aria-label', parts.join(', '));
   if (f.collapsed) {
     const grid = document.createElement('span');
@@ -230,7 +278,7 @@ function folderEntry(f) {
     }
     button.append(grid);
     if (members.some((s) => s.id === state.active) && !state.adding) item.classList.add('current');
-    else if (members.some((s) => s.unread > 0 || s.mentions > 0)) item.classList.add('unread');
+    else if (unreadOf(members)) item.classList.add('unread');
   } else button.append(glyph());
   button.addEventListener('click', () => toggle(f));
   button.addEventListener('contextmenu', (event) => { event.preventDefault(); openMenu('folder', f.id, button, false); });
@@ -239,6 +287,7 @@ function folderEntry(f) {
   box.append(button);
   if (f.collapsed) {
     if (marker) badge(box, marker);
+    dot(box, members);
   } else {
     const list = document.createElement('ul');
     list.className = 'folder-list';
@@ -285,9 +334,14 @@ const buttonOf = (id) => buttons().find((b) => b.dataset.id === id);
 
 // Every push builds new tiles. What the person is working with has to survive
 // that: the focused tile.
+let expiry = 0;
 function redraw() {
   if (drag) { stale = true; return; }
   stale = false;
+  // A mute that runs out changes the look of the rail without the host saying so.
+  clearTimeout(expiry);
+  const next = state.instances.filter((s) => typeof s.muted_until === 'number' && s.muted_until > 0 && muted(s)).map((s) => s.muted_until * 1000 - Date.now());
+  if (next.length > 0) expiry = setTimeout(redraw, Math.min(Math.min(...next) + 500, 2147483647));
   const active = document.activeElement;
   const focused = active && active.dataset && active.dataset.kind ? active.dataset.id : null;
   render();
@@ -398,6 +452,74 @@ function newFolder(s) {
   });
 }
 
+// Mutes for a number of seconds from now, or until a given moment (epoch seconds), or for good (-1); 0 turns it off.
+function mute(s, until, how) {
+  const at = until > 0 && until < 1e9 ? Math.floor(Date.now() / 1000) + until : until;
+  edit({ op: 'mute', id: s.id, until: at }).then((ok) => { if (ok) say(at === 0 ? T.unmuted(s.name) : T.muteSet(s.name, how)); });
+}
+
+// Tomorrow at eight in the morning, local time, as epoch seconds.
+function tomorrow() {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  d.setHours(8, 0, 0, 0);
+  return Math.floor(d.getTime() / 1000);
+}
+
+function markRead(s) {
+  edit({ op: 'mark_read', id: s.id }).then((ok) => { if (ok) say(T.markedRead(s.name)); });
+}
+
+// The servers in the order of the rail, in a list to type into; the choice switches to that server.
+function quickSwitch() {
+  if (state.instances.length === 0) return;
+  const choices = state.instances.slice(0, 12).map((s) => {
+    const home = folderOf(s.id);
+    const hint = s.alias ? s.original : home ? folderName(home) : '';
+    return { id: s.id, text: short(shown(s)), ...(hint ? { hint: short(hint) } : {}) };
+  });
+  ask({
+    title: T.switchTitle,
+    list: { label: T.switchLabel, placeholder: T.switchHint, choices },
+    buttons: [{ id: 'pick', text: T.switchGo, primary: true }, { id: 'cancel', text: T.cancel }],
+    cancel: 'cancel',
+  }).then((answer) => {
+    if (answer && answer.button === 'pick' && typeof answer.value === 'string') call('rail_activate', { id: answer.value });
+  });
+}
+
+// The list of servers as a file: out through the host, in from a file the person picks.
+function exportList() {
+  attempt('rail_edit', { op: 'export' }).then(({ ok, value }) => {
+    if (!ok || typeof value !== 'string') { say(T.exportFailed); return; }
+    ask({ title: T.exported, message: T.exportedNote(value), buttons: [{ id: 'ok', text: T.ok, primary: true }], cancel: 'ok' });
+  });
+}
+
+function importList() {
+  ask({
+    title: T.importTitle,
+    message: T.importNote,
+    file: { label: T.importFile, accept: '.json', max: 65536 },
+    buttons: [{ id: 'import', text: T.importList.replace(/\s?…$/, ''), primary: true }, { id: 'cancel', text: T.cancel }],
+    cancel: 'cancel',
+  }).then((answer) => {
+    if (!answer || answer.button !== 'import' || typeof answer.value !== 'string') return;
+    attempt('rail_edit', { op: 'import', name: answer.value }).then(({ ok, value }) => { say(ok && typeof value === 'number' ? T.imported(value) : T.importFailed); });
+  });
+}
+
+// The menu of the + button.
+function addMenu(anchor, byKey) {
+  const mine = ++menuSeq;
+  const actions = new Map();
+  const items = [entry(actions, 'export', T.exportList, exportList), entry(actions, 'import', T.importList, importList)];
+  const token = `m${mine}-${Math.random().toString(36).slice(2, 8)}`;
+  menu = { token, actions };
+  const box = byKey ? anchor.getBoundingClientRect() : null;
+  attempt('rail_menu', { spec: JSON.stringify({ token, items }), x: box ? Math.round(box.right + 6) : -1, y: box ? Math.round(box.top) : -1 });
+}
+
 // ------------------------------------------------------------------- keys
 
 function keys(event, kind, id) {
@@ -443,6 +565,13 @@ function serverMenu(s, actions, info) {
     });
     items.push({ separator: true });
   }
+  if (s.status === 'ready') items.push(entry(actions, 'mark-read', T.markRead, () => markRead(s)));
+  if (muted(s)) items.push(entry(actions, 'unmute', T.unmute, () => mute(s, 0)));
+  else {
+    const ways = [3600, 8 * 3600, tomorrow(), -1];
+    items.push({ id: 'mute', text: T.mute, items: ways.map((until, i) => entry(actions, `mute-${i}`, T.muteFor[i], () => mute(s, until, T.muteFor[i]))) });
+  }
+  items.push({ separator: true });
   items.push(entry(actions, 'rename', T.rename, () => rename(s)));
   if (s.alias) items.push(entry(actions, 'unalias', T.useOriginal, () => edit({ op: 'rename', id: s.id, name: '' })));
   const into = [entry(actions, 'folder-new', T.newFolder, () => newFolder(s))];
@@ -624,6 +753,10 @@ $('rail').addEventListener('drop', (event) => {
 });
 // A drag that ended where this page saw no event (the tile was replaced) is over once the pointer is used again.
 document.addEventListener('pointerdown', () => { if (drag) endDrag(); });
-window.mnemaRail = { set, chosen };
+$('add').addEventListener('contextmenu', (event) => { event.preventDefault(); addMenu($('add'), false); });
+$('add').addEventListener('keydown', (event) => {
+  if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) { event.preventDefault(); addMenu($('add'), true); }
+});
+window.mnemaRail = { set, chosen, quickSwitch };
 render();
 call('rail_state').then(set);

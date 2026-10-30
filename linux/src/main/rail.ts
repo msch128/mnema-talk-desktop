@@ -12,7 +12,7 @@ import { parseDialogSpec, parseEdit, parseMenuSpec } from '../core/railui.ts'
 import type { Context } from './context.ts'
 import { handle, mainFrameUrl } from './handle.ts'
 import { showDialog, showMenu } from './railui.ts'
-import { activate, cancelAdding, editLayout, railSnapshot, reconnect, removeServer, startAdding } from './shell.ts'
+import { activate, cancelAdding, railEdit, railSnapshot, reconnect, removeServer, startAdding } from './shell.ts'
 
 function fromRail(ctx: Context, event: IpcMainInvokeEvent): boolean {
   const rail = ctx.shell.rail
@@ -45,7 +45,7 @@ async function run(ctx: Context, command: string, args: Args): Promise<unknown> 
     case 'rail_activate': activate(ctx, serverId(args)); return null
     case 'rail_add': startAdding(ctx); return null
     case 'rail_cancel_add': cancelAdding(ctx); return null
-    case 'rail_edit': editLayout(ctx, parseEdit(args)); return null
+    case 'rail_edit': return railEdit(ctx, parseEdit(args))
     case 'rail_menu': showMenu(ctx, parseMenuSpec(specText(args)), coordinate(args, 'x'), coordinate(args, 'y')); return null
     case 'rail_dialog': return showDialog(ctx, parseDialogSpec(specText(args)))
     case 'rail_icon': {

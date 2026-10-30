@@ -11,7 +11,7 @@
 use crate::instances::{
     AddError, Phase, RailState, Session, attachment_label, id_for, instance_label,
 };
-use crate::web_bundle::Held;
+use crate::web_bundle::{Held, is_hex_id16};
 use crate::web_client::{Trusted, app_api, app_url, bundled, choose, discover};
 use crate::web_proxy::{Instance, Jar, Limits, Resp, client, forward, now};
 use crate::web_vault::{Os, Vault};
@@ -744,6 +744,13 @@ pub fn servers_menu(app: &tauri::AppHandle) -> tauri::Result<Submenu<tauri::Wry>
         true,
         Some("CmdOrCtrl+Shift+N"),
     )?;
+    let quick = MenuItem::with_id(
+        app,
+        "server-quick",
+        "Quick switcher\u{2026}",
+        true,
+        Some("CmdOrCtrl+K"),
+    )?;
     let mut all: Vec<&dyn tauri::menu::IsMenuItem<tauri::Wry>> = Vec::new();
     all.extend(
         items
@@ -751,6 +758,7 @@ pub fn servers_menu(app: &tauri::AppHandle) -> tauri::Result<Submenu<tauri::Wry>
             .map(|i| i as &dyn tauri::menu::IsMenuItem<tauri::Wry>),
     );
     all.push(&add);
+    all.push(&quick);
     let submenu = Submenu::with_items(app, "Servers", true, &all)?;
     app.manage(ServerMenu { items });
     Ok(submenu)
@@ -763,6 +771,11 @@ pub fn menu_clicked(app: &tauri::AppHandle, id: &str) {
     }
     if id == "server-add" {
         start_adding(app);
+    } else if id == "server-quick" {
+        // The rail page owns the list it shows, in the language of the system.
+        if let Some(rail) = app.get_webview(RAIL) {
+            let _ = rail.eval("window.mnemaRail&&window.mnemaRail.quickSwitch()");
+        }
     } else if let Some(number) = id
         .strip_prefix("server-")
         .and_then(|n| n.parse::<usize>().ok())
@@ -1220,6 +1233,44 @@ fn download_target(
     target
 }
 
+/// A link of a server's page that leaves the app. An invite to a server that
+/// is in the list opens its join screen there; one to a server that is not
+/// asks whether to add it; everything else goes to the browser after its
+/// usual question.
+fn external_link(app: &tauri::AppHandle, url: Url) {
+    use crate::web_client::{Link, confirm_add, invite_decision, open_external};
+    let (listed, room) = {
+        let trusted = app.state::<Trusted>();
+        let Ok(registry) = trusted.registry.lock() else {
+            return open_external(&url);
+        };
+        let listed: Vec<Url> = registry.stored().servers;
+        let room = registry.len() < crate::instances::MAX_INSTANCES && room_for(registry.len());
+        (listed, room)
+    };
+    match invite_decision(&url, &listed, room) {
+        Link::Browser => open_external(&url),
+        Link::Known { origin, code } => {
+            let id = id_for(&origin);
+            offer_invite(app, &id, Some(&code));
+            bring_forward(app, &id);
+        }
+        Link::Add { .. } => {
+            let app = app.clone();
+            // The question waits for an answer: not on the thread that runs the window.
+            std::thread::spawn(move || {
+                if !confirm_add(&url) {
+                    return;
+                }
+                tauri::async_runtime::spawn(async move {
+                    let state = app.state::<Trusted>();
+                    let _ = add_server(&app, &state, url.as_str()).await;
+                });
+            });
+        }
+    }
+}
+
 /// A link of a server's page: attachments and downloads open in a window of
 /// their own (tied to that server), everything else goes to the browser after
 /// a confirmation.
@@ -1231,7 +1282,7 @@ fn new_window(
 ) -> tauri::webview::NewWindowResponse<tauri::Wry> {
     use tauri::webview::NewWindowResponse::{Create, Deny};
     if !app_api(&url) {
-        crate::web_client::open_external(&url);
+        external_link(app, url);
         return Deny;
     }
     let label = attachment_label(id);
@@ -1449,8 +1500,16 @@ pub fn rail_edit(
     flag: Option<bool>,
     name: Option<String>,
     color: Option<String>,
-) -> Result<(), String> {
+    until: Option<i64>,
+) -> Result<serde_json::Value, String> {
     let app = from_rail(&webview)?;
+    match op.as_str() {
+        "mute" => return mute(&app, id.as_deref(), until).map(|()| serde_json::Value::Null),
+        "mark_read" => return mark_read(&app, id.as_deref()).map(|()| serde_json::Value::Null),
+        "export" => return export_list(&app).map(serde_json::Value::from),
+        "import" => return import_list(&app, name.as_deref()).map(serde_json::Value::from),
+        _ => {}
+    }
     let edit = crate::rail_layout::Edit {
         op,
         id,
@@ -1474,7 +1533,96 @@ pub fn rail_edit(
     if done {
         changed(&app);
     }
-    outcome
+    outcome.map(|()| serde_json::Value::Null)
+}
+
+fn server_id(id: Option<&str>) -> Result<&str, String> {
+    id.filter(|id| is_hex_id16(id))
+        .ok_or_else(|| "invalid arguments".to_owned())
+}
+
+/// Notifications of a server off until a time, for good, or on again.
+fn mute(app: &tauri::AppHandle, id: Option<&str>, until: Option<i64>) -> Result<(), String> {
+    let id = server_id(id)?;
+    let until = until.ok_or("invalid arguments")?;
+    let done = app
+        .state::<Trusted>()
+        .registry
+        .lock()
+        .map_err(|_| "busy")?
+        .mute(id, until, now());
+    if !done {
+        return Err("The change was refused.".into());
+    }
+    changed(app);
+    // The number on the icon leaves out a muted server.
+    counts_changed(app);
+    Ok(())
+}
+
+/// What the web app is told to do when the person marks a server as read.
+const MARK_READ: &str = "window.dispatchEvent(new CustomEvent('mnema-desktop:mark-all-read'))";
+
+/// Asks the page of a running server to mark everything read. Its answer is
+/// the unread report it already sends.
+fn mark_read(app: &tauri::AppHandle, id: Option<&str>) -> Result<(), String> {
+    let id = server_id(id)?;
+    let ready = app
+        .state::<Trusted>()
+        .registry
+        .lock()
+        .map_err(|_| "busy")?
+        .session(id)
+        .is_some();
+    let page = app.get_webview(&instance_label(id));
+    match page {
+        Some(page) if ready => page
+            .eval(MARK_READ)
+            .map_err(|_| "The page is not available.".to_owned()),
+        _ => Err("The server is not ready.".into()),
+    }
+}
+
+/// Writes the list of servers to the Downloads folder (else the data folder)
+/// and gives the path.
+fn export_list(app: &tauri::AppHandle) -> Result<String, String> {
+    let trusted = app.state::<Trusted>();
+    let bytes = trusted
+        .registry
+        .lock()
+        .map_err(|_| "busy")?
+        .stored()
+        .to_bytes()
+        .map_err(|_| "The list could not be written.")?;
+    let dir = app
+        .path()
+        .download_dir()
+        .ok()
+        .or_else(|| trusted.data_dir().map(std::path::Path::to_path_buf))
+        .ok_or("There is no folder to write to.")?;
+    crate::rail_list::write_export(&dir, &bytes)
+        .map(|path| path.display().to_string())
+        .map_err(|_| "The list could not be written.".to_owned())
+}
+
+/// Takes a list of servers in (see `Registry::merge`) and starts the new ones.
+/// Gives how many servers were added.
+fn import_list(app: &tauri::AppHandle, text: Option<&str>) -> Result<usize, String> {
+    let stored = text
+        .and_then(|text| crate::instances::Stored::parse(text.as_bytes()))
+        .ok_or("The list could not be read.")?;
+    let added = app
+        .state::<Trusted>()
+        .registry
+        .lock()
+        .map_err(|_| "busy")?
+        .merge(&stored, now());
+    changed(app);
+    counts_changed(app);
+    for id in &added {
+        spawn_start(app, id.clone());
+    }
+    Ok(added.len())
 }
 
 /// The community icon of a server as a data URL, from the cache; the rail
@@ -1862,6 +2010,7 @@ mod tests {
             unread: 0,
             mentions: 0,
             icon: None,
+            muted_until: None,
         };
         let mut state = RailState {
             active: None,
@@ -1955,6 +2104,15 @@ mod tests {
         // The pages of servers, the rail and the selector are different
         // webviews, so no capability can reach two of them by accident.
         assert_ne!(RAIL, ADD);
+    }
+
+    #[test]
+    fn the_quick_switcher_is_a_menu_entry_with_its_own_key_that_asks_the_rail() {
+        let source = include_str!("web_shell.rs");
+        assert!(source.contains("\"server-quick\""));
+        assert!(source.contains("Some(\"CmdOrCtrl+K\")"));
+        assert!(source.contains("window.mnemaRail&&window.mnemaRail.quickSwitch()"));
+        assert!(MARK_READ.contains("mnema-desktop:mark-all-read"));
     }
 
     #[test]

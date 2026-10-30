@@ -15,8 +15,9 @@ import { existsSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { BaseWindow, WebContentsView, app, session } from 'electron'
 import { inviteCode, parseAddress } from '../core/client.ts'
-import { AddError, MAX_INSTANCES, idFor } from '../core/instances.ts'
-import type { Edit } from '../core/layout.ts'
+import { writeFileAtomic } from '../core/atomic.ts'
+import { AddError, MAX_IMPORT_BYTES, MAX_INSTANCES, idFor, storedFrom, storedText } from '../core/instances.ts'
+import { type RailEdit, exportTarget } from '../core/railui.ts'
 import { APP_URL } from '../core/origin.ts'
 import { closeSocketsWithDocument } from '../core/pagesockets.ts'
 import { Tickets } from '../core/tickets.ts'
@@ -131,14 +132,74 @@ export function cancelAdding(ctx: Context): void {
   focusFront(ctx)
 }
 
-/** Folders and local names: a change of how the servers sit on the rail. The id a new folder gets is the host's. A refused change is an error. */
-export function editLayout(ctx: Context, edit: Edit): void {
+/**
+ * A change the rail asked for: folders and local names (the id a new folder gets
+ * is the host's), the mute of a server, marking it read, and taking the list
+ * out and in. A refused change is an error. The answer is nothing, the path of
+ * an exported list, or the number of servers an import added.
+ */
+export async function railEdit(ctx: Context, edit: RailEdit): Promise<null | string | number> {
   const registry = ctx.trusted.registry
-  const fresh = (): string => `f-${randomBytes(4).toString('hex')}`
-  let folder = fresh()
-  while (registry.hasFolder(folder)) folder = fresh()
-  if (!registry.edit(edit, folder)) throw new Error('The change was refused.')
+  switch (edit.op) {
+    case 'mute':
+      if (!registry.mute(edit.id, edit.until)) throw new Error('The change was refused.')
+      changed(ctx)
+      countsChanged(ctx)
+      return null
+    case 'mark_read': markRead(ctx, edit.id); return null
+    case 'export': return exportList(ctx)
+    case 'import': return importList(ctx, edit.text)
+    default: {
+      const fresh = (): string => `f-${randomBytes(4).toString('hex')}`
+      let folder = fresh()
+      while (registry.hasFolder(folder)) folder = fresh()
+      if (!registry.edit(edit, folder)) throw new Error('The change was refused.')
+      changed(ctx)
+      return null
+    }
+  }
+}
+
+/** Tells the page of a running server to mark everything read; it answers with its usual unread report. */
+function markRead(ctx: Context, id: string): void {
+  const page = ctx.shell.pages.get(id)
+  if (!ctx.trusted.registry.session(id) || !page || page.webContents.isDestroyed()) throw new Error('The change was refused.')
+  void page.webContents.executeJavaScript("window.dispatchEvent(new CustomEvent('mnema-desktop:mark-all-read'))").catch(() => undefined)
+}
+
+/** Writes the list (addresses, names, folders, order, mutes: nothing of a session) into the downloads folder and says where. */
+function exportList(ctx: Context): string {
+  const dirs = [app.getPath('downloads'), ctx.trusted.dataDirectory()]
+  let failure: unknown = new Error('The list could not be saved.')
+  for (const dir of dirs) {
+    if (!dir) continue
+    try {
+      const path = exportTarget(dir, existsSync)
+      writeFileAtomic(path, Buffer.from(storedText(ctx.trusted.registry.stored())), { dirMode: 0o700 })
+      return path
+    } catch (error) { failure = error }
+  }
+  throw failure
+}
+
+/** Takes in an exported list: new servers join and start like those restored at start, names, mutes and the layout are applied. */
+function importList(ctx: Context, text: string): number {
+  if (Buffer.byteLength(text, 'utf8') > MAX_IMPORT_BYTES) throw new Error('The list is too large.')
+  let raw: unknown
+  try { raw = JSON.parse(text) } catch { throw new Error('This is not a list of servers.') }
+  const stored = storedFrom(raw)
+  if (!stored) throw new Error('This is not a list of servers.')
+  const added = ctx.trusted.registry.merge(stored)
   changed(ctx)
+  countsChanged(ctx)
+  for (const slot of added) void startServer(ctx, slot.id)
+  return added.length
+}
+
+/** The quick switcher (Ctrl+K) is the rail page's: it lists the servers it knows and activates the one picked. */
+export function quickSwitch(ctx: Context): void {
+  const rail = ctx.shell.rail
+  if (rail && !rail.webContents.isDestroyed()) void rail.webContents.executeJavaScript('window.mnemaRail&&window.mnemaRail.quickSwitch()').catch(() => undefined)
 }
 
 /** Asks a running server for its community icon, from the server itself, without holding anything up. */

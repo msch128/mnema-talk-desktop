@@ -4,9 +4,10 @@
  * argument is still read as untrusted text and bounded. Free of Electron so
  * the checks can be tested.
  */
+import { join } from 'node:path'
 import { type Args } from './ipcargs.ts'
 import { type Edit } from './layout.ts'
-import { validId } from './instances.ts'
+import { MAX_IMPORT_BYTES, validId } from './instances.ts'
 
 const FOLDER_ID = /^f-[0-9a-f]{8}$/
 const COLOR = /^#[0-9a-f]{6}$/
@@ -40,8 +41,16 @@ function either(args: Args, name: string): string {
   return value
 }
 
-/** The change of layout a `rail_edit` call asks for. The folder a change makes gets its id from the host, never from the page. */
-export function parseEdit(args: Args): Edit {
+/** What `rail_edit` may ask besides a change of layout: the mute of a server, marking it read, and taking the list out and in. */
+export type HostEdit =
+  | { op: 'mute', id: string, until: number }
+  | { op: 'mark_read', id: string }
+  | { op: 'export' }
+  | { op: 'import', text: string }
+export type RailEdit = Edit | HostEdit
+
+/** The change of layout (or the other change) a `rail_edit` call asks for. The folder a change makes gets its id from the host, never from the page. */
+export function parseEdit(args: Args): RailEdit {
   const op = string(args, 'op', 24)
   switch (op) {
     case 'place': {
@@ -71,6 +80,14 @@ export function parseEdit(args: Args): Edit {
     }
     case 'folder_delete': return { op, id: folder(args, 'id') }
     case 'rename': return { op, id: server(args, 'id'), name: string(args, 'name') }
+    case 'mute': {
+      const until = args['until']
+      if (typeof until !== 'number' || !Number.isSafeInteger(until) || until < -1) throw new Error('invalid arguments')
+      return { op, id: server(args, 'id'), until }
+    }
+    case 'mark_read': return { op, id: server(args, 'id') }
+    case 'export': return { op }
+    case 'import': return { op, text: string(args, 'name', MAX_IMPORT_BYTES) }
     default: throw new Error('Unknown change.')
   }
 }
@@ -139,12 +156,17 @@ export interface DialogSpec {
   message?: string
   input?: { label: string, value: string, max: number, placeholder?: string }
   colors?: { label: string, value: string, choices: { value: string, label: string }[] }
+  /** A filter field over a short list; the answer's `value` is the id of the one picked. */
+  list?: { label: string, placeholder?: string, choices: { id: string, text: string, hint?: string }[] }
+  /** A JSON file to choose; the answer's `value` is its text. */
+  file?: { label: string, accept: '.json', max: number }
   buttons: DialogButton[]
   cancel: string
 }
 export interface DialogResult { button: string, value: string | null, color: string | null }
 
 const BUTTON_ID = /^[a-z0-9_-]{1,24}$/
+const CHOICE_ID = /^[a-z0-9-]{1,24}$/
 
 function text(value: unknown, max: number, empty = false): string {
   if (typeof value !== 'string' || value.length > max || (!empty && value === '')) throw new Error('invalid dialog')
@@ -165,6 +187,25 @@ export function parseDialogSpec(raw: string): DialogSpec {
     if (typeof max !== 'number' || !Number.isInteger(max) || max < 1 || max > 80) throw new Error('invalid dialog')
     const value = text(input['value'], 40, true)
     spec.input = { label: text(input['label'], 60), value, max, ...(input['placeholder'] !== undefined ? { placeholder: text(input['placeholder'], 40) } : {}) }
+  }
+  const list = json['list']
+  if (list !== undefined) {
+    if (spec.input || !isRecord(list) || !Array.isArray(list['choices']) || list['choices'].length === 0 || list['choices'].length > 12) throw new Error('invalid dialog')
+    const choices = (list['choices'] as unknown[]).map((choice) => {
+      if (!isRecord(choice)) throw new Error('invalid dialog')
+      const id = text(choice['id'], 24)
+      if (!CHOICE_ID.test(id)) throw new Error('invalid dialog')
+      return { id, text: text(choice['text'], 100), ...(choice['hint'] !== undefined ? { hint: text(choice['hint'], 60) } : {}) }
+    })
+    if (new Set(choices.map((c) => c.id)).size !== choices.length) throw new Error('invalid dialog')
+    spec.list = { label: text(list['label'], 60), ...(list['placeholder'] !== undefined ? { placeholder: text(list['placeholder'], 40) } : {}), choices }
+  }
+  const file = json['file']
+  if (file !== undefined) {
+    if (spec.input || spec.list || !isRecord(file) || file['accept'] !== '.json') throw new Error('invalid dialog')
+    const max = file['max']
+    if (typeof max !== 'number' || !Number.isInteger(max) || max < 1 || max > MAX_IMPORT_BYTES) throw new Error('invalid dialog')
+    spec.file = { label: text(file['label'], 60), accept: '.json', max }
   }
   const colors = json['colors']
   if (colors !== undefined) {
@@ -197,11 +238,20 @@ export const DIALOG_WIDTH = 400
 
 /** How tall the dialog window is, from what it shows. */
 export function dialogHeight(spec: DialogSpec): number {
-  return 190 + (spec.input ? 70 : 0) + (spec.colors ? 100 : 0) + (spec.message ? 40 : 0)
+  return 190 + (spec.input ? 70 : 0) + (spec.colors ? 100 : 0) + (spec.message ? 40 : 0) + (spec.list ? 200 : 0) + (spec.file ? 90 : 0)
 }
 
 export function cancelled(spec: DialogSpec): DialogResult {
   return { button: spec.cancel, value: null, color: null }
+}
+
+/** Whether the value is something the dialog could have given: text for a field, an id from its list, the text of a file within its limit. */
+function checkValue(spec: DialogSpec, value: unknown): boolean {
+  if (typeof value !== 'string') return false
+  if (spec.input) return Array.from(value).length <= spec.input.max
+  if (spec.list) return spec.list.choices.some((c) => c.id === value)
+  if (spec.file) return Buffer.from(value, 'utf8').toString('utf8') === value && Buffer.byteLength(value, 'utf8') <= spec.file.max
+  return false
 }
 
 /** What the dialog page answered, held against what it offered: anything else counts as cancelling. */
@@ -209,7 +259,18 @@ export function checkDialogResult(spec: DialogSpec, raw: unknown): DialogResult 
   if (!isRecord(raw) || typeof raw['button'] !== 'string' || !spec.buttons.some((b) => b.id === raw['button'])) return cancelled(spec)
   const value = raw['value'] ?? null
   const color = raw['color'] ?? null
-  if (value !== null && (typeof value !== 'string' || !spec.input || Array.from(value).length > spec.input.max)) return cancelled(spec)
+  if (value !== null && !checkValue(spec, value)) return cancelled(spec)
   if (color !== null && (typeof color !== 'string' || !spec.colors?.choices.some((c) => c.value === color))) return cancelled(spec)
-  return { button: raw['button'], value, color }
+  return { button: raw['button'], value: value as string | null, color: color as string | null }
+}
+
+// ------------------------------------------------------------- export file
+
+/** Where an exported list goes: `mnema-servers.json` in `dir`, or the first free `mnema-servers (2).json`, and so on. Never over a file that is there. */
+export function exportTarget(dir: string, taken: (path: string) => boolean): string {
+  for (let n = 1; n < 1000; n++) {
+    const path = join(dir, n === 1 ? 'mnema-servers.json' : `mnema-servers (${n}).json`)
+    if (!taken(path)) return path
+  }
+  throw new Error('The list could not be saved.')
 }

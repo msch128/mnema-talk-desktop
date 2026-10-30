@@ -76,7 +76,7 @@ test('the menu, the dialog and the icon are answered to the rail alone, with the
   const rail = read('../src/main/rail.ts')
   assert.match(rail, /case 'rail_menu': showMenu\(ctx, parseMenuSpec\(specText\(args\)\)/)
   assert.match(rail, /case 'rail_dialog': return showDialog\(ctx, parseDialogSpec\(specText\(args\)\)\)/)
-  assert.match(rail, /case 'rail_edit': editLayout\(ctx, parseEdit\(args\)\)/)
+  assert.match(rail, /case 'rail_edit': return railEdit\(ctx, parseEdit\(args\)\)/)
   assert.match(rail, /ctx\.trusted\.registry\.contains\(id\) \? ctx\.trusted\.icons\.dataUrl\(id\) : null/)
   assert.doesNotMatch(read('../src/main/ipc.ts'), /rail_|mnema:dialog/)
 })
@@ -139,4 +139,15 @@ test('the picker cannot leave a screen share request unanswered', () => {
 test('the window title is defined once', () => {
   for (const file of ['main.ts', 'shell.ts', 'windows.ts']) assert.doesNotMatch(read(`../src/main/${file}`), /'Mnema Desktop DEV'/, file)
   assert.match(read('../src/core/title.ts'), /export const TITLE = 'Mnema Desktop DEV'/)
+})
+
+test('the rail edits through one command that may answer with a path or a count, and the extras stay behind the same checks', () => {
+  const rail = read('../src/main/rail.ts')
+  assert.match(rail, /case 'rail_edit': return railEdit\(ctx, parseEdit\(args\)\)/)
+  const shell = read('../src/main/shell.ts')
+  for (const op of ["case 'mute'", "case 'mark_read'", "case 'export'", "case 'import'"]) assert.ok(shell.includes(op), op)
+  // The Ctrl+K switcher is the rail page's own list; the host only asks the rail to open it.
+  assert.match(shell, /window\.mnemaRail&&window\.mnemaRail\.quickSwitch\(\)/)
+  // A list that is taken in is checked like one read from disk, and sized before it is parsed.
+  assert.match(shell, /MAX_IMPORT_BYTES[\s\S]*?storedFrom\(raw\)/)
 })
