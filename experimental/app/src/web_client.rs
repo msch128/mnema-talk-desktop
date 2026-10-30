@@ -1782,10 +1782,15 @@ mod tests {
     #[test]
     fn a_blob_of_the_app_origin_is_the_pages_own_download() {
         let id = "0b9d63a2-3f8e-4d6e-9a10-2f4c1c1e7f11";
-        assert!(own_blob(&url(&format!("blob:mnema://localhost/{id}"))));
+        // The app origin is a different scheme and host per platform.
+        let origin = app_url().join(id).unwrap();
+        assert!(own_blob(&url(&format!("blob:{origin}"))));
         for foreign in [
             format!("blob:https://example.org/{id}"),
-            format!("blob:mnema://evil.example/{id}"),
+            format!(
+                "blob:{}",
+                origin.as_str().replacen("localhost", "evil.example", 1)
+            ),
             "blob:null/x".to_owned(),
             "blob:".to_owned(),
             "mnema://localhost/api/x".to_owned(),
