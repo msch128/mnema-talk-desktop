@@ -1,0 +1,16 @@
+scripts/license-bundle.mjs
+  h_0ff4f4713441f4 10-12
+scripts/license-bundle.test.mjs
+  h_0ff4f4713441f4 147-160
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "229394e9f7e37f3e335c6765de61d16cf571a2e2",
+  "prompts": {},
+  "humans": {
+    "h_0ff4f4713441f4": {
+      "author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}
