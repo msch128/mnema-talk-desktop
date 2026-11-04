@@ -2,7 +2,6 @@
 # split a file by responsibility and delete its line; never add one.
 experimental/app/page-tests/src/railPage.test.ts test
 experimental/app/rail-ui/rail.js production
-experimental/app/src/instances.rs production
 experimental/app/src/native_updates.rs production
 experimental/app/src/native_updates/tests.rs test
 experimental/app/src/rail_layout.rs production
