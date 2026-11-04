@@ -1,0 +1,188 @@
+linux/src/core/store.ts
+  s_06fcde5dbef956::t_340f7a85ae4a22 1-395
+linux/scripts/gen-vectors.ts
+  s_06fcde5dbef956::t_b605a230657a49 1-591
+  s_06fcde5dbef956::t_795ac82d597680 592-593
+linux/src/core/zip.ts
+  s_06fcde5dbef956::t_94e18b0576adcb 1-130,132-133
+  s_06fcde5dbef956::t_223eb1fa134c06 131
+linux/src/core/encoding.ts
+  s_06fcde5dbef956::t_3160356c5e4366 1-27
+linux/src/core/ed25519.ts
+  s_06fcde5dbef956::t_36044d26c74c34 1-59
+linux/src/core/bundle.ts
+  s_06fcde5dbef956::t_648486bf216946 1-226
+linux/src/core/selfupdate.ts
+  s_06fcde5dbef956::t_d2b84607c78eb4 1-548
+  s_06fcde5dbef956::t_e6f8347d519246 549-555
+linux/src/core/cookies.ts
+  s_06fcde5dbef956::t_a0f038f8173eb8 1-160
+linux/src/core/version.ts
+  s_06fcde5dbef956::t_4f0c432abbb9dd 1-35
+linux/src/core/minisign.ts
+  s_06fcde5dbef956::t_6de1fef8220d65 1-75
+linux/src/core/http.ts
+  s_06fcde5dbef956::t_0b76fa85692973 1-101,103
+  s_06fcde5dbef956::t_4ce237e46cd052 102
+linux/README.md
+  s_06fcde5dbef956::t_9f86f67fe1e8e2 1-172
+linux/src/core/updates.ts
+  s_06fcde5dbef956::t_3b80b42fdfa2c6 1-109
+  s_06fcde5dbef956::t_979e95c01ce78f 110-131
+linux/src/core/trust.ts
+  s_06fcde5dbef956::t_904ba0b21434e6 1-287
+  s_06fcde5dbef956::t_da228bb7be38a6 288-291
+linux/src/core/proxy.ts
+  s_06fcde5dbef956::t_e64559eeffece1 1-380
+  s_06fcde5dbef956::t_ecaa4d16ff4f36 381-387
+linux/src/core/sockets.ts
+  s_06fcde5dbef956::t_e84c36679d3c39 1-88
+.github/workflows/desktop-linux.yml
+  s_06fcde5dbef956::t_88c14f74899850 1-155
+.github/workflows/desktop-client.yml
+  s_06fcde5dbef956::t_37611788c3e44a 44,56
+.github/workflows/desktop-release.yml
+  s_06fcde5dbef956::t_cba196fa3573cd 4-6,231-287,289,308-311,322-323,325-327,329,331,334-336
+.gitignore
+  s_06fcde5dbef956::t_ccd921f26a4e43 10-14
+.gitleaks.toml
+  s_06fcde5dbef956::t_eb51e95381f951 34-39
+README.md
+  s_06fcde5dbef956::t_49c6d73377f0f0 4-8,10,28,79-141,148-149,169-170,178-183,216-234,237-238,247-248
+THIRD_PARTY_NOTICES.md
+  s_06fcde5dbef956::t_03763ef2dd2464 3-6
+linux/THIRD_PARTY_NOTICES.md
+  s_06fcde5dbef956::t_52ac914fa3f81f 1-58
+linux/assets/picker-ui/index.html
+  s_06fcde5dbef956::t_a0621e0eff146a 1-24
+linux/assets/picker-ui/picker.css
+  s_06fcde5dbef956::t_c6469ad7a2e217 1-33
+linux/assets/picker-ui/picker.js
+  s_06fcde5dbef956::t_78d4fc4b5b36d4 1-55
+linux/assets/update-ui/index.html
+  s_06fcde5dbef956::t_b431085259cbe3 1-26
+linux/assets/update-ui/update.css
+  s_06fcde5dbef956::t_6d1a59953f99a9 1-52
+linux/assets/update-ui/update.js
+  s_06fcde5dbef956::t_2c8e9dd559bdd2 1-107
+linux/electron-builder.yml
+  s_06fcde5dbef956::t_cb439d2d7bb762 1-79
+linux/eslint.config.ts
+  s_06fcde5dbef956::t_188d26b82bf80a 1-22
+linux/package-lock.json
+  s_06fcde5dbef956::t_6291b1e28ce01d 1-4743
+linux/package.json
+  s_06fcde5dbef956::t_d916bedc048d03 1-40
+linux/scripts/refuse.sh
+  s_06fcde5dbef956::t_14e622e349b84b 1-31
+linux/scripts/smoke.sh
+  s_06fcde5dbef956::t_1ac2dbaa73fc6c 1-30
+linux/src/core/client.ts
+  s_06fcde5dbef956::t_856567ed3105a8 1-85
+linux/src/core/discover.ts
+  s_06fcde5dbef956::t_c25619f8a8de31 1-30
+linux/src/core/origin.ts
+  s_06fcde5dbef956::t_e37f7188465702 1-50
+linux/src/core/pinned.ts
+  s_06fcde5dbef956::t_33ada2a01fd883 1-22
+linux/src/core/trusted.ts
+  s_06fcde5dbef956::t_e47462dc1f8f0c 1-187
+linux/src/main/assets.ts
+  s_06fcde5dbef956::t_b6448f85bd8e5e 1-19
+linux/src/main/context.ts
+  s_06fcde5dbef956::t_0907f40efa2380 1-24
+linux/src/main/ipc.ts
+  s_06fcde5dbef956::t_377dbc8253fd5d 1-158
+linux/src/main/main.ts
+  s_06fcde5dbef956::t_557c34e64ec2cb 1-146
+linux/src/main/menu.ts
+  s_06fcde5dbef956::t_f503ac576afa26 1-28
+linux/src/main/permissions.ts
+  s_06fcde5dbef956::t_6e553bb45cdba4 1-95
+linux/src/main/protocol.ts
+  s_06fcde5dbef956::t_831d85f47eeed9 1-129
+linux/src/main/sandbox.ts
+  s_06fcde5dbef956::t_a0400d77e167da 1-44
+linux/src/main/updater.ts
+  s_06fcde5dbef956::t_1708d513d03d1a 1-61
+linux/src/main/vault.ts
+  s_06fcde5dbef956::t_c118fe2b75ab4e 1-63
+linux/src/main/windows.ts
+  s_06fcde5dbef956::t_384d1f82c5ac1d 1-172
+linux/src/preload/preload.cts
+  s_06fcde5dbef956::t_16b0d2fd4e412a 1-82
+linux/test/bundle.test.ts
+  s_06fcde5dbef956::t_8d204f8032e648 1-128
+linux/test/client.test.ts
+  s_06fcde5dbef956::t_36ca7a2629c0a4 1-45
+linux/test/e2e/app.e2e.ts
+  s_06fcde5dbef956::t_2822342843898a 1-168
+linux/test/e2e/cdp.ts
+  s_06fcde5dbef956::t_efab0b70929a46 1-73
+linux/test/e2e/launch.ts
+  s_06fcde5dbef956::t_c1f79e8723dc3a 1-67
+linux/test/fixtures/tauri-cli.bin
+  s_06fcde5dbef956::t_a55d47a2091ff1 1
+linux/test/fixtures/tauri-cli.pub
+  s_06fcde5dbef956::t_4ed9203c145a9a 1
+linux/test/fixtures/tauri-cli.sig
+  s_06fcde5dbef956::t_03e6f858b0ca39 1
+linux/test/helpers/fixtures.ts
+  s_06fcde5dbef956::t_ecd94f32f6b2ad 1-245
+linux/test/helpers/server.ts
+  s_06fcde5dbef956::t_a2e1174f62fe95 1-40
+linux/test/minisign.test.ts
+  s_06fcde5dbef956::t_29114c17930e17 1-41
+linux/test/notices.test.ts
+  s_06fcde5dbef956::t_ff9244368edd85 1-13
+linux/test/pinned.test.ts
+  s_06fcde5dbef956::t_925e794c1229de 1-28
+linux/test/proxy.test.ts
+  s_06fcde5dbef956::t_4a6b7f341aa19b 1-314
+linux/test/sandbox.test.ts
+  s_06fcde5dbef956::t_af3c8912d3fe16 1-26
+linux/test/selfupdate.test.ts
+  s_06fcde5dbef956::t_95dbe83fbe4e39 1-335
+linux/test/sockets.test.ts
+  s_06fcde5dbef956::t_965ebbdb45f8c4 1-103
+linux/test/store.test.ts
+  s_06fcde5dbef956::t_d930bce11f1fd7 1-253
+linux/test/trust.test.ts
+  s_06fcde5dbef956::t_3a75bec9f3dc6a 1-225
+linux/test/trusted.test.ts
+  s_06fcde5dbef956::t_3e6cc6cd35d08f 1-157
+linux/test/updates.test.ts
+  s_06fcde5dbef956::t_fa56c749277b05 1-104
+linux/test/vectors.test.ts
+  s_06fcde5dbef956::t_783d5288610c0b 1-168
+linux/tsconfig.build.json
+  s_06fcde5dbef956::t_2588e25fb66918 1-10
+linux/tsconfig.json
+  s_06fcde5dbef956::t_acead83bd52cd8 1-21
+scripts/check-release-version.test.mjs
+  s_06fcde5dbef956::t_b167a5a40b7c69 26-37
+scripts/stage-web-bundle.sh
+  s_06fcde5dbef956::t_6720f933b8447a 6-8,10-11,14,24
+scripts/update-manifest.mjs
+  s_06fcde5dbef956::t_b311c2ca122705 18-21,28,47-57,72,75-81,88
+scripts/update-manifest.test.mjs
+  s_06fcde5dbef956::t_14b8dd86894207 3,42-72
+scripts/verify-updater-signatures.test.mjs
+  s_06fcde5dbef956::t_9514c902c61a77 62-81
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "80ec1fc5bf2abae0dba3d70b6b1747af1ad3ff96",
+  "prompts": {},
+  "sessions": {
+    "s_06fcde5dbef956": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "94b73314-95fe-4e96-8c43-d20b0f28358d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}

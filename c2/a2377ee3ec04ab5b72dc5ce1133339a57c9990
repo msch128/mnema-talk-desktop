@@ -1,0 +1,23 @@
+linux/README.md
+  s_06fcde5dbef956::t_1979e14200db76 41-42
+linux/src/core/debinstall.ts
+  s_06fcde5dbef956::t_0b0d2210f251f5 25,27-28,32-35,40,43-44,46-47,59-61,106,109
+linux/test/debinstall.test.ts
+  s_06fcde5dbef956::t_71cd3bea6e7615 4,8,23,32,48-49,62,68,80,85-86,89-99
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c2a2377ee3ec04ab5b72dc5ce1133339a57c9990",
+  "prompts": {},
+  "sessions": {
+    "s_06fcde5dbef956": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "94b73314-95fe-4e96-8c43-d20b0f28358d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}

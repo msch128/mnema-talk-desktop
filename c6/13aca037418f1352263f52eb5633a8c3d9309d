@@ -1,0 +1,22 @@
+experimental/app/src/web_shell.rs
+  h_0ff4f4713441f4 429-430,448-454,472-478,506-508,523,529-541,555,831-836,1554,1575-1607
+linux/src/core/visibility.ts
+  h_0ff4f4713441f4 1-15
+linux/src/main/shell.ts
+  h_0ff4f4713441f4 29,42,47,49,52-53,164-165
+linux/src/main/windows.ts
+  h_0ff4f4713441f4 110-111
+linux/test/visibility.test.ts
+  h_0ff4f4713441f4 1-17
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c613aca037418f1352263f52eb5633a8c3d9309d",
+  "prompts": {},
+  "humans": {
+    "h_0ff4f4713441f4": {
+      "author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}

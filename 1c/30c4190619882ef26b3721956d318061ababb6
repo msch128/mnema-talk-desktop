@@ -1,0 +1,16 @@
+.github/workflows/desktop-client.yml
+  h_0ff4f4713441f4 210-211,532
+experimental/app/src/web_client.rs
+  h_0ff4f4713441f4 1236-1257
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1c30c4190619882ef26b3721956d318061ababb6",
+  "prompts": {},
+  "humans": {
+    "h_0ff4f4713441f4": {
+      "author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}

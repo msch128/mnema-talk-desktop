@@ -1,0 +1,37 @@
+experimental/app/src/instances.rs
+  s_06fcde5dbef956::t_32eb73bd421cf3 10-14,60,66
+experimental/app/src/web_bundle.rs
+  s_06fcde5dbef956::t_97b31881899b8a 64-72
+experimental/app/src/web_client.rs
+  s_06fcde5dbef956::t_d11c3da260a07f 11,93,96
+experimental/app/src/web_trust.rs
+  s_06fcde5dbef956::t_81b43ee8761e70 9,14,55-65,91,145-146,265-313,318-335,341,343-347,350-372,374-407,411,429-456,458-461,467-474,477,480-484,491-505,507-508,691-694,703-857,961-962,968-972
+linux/scripts/gen-vectors.ts
+  s_06fcde5dbef956::t_b6c43ca79a1ddf 380-383,402-403
+linux/src/core/trust.ts
+  s_06fcde5dbef956::t_c3254e2c412258 12,21,24-25,50-55,61,217-253,256-263,266-267,270-277,280,283-286,289-303,326-357,361,366-368,371-374,379-389
+linux/src/core/trusted.ts
+  s_06fcde5dbef956::t_b9fc3a9d82a719 19,39-40,53,77
+linux/test/trust.test.ts
+  s_06fcde5dbef956::t_3fc7179ed48ffc 2,8,136-138,142-224,270-271,273-274
+linux/test/trusted.test.ts
+  s_06fcde5dbef956::t_7d9878efdd4c79 9,28
+test-vectors/trust.json
+  s_06fcde5dbef956::t_63c04ebe319ce7 67-94,523-550
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "cf58a4d361680b44aa674821360e7dbef3390cc7",
+  "prompts": {},
+  "sessions": {
+    "s_06fcde5dbef956": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "94b73314-95fe-4e96-8c43-d20b0f28358d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}

@@ -1,0 +1,31 @@
+deny.toml
+  s_06fcde5dbef956::t_584a9f2d38062c 22
+doc/security-review-1.2.md
+  s_06fcde5dbef956::t_b97cf848852afb 84-86
+experimental/app/Cargo.lock
+  s_06fcde5dbef956::t_289f4c2aa38316 792,794,5761
+experimental/crates/crypto-owner/Cargo.lock
+  s_06fcde5dbef956::t_ae2ced067d4ca0 474,476
+experimental/crates/crypto-owner/qualified-sdk/Cargo.lock
+  s_06fcde5dbef956::t_dd17fe58d82f0a 435,437
+experimental/vendor/openmls/Cargo.lock
+  s_06fcde5dbef956::t_f53714db2836cb 855,857
+experimental/vendor/openmls/compat_tests/Cargo.lock
+  s_06fcde5dbef956::t_6c740d7fed882d 492,494
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d15d7802621a94a1692d027f62a602f21488bdd3",
+  "prompts": {},
+  "sessions": {
+    "s_06fcde5dbef956": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "94b73314-95fe-4e96-8c43-d20b0f28358d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}

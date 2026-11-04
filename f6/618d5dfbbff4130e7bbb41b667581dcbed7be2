@@ -1,0 +1,39 @@
+.github/workflows/desktop-release.yml
+  s_06fcde5dbef956::t_d148d0bb66ccb5 6-7,266-268,282-287,346-347,351-353,355,360,362
+linux/README.md
+  s_06fcde5dbef956::t_2eaa270c592f6c 35-46
+linux/src/core/debinstall.ts
+  s_06fcde5dbef956::t_3ae5e559ec03c3 1-87
+linux/src/core/selfupdate.ts
+  s_06fcde5dbef956::t_514ed9cc0e6557 17-19,86,88-90,191-193,393-397,499,503-506
+linux/src/main/updater.ts
+  s_06fcde5dbef956::t_eae15ae8aa2d9e 6-8,22-26,29,36,41-47,52-62,71
+linux/test/debinstall.test.ts
+  s_06fcde5dbef956::t_4389216d984527 1-63
+linux/test/selfupdate.test.ts
+  s_06fcde5dbef956::t_48afbd52283f05 109-111,339-388
+scripts/update-manifest.mjs
+  s_06fcde5dbef956::t_8b9803ec8438f3 20-22,54-55,75
+scripts/update-manifest.test.mjs
+  s_06fcde5dbef956::t_ab69968733dd6a 55,68,73-89
+scripts/verify-updater-signatures.mjs
+  s_06fcde5dbef956::t_107729f0126a4f 60-61
+scripts/verify-updater-signatures.test.mjs
+  s_06fcde5dbef956::t_3f6eb85479dad9 101-117
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f6618d5dfbbff4130e7bbb41b667581dcbed7be2",
+  "prompts": {},
+  "sessions": {
+    "s_06fcde5dbef956": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "94b73314-95fe-4e96-8c43-d20b0f28358d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}

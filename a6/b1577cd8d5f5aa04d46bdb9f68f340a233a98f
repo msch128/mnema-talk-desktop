@@ -1,0 +1,48 @@
+linux/assets/update-ui/update.js
+  h_0ff4f4713441f4 16,32
+linux/src/core/atomic.ts
+  h_0ff4f4713441f4 1-27
+linux/src/core/bundle.ts
+  h_0ff4f4713441f4 12,41
+linux/src/core/encoding.ts
+  h_0ff4f4713441f4 33-53
+linux/src/core/instances.ts
+  h_0ff4f4713441f4 11-12,15,42,149
+linux/src/core/minisign.ts
+  h_0ff4f4713441f4 11,18,36-39,41-60
+linux/src/core/selfupdate.ts
+  h_0ff4f4713441f4 21-23,43-44,138,157,165,302-303,351-353,355-356,380
+linux/src/core/sockets.ts
+  h_0ff4f4713441f4 14-15,90-91,94
+linux/src/core/store.ts
+  h_0ff4f4713441f4 6,8,185,266
+linux/src/core/trust.ts
+  h_0ff4f4713441f4 17,75,169
+linux/src/core/trusted.ts
+  h_0ff4f4713441f4 57-60,78-80,142-143,146,154,158-167,171-176,178-188,200,206-207,214,244-249
+linux/src/core/zip.ts
+  h_0ff4f4713441f4 2,87
+linux/src/main/main.ts
+  h_0ff4f4713441f4 102-104,114-115,118,120,122-125,127-130
+linux/test/encoding.test.ts
+  h_0ff4f4713441f4 1-52
+linux/test/selfupdate.test.ts
+  h_0ff4f4713441f4 173-207,247,345,419
+linux/test/sockets.test.ts
+  h_0ff4f4713441f4 8,105-124
+linux/test/trust.test.ts
+  h_0ff4f4713441f4 134-135,142-143
+linux/test/trusted.test.ts
+  h_0ff4f4713441f4 221-253
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a6b1577cd8d5f5aa04d46bdb9f68f340a233a98f",
+  "prompts": {},
+  "humans": {
+    "h_0ff4f4713441f4": {
+      "author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}

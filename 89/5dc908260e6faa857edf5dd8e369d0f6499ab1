@@ -1,0 +1,43 @@
+.github/workflows/desktop-client.yml
+  s_06fcde5dbef956::t_e4a942f0c3d0f9 210-211,532
+.github/workflows/desktop-release.yml
+  s_06fcde5dbef956::t_baf093345a67a1 172-173,495-497,499-500
+README.md
+  s_06fcde5dbef956::t_a81b41865c5f64 85
+experimental/app/src/native_updates.rs
+  s_06fcde5dbef956::t_f26afb7c31452b 42-50,55-74,189-190,240,273,306-313,340,364,377-378,396-398,400,411,606-608,748-750,783-784,975,977-990
+experimental/app/src/native_updates/tests.rs
+  s_06fcde5dbef956::t_20b87927cd2536 294-303,325,773-872
+experimental/app/src/selftest_multi.rs
+  s_06fcde5dbef956::t_dbcbbdbe7c0eaf 403-404
+experimental/app/src/web_client.rs
+  s_06fcde5dbef956::t_160b95d6c2dc6e 550-613,628,1229-1317
+experimental/app/src/web_gaming.rs
+  s_06fcde5dbef956::t_6b42a883fcd9e2 53-55,1041-1043
+experimental/app/update-ui/update.js
+  s_06fcde5dbef956::t_cbc73fcd3c7d24 21,38,63-64,83,90
+linux/assets/update-ui/update.js
+  s_06fcde5dbef956::t_dc8788549bb768 21,38,63-64,83,90
+linux/src/core/discover.ts
+  s_06fcde5dbef956::t_53594a48f0e8b7 7-27,37-38
+linux/test/discover.test.ts
+  s_06fcde5dbef956::t_8027c29e7e2926 1-25
+linux/test/e2e/app.e2e.ts
+  s_06fcde5dbef956::t_50781f8ad1e5ed 89-90,97
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "895dc908260e6faa857edf5dd8e369d0f6499ab1",
+  "prompts": {},
+  "sessions": {
+    "s_06fcde5dbef956": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "94b73314-95fe-4e96-8c43-d20b0f28358d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}

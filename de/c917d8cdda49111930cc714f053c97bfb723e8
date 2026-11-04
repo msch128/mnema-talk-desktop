@@ -1,0 +1,27 @@
+README.md
+  s_06fcde5dbef956::t_867a2572c0af54 60-63
+experimental/app/src/selftest_multi.rs
+  s_06fcde5dbef956::t_b87237b90eb043 61-72,202,482-539
+experimental/app/src/web_client.rs
+  s_06fcde5dbef956::t_43141e0e6452f9 80-100,112-113,134,139-146,150-152,154-170,1329-1339,1344-1346,1348-1350,1352-1369,1371-1378,1380-1381,1383
+experimental/app/src/web_shell.rs
+  s_06fcde5dbef956::t_7e126bcc722694 15,229,258-300,317,914-918,1083-1086
+scripts/multi-instance-selftest.mjs
+  s_06fcde5dbef956::t_974eb9e85b41f4 65
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "dec917d8cdda49111930cc714f053c97bfb723e8",
+  "prompts": {},
+  "sessions": {
+    "s_06fcde5dbef956": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "94b73314-95fe-4e96-8c43-d20b0f28358d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}

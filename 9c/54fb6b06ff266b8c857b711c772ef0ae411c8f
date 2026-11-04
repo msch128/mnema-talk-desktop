@@ -1,0 +1,27 @@
+experimental/app/src/web_bundle.rs
+  s_06fcde5dbef956::t_26188b0db1ab35 675-685
+linux/scripts/gen-vectors.ts
+  s_06fcde5dbef956::t_8aa72d32f8a5c3 204-207
+linux/src/core/store.ts
+  s_06fcde5dbef956::t_7e2c5baec1fba1 324-325
+linux/test/store.test.ts
+  s_06fcde5dbef956::t_0c593ea84bbf00 142-143
+test-vectors/store.json
+  s_06fcde5dbef956::t_9854c6749e0ab4 719-786
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9c54fb6b06ff266b8c857b711c772ef0ae411c8f",
+  "prompts": {},
+  "sessions": {
+    "s_06fcde5dbef956": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "94b73314-95fe-4e96-8c43-d20b0f28358d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}

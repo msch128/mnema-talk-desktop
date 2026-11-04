@@ -1,0 +1,21 @@
+deny.toml
+  s_06fcde5dbef956::t_c492b417c0f8a5 23
+doc/security-review-1.2.md
+  s_06fcde5dbef956::t_ea5e2f62b35983 90
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b74d29684859fac5e50515c4ccf185a3067dec7e",
+  "prompts": {},
+  "sessions": {
+    "s_06fcde5dbef956": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "94b73314-95fe-4e96-8c43-d20b0f28358d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}

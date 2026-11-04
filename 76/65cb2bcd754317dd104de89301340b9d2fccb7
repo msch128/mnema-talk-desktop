@@ -1,0 +1,20 @@
+.github/workflows/desktop-client.yml
+  h_0ff4f4713441f4 287
+.github/workflows/desktop-release.yml
+  h_0ff4f4713441f4 215
+THIRD_PARTY_NOTICES.md
+  h_0ff4f4713441f4 11-13
+experimental/app/tauri.conf.json
+  h_0ff4f4713441f4 30-34
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7665cb2bcd754317dd104de89301340b9d2fccb7",
+  "prompts": {},
+  "humans": {
+    "h_0ff4f4713441f4": {
+      "author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}

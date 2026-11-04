@@ -1,0 +1,46 @@
+.github/workflows/desktop-client.yml
+  h_0ff4f4713441f4 1-283
+.github/workflows/desktop-gaming-fixture.yml
+  h_0ff4f4713441f4 1-123
+.github/workflows/probe.yml
+  h_0ff4f4713441f4 1-122
+.gitignore
+  h_0ff4f4713441f4 1-4
+.gitleaks.toml
+  h_0ff4f4713441f4 1-33
+LICENSE
+  h_0ff4f4713441f4 1-663
+OWNED-D3D11-FIXTURE.md
+  h_0ff4f4713441f4 19-20
+README.md
+  h_0ff4f4713441f4 1-11,16-17,47-50,53,56,59-63,68-70,113-114,136-140,157
+experimental/README.md
+  h_0ff4f4713441f4 21,35-38,83,100,103-104,106-107
+experimental/THIRD_PARTY_NOTICES.md
+  h_0ff4f4713441f4 3
+experimental/app/tauri.conf.json
+  h_0ff4f4713441f4 7
+experimental/scripts/collect-licenses.mjs
+  h_0ff4f4713441f4 11
+licenses/README.md
+  h_0ff4f4713441f4 53-54
+package.json
+  h_0ff4f4713441f4 7
+scripts/check-native-test-vectors.mjs
+  h_0ff4f4713441f4 1-77
+scripts/test-windows-auth-fixture.ps1
+  h_0ff4f4713441f4 176
+ui/tsconfig.json
+  h_0ff4f4713441f4 2
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1b34b7b5117c8ebd3e02f84fac391ed0a7b3fc5e",
+  "prompts": {},
+  "humans": {
+    "h_0ff4f4713441f4": {
+      "author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}

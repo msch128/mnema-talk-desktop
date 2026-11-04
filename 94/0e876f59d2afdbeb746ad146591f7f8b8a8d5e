@@ -1,0 +1,14 @@
+linux/assets/update-ui/update.js
+  h_0ff4f4713441f4 21,38,63-64,83,90
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "940e876f59d2afdbeb746ad146591f7f8b8a8d5e",
+  "prompts": {},
+  "humans": {
+    "h_0ff4f4713441f4": {
+      "author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}

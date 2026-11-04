@@ -1,0 +1,18 @@
+experimental/app/src/web_gaming.rs
+  h_0ff4f4713441f4 41
+src/shortcuts.rs
+  h_0ff4f4713441f4 1,3-7,58
+src/windows.rs
+  h_0ff4f4713441f4 1,3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a4b45d57d91e637570c398913e37be40e1404e85",
+  "prompts": {},
+  "humans": {
+    "h_0ff4f4713441f4": {
+      "author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}

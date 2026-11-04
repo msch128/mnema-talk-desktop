@@ -1,0 +1,75 @@
+experimental/app/rail-ui/rail.js
+  s_06fcde5dbef956::t_6db8da099ae1c3 16,27,38-39,42,44,118-119,121,147-148,150-151,173,186,190,214,233-236,239-247
+experimental/app/update-ui/update.js
+  s_06fcde5dbef956::t_47a7be392cee1b 19-20,35-36,60-62,80-82,87
+linux/README.md
+  s_06fcde5dbef956::t_29d3831646ffc7 58-63
+linux/assets/picker-ui/picker.js
+  s_06fcde5dbef956::t_d16a26b7c1a0c1 6-7,54-60
+linux/assets/rail-ui/rail.js
+  s_06fcde5dbef956::t_71e8ffe22b2f15 16,27,38-39,42,44,118-119,121,147-148,150-151,173,186,190,214,233-236,239-247
+linux/electron-builder.yml
+  s_06fcde5dbef956::t_cf66c8d877dfd3 59
+linux/scripts/launch-lib.sh
+  s_06fcde5dbef956::t_60eb541f5ea192 1-19
+linux/scripts/refuse.sh
+  s_06fcde5dbef956::t_97b0cbca19bc28 7,11,21
+linux/scripts/smoke.sh
+  s_06fcde5dbef956::t_c88520ec350f0d 5-6,8,10,20
+linux/src/core/instances.ts
+  s_06fcde5dbef956::t_76c0a319c7dbf1 112-113,120-124,130,132-134,136,138,140,142,146,152,173-174,178,192-196
+linux/src/core/ipcargs.ts
+  s_06fcde5dbef956::t_2e0a36e8a43494 1-18
+linux/src/core/pagesockets.ts
+  s_06fcde5dbef956::t_127915cbc52b13 1-22
+linux/src/core/permitted.ts
+  s_06fcde5dbef956::t_6f3f64e70b5c12 1-25
+linux/src/core/tickets.ts
+  s_06fcde5dbef956::t_e0ecb68f8db0f7 1-19
+linux/src/core/wipe.ts
+  s_06fcde5dbef956::t_2d0a486fcbaf40 1-41
+linux/src/main/context.ts
+  s_06fcde5dbef956::t_4ef1f497d52553 16-19,47
+linux/src/main/handle.ts
+  s_06fcde5dbef956::t_c6fd8b9eebb80c 1-35
+linux/src/main/ipc.ts
+  s_06fcde5dbef956::t_3c0c6cd91fd8b0 9,11,14,25-26,80,95,99,104,116,121,156
+linux/src/main/main.ts
+  s_06fcde5dbef956::t_27e3f825fe88b2 12,18,24,50-52,56,78,136-137,141-144
+linux/src/main/permissions.ts
+  s_06fcde5dbef956::t_78ae38d2194881 9,18,20-21,33-34,73-78
+linux/src/main/rail.ts
+  s_06fcde5dbef956::t_c8d76d73a39df8 7-9,12,17-18,35,45
+linux/src/main/sessions.ts
+  s_06fcde5dbef956::t_346f69a5ef2d63 26
+linux/src/main/shell.ts
+  s_06fcde5dbef956::t_fb50fbae7a1e22 13,19-22,59,62-65,67-69,72,76,82,87-96,103,204,215-216,227-228,234,238,312-313,317,323,327,358-364,366,370,378
+linux/src/main/windows.ts
+  s_06fcde5dbef956::t_a9e607b98d9a63 11
+linux/src/preload/preload.cts
+  s_06fcde5dbef956::t_8c27005a00009c 71,73
+linux/test/host.test.ts
+  s_06fcde5dbef956::t_df91614e1766dc 1-94
+linux/test/instances.test.ts
+  s_06fcde5dbef956::t_fe5a2bd0914347 272-293
+linux/test/rail.test.ts
+  s_06fcde5dbef956::t_908112beaa806b 14-19,23-24,48-93
+linux/test/scripts.test.ts
+  s_06fcde5dbef956::t_f18657ab68c3fa 1-21
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d28e0d5b21c36fde9c5600b5acc5cd76005897f5",
+  "prompts": {},
+  "sessions": {
+    "s_06fcde5dbef956": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "94b73314-95fe-4e96-8c43-d20b0f28358d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}

@@ -1,0 +1,25 @@
+GAMING.md
+  s_06fcde5dbef956::t_9740e700bef06b 46,50
+experimental/app/Cargo.toml
+  s_06fcde5dbef956::t_917ae77bb488a1 10,61
+experimental/app/src/web_gaming.rs
+  s_06fcde5dbef956::t_84ae5e45e4b9cd 883,885
+src/foreground.rs
+  s_06fcde5dbef956::t_123661cfe668df 62-63,73,179,181
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "60d2d656c2e0fde9f6c044bf9cecf43928f77c24",
+  "prompts": {},
+  "sessions": {
+    "s_06fcde5dbef956": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "94b73314-95fe-4e96-8c43-d20b0f28358d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}

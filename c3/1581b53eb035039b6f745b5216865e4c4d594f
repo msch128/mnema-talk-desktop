@@ -1,0 +1,40 @@
+experimental/app/page-shim/buffered-bodies.js
+  h_0ff4f4713441f4 1-40,43,44-45,47-48,50-51,54-73
+experimental/app/page-tests/src/bufferedBodies.test.ts
+  h_0ff4f4713441f4 1-102,104-109
+experimental/app/src/web_client.rs
+  h_0ff4f4713441f4 385,389-392,906-913,1090-1105,1108-1120,1144-1149,1266,1670-1717
+experimental/app/src/web_proxy.rs
+  h_0ff4f4713441f4 488-490,496-510,512-513,571,586,678-680,1910-2066,2160-2300
+linux/src/core/proxy.ts
+  h_0ff4f4713441f4 195-208,243,292
+linux/test/proxy.test.ts
+  h_0ff4f4713441f4 10-11,314-362,463-527
+experimental/README.md
+  h_0ff4f4713441f4 88-89,91
+experimental/app/src/web_shell.rs
+  h_0ff4f4713441f4 1060,1084,1089-1092,1094-1098,1102-1103,1113-1120,1191
+linux/README.md
+  h_0ff4f4713441f4 56
+linux/scripts/gen-vectors.ts
+  h_0ff4f4713441f4 847
+linux/src/core/client.ts
+  h_0ff4f4713441f4 145,147-151
+linux/src/main/windows.ts
+  h_0ff4f4713441f4 36,39
+linux/test/client.test.ts
+  h_0ff4f4713441f4 31-35
+test-vectors/client.json
+  h_0ff4f4713441f4 224-227
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c31581b53eb035039b6f745b5216865e4c4d594f",
+  "prompts": {},
+  "humans": {
+    "h_0ff4f4713441f4": {
+      "author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}

@@ -1,0 +1,16 @@
+experimental/app/src/web_shell.rs
+  h_0ff4f4713441f4 971-973,975-977
+experimental/app/src/web_proxy.rs
+  h_0ff4f4713441f4 418-420,553-561,607-610,613-624,626,775-779,781-790,837-841,924-931
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6a483e0e82003ba8b37e2485941767fc855c212c",
+  "prompts": {},
+  "humans": {
+    "h_0ff4f4713441f4": {
+      "author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}

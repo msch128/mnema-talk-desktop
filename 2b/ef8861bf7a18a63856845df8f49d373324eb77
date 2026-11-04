@@ -1,0 +1,59 @@
+.github/workflows/advisories.yml
+  s_06fcde5dbef956::t_84395bc7c285d2 54,58
+.github/workflows/desktop-client.yml
+  s_06fcde5dbef956::t_d967a45289aa28 77,360,419
+.github/workflows/desktop-gaming-fixture.yml
+  s_06fcde5dbef956::t_a1d89b2643b898 28
+.github/workflows/desktop-release.yml
+  s_06fcde5dbef956::t_ce418a63cd69fb 49,156
+.github/workflows/probe.yml
+  s_06fcde5dbef956::t_487a4b23d83864 77,90-92,106
+README.md
+  s_06fcde5dbef956::t_44f9da2d59e0cc 310
+experimental/README.md
+  s_06fcde5dbef956::t_4884d01cc2eddc 150
+experimental/THIRD_PARTY_NOTICES.md
+  s_06fcde5dbef956::t_63828e27bf00e5 5
+experimental/app/rust-toolchain.toml
+  s_06fcde5dbef956::t_30d481a596ff23 2
+experimental/crates/broker/research-vault-facade/rust-toolchain.toml
+  s_06fcde5dbef956::t_bfb21d75e639dc 2
+experimental/crates/broker/rust-toolchain.toml
+  s_06fcde5dbef956::t_a9e2c2f28e3fbe 2
+experimental/crates/media/rust-actor/rust-toolchain.toml
+  s_06fcde5dbef956::t_48dd2728ab0c69 2
+experimental/crates/media/rust/rust-toolchain.toml
+  s_06fcde5dbef956::t_02d44c9112f680 2
+experimental/licenses/manifest.json
+  s_06fcde5dbef956::t_4e50b190e32e62 8-9,13
+experimental/licenses/supplemental.json
+  s_06fcde5dbef956::t_14f09f8d76a57e 3-4,8
+licenses/README.md
+  s_06fcde5dbef956::t_24d09e25dae2d6 35
+licenses/manifest.json
+  s_06fcde5dbef956::t_61fdac2376ae68 8-9,13
+licenses/supplemental.json
+  s_06fcde5dbef956::t_379b6b431fb5e0 3-4,8
+rust-toolchain.toml
+  s_06fcde5dbef956::t_b7617eb793d70e 2
+scripts/collect-licenses.test.mjs
+  s_06fcde5dbef956::t_4dbcc1e17c4d07 24,28
+scripts/test-glib-linux.sh
+  s_06fcde5dbef956::t_fd52e64e5155ce 18
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2bef8861bf7a18a63856845df8f49d373324eb77",
+  "prompts": {},
+  "sessions": {
+    "s_06fcde5dbef956": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "94b73314-95fe-4e96-8c43-d20b0f28358d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}

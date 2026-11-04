@@ -1,0 +1,59 @@
+.github/workflows/desktop-client.yml
+  s_06fcde5dbef956::t_b63e6c5e99827c 204
+doc/security-review-1.2.md
+  s_06fcde5dbef956::t_cd6650901ccb54 91-101
+experimental/app/Cargo.lock
+  s_06fcde5dbef956::t_62952f427b5552 295,297,306,308,1907,1909,1916,1918,1920,2973,2975,2980,4633,4635,4652,4654,5273-5278,5281,5283
+experimental/crates/checked-storage/bootstrap/Cargo.toml
+  s_06fcde5dbef956::t_006dcf65a6b36c 16
+experimental/crates/checked-storage/bootstrap/src/lib.rs
+  s_06fcde5dbef956::t_cb7f05cd9aab06 533-535,542,558
+experimental/crates/checked-storage/checked-sqlite-storage/Cargo.toml
+  s_06fcde5dbef956::t_48539768cd64e0 18
+experimental/crates/checked-storage/checked-sqlite-storage/src/storage_provider.rs
+  s_06fcde5dbef956::t_9cad4a615bc554 29-83,105-106,988-1044
+experimental/crates/crypto-owner/Cargo.lock
+  s_06fcde5dbef956::t_9f5b34b82507b7 962,964,971,973,975,1715,1717,1722,2589,2591,2598,2600,2921-2926,2929,2931
+experimental/crates/crypto-owner/qualified-sdk/Cargo.lock
+  s_06fcde5dbef956::t_073537e0a9de3d 865,867,874,876,878,1490,1492,1497,2192,2194,2201,2203,2485-2490,2493,2495
+experimental/crates/crypto-owner/qualified-sdk/Cargo.toml
+  s_06fcde5dbef956::t_1b539413a5ec82 19-21
+experimental/crates/crypto-owner/qualified-sdk/src/lib.rs
+  s_06fcde5dbef956::t_ba75167073d5e1 1001-1003,1006,1034
+experimental/crates/crypto-owner/qualified-sdk/src/tests.rs
+  s_06fcde5dbef956::t_f6124b64a5b6b8 981,987
+experimental/crates/crypto-owner/qualified-sdk/tests/sqlcipher_memory_security.rs
+  s_06fcde5dbef956::t_70c43331c71b91 1-46
+experimental/crates/crypto-stack/crypto-core/Cargo.toml
+  s_06fcde5dbef956::t_2aa51ddb31895f 16
+experimental/crates/crypto-stack/crypto-core/src/lib.rs
+  s_06fcde5dbef956::t_7bdfc24cc93a7c 871-873,876,904
+experimental/crates/crypto-stack/crypto-core/src/tests.rs
+  s_06fcde5dbef956::t_3675a9305c4ae6 229,235
+experimental/crates/crypto-stack/crypto-enrollment/Cargo.toml
+  s_06fcde5dbef956::t_fcaa7014afe709 18
+experimental/crates/crypto-stack/crypto-enrollment/src/issuer.rs
+  s_06fcde5dbef956::t_a46da534b97950 476-478,481,501
+experimental/vendor/openmls/Cargo.lock
+  s_06fcde5dbef956::t_b15c4775c2609f 1450,1452,1459,1461,1463,2544,2546,3693,3695,3702,3704,4154,4156
+experimental/vendor/openmls/sqlite_storage/Cargo.toml
+  s_06fcde5dbef956::t_88df48029a6d8b 16
+experimental/vendor/openmls/sqlite_storage/src/storage_provider.rs
+  s_06fcde5dbef956::t_670abdcf72b08b 29-83,105-106,988-1044
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "07e0f7f96cb00b3d463b89dc74382aed6f9a7612",
+  "prompts": {},
+  "sessions": {
+    "s_06fcde5dbef956": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "94b73314-95fe-4e96-8c43-d20b0f28358d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}

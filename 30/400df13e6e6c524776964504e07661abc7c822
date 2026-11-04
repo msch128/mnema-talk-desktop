@@ -1,0 +1,27 @@
+.github/workflows/desktop-client.yml
+  s_06fcde5dbef956::t_31c21e37f45090 66-69,90-93,211,219-220,233,526,532-533,546-556,568
+.github/workflows/desktop-release.yml
+  s_06fcde5dbef956::t_92e4d67623fd97 341,343-344
+experimental/app/UI-CONTRACT.md
+  s_06fcde5dbef956::t_c71ccc25031c1d 72-74
+scripts/stage-web-bundle.sh
+  s_06fcde5dbef956::t_0b1afd7c295892 3-11,14,17-25,29-32,40-41
+scripts/stage-web-bundle.test.mjs
+  s_06fcde5dbef956::t_8c2762c121a824 1-62
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "30400df13e6e6c524776964504e07661abc7c822",
+  "prompts": {},
+  "sessions": {
+    "s_06fcde5dbef956": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "94b73314-95fe-4e96-8c43-d20b0f28358d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}

@@ -1,0 +1,61 @@
+Cargo.lock
+  s_06fcde5dbef956::t_0625d7faff0d31 1363,1365,1368,1867,2864,2866,3085-3090,3123,3125,3256,3258,3307,3309,3321-3322,3330,3332,3334,3339,3357,3359,3371,3373,3396,3398,3421,3423,3789
+Cargo.toml
+  s_06fcde5dbef956::t_e81ea1df6b5c6e 21,24,31
+experimental/app/Cargo.lock
+  s_06fcde5dbef956::t_a9078767bb696d 2312,2314,2317,2737,2739,3491,5109,5111,5454-5459,5498,5500,5642,5644,5693,5695,5707-5708,5716,5718,5720,5725,5743,5745,5805,5807,5830,5832,5855,5857,6046,6048,6096,6098,6284,6396,6398
+experimental/app/Cargo.toml
+  s_06fcde5dbef956::t_c9e2ab25848e21 28,42-43,46-47,65-66,68,70
+experimental/crates/broker/Cargo.lock
+  s_06fcde5dbef956::t_47408518b5e188 599,601,975,977,1141,1143,1191,1193,1322,1324
+experimental/crates/broker/Cargo.toml
+  s_06fcde5dbef956::t_11ffa1f37166a3 18-19,21,26,33
+experimental/crates/checked-storage/bootstrap/Cargo.toml
+  s_06fcde5dbef956::t_daccacf6191216 18,27
+experimental/crates/checked-storage/checked-sqlite-storage/Cargo.toml
+  s_06fcde5dbef956::t_ce64590205833a 22
+experimental/crates/crypto-owner/Cargo.lock
+  s_06fcde5dbef956::t_06551738ded146 1580,1582,2979,2981,3236,3238,3241,3332,3334,3382,3384,3572,3574
+experimental/crates/crypto-owner/Cargo.toml
+  s_06fcde5dbef956::t_c368c573846414 15,19,28-30
+experimental/crates/crypto-owner/qualified-sdk/Cargo.lock
+  s_06fcde5dbef956::t_00abe6e8e5402a 2549,2551,2764,2766,2769
+experimental/crates/crypto-owner/qualified-sdk/Cargo.toml
+  s_06fcde5dbef956::t_34dd4684e002f2 21,34
+experimental/crates/crypto-seeds/Cargo.lock
+  s_06fcde5dbef956::t_f9fd43108b0c2a 1114,1116,1305,1307,1355,1357,1486,1488
+experimental/crates/crypto-seeds/Cargo.toml
+  s_06fcde5dbef956::t_3dbfa8c8be26cd 9
+experimental/crates/crypto-stack/crypto-core/Cargo.toml
+  s_06fcde5dbef956::t_048199570191c6 18,28
+experimental/crates/crypto-stack/crypto-enrollment/Cargo.toml
+  s_06fcde5dbef956::t_b74dd801c21ca6 17,28
+experimental/crates/media/rust-actor/Cargo.lock
+  s_06fcde5dbef956::t_1d3c8d09c7a8f7 599,601,656,988,990,1154,1156,1204,1206,1335,1337
+experimental/crates/media/rust-actor/Cargo.toml
+  s_06fcde5dbef956::t_e4b441114f8b0a 15-18,21
+experimental/crates/media/rust/Cargo.lock
+  s_06fcde5dbef956::t_ffeb78bad05f01 312,314,554,556,688,690
+experimental/crates/media/rust/Cargo.toml
+  s_06fcde5dbef956::t_a0beddb1d0bc7c 14,16,22
+experimental/crates/trust-dialog/Cargo.lock
+  s_06fcde5dbef956::t_58d0e3a90e63f9 1434,1436,1439,1786,1788,1985,2999,3001,3231-3236,3269,3271,3402,3404,3453,3455,3467-3468,3476,3478,3480,3485,3503,3505,3517,3519,3542,3544,3567,3569,3724,3726,3774,3776,3962,4048,4050
+experimental/crates/trust-dialog/Cargo.toml
+  s_06fcde5dbef956::t_bfa0e5133d9772 13,16-17,29
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "21a17192d99cd844606edb0cc9adf121377768b9",
+  "prompts": {},
+  "sessions": {
+    "s_06fcde5dbef956": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "94b73314-95fe-4e96-8c43-d20b0f28358d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}

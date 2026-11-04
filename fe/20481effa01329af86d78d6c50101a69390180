@@ -1,0 +1,86 @@
+linux/src/main/railui.ts
+  s_06fcde5dbef956::t_acf0b6c13647e1 1-121
+linux/src/core/layout.ts
+  s_06fcde5dbef956::t_ecb625bd1d6b9d 1-288
+experimental/app/rail-ui/rail.js
+  s_06fcde5dbef956::t_02575adab1de30 2-9,23-31,43-51,53-55,58-67,79,81-100,104-156,158,160,163-166,168-170,172-175,177-179,183-194,197-240,242-246,248-252,254-261,266-270,282-296,300-449,451-514,517-609,613-621
+  s_06fcde5dbef956::t_acaa305f118c4a 622-624
+linux/src/core/railui.ts
+  s_06fcde5dbef956::t_96063e5265e8c0 1-215
+linux/src/core/icon.ts
+  s_06fcde5dbef956::t_d6b365fc3839bc 1-238
+experimental/app/src/web_tls.rs
+  s_65ba608539a14a::t_9ca14641e2dfb7 200
+linux/src/core/discover.ts
+  s_2d22d157720d46::t_601f44c0dad615 3,53
+linux/src/core/instances.ts
+  s_2d22d157720d46::t_14af905518e29f 13,26,35-36,66-67,86,88-91,98-99,106,108-109,140-142,168,183,189,194,199,211-212,259,268-269,300-325,375,377-379,383-384,391,399
+linux/src/core/origin.ts
+  s_ecf7b9e687a24d::t_a57dfb287d493b 39-43
+linux/src/core/store.ts
+  s_2d22d157720d46::t_55a6a57fef8673 31-32
+linux/src/core/trusted.ts
+  s_2d22d157720d46::t_1d96069f527f19 12,66-67,91-94,289-295
+linux/src/main/context.ts
+  s_ecf7b9e687a24d::t_8228b4206a487c 6,14
+linux/src/main/menu.ts
+  s_2d22d157720d46::t_dfa45a0b28ddf1 13
+linux/src/main/notify.ts
+  s_2d22d157720d46::t_e68f82e08187ea 42
+linux/src/main/shell.ts
+  s_7e9329d487a94d::t_8124e60b99576d 13,19,131-137,141-153,261,304,362
+linux/src/main/windows.ts
+  s_ecf7b9e687a24d::t_b639bd411a5aff 11,33,122-125
+linux/src/preload/dialog.cts
+  s_ecf7b9e687a24d::t_246ff3f2f3959a 1-27
+linux/test/layout.test.ts
+  s_7e9329d487a94d::t_03a3f128522e0b 1-100
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "fe20481effa01329af86d78d6c50101a69390180",
+  "prompts": {},
+  "sessions": {
+    "s_06fcde5dbef956": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "94b73314-95fe-4e96-8c43-d20b0f28358d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Marius Schröder <git@schroeder.systems>"
+    },
+    "s_2d22d157720d46": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-aui-format-help-1c4cc049037c526d",
+        "model": "unknown"
+      },
+      "human_author": "Marius Schröder <git@schroeder.systems>"
+    },
+    "s_65ba608539a14a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a83c210d97e86a798",
+        "model": "unknown"
+      },
+      "human_author": "Marius Schröder <git@schroeder.systems>"
+    },
+    "s_7e9329d487a94d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-aui-status-profile-6b773a73ee58ea30",
+        "model": "unknown"
+      },
+      "human_author": "Marius Schröder <git@schroeder.systems>"
+    },
+    "s_ecf7b9e687a24d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-aonb-product-setup-e379f010794b742e",
+        "model": "unknown"
+      },
+      "human_author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}

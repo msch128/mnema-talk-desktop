@@ -1,0 +1,28 @@
+.github/workflows/desktop-client.yml
+  h_0ff4f4713441f4 235-237
+README.md
+  h_0ff4f4713441f4 14-16
+experimental/README.md
+  h_0ff4f4713441f4 46-48
+experimental/app/src/native_updates.rs
+  h_0ff4f4713441f4 799-814
+experimental/app/src/web_client.rs
+  h_0ff4f4713441f4 534,538-539,611-616,622-624
+experimental/app/src/web_gaming.rs
+  h_0ff4f4713441f4 457
+experimental/app/src/web_permissions.rs
+  h_0ff4f4713441f4 4-8,11,15-21,31-59,266-276
+scripts/assert-webview-probe.ps1
+  h_0ff4f4713441f4 19
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7d68a984c817b8e13cf491737a68ac18f18d7d80",
+  "prompts": {},
+  "humans": {
+    "h_0ff4f4713441f4": {
+      "author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}

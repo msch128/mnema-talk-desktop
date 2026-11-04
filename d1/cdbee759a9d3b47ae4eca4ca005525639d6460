@@ -1,0 +1,18 @@
+experimental/app/src/web_client.rs
+  h_0ff4f4713441f4 1150-1152,1155-1166,1168-1170,1596-1600,1603,1742-1758,2401-2425
+experimental/app/src/web_shell.rs
+  h_0ff4f4713441f4 1040-1043
+linux/test/trusted.test.ts
+  h_0ff4f4713441f4 48,50,311-316
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d1cdbee759a9d3b47ae4eca4ca005525639d6460",
+  "prompts": {},
+  "humans": {
+    "h_0ff4f4713441f4": {
+      "author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}

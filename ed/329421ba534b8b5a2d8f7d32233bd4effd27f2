@@ -1,0 +1,20 @@
+.github/workflows/diag.yml
+  h_0ff4f4713441f4 1-26
+diag/Cargo.toml
+  h_0ff4f4713441f4 1-16
+diag/chain.ps1
+  h_0ff4f4713441f4 1-38
+diag/src/main.rs
+  h_0ff4f4713441f4 1-61
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ed329421ba534b8b5a2d8f7d32233bd4effd27f2",
+  "prompts": {},
+  "humans": {
+    "h_0ff4f4713441f4": {
+      "author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}

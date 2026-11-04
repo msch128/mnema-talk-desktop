@@ -1,0 +1,28 @@
+scripts/check-english-only.mjs
+  h_0ff4f4713441f4 66-69,72,91
+scripts/check-english-only.test.mjs
+  h_0ff4f4713441f4 17-22
+scripts/test-windows-auth-fixture.ps1
+  h_0ff4f4713441f4 29-34,63-68,89-97,110-118,151-152
+scripts/test-windows-notify.ps1
+  h_0ff4f4713441f4 62-63,65-75,77-91,93,95-101,103-143,145,147-165
+scripts/test-windows-release.ps1
+  h_0ff4f4713441f4 20-23,25-44,74-99,267-269
+scripts/update-manifest.mjs
+  h_0ff4f4713441f4 69-82,84
+scripts/update-manifest.test.mjs
+  h_0ff4f4713441f4 3,90-96
+tauri.conf.json
+  h_0ff4f4713441f4 16
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1b10dbe14907b4bc0079d24ac937e6788a0cc502",
+  "prompts": {},
+  "humans": {
+    "h_0ff4f4713441f4": {
+      "author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}

@@ -1,0 +1,19 @@
+experimental/vendor/openmls/Cargo.lock
+  s_06fcde5dbef956::t_fe0f481cccc0e5 445,447,475,3531,3533,3587,3866,3868
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ab5a7e15ee70afa02eed3383926da62fcd52d452",
+  "prompts": {},
+  "sessions": {
+    "s_06fcde5dbef956": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "94b73314-95fe-4e96-8c43-d20b0f28358d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}

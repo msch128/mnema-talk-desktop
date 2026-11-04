@@ -1,0 +1,47 @@
+.github/workflows/desktop-client.yml
+  s_06fcde5dbef956::t_6a1054b832abb6 254-267,279
+experimental/README.md
+  s_06fcde5dbef956::t_5723078fefd586 18-19
+experimental/app/Cargo.toml
+  s_06fcde5dbef956::t_af8651ead84665 15-16
+experimental/app/src/local_route.rs
+  s_06fcde5dbef956::t_c4a51a0863606e 1-3,8-23,44-52,79-91,109-123
+experimental/app/src/web_client.rs
+  s_06fcde5dbef956::t_377125d549d307 78-80,83-85,121,196,206-227,312-318,320,542-555,557-565,567,787-793,795-797,800,802,813-826,828,830,833,917-926,928-930,941,943-945,947-951,953-996,998-1013,1015-1060,1062-1065,1067-1070,1253-1261,1266,1397-1482
+experimental/app/src/web_permissions.rs
+  s_06fcde5dbef956::t_e94ea6687bf8ff 2-4,36-37,45-66,79,83-85,100,104-106,180,350-353,368-375
+experimental/app/src/web_shell.rs
+  s_06fcde5dbef956::t_bcf015fd811a86 853-855,1072-1075
+linux/README.md
+  s_06fcde5dbef956::t_617a92371ffc42 202
+linux/scripts/gen-vectors.ts
+  s_06fcde5dbef956::t_1c646b51598f83 528
+linux/src/core/client.ts
+  s_06fcde5dbef956::t_50a1299f08623b 128-130,132-134,142-144,147-161
+linux/src/core/trusted.ts
+  s_06fcde5dbef956::t_f79b564d526299 161-186
+linux/src/main/main.ts
+  s_06fcde5dbef956::t_0975890a0a2db3 15,106
+linux/test/client.test.ts
+  s_06fcde5dbef956::t_a4403cedd3684a 53-54,57
+linux/test/trusted.test.ts
+  s_06fcde5dbef956::t_aaa68f62440c47 45-46,113-147
+test-vectors/client.json
+  s_06fcde5dbef956::t_f47c609c7de645 304-355,373-425,429
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d4a89b638c51e117f70bf307cb4f811d5ec3d628",
+  "prompts": {},
+  "sessions": {
+    "s_06fcde5dbef956": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "94b73314-95fe-4e96-8c43-d20b0f28358d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}

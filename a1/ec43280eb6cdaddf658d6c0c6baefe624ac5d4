@@ -1,0 +1,35 @@
+GAMING.md
+  s_06fcde5dbef956::t_c307cbf8f10549 155-172
+experimental/app/Cargo.toml
+  s_06fcde5dbef956::t_09c9daf98ecda6 98
+experimental/app/src/web_gaming.rs
+  s_06fcde5dbef956::t_5d2ca000cb30b3 26-28,212-213,243-246,274-275,373,557,949-953,955-957,993-1018,1236,1238-1240
+experimental/app/src/web_notify/mac.rs
+  s_06fcde5dbef956::t_6620e450ba0ead 116-118
+experimental/app/src/web_notify/mod.rs
+  s_06fcde5dbef956::t_7f529639252a1b 114-119
+experimental/app/src/web_notify/other.rs
+  s_06fcde5dbef956::t_d246fd2f0a69b9 24-25
+experimental/app/src/web_notify/win.rs
+  s_06fcde5dbef956::t_6de116a07d9b34 108-116
+src/fullscreen.rs
+  s_06fcde5dbef956::t_3525da6012094f 1-169
+src/lib.rs
+  s_06fcde5dbef956::t_d93b6ea4e3829a 5
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a1ec43280eb6cdaddf658d6c0c6baefe624ac5d4",
+  "prompts": {},
+  "sessions": {
+    "s_06fcde5dbef956": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "94b73314-95fe-4e96-8c43-d20b0f28358d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}

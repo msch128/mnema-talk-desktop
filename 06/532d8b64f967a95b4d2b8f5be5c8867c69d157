@@ -1,0 +1,39 @@
+experimental/crates/broker/src/admin_metadata.rs
+  s_06fcde5dbef956::t_b4950f946e6e4b 345,348,376,397,415,422
+experimental/crates/broker/src/authenticated_scope.rs
+  s_06fcde5dbef956::t_d058538ea395a4 125
+experimental/crates/broker/src/authentication_intent.rs
+  s_06fcde5dbef956::t_026c50aa1b9bd7 61-71,77,80-81,103,106-108,127,130-132,144,155,221,229-230,271,276-277
+experimental/crates/broker/src/broker.rs
+  s_06fcde5dbef956::t_7067f9ae467dda 84-113,260,341-381,422,432,764,769,904-906,911,937,947,950,981-984,987,1015,1022,1132,1193-1204
+experimental/crates/broker/src/metadata.rs
+  s_06fcde5dbef956::t_d34addf901e586 183,200,227,250
+experimental/crates/broker/src/opaque_relay.rs
+  s_06fcde5dbef956::t_5ba06e9da45622 336
+experimental/crates/broker/src/password_change.rs
+  s_06fcde5dbef956::t_1c193d0be109ed 28
+experimental/crates/broker/src/personal_metadata.rs
+  s_06fcde5dbef956::t_ce8cf07f244505 107,110,139,150
+experimental/crates/broker/src/registration.rs
+  s_06fcde5dbef956::t_0683e0b6bf51d6 103
+experimental/crates/broker/src/tests.rs
+  s_06fcde5dbef956::t_8a122e5786c91e 961-975,1133-1141
+experimental/crates/broker/src/wire.rs
+  s_06fcde5dbef956::t_7ea950604dcece 99-105
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "06532d8b64f967a95b4d2b8f5be5c8867c69d157",
+  "prompts": {},
+  "sessions": {
+    "s_06fcde5dbef956": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "94b73314-95fe-4e96-8c43-d20b0f28358d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}

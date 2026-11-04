@@ -1,0 +1,52 @@
+linux/src/core/bundle.ts
+  h_0ff4f4713441f4 12-13,85,90-93,99-101,179,193-194,201-202,221
+linux/src/core/client.ts
+  h_0ff4f4713441f4 8,106,112
+linux/src/core/cookies.ts
+  h_0ff4f4713441f4 13-14,18,57,80,82-88,100
+linux/src/core/debinstall.ts
+  h_0ff4f4713441f4 23-24,108-109
+linux/src/core/ed25519.ts
+  h_0ff4f4713441f4 39-62,64,72-76,79-82
+linux/src/core/encoding.ts
+  h_0ff4f4713441f4 16-19,22-23
+linux/src/core/instances.ts
+  h_0ff4f4713441f4 14,22,259-260,270
+linux/src/core/json.ts
+  h_0ff4f4713441f4 1-163
+linux/src/core/notify.ts
+  h_0ff4f4713441f4 10,16,26
+linux/src/core/osvault.ts
+  h_0ff4f4713441f4 55,57,61-62
+linux/src/core/proxy.ts
+  h_0ff4f4713441f4 179-180,195-201,229-246,319-323,366-367
+linux/src/core/selfupdate.ts
+  h_0ff4f4713441f4 23,108
+linux/src/core/trust.ts
+  h_0ff4f4713441f4 16,85,95-98
+linux/src/core/updates.ts
+  h_0ff4f4713441f4 7,28,43-45
+linux/src/main/protocol.ts
+  h_0ff4f4713441f4 88,90
+linux/test/contract.test.ts
+  h_0ff4f4713441f4 1-64
+linux/test/debinstall.test.ts
+  h_0ff4f4713441f4 61-65
+linux/test/notify.test.ts
+  h_0ff4f4713441f4 16-22
+linux/test/proxy.test.ts
+  h_0ff4f4713441f4 8,286-288,366-409
+linux/test/strict.test.ts
+  h_0ff4f4713441f4 1-121
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "11144abe1bdf95a9c31759d86d2e7096110758cb",
+  "prompts": {},
+  "humans": {
+    "h_0ff4f4713441f4": {
+      "author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}

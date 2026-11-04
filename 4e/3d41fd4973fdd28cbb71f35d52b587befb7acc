@@ -1,0 +1,27 @@
+scripts/check-english-only.mjs
+  s_06fcde5dbef956::t_6709f6b9256bfc 58-61,64,83
+scripts/check-english-only.test.mjs
+  s_06fcde5dbef956::t_8f73a7c3c28fcc 12-17
+scripts/update-manifest.mjs
+  s_06fcde5dbef956::t_9a9ede67d13dc8 69-82,84
+scripts/update-manifest.test.mjs
+  s_06fcde5dbef956::t_bd609e6e61ef8d 3,90-96
+tauri.conf.json
+  s_06fcde5dbef956::t_2c60c30ba1fd0b 16
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4e3d41fd4973fdd28cbb71f35d52b587befb7acc",
+  "prompts": {},
+  "sessions": {
+    "s_06fcde5dbef956": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "94b73314-95fe-4e96-8c43-d20b0f28358d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}

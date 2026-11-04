@@ -1,0 +1,49 @@
+experimental/vendor/openmls/compat_tests/Cargo.lock
+  s_06fcde5dbef956::t_eb987d93fd695d 492,494,498,548,550,615,660,662,664-666,668-670,710-711,714-716,718-719,721,901,1058,1123-1124,1128-1129,1324-1325,2025,2037,2050-2051,2137-2138,2145-2146,2231-2234,2243-2244,2247-2248,2259,2261,2401,2403,2415-2416,2418,2620,2622,2624-2625,2690,2766-2775,3347-3348
+experimental/vendor/openmls/basic_credential/src/lib.rs
+  s_06fcde5dbef956::t_728c876702c061 16,72,78,84,150-151,159-160
+experimental/vendor/openmls/compat_tests/compat_credentials/basic_credential_0_7/src/lib.rs
+  s_06fcde5dbef956::t_31ab350cad3bba 1-194
+experimental/vendor/openmls/compat_tests/compat_credentials/basic_credential_0_8/LICENSE
+  s_06fcde5dbef956::t_5c413595e3b48b 1-19
+experimental/vendor/openmls/compat_tests/compat_credentials/basic_credential_0_7/LICENSE
+  s_06fcde5dbef956::t_b1531f029d8147 1-19
+experimental/vendor/openmls/compat_tests/compat_credentials/basic_credential_0_7/Cargo.toml
+  s_06fcde5dbef956::t_bc3d93dbf6f2cc 1-22
+experimental/app/Cargo.lock
+  s_06fcde5dbef956::t_2f129f814791a0 798,1033,1210,1212,1214-1216,1218-1220,1282-1283,1286-1288,1290-1291,1293,1831,2100-2101,2105-2106,2612-2613,3836-3837,3862,3870-3871,3988-3991,4000-4001,4004-4005,4074,4076,4303,4305,4317-4318,4320,4662,4664,4666-4667,4860,5071-5080,5123,6913-6914
+experimental/vendor/openmls/openmls_rust_crypto/Cargo.toml
+  s_06fcde5dbef956::t_bce6dec430bcae 31-32
+experimental/vendor/openmls/openmls_rust_crypto/src/provider.rs
+  s_06fcde5dbef956::t_3f8304f498beee 24-25,286-287,305-306,373-374,393-394,456,462
+experimental/vendor/openmls/compat_tests/compat_credentials/basic_credential_0_8/src/lib.rs
+  s_06fcde5dbef956::t_d07effc0fce4eb 1-195
+experimental/vendor/openmls/compat_tests/compat_credentials/basic_credential_0_8/Cargo.toml
+  s_06fcde5dbef956::t_7c684cb2884a15 1-22
+experimental/crates/crypto-owner/Cargo.lock
+  s_06fcde5dbef956::t_0e10498ed14fb5 480,604,652,654,656-658,660-662,724-725,728-730,732-733,735,959,1084,1149-1150,1154-1155,1470-1471,2141-2142,2167-2168,2175-2176,2273-2276,2285-2286,2289-2290,2301,2303,2430,2432,2444-2445,2447,2672,2674,2676-2677,2772,2871-2880,2892,3645-3646
+experimental/vendor/openmls/Cargo.lock
+  s_06fcde5dbef956::t_bc43f6a4bb7888 843,845,849,899,901,966,1032,1034,1036-1038,1040-1042,1082-1083,1086-1088,1090-1091,1093,1228-1233,1386,1436-1445,1456,1458,1460,1577,1642-1643,1647-1648,2084-2085,2539,2541,2887-2888,2941-2942,2949-2950,3017-3020,3029-3030,3033-3034,3078,3080,3295,3297,3309-3310,3312,3590,3592,3600,3602,3619,3621,3704,3706,3708-3709,3726-3735,3738,3740,3748,3902,4024-4033,4213-4224,5160-5161
+experimental/vendor/openmls/compat_tests/Cargo.toml
+  s_06fcde5dbef956::t_e3e84878ba2df1 63,68
+experimental/vendor/openmls/basic_credential/Cargo.toml
+  s_06fcde5dbef956::t_a7b7b8aaadaecc 20-21
+experimental/crates/crypto-owner/qualified-sdk/Cargo.lock
+  s_06fcde5dbef956::t_fedc337dc4de3c 441,559,607,609,611-613,615-617,679-680,683-685,687-688,690,862,987,1052-1053,1057-1058,1245-1246,1810-1811,1836-1837,1844-1845,1911-1914,1923-1924,1927-1928,1939,1941,2068,2070,2082-2083,2085,2275,2277,2279-2280,2357,2456-2465,2477,2965-2966
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "dc3acfa38cd5144ebbe4501d26cbce233786bd5a",
+  "prompts": {},
+  "sessions": {
+    "s_06fcde5dbef956": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "94b73314-95fe-4e96-8c43-d20b0f28358d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}

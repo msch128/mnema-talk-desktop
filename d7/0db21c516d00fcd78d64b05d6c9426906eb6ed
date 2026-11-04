@@ -1,0 +1,14 @@
+linux/scripts/gen-vectors.ts
+  h_0ff4f4713441f4 277-281,289-290,339,344,399-401,434
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d70db21c516d00fcd78d64b05d6c9426906eb6ed",
+  "prompts": {},
+  "humans": {
+    "h_0ff4f4713441f4": {
+      "author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}

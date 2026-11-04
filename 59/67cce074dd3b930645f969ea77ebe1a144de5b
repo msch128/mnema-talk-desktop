@@ -1,0 +1,24 @@
+experimental/app/Cargo.lock
+  h_0ff4f4713441f4 2178
+experimental/app/Cargo.toml
+  h_0ff4f4713441f4 3
+experimental/app/tauri.conf.json
+  h_0ff4f4713441f4 5
+experimental/licenses/manifest.json
+  h_0ff4f4713441f4 4
+linux/package-lock.json
+  h_0ff4f4713441f4 3,9
+linux/package.json
+  h_0ff4f4713441f4 5
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5967cce074dd3b930645f969ea77ebe1a144de5b",
+  "prompts": {},
+  "humans": {
+    "h_0ff4f4713441f4": {
+      "author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}

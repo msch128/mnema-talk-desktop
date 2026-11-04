@@ -1,0 +1,16 @@
+.gitleaks.toml
+  h_0ff4f4713441f4 40
+scripts/check-native-test-vectors.mjs
+  h_0ff4f4713441f4 9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9c1f4e41491ced0a86781c21df1af72ca50b210d",
+  "prompts": {},
+  "humans": {
+    "h_0ff4f4713441f4": {
+      "author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}

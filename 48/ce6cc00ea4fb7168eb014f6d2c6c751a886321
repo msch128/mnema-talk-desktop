@@ -1,0 +1,97 @@
+.gitattributes
+  s_06fcde5dbef956::t_d2a4df22caae7a 14
+.github/workflows/advisories.yml
+  s_06fcde5dbef956::t_744065466533d2 16-18,69-100
+.github/workflows/desktop-client.yml
+  s_06fcde5dbef956::t_2897f86fb51567 204
+doc/security-review-1.2.md
+  s_06fcde5dbef956::t_0723c9e3eafdf1 91-101
+experimental/app/Cargo.lock
+  s_06fcde5dbef956::t_60f82fd93318f8 295,297,306,308,1907,1909,1916,1918,1920,2973,2975,2980,4633,4635,4652,4654,5273-5278,5281,5283
+experimental/crates/checked-storage/bootstrap/Cargo.toml
+  s_06fcde5dbef956::t_d8276aed04c78c 16
+experimental/crates/checked-storage/bootstrap/src/lib.rs
+  s_06fcde5dbef956::t_ad7ae5daeed3ac 533-535,542,558
+experimental/crates/checked-storage/checked-sqlite-storage/Cargo.toml
+  s_06fcde5dbef956::t_91b71c1d6b1e3a 18
+experimental/crates/checked-storage/checked-sqlite-storage/src/storage_provider.rs
+  s_06fcde5dbef956::t_a90eda7e05d510 29-83,105-106,988-1044
+experimental/crates/crypto-owner/Cargo.lock
+  s_06fcde5dbef956::t_773836101e6bc9 962,964,971,973,975,1715,1717,1722,2589,2591,2598,2600,2921-2926,2929,2931
+experimental/crates/crypto-owner/qualified-sdk/Cargo.lock
+  s_06fcde5dbef956::t_df34b862dd2034 865,867,874,876,878,1490,1492,1497,1632,2193,2195,2202,2204,2486-2491,2494,2496
+experimental/crates/crypto-owner/qualified-sdk/Cargo.toml
+  s_06fcde5dbef956::t_fbbe87732208f5 19-21,36
+experimental/crates/crypto-owner/qualified-sdk/src/lib.rs
+  s_06fcde5dbef956::t_f09c05e4e5ad1c 1001-1003,1006,1034
+experimental/crates/crypto-owner/qualified-sdk/src/tests.rs
+  s_06fcde5dbef956::t_2c0894d62553a9 981,987
+experimental/crates/crypto-owner/qualified-sdk/tests/sqlcipher_memory_security.rs
+  s_06fcde5dbef956::t_78a5c7c15b75ab 1-46
+experimental/crates/crypto-owner/qualified-sdk/tests/storage_upgrade.rs
+  s_06fcde5dbef956::t_09bd0e24d19015 1-127
+experimental/crates/crypto-stack/crypto-core/Cargo.toml
+  s_06fcde5dbef956::t_64ef15a3b8a3a3 16
+experimental/crates/crypto-stack/crypto-core/src/lib.rs
+  s_06fcde5dbef956::t_a7cb9fb965c3f3 871-873,876,904
+experimental/crates/crypto-stack/crypto-core/src/tests.rs
+  s_06fcde5dbef956::t_56ee5a702e9ca6 229,235
+experimental/crates/crypto-stack/crypto-enrollment/Cargo.toml
+  s_06fcde5dbef956::t_c560cd1f60dcae 18
+experimental/crates/crypto-stack/crypto-enrollment/src/issuer.rs
+  s_06fcde5dbef956::t_e7bd29b5fedad6 476-478,481,501
+experimental/licenses/manifest.json
+  s_06fcde5dbef956::t_518d92f7df29d8 4-5,275-276,278,282-283,288-289,691,693,698,706,708,713,719,940,942,947,953,1291,1293,1298,1636,1638,1643,1649,1762,1764,1769,1775,1933,1935,1940,1946,2086,2088,2093,2099,2107,2109,2114-2115,2120-2121,2128,2130,2135,2141,2191,2193,2198,2204,2507,2509,2514,2519-2520,2540-2554,2578-2581,2585-2586,2591-2592,2599-2602,2606-2607,2612-2613,2621,2623,2628,2634,2678,2680,2685,2691,2699,2701,2706,2712,2954,2956,2961,2967,3846,3848,3853,3859,4360,4362,4367,4375,4377,4382,4390,4392,4397,4405,4407,4412,4420,4422,4427,4435,4437,4442,4450,4452,4457,4465,4467,4472,4615,4617,4622,4628,5062-5082,5149,5151,5156,5162,5689,5691,5696,5914,5916,5921,6031,6033,6038,6044,7120,7122,7127,7132-7133,7321,7323,7328,7336,7338,7343,7349,8220,8222,8227,8232-8233,8253-8267,8286,8288,8293,8460,8462,8467,8505,8507,8512,8824,8826,8831,8837,8907-8910,8914-8915,8920-8921,8928,8931,8936,8942,8949-8952,8956-8957,8962-8963,9076,9078,9083,9089,9280,9282,9287,9293,9433-9474,9496-9528,9604,9606,9611,9617,9667,9669,9674,9680,9766,9768,9773,9779,9823,9825,9830,9836,9844,9846,9851,9857,9865,9867,9872,9878,9886,9888,9893,9899,9905,9913,9915,9921,9927,9934,9936,9941,9947,9955,9957,9962,9968,9976,9978,9983,9989,9997,9999,10004,10039,10041,10046,10052,10249,10251,10256,10378,10380,10385,10393,10395,10400,10429,10431,10436,10442,10534,10536,10541,10547,10555,10557,10562,10568,10756,10758,10763,10769,10825,10827,10832,10838,10844,10984,10986,10991,10997,11680-11700,12358,12360,12365,12371,12377,12487,12489,12494,12502,12504,12509,12515,12521,12529,12531,12536,12542,12548,12643,12645,12650,12658,12660,12665,12673,12675,12680,12853,12855,12860,12865-12866,12872,12925,12927,12932,12970,12972,12977,12983,12989,13264-13278,13387,13389,13394,13399-13415,13434,13436,13441,13447
+experimental/licenses/texts/0122f88c3832bb45422b4e6c7259befdcf98daa344fea27f69e2cc047c205552.txt
+  s_06fcde5dbef956::t_cb8286ef0cd221 2
+experimental/licenses/texts/1b9916aeb17b63b74372d5493b6c6ce828eef2853e1dc48ac2bba701f148920c.txt
+  s_06fcde5dbef956::t_642bfab2edb110 1-25
+experimental/licenses/texts/2a2826f6acf46fa650730cf42cbb22a642be33a7ef119c9c4f4bf6daf3bef48e.txt
+  s_06fcde5dbef956::t_4db6fd301e498e 1
+experimental/licenses/texts/2ca9996043628ad4dea1408974e1d92d3932f6acf9db8ffb7faecbfa6d928997.txt
+  s_06fcde5dbef956::t_c96598bbd17ead 1,3,5-13,17-21
+experimental/licenses/texts/413f82e0f4f8191a8624a7b7b2c9809466f7f3d930ad52a74ad29f2dd907881d.txt
+  s_06fcde5dbef956::t_e080436d6f58fa 1-3,12-13,20-21
+experimental/licenses/texts/4148e7b027fba018131f297b4fe27995386ba317018d6855e182fd0e86cd754f.txt
+  s_06fcde5dbef956::t_64fe2e25d17c73 1
+experimental/licenses/texts/6c081431591d9df696c82dc598fe1423765b8a299b200ed00b281afd0f64c490.txt
+  s_06fcde5dbef956::t_0e1bda61ae0627 1-29
+experimental/licenses/texts/748c208045a6f00734dbc85a1c0e401c9a25e1f83fc756e99916750dbd2469a7.txt
+  s_06fcde5dbef956::t_19298c1ca6414a 1-9
+experimental/licenses/texts/8f196cb13afd271f5e267fd29543fc454596382ad580e7592709492843996ac8.txt
+  s_06fcde5dbef956::t_deb27056454b7e 1-29
+experimental/licenses/texts/b9290e9d37bc53272ff4f3fb392c1762169fc0a8b797d164803049c81eacb48c.txt
+  s_06fcde5dbef956::t_8ac5645e5cc0a4 1
+experimental/licenses/texts/c1ff532091cac33bdecedf7268ff4f9bc3ddcffba494249fb723033e9e782f1a.txt
+  s_06fcde5dbef956::t_645a98b7f7e860 1-11
+experimental/licenses/texts/c50e49cbc9917204c7e1d9c046342069e839c4947ef8c6027d23a3184ae73706.txt
+  s_06fcde5dbef956::t_c4bcc916865b64 1-201
+experimental/licenses/texts/e1c1975c3474cce31722836f101a40ffaf1cc784e4d2f38ce3e77b9712934e78.txt
+  s_06fcde5dbef956::t_d9ec83fd72fbac 3
+experimental/licenses/upstream-overrides.json
+  s_06fcde5dbef956::t_136b68e1ad879d 860-869,1158,1161-1163,1189-1202
+experimental/scripts/collect-licenses.mjs
+  s_06fcde5dbef956::t_9c3ef7ee1bd763 90-101
+experimental/vendor/openmls/Cargo.lock
+  s_06fcde5dbef956::t_2e6c51d291a0be 1450,1452,1459,1461,1463,2544,2546,3693,3695,3702,3704,4154,4156
+experimental/vendor/openmls/sqlite_storage/Cargo.toml
+  s_06fcde5dbef956::t_99366c5a2c6f8d 16
+experimental/vendor/openmls/sqlite_storage/src/storage_provider.rs
+  s_06fcde5dbef956::t_c67192565b480f 29-83,105-106,988-1044
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "48ce6cc00ea4fb7168eb014f6d2c6c751a886321",
+  "prompts": {},
+  "sessions": {
+    "s_06fcde5dbef956": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "94b73314-95fe-4e96-8c43-d20b0f28358d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}

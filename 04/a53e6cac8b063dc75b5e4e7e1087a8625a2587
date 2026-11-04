@@ -1,0 +1,29 @@
+src/game-list.json
+  s_06fcde5dbef956::t_e31ce4873e0b00 1390
+src/game_candidate.rs
+  s_06fcde5dbef956::t_cba9e413bd0feb 21-38,44-45,126-127
+src/game_identify.rs
+  s_06fcde5dbef956::t_99d3de26060029 11,67
+src/game_library.rs
+  s_06fcde5dbef956::t_57fa2f55330458 57-72,75-79,81-83,87-99,102,104,107-117,121-122,131,149-152,602-630
+src/game_list.rs
+  s_06fcde5dbef956::t_e7ab85d42e421c 194-203
+src/windows.rs
+  s_06fcde5dbef956::t_66cc02cc601ecd 4-6,8-9,29-30,34-36,38,129,205,207,210-212,214,231,238-256
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "04a53e6cac8b063dc75b5e4e7e1087a8625a2587",
+  "prompts": {},
+  "sessions": {
+    "s_06fcde5dbef956": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "94b73314-95fe-4e96-8c43-d20b0f28358d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}

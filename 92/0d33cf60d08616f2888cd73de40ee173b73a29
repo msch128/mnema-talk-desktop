@@ -1,0 +1,18 @@
+.github/dependabot.yml
+  h_0ff4f4713441f4 65,71
+.github/workflows/advisories.yml
+  h_0ff4f4713441f4 4,39,69
+.github/workflows/desktop-checks.yml
+  h_0ff4f4713441f4 1,12,79-80,107-108,127,133-137,141-144
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "920d33cf60d08616f2888cd73de40ee173b73a29",
+  "prompts": {},
+  "humans": {
+    "h_0ff4f4713441f4": {
+      "author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}

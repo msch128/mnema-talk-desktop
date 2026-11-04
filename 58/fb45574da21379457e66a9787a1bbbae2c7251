@@ -1,0 +1,22 @@
+.github/workflows/advisories.yml
+  h_0ff4f4713441f4 68-69,71
+README.md
+  h_0ff4f4713441f4 406-407
+deny.toml
+  h_0ff4f4713441f4 12
+doc/security-review-1.2.md
+  h_0ff4f4713441f4 72-74,78
+scripts/deny-all.sh
+  h_0ff4f4713441f4 2
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "58fb45574da21379457e66a9787a1bbbae2c7251",
+  "prompts": {},
+  "humans": {
+    "h_0ff4f4713441f4": {
+      "author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}

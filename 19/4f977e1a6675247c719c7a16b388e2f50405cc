@@ -1,0 +1,16 @@
+.github/workflows/desktop-release.yml
+  h_0ff4f4713441f4 7-13,22-27,35-37,44,46,49-53,62,65,116,175,218,303,306,312,377-379,381,387,409-410,430-437,445-451
+README.md
+  h_0ff4f4713441f4 223-228
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "194f977e1a6675247c719c7a16b388e2f50405cc",
+  "prompts": {},
+  "humans": {
+    "h_0ff4f4713441f4": {
+      "author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}

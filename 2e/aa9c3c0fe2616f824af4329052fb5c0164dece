@@ -1,0 +1,23 @@
+experimental/app/Cargo.lock
+  s_06fcde5dbef956::t_898b3e5b867ab4 3228
+experimental/app/Cargo.toml
+  s_06fcde5dbef956::t_040018aa62fc1d 10,32-33
+experimental/licenses/manifest.json
+  s_06fcde5dbef956::t_b7adac9b3933ad 4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2eaa9c3c0fe2616f824af4329052fb5c0164dece",
+  "prompts": {},
+  "sessions": {
+    "s_06fcde5dbef956": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "94b73314-95fe-4e96-8c43-d20b0f28358d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}

@@ -1,0 +1,139 @@
+experimental/ui/package-lock.json
+  s_06fcde5dbef956::t_95f0c98e43c7b2 24,37,349-359,734-737,741-747,750-753,755,757,760,764,766-786,788-792,794-798,801-807,809-813,815,819,822-828,830-834,836,840,843-849,851-855,857,861,864-870,872-876,878,882,885-1491,2014,2017-2020,2023-2026,2029-2032,2034-2036,2039-2042,2046,2237-2250,2622-2628,3198-3199,3567-3569,3571,3573-3576,3580-3584
+experimental/ui/package.json
+  s_06fcde5dbef956::t_030c0698909b3d 28,41
+experimental/ui/src/App.vue
+  s_06fcde5dbef956::t_d4827c8911ff35 353,389,399
+experimental/ui/src/components/AccountMenu.vue
+  s_06fcde5dbef956::t_0c3328ad6186fb 110,131,134,138,141-142,158,183,190,198,202
+experimental/ui/src/components/ActivityStats.vue
+  s_06fcde5dbef956::t_5881fbd982c827 34
+experimental/ui/src/components/AdminDashboard.vue
+  s_06fcde5dbef956::t_e1dbd80eee0348 58
+experimental/ui/src/components/AdminInvitesTab.vue
+  s_06fcde5dbef956::t_ead145a7c40a03 106,114,118,129,133
+experimental/ui/src/components/AdminLayoutTab.vue
+  s_06fcde5dbef956::t_b8777d2ccbbdff 290,310,328,355-357,362,367,378,388,398,426,431,436,447,457,467,499-501,506,511,522,532,542,572,611,623
+experimental/ui/src/components/AdminMediaTab.vue
+  s_06fcde5dbef956::t_d6882fc2eca257 124,162,170
+experimental/ui/src/components/AdminSystemTab.vue
+  s_06fcde5dbef956::t_1664a6c1cf53fc 247,252,255
+experimental/ui/src/components/AdminUsersTab.vue
+  s_06fcde5dbef956::t_c385e06d57d541 193,198,252,272,279,287,290,304,318,335,347,382
+experimental/ui/src/components/AudioSettingsModal.vue
+  s_06fcde5dbef956::t_9592d42547b50c 149,168,187,214,229,254,266,274,333,345,349,398,402,420,424,450,454,472,476,501,505,551,564,568,588,625,667
+experimental/ui/src/components/BaseDialog.vue
+  s_06fcde5dbef956::t_7501c86710151a 54,68
+experimental/ui/src/components/ChatArea.vue
+  s_06fcde5dbef956::t_1406264d44e972 468,474,477,487,531,535,542,549,654,674,678,704,727,736
+experimental/ui/src/components/ConfirmDialog.vue
+  s_06fcde5dbef956::t_8efea9ee714d77 29-30,32,35,39,45
+experimental/ui/src/components/ConnectionBanner.vue
+  s_06fcde5dbef956::t_5fa4bbfdb8664b 45,47,56,66
+experimental/ui/src/components/ConnectionStatsModal.vue
+  s_06fcde5dbef956::t_969aaa86fec273 57,71,83,95,114
+experimental/ui/src/components/ContextMenu.vue
+  s_06fcde5dbef956::t_8a7a29b42faaca 306,328,335,338
+experimental/ui/src/components/ContextMenuRow.vue
+  s_06fcde5dbef956::t_f085c2c6064487 41,65,68,82,91,96,103,108,114
+experimental/ui/src/components/CreateChannelModal.vue
+  s_06fcde5dbef956::t_9065cb5a6d81f1 86,105,125,145,154,168,192,208
+experimental/ui/src/components/EditNameDialog.vue
+  s_06fcde5dbef956::t_535fb6c205a86e 81,95
+experimental/ui/src/components/EmojiButton.vue
+  s_06fcde5dbef956::t_ffa0c4be662b1b 25
+experimental/ui/src/components/ImageLightbox.vue
+  s_06fcde5dbef956::t_87da27bd963049 20
+experimental/ui/src/components/LegalModal.vue
+  s_06fcde5dbef956::t_f53cf425a23c05 65,69,264,278,284
+experimental/ui/src/components/LoginModal.vue
+  s_06fcde5dbef956::t_149fc71e002b0c 68,72,99,110,123,135,153,177
+experimental/ui/src/components/MarkdownContent.vue
+  s_06fcde5dbef956::t_f2cc15ade60aa6 65
+experimental/ui/src/components/MemberList.vue
+  s_06fcde5dbef956::t_e3fb4f0a863083 54,58,68
+experimental/ui/src/components/MemberRow.vue
+  s_06fcde5dbef956::t_efbe380fa88b98 39,64,68
+experimental/ui/src/components/MessageAttachments.vue
+  s_06fcde5dbef956::t_556de0645c25d0 19,25,27,37,49,73
+experimental/ui/src/components/MessageEditor.vue
+  s_06fcde5dbef956::t_6d65880860dfb0 42,52,60
+experimental/ui/src/components/MessageRow.vue
+  s_06fcde5dbef956::t_b3b804a3a41693 46,65,87,98,108,118,129,146-147,177
+experimental/ui/src/components/MuteMarks.vue
+  s_06fcde5dbef956::t_e2bfe04de696fc 14
+experimental/ui/src/components/ParticipantTile.vue
+  s_06fcde5dbef956::t_c35ac0c003ddf8 50,99,122,153,167,182,201,215,242,246,263
+experimental/ui/src/components/PresenceDot.vue
+  s_06fcde5dbef956::t_f4cf01e882c321 30
+experimental/ui/src/components/PresenceMenu.vue
+  s_06fcde5dbef956::t_14a842edba1be6 79,110
+experimental/ui/src/components/ReactionPalette.vue
+  s_06fcde5dbef956::t_be0cbdb4fad8fd 36,46
+experimental/ui/src/components/ReplyComposerBar.vue
+  s_06fcde5dbef956::t_96a9e19adc4881 22
+experimental/ui/src/components/ReplyPreview.vue
+  s_06fcde5dbef956::t_507cf03e02955e 33,47,57
+experimental/ui/src/components/ResizeHandle.vue
+  s_06fcde5dbef956::t_ce98379ccaa32c 33
+experimental/ui/src/components/ScreenShareModal.vue
+  s_06fcde5dbef956::t_c18a90d31c29db 118,139,160,230
+experimental/ui/src/components/ScreenViewers.vue
+  s_06fcde5dbef956::t_4000adc12a9d07 93
+experimental/ui/src/components/SearchModal.vue
+  s_06fcde5dbef956::t_ca49eccf3a7d3f 190,202,205,224,237,298,312,322
+experimental/ui/src/components/SelfUpdateDialog.vue
+  s_06fcde5dbef956::t_bdb847ddb139f8 56,72
+experimental/ui/src/components/Sidebar.vue
+  s_06fcde5dbef956::t_cfe8131e799863 337,343,351,359,366-367,382,386,390,396,409
+experimental/ui/src/components/SidebarCategoryHeader.vue
+  s_06fcde5dbef956::t_3294b2015fe324 33,52,64-65,70,78,88
+experimental/ui/src/components/SidebarChannelRow.vue
+  s_06fcde5dbef956::t_6a85b350adf3ed 63,114,119,131,161,172,188,196,203
+experimental/ui/src/components/SidebarDragGhost.vue
+  s_06fcde5dbef956::t_cea4f4b56bfdcd 25,30-32
+experimental/ui/src/components/StreamQualityMenu.vue
+  s_06fcde5dbef956::t_18f7072d7da0b2 57-58
+experimental/ui/src/components/TalkControlBar.vue
+  s_06fcde5dbef956::t_03febfa64823f3 113,129,213,247
+experimental/ui/src/components/TalkParticipants.vue
+  s_06fcde5dbef956::t_0cf5e8d6b52f3d 66,91
+experimental/ui/src/components/ThreadSidebar.vue
+  s_06fcde5dbef956::t_d80b911b0a13a2 193,195,198,208,225,233,312,329,349,359,369,399,435,439,464,486,494
+experimental/ui/src/components/ToastHost.vue
+  s_06fcde5dbef956::t_f39247b0941c62 20,33-34,39
+experimental/ui/src/components/UpdateBanner.vue
+  s_06fcde5dbef956::t_406c82dc2033e0 25,27,34,36,49
+experimental/ui/src/components/UserAvatar.vue
+  s_06fcde5dbef956::t_b3c808308bd33d 66
+experimental/ui/src/components/UserBar.vue
+  s_06fcde5dbef956::t_2693aae27ed6a3 50,53,73,91
+experimental/ui/src/components/UserProfileModal.vue
+  s_06fcde5dbef956::t_fc42e3255b6a63 246,248,323,413,420,427,470,480,489,496,507,532,539,546,552,559,568,583
+experimental/ui/src/components/VoiceChatPanel.vue
+  s_06fcde5dbef956::t_b49fdb2d8c5fb3 45
+experimental/ui/src/components/VoiceStage.vue
+  s_06fcde5dbef956::t_d32bbba2920cc8 245,444,454,467,471,477,480,486,492,544,558,615-616,620,622,626,653,755,764,777,786,801,854,905
+experimental/ui/src/components/VoiceStatusPanel.vue
+  s_06fcde5dbef956::t_ee098bf0536c09 25,38,41,50,76,86
+experimental/ui/src/style.css
+  s_06fcde5dbef956::t_9e40dacbd8ad2f 1-57
+experimental/ui/vite.config.ts
+  s_06fcde5dbef956::t_cb286c59f2f975 4,60
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "593ba08985bc1f6ca62e72776819c8629465a33c",
+  "prompts": {},
+  "sessions": {
+    "s_06fcde5dbef956": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "94b73314-95fe-4e96-8c43-d20b0f28358d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}

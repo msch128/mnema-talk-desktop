@@ -1,0 +1,36 @@
+.github/workflows/desktop-client.yml
+  h_0ff4f4713441f4 505-554
+GAMING.md
+  h_0ff4f4713441f4 140-152
+experimental/app/Cargo.toml
+  h_0ff4f4713441f4 13-14
+experimental/app/src/main.rs
+  h_0ff4f4713441f4 16-17
+experimental/app/src/ui_watch.rs
+  h_0ff4f4713441f4 1-55
+experimental/app/src/web_client.rs
+  h_0ff4f4713441f4 1040
+experimental/app/src/web_gaming.rs
+  h_0ff4f4713441f4 9,864-865,868,870-871,934,946,963-965,967-968,987,990-999,1009-1011,1033-1073,1306-1352
+scripts/test-windows-gaming-hang.ps1
+  h_0ff4f4713441f4 1-166
+src/hung_window.rs
+  h_0ff4f4713441f4 1-152
+src/input.rs
+  h_0ff4f4713441f4 633-656
+src/lib.rs
+  h_0ff4f4713441f4 10-11,16
+src/ui_guard.rs
+  h_0ff4f4713441f4 1-311
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "cd9b5c2646726f73885904ed9e58390860a51116",
+  "prompts": {},
+  "humans": {
+    "h_0ff4f4713441f4": {
+      "author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}

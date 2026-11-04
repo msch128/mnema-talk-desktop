@@ -1,0 +1,29 @@
+experimental/app/src/web_notify/mac.rs
+  s_06fcde5dbef956::t_8e9cfe1f432aec 69-70,85-92,95,97-103,106-120,187-192,200,236,251,268-280
+experimental/app/src/web_notify/mod.rs
+  s_06fcde5dbef956::t_11e4f278a12503 61-64,102-116,121-123,193-201,206-212,279-280,315-328
+experimental/app/src/web_notify/other.rs
+  s_06fcde5dbef956::t_a183cf44ae9cf0 19,23-24
+experimental/app/src/web_notify/win.rs
+  s_06fcde5dbef956::t_20e4c1c1654bba 73,84,92-97
+linux/src/main/notify.ts
+  s_06fcde5dbef956::t_83ec933b91ce65 12,26-32,41,45-49
+linux/test/e2e/notify.e2e.ts
+  s_06fcde5dbef956::t_a05f19f9643beb 96-105
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2359f0ff91490e330bf038f1060ac090b7ab2cd7",
+  "prompts": {},
+  "sessions": {
+    "s_06fcde5dbef956": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "94b73314-95fe-4e96-8c43-d20b0f28358d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}

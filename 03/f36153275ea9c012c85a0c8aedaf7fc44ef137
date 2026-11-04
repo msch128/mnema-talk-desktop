@@ -1,0 +1,25 @@
+licenses/manifest.json
+  s_06fcde5dbef956::t_2bb223e23cd5eb 4,2708,2710,2715,5560,5562,5567,5573,5980-6012,6073,6075,6080,6086,6271,6273,6278,6284,6292,6294,6299,6305,6313,6315,6320,6326,6334,6336,6341,6347,6355,6357,6362,6368,6376,6378,6383,6389,6412,6414,6419,6425
+licenses/texts/748c208045a6f00734dbc85a1c0e401c9a25e1f83fc756e99916750dbd2469a7.txt
+  s_06fcde5dbef956::t_be511e1068f9d8 1-9
+licenses/texts/b9290e9d37bc53272ff4f3fb392c1762169fc0a8b797d164803049c81eacb48c.txt
+  s_06fcde5dbef956::t_4ddf4791fab0f7 1
+licenses/texts/c1ff532091cac33bdecedf7268ff4f9bc3ddcffba494249fb723033e9e782f1a.txt
+  s_06fcde5dbef956::t_c1abf5f873b376 1-11
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "03f36153275ea9c012c85a0c8aedaf7fc44ef137",
+  "prompts": {},
+  "sessions": {
+    "s_06fcde5dbef956": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "94b73314-95fe-4e96-8c43-d20b0f28358d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}
