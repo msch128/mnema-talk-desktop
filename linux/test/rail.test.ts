@@ -102,7 +102,7 @@ test('the community icon is asked for at the server alone, and its files go with
   assert.match(icon, /new URL\(ICON_PATH, origin\)/)
   assert.doesNotMatch(icon, /maxRedirects|followRedirect|headers\.location/i)
   const shell = read('../src/main/shell.ts')
-  assert.match(shell, /trusted\.icons\.clear\(id\)/)
+  assert.match(read('../src/main/shellwipe.ts'), /trusted\.icons\.clear\(id\)/)
   const trusted = read('../src/core/trusted.ts')
   assert.match(trusted, /this\.registry\.readInFull\) this\.icons\.sweep\(/)
   // Refreshed once the server answered, without holding the page up.
@@ -116,7 +116,7 @@ test('the picker says so when there is nothing to share', () => {
 })
 
 test('unread reports push the rail only: the menu is rebuilt when the list changes', () => {
-  const shell = read('../src/main/shell.ts')
+  const shell = read('../src/main/shelllayout.ts')
   const body = (name: string) => new RegExp(`function ${name}\\([^)]*\\)[^{]*\\{([\\s\\S]*?)\\n\\}`).exec(shell)?.[1] ?? ''
   assert.doesNotMatch(body('pushRail'), /buildMenu/)
   assert.doesNotMatch(body('countsChanged'), /buildMenu/)
@@ -127,7 +127,7 @@ test('a failed start tells the person, and a second launch raises the window of 
   const main = read('../src/main/main.ts')
   assert.match(main, /could not start[\s\S]*?errorBox\(message\)[\s\S]*?app\.exit\(1\)/)
   assert.match(main, /second-instance[\s\S]*?raiseWindow\(running\)/)
-  assert.match(read('../src/main/shell.ts'), /function raiseWindow[\s\S]*?isMinimized\(\)\) window\.restore\(\)/)
+  assert.match(read('../src/main/shelllayout.ts'), /function raiseWindow[\s\S]*?isMinimized\(\)\) window\.restore\(\)/)
 })
 
 test('the picker cannot leave a screen share request unanswered', () => {

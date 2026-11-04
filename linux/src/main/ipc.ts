@@ -15,7 +15,8 @@ import type { Context, Role } from './context.ts'
 import { handle, mainFrameUrl } from './handle.ts'
 import { pickerChoose, pickerSources } from './permissions.ts'
 import { notify, notifyOpen, notifyPermission } from './notify.ts'
-import { addServer, countsChanged } from './shell.ts'
+import { addServer } from './shell.ts'
+import { countsChanged } from './shelllayout.ts'
 
 /** The page this call comes from, with the server it belongs to (decided by the host when it made the page). */
 interface Caller { role: Role, contents: WebContents, server: string | null }

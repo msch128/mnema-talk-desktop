@@ -28,11 +28,6 @@
       "count": 1
     }
   },
-  "src/core/instances.ts": {
-    "max-lines": {
-      "count": 1
-    }
-  },
   "src/core/json.ts": {
     "sonarjs/cognitive-complexity": {
       "count": 1
@@ -49,27 +44,6 @@
   "src/core/railui.ts": {
     "sonarjs/cognitive-complexity": {
       "count": 2
-    }
-  },
-  "src/core/selfupdate.ts": {
-    "max-lines": {
-      "count": 1
-    },
-    "sonarjs/cognitive-complexity": {
-      "count": 2
-    }
-  },
-  "src/core/store.ts": {
-    "max-lines": {
-      "count": 1
-    },
-    "sonarjs/cognitive-complexity": {
-      "count": 1
-    }
-  },
-  "src/main/shell.ts": {
-    "max-lines": {
-      "count": 1
     }
   },
   "test/vectors.test.ts": {

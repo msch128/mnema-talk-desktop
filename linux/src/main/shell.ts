@@ -11,9 +11,8 @@
  * any server; it is the only one that can switch, reorder or remove a server.
  */
 import { randomBytes } from 'node:crypto'
-import { existsSync, readdirSync } from 'node:fs'
-import { join } from 'node:path'
-import { BaseWindow, WebContentsView, app, session } from 'electron'
+import { existsSync } from 'node:fs'
+import { BaseWindow, WebContentsView, app } from 'electron'
 import { inviteCode, parseAddress } from '../core/client.ts'
 import { writeFileAtomic } from '../core/atomic.ts'
 import { AddError, MAX_IMPORT_BYTES, MAX_INSTANCES, idFor, storedFrom, storedText } from '../core/instances.ts'
@@ -21,116 +20,14 @@ import { type RailEdit, exportTarget } from '../core/railui.ts'
 import { APP_URL } from '../core/origin.ts'
 import { closeSocketsWithDocument } from '../core/pagesockets.ts'
 import { Tickets } from '../core/tickets.ts'
-import { TITLE, windowTitle } from '../core/title.ts'
-import { orphanPartitions, wipeWithRetry } from '../core/wipe.ts'
-import { LEGACY_PARTITION, PARTITIONS, serverPartition, type Context } from './context.ts'
-import { buildMenu } from './menu.ts'
-import { setLauncherBadge, toastsClosed } from './notify.ts'
+import { TITLE } from '../core/title.ts'
+import { PARTITIONS, type Context } from './context.ts'
 import { prepare, prepareServer } from './sessions.ts'
 import { appHandler, assetHandler, HOST_PAGE_CSP } from './protocol.ts'
 import { loadAssets } from './assets.ts'
-import { pageShown, railShown } from '../core/visibility.ts'
+import { bringForward, changed, countsChanged, focusFront, layout, pushRail } from './shelllayout.ts'
+import { removeServer, sweepOrphans } from './shellwipe.ts'
 import { appPreload, harden, pagePreferences, railPreload } from './windows.ts'
-
-export const RAIL_WIDTH = 68
-
-// ------------------------------------------------------------------- layout
-
-function frontKey(ctx: Context): string | null {
-  const registry = ctx.trusted.registry
-  const active = registry.active()
-  return active !== null && !registry.adding() ? active : null
-}
-
-/** Puts the rail on the left, the page in front next to it and hides the others (all of them while the window is minimised). Hidden pages keep running, throttled: the engine stops painting them and slows their timers. */
-export function layout(ctx: Context): void {
-  const { window, rail, selector, pages } = ctx.shell
-  if (!window || window.isDestroyed()) return
-  const { width, height } = window.getContentBounds()
-  const minimized = window.isMinimized()
-  rail?.setBounds({ x: 0, y: 0, width: RAIL_WIDTH, height })
-  rail?.setVisible(railShown(minimized))
-  const content = { x: RAIL_WIDTH, y: 0, width: Math.max(1, width - RAIL_WIDTH), height }
-  const front = frontKey(ctx)
-  if (selector) { selector.setBounds(content); selector.setVisible(pageShown(null, front, minimized)) }
-  for (const [id, view] of pages) { view.setBounds(content); view.setVisible(pageShown(id, front, minimized)) }
-}
-
-export function focusFront(ctx: Context): void {
-  const front = frontKey(ctx)
-  const view = front === null ? ctx.shell.selector : ctx.shell.pages.get(front)
-  if (view && !view.webContents.isDestroyed()) view.webContents.focus()
-}
-
-export function railSnapshot(ctx: Context) {
-  return ctx.trusted.registry.rail(true)
-}
-
-/** What the rail was last told, so that a report that changes nothing (the page reports on every change) pushes nothing. */
-const pushed = new WeakMap<Context, string>()
-
-/** Shows the rail what it should draw. */
-export function pushRail(ctx: Context): void {
-  const snapshot = railSnapshot(ctx)
-  const state = JSON.stringify(snapshot)
-  if (pushed.get(ctx) === state) return
-  pushed.set(ctx, state)
-  const window = ctx.shell.window
-  if (window && !window.isDestroyed()) window.setTitle(windowTitle(snapshot))
-  const rail = ctx.shell.rail
-  if (rail && !rail.webContents.isDestroyed()) {
-    void rail.webContents.executeJavaScript(`window.mnemaRail&&window.mnemaRail.set(${state})`).catch(() => undefined)
-  }
-}
-
-/** The counters changed: the launcher badge is their sum, the rail shows each. The menu does not show counters. */
-export function countsChanged(ctx: Context): void {
-  setLauncherBadge(ctx.trusted.registry.badge())
-  pushRail(ctx)
-}
-
-/** The list or the order changed: save it, lay the pages out again and rename the menu entries to match. */
-function changed(ctx: Context): void {
-  ctx.trusted.saveInstances()
-  layout(ctx)
-  pushRail(ctx)
-  buildMenu(ctx)
-}
-
-/** Shows the window of the shell (restoring it when minimized) and gives it the focus. */
-export function raiseWindow(ctx: Context): void {
-  const window = ctx.shell.window
-  if (!window || window.isDestroyed()) return
-  if (window.isMinimized()) window.restore()
-  window.show()
-  window.focus()
-}
-
-/** Brings a server to the front (a toast was used, the person chose it) and the window with it. */
-export function bringForward(ctx: Context, id: string): void {
-  if (!ctx.trusted.registry.activate(id)) return
-  changed(ctx)
-  raiseWindow(ctx)
-  focusFront(ctx)
-}
-
-export function activate(ctx: Context, id: string): void {
-  if (ctx.trusted.registry.activate(id)) { changed(ctx); focusFront(ctx) }
-}
-
-export function activateNth(ctx: Context, number: number): void {
-  if (ctx.trusted.registry.activateNth(number) !== null) { changed(ctx); focusFront(ctx) }
-}
-
-export function startAdding(ctx: Context): void {
-  if (ctx.trusted.registry.startAdding()) { changed(ctx); focusFront(ctx) }
-}
-
-export function cancelAdding(ctx: Context): void {
-  ctx.trusted.registry.stopAdding()
-  changed(ctx)
-  focusFront(ctx)
-}
 
 /**
  * A change the rail asked for: folders and local names (the id a new folder gets
@@ -394,85 +291,3 @@ export function bundlesChanged(ctx: Context): void {
   pushRail(ctx)
 }
 
-// ----------------------------------------------------------------- removal
-
-function partitionDir(ctx: Context, partition: string): string {
-  return join(ctx.trusted.dataDirectory() ?? app.getPath('userData'), 'Partitions', partition.replace(/^persist:/, ''))
-}
-
-/**
- * Removes a server's partition directory after its page stored what it stored
- * in the browser engine, in the background, and gives up if the server comes
- * back in the meantime.
- */
-function wipeDirectory(ctx: Context, id: string, dir: string): void {
-  wipeWithRetry(dir, { stop: () => ctx.trusted.registry.contains(id) })
-}
-
-/**
- * Takes a server out of the list and wipes everything this device holds of it:
- * its stored session (secret store entry and fallback file), its browser
- * storage, its sockets, its toasts and its attachment window (an in-memory session, so there is no directory of it).
- */
-export async function removeServer(ctx: Context, id: string): Promise<void> {
-  const { trusted } = ctx
-  const partition = serverPartition(id)
-  const slot = trusted.registry.remove(id)
-  if (!slot) return
-  if (slot.phase.kind === 'ready') {
-    slot.phase.session.sockets.closeAll()
-    slot.phase.session.instance.jar.forget()
-  } else {
-    trusted.forgetStoredSession(slot.origin)
-  }
-  trusted.icons.clear(id)
-  toastsClosed(id, slot.generation)
-  const attachment = ctx.shell.attachments.get(id)
-  const stores = [attachment?.webContents.session]
-  if (attachment && !attachment.isDestroyed()) attachment.close()
-  const page = ctx.shell.pages.get(id)
-  if (page) {
-    stores.push(page.webContents.session)
-    ctx.shell.pages.delete(id)
-    ctx.shell.window?.contentView.removeChildView(page)
-    page.webContents.close()
-  }
-  for (const ses of stores) {
-    if (!ses) continue
-    await ses.clearStorageData().catch(() => undefined)
-    await ses.clearCache().catch(() => undefined)
-  }
-  wipeDirectory(ctx, id, partitionDir(ctx, partition))
-  changed(ctx)
-  countsChanged(ctx)
-  focusFront(ctx)
-}
-
-/**
- * Storage of servers that are no longer in the list (a removal cut short by the
- * end of the program) goes at the next start. Only when the list was read in
- * full: a list that could not be (unreadable, a newer version, an address that
- * no longer holds up) says nothing about which servers are gone, and the end-to-end
- * state of the others lives in exactly these directories.
- */
-function sweepOrphans(ctx: Context): void {
-  if (!ctx.trusted.registry.readInFull) return
-  const root = join(ctx.trusted.dataDirectory() ?? app.getPath('userData'), 'Partitions')
-  let names: string[]
-  try { names = readdirSync(root) } catch { return }
-  for (const name of orphanPartitions(names, new Set(ctx.trusted.registry.ids()))) wipeWithRetry(join(root, name))
-}
-
-/** Removes the storage of the single-server client: its data, then its directory. */
-export async function wipeLegacyStorage(ctx: Context): Promise<void> {
-  const ses = session.fromPartition(LEGACY_PARTITION)
-  await ses.clearStorageData().catch(() => undefined)
-  await ses.clearCache().catch(() => undefined)
-  wipeWithRetry(partitionDir(ctx, LEGACY_PARTITION))
-}
-
-/** Whether the single-server client left its storage behind (it is gone once wiped, so this is true once). */
-export function legacyStorageWaits(ctx: Context): boolean {
-  const dir = partitionDir(ctx, LEGACY_PARTITION)
-  return existsSync(dir)
-}
