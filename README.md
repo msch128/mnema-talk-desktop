@@ -337,12 +337,24 @@ cargo clippy --locked --manifest-path Cargo.toml --all-targets -- -D warnings
 cargo test --locked --manifest-path experimental/app/Cargo.toml --features shell,web-client,custom-protocol
 cargo clippy --locked --manifest-path experimental/app/Cargo.toml --features shell,web-client,custom-protocol --all-targets -- -D warnings
 node --test scripts/*.test.mjs
+node scripts/check-limits.mjs
 ```
 
 The first two commands build only the gaming logic of `src/`. The host and the
 page tests (`experimental/app/page-tests`) run in the *Shared desktop client DEV
 builds* and *Desktop checks* workflows. The small `go.mod` is only a module
 boundary preventing a parent Go module from scanning npm Go fixtures.
+
+### Size and complexity limits
+
+The same numbers as the server: production files up to 400 lines, test files up
+to 800 (a Rust `#[cfg(test)]` module counts as a test file of its own), functions
+up to 80 lines and cognitive complexity 15. `scripts/check-limits.mjs` checks the
+file sizes, ESLint (`linux/eslint.config.ts`) checks TypeScript and clippy checks
+Rust. Files and functions that were over the limit when it was introduced are
+listed in `scripts/limits-allowlist.txt` and `linux/eslint-suppressions.json`;
+those lists only shrink (an entry that is no longer needed fails the check).
+Never add to them or raise a limit: split the code by responsibility.
 
 Libraries and locked Rust dependency inventory: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 The app icons are generated from the project's existing `web/public/favicon.svg`.
