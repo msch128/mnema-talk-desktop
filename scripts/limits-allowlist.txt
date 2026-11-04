@@ -24,4 +24,3 @@ linux/src/core/proxy.ts production
 linux/src/core/selfupdate.ts production
 linux/src/core/store.ts production
 linux/src/main/shell.ts production
-src/game_library.rs production
