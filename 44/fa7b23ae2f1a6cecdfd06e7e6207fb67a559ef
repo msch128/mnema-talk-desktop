@@ -1,0 +1,34 @@
+linux/scripts/gen-vectors.ts
+  h_0ff4f4713441f4 13-23
+linux/scripts/vectors/bundle.ts
+  h_0ff4f4713441f4 1-80
+linux/scripts/vectors/client.ts
+  h_0ff4f4713441f4 1-40
+linux/scripts/vectors/common.ts
+  h_0ff4f4713441f4 1-31
+linux/scripts/vectors/json.ts
+  h_0ff4f4713441f4 1-193
+linux/scripts/vectors/minisign.ts
+  h_0ff4f4713441f4 1-42
+linux/scripts/vectors/proxy.ts
+  h_0ff4f4713441f4 1-80
+linux/scripts/vectors/store.ts
+  h_0ff4f4713441f4 1-187
+linux/scripts/vectors/trust.ts
+  h_0ff4f4713441f4 1-156
+linux/scripts/vectors/zip.ts
+  h_0ff4f4713441f4 1-138
+linux/test/vectors.test.ts
+  h_0ff4f4713441f4 92-117,126-130,138-150,156-157,162
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "44fa7b23ae2f1a6cecdfd06e7e6207fb67a559ef",
+  "prompts": {},
+  "humans": {
+    "h_0ff4f4713441f4": {
+      "author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}
