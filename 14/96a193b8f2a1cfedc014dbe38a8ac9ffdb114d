@@ -1,0 +1,38 @@
+experimental/app/src/storage.rs
+  h_0ff4f4713441f4 313-345
+experimental/app/src/web_client.rs
+  h_0ff4f4713441f4 2667-2676
+experimental/app/src/web_gaming.rs
+  h_0ff4f4713441f4 49-63
+experimental/app/src/web_gaming/command.rs
+  h_0ff4f4713441f4 1-94
+experimental/app/src/web_gaming/commands.rs
+  h_0ff4f4713441f4 1-211
+experimental/app/src/web_gaming/input_host.rs
+  h_0ff4f4713441f4 1-77
+experimental/app/src/web_gaming/native.rs
+  h_0ff4f4713441f4 1-207
+experimental/app/src/web_gaming/settings.rs
+  h_0ff4f4713441f4 1-147
+experimental/app/src/web_gaming/setup.rs
+  h_0ff4f4713441f4 1-134
+experimental/app/src/web_gaming/state.rs
+  h_0ff4f4713441f4 1-564
+experimental/app/src/web_gaming/surface.rs
+  h_0ff4f4713441f4 1-115
+experimental/app/src/web_gaming/tick.rs
+  h_0ff4f4713441f4 1-233
+experimental/app/src/web_gaming/voice.rs
+  h_0ff4f4713441f4 1-97
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1496a193b8f2a1cfedc014dbe38a8ac9ffdb114d",
+  "prompts": {},
+  "humans": {
+    "h_0ff4f4713441f4": {
+      "author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}
