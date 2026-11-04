@@ -95,6 +95,24 @@ async function proxy(session: Session, request: Request, url: URL): Promise<Resp
 
 export type WindowKind = 'selector' | 'instance' | 'attachment'
 
+/** What the page of this kind gets for one request; a page only ever reaches its own server's session. */
+async function route(kind: WindowKind, trusted: Trusted, server: string, request: Request): Promise<Resp> {
+  const url = new URL(request.url)
+  const session = kind === 'selector' ? null : trusted.session(server)
+  if (!ours(url)) return plain(403, 'Forbidden.')
+  const api = isApi(url.pathname)
+  if (kind === 'attachment') {
+    if (!api) return plain(403, 'Forbidden.')
+    return session ? await proxy(session, request, url) : unavailable(trusted, server)
+  }
+  if (api) {
+    if (kind !== 'instance') return plain(404, 'Not found.')
+    return session ? await proxy(session, request, url) : unavailable(trusted, server)
+  }
+  if (kind === 'instance') return session ? serveBundle(session.held.bundle, request.method, url.pathname) : unavailable(trusted, server)
+  return bundlePage(trusted, request.method, url.pathname)
+}
+
 /**
  * The handler of one kind of page. `server` binds the handler of a server's
  * page (or attachment window) to that server: the session it uses is looked up
@@ -105,19 +123,7 @@ export function appHandler(kind: WindowKind, trusted: Trusted, debug = false, se
   return async (request) => {
     let resp: Resp
     try {
-      const url = new URL(request.url)
-      const session = kind === 'selector' ? null : trusted.session(server)
-      if (!ours(url)) {
-        resp = plain(403, 'Forbidden.')
-      } else if (kind === 'attachment') {
-        resp = !isApi(url.pathname) ? plain(403, 'Forbidden.') : session ? await proxy(session, request, url) : unavailable(trusted, server)
-      } else if (isApi(url.pathname)) {
-        resp = kind === 'instance' ? (session ? await proxy(session, request, url) : unavailable(trusted, server)) : plain(404, 'Not found.')
-      } else if (kind === 'instance') {
-        resp = session ? serveBundle(session.held.bundle, request.method, url.pathname) : unavailable(trusted, server)
-      } else {
-        resp = bundlePage(trusted, request.method, url.pathname)
-      }
+      resp = await route(kind, trusted, server, request)
       if (debug) console.error(`[proto] ${kind} ${request.url} -> ${resp.status}`)
     } catch {
       resp = plain(500, 'The request could not be answered.')

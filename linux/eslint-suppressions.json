@@ -28,27 +28,12 @@
       "count": 1
     }
   },
-  "src/core/cookies.ts": {
-    "sonarjs/cognitive-complexity": {
-      "count": 1
-    }
-  },
-  "src/core/icon.ts": {
-    "sonarjs/cognitive-complexity": {
-      "count": 2
-    }
-  },
   "src/core/instances.ts": {
     "max-lines": {
       "count": 1
     }
   },
   "src/core/json.ts": {
-    "sonarjs/cognitive-complexity": {
-      "count": 1
-    }
-  },
-  "src/core/layout.ts": {
     "sonarjs/cognitive-complexity": {
       "count": 1
     }
@@ -78,29 +63,6 @@
     "max-lines": {
       "count": 1
     },
-    "sonarjs/cognitive-complexity": {
-      "count": 1
-    }
-  },
-  "src/core/updates.ts": {
-    "sonarjs/cognitive-complexity": {
-      "count": 2
-    }
-  },
-  "src/core/zip.ts": {
-    "sonarjs/cognitive-complexity": {
-      "count": 2
-    }
-  },
-  "src/main/ipc.ts": {
-    "max-lines-per-function": {
-      "count": 1
-    },
-    "sonarjs/cognitive-complexity": {
-      "count": 1
-    }
-  },
-  "src/main/protocol.ts": {
     "sonarjs/cognitive-complexity": {
       "count": 1
     }
