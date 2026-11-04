@@ -44,7 +44,7 @@ pub(crate) fn open_external(url: &Url) {
     }
     #[cfg(target_os = "windows")]
     if show_dialog(Dialog::Confirm, &confirm_text(url)) {
-        dialog::windows_dialog::open(url.as_str());
+        super::dialog::windows_dialog::open(url.as_str());
     }
     // The dialog waits for an answer: not on the thread that runs the window.
     #[cfg(target_os = "macos")]
