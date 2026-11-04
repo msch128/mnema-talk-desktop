@@ -185,8 +185,6 @@ async fn drive(app: &tauri::AppHandle, first: &str, second: &str) {
         return;
     }
     for label in [&page_a, &page_b] {
-        let ready = until("page ready", || true).await;
-        let _ = ready;
         for _ in 0..100 {
             if eval(app, label, "typeof window.__TAURI_INTERNALS__")
                 .await
