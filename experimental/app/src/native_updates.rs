@@ -601,6 +601,10 @@ async fn look<R: Runtime>(app: &AppHandle<R>, manual: bool) -> bool {
 
 /// Download, verify and either install at once (`Mode::Now`) or keep the
 /// verified installer for the next start (`Mode::Later`).
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit when the limits were introduced; split it"
+)]
 pub async fn install<R: Runtime>(app: &AppHandle<R>, mode: Mode) {
     let state = app.state::<NativeUpdates>();
     if state.source.portable {

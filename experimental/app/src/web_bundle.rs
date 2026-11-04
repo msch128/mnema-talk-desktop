@@ -562,6 +562,10 @@ impl Store {
     /// Verifies the built-in bundle and everything in the cache directory.
     /// The security floor is the highest floor any verified manifest declares
     /// (or an earlier run recorded); bundles below it are dropped.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit when the limits were introduced; split it"
+    )]
     pub fn load(dir: Option<&Path>, builtin: Option<&[u8]>, keys: &[TrustedKey]) -> Store {
         let state = dir.map(read_state).unwrap_or_default();
         let mut verified: Vec<Held> = Vec::new();
@@ -2079,6 +2083,11 @@ mod shared_vectors {
     }
 
     #[test]
+    #[expect(
+        clippy::cognitive_complexity,
+        clippy::too_many_lines,
+        reason = "over the limit when the limits were introduced; split it"
+    )]
     fn stores() {
         let v = load(include_str!("../../../test-vectors/store.json"));
         let bytes = |name: &Value| {

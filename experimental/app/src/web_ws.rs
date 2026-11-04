@@ -200,6 +200,10 @@ pub fn open(
     Ok(id)
 }
 
+#[expect(
+    clippy::cognitive_complexity,
+    reason = "over the limit when the limits were introduced; split it"
+)]
 async fn run(
     id: u64,
     instance: &Instance,

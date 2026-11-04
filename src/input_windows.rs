@@ -206,6 +206,10 @@ pub struct RawInputSource {
 }
 
 impl InputSource for RawInputSource {
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit when the limits were introduced; split it"
+    )]
     fn start(&mut self, sink: Sink) -> Result<(), InputError> {
         if self.running.is_some() {
             // The running thread keeps its own sink; say so instead of

@@ -989,6 +989,10 @@ async fn refresh_once(app: &tauri::AppHandle, first: bool) {
     }
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit when the limits were introduced; split it"
+)]
 pub(super) fn run() {
     super::web_tls::install_provider();
     let result = tauri::Builder::default()
@@ -2427,6 +2431,10 @@ mod shared_vectors {
     /// text. They are the ones in `test-vectors/host-errors.json`, which the
     /// Linux client and the web app read too.
     #[test]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit when the limits were introduced; split it"
+    )]
     fn connect_page_sentences() {
         use crate::instances::{AddError, MAX_INSTANCES};
         use crate::web_bundle::Refusal;
@@ -2555,6 +2563,10 @@ mod shared_vectors {
     }
 
     #[test]
+    #[expect(
+        clippy::cognitive_complexity,
+        reason = "over the limit when the limits were introduced; split it"
+    )]
     fn addresses_health_links_and_routes() {
         let v = load();
         for c in v["addresses"].as_array().unwrap() {
