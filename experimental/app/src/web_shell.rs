@@ -50,6 +50,12 @@ pub(crate) const NEEDS_NEWER_MACOS: &str = "Several servers at once need macOS 1
 
 const INDEX: &str = include_str!("../rail-ui/index.html");
 const STYLE: &str = include_str!("../rail-ui/rail.css");
+const SCRIPT_TEXT: &str = include_str!("../rail-ui/rail-text.js");
+const SCRIPT_STATE: &str = include_str!("../rail-ui/rail-state.js");
+const SCRIPT_RENDER: &str = include_str!("../rail-ui/rail-render.js");
+const SCRIPT_COMMANDS: &str = include_str!("../rail-ui/rail-commands.js");
+const SCRIPT_MENU: &str = include_str!("../rail-ui/rail-menu.js");
+const SCRIPT_DRAG: &str = include_str!("../rail-ui/rail-drag.js");
 const SCRIPT: &str = include_str!("../rail-ui/rail.js");
 const DIALOG_INDEX: &str = include_str!("../rail-ui/dialog.html");
 const DIALOG_SCRIPT: &str = include_str!("../rail-ui/dialog.js");
@@ -67,6 +73,12 @@ pub fn rail_asset(method: &str, path: &str) -> Resp {
     let (kind, body) = match path {
         "/" | "/index.html" => ("text/html; charset=utf-8", INDEX),
         "/rail.css" => ("text/css; charset=utf-8", STYLE),
+        "/rail-text.js" => ("text/javascript; charset=utf-8", SCRIPT_TEXT),
+        "/rail-state.js" => ("text/javascript; charset=utf-8", SCRIPT_STATE),
+        "/rail-render.js" => ("text/javascript; charset=utf-8", SCRIPT_RENDER),
+        "/rail-commands.js" => ("text/javascript; charset=utf-8", SCRIPT_COMMANDS),
+        "/rail-menu.js" => ("text/javascript; charset=utf-8", SCRIPT_MENU),
+        "/rail-drag.js" => ("text/javascript; charset=utf-8", SCRIPT_DRAG),
         "/rail.js" => ("text/javascript; charset=utf-8", SCRIPT),
         "/dialog.html" => ("text/html; charset=utf-8", DIALOG_INDEX),
         "/dialog.css" => ("text/css; charset=utf-8", DIALOG_STYLE),
@@ -1923,6 +1935,12 @@ mod tests {
             "/",
             "/index.html",
             "/rail.css",
+            "/rail-text.js",
+            "/rail-state.js",
+            "/rail-render.js",
+            "/rail-commands.js",
+            "/rail-menu.js",
+            "/rail-drag.js",
             "/rail.js",
             "/dialog.html",
             "/dialog.css",

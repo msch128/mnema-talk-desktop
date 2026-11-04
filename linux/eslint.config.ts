@@ -41,4 +41,7 @@ export default tseslint.config(
   },
   // The page-facing scripts run in a browser.
   { files: ['assets/**/*.js'], languageOptions: { globals: globals.browser, sourceType: 'script' } },
+  // The rail page is several plain scripts that share one global scope, so one file
+  // uses what another declares (and declares what another uses).
+  { files: ['assets/rail-ui/*.js'], rules: { 'no-undef': 'off', '@typescript-eslint/no-unused-vars': 'off' } },
 )
