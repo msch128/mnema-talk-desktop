@@ -1,0 +1,30 @@
+linux/src/core/bundle.ts
+  h_0ff4f4713441f4 156-157,172-206,216
+linux/src/core/client.ts
+  h_0ff4f4713441f4 166-173,182-185,190-212
+linux/src/core/json.ts
+  h_0ff4f4713441f4 82,86-109
+linux/src/core/proxy.ts
+  h_0ff4f4713441f4 10-12,14-16,127-128,140-143,149,160,164-170,191,197-214
+linux/src/core/proxylimits.ts
+  h_0ff4f4713441f4 1-150
+linux/src/core/railui.ts
+  h_0ff4f4713441f4 52-83,88,92-94,97,186-219,221-228,230,236-249
+linux/src/core/resp.ts
+  h_0ff4f4713441f4 1-31
+linux/src/core/staticserve.ts
+  h_0ff4f4713441f4 1-98
+linux/test/contract.test.ts
+  h_0ff4f4713441f4 22,52
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "49b5d10d2b311c717286fe2598dd94e45a38ecfc",
+  "prompts": {},
+  "humans": {
+    "h_0ff4f4713441f4": {
+      "author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}
