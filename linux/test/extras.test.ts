@@ -96,8 +96,8 @@ test('the page asks for a mute, a mark as read, an export and an import in plain
   assert.deepEqual(parseEdit({ op: 'mute', id: a, until: 0 }), { op: 'mute', id: a, until: 0 })
   assert.deepEqual(parseEdit({ op: 'mark_read', id: a }), { op: 'mark_read', id: a })
   assert.deepEqual(parseEdit({ op: 'export' }), { op: 'export' })
-  assert.deepEqual(parseEdit({ op: 'import', name: '{}' }), { op: 'import', text: '{}' })
-  for (const bad of [{ op: 'mute', id: a }, { op: 'mute', id: a, until: '5' }, { op: 'mute', id: a, until: -2 }, { op: 'mute', id: a, until: 1.5 }, { op: 'mute', id: 'x', until: 5 }, { op: 'mark_read', id: 'f-00000000' }, { op: 'import' }, { op: 'import', name: 'x'.repeat(65537) }]) {
+  assert.deepEqual(parseEdit({ op: 'import', text: '{}' }), { op: 'import', text: '{}' })
+  for (const bad of [{ op: 'mute', id: a }, { op: 'mute', id: a, until: '5' }, { op: 'mute', id: a, until: -2 }, { op: 'mute', id: a, until: 1.5 }, { op: 'mute', id: 'x', until: 5 }, { op: 'mark_read', id: 'f-00000000' }, { op: 'import' }, { op: 'import', text: 'x'.repeat(65537) }, { op: 'import', name: '{}' }]) {
     assert.throws(() => parseEdit(bad), JSON.stringify(bad).slice(0, 60))
   }
 })

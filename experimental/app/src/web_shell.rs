@@ -1515,13 +1515,14 @@ pub fn rail_edit(
     name: Option<String>,
     color: Option<String>,
     until: Option<i64>,
+    text: Option<String>,
 ) -> Result<serde_json::Value, String> {
     let app = from_rail(&webview)?;
     match op.as_str() {
         "mute" => return mute(&app, id.as_deref(), until).map(|()| serde_json::Value::Null),
         "mark_read" => return mark_read(&app, id.as_deref()).map(|()| serde_json::Value::Null),
         "export" => return export_list(&app).map(serde_json::Value::from),
-        "import" => return import_list(&app, name.as_deref()).map(serde_json::Value::from),
+        "import" => return import_list(&app, text.as_deref()).map(serde_json::Value::from),
         _ => {}
     }
     let edit = crate::rail_layout::Edit {

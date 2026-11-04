@@ -743,7 +743,7 @@ describe('server rail', () => {
       await vi.advanceTimersByTimeAsync(0)
       const spec = JSON.parse((calls('rail_dialog')[0] as { spec: string }).spec)
       expect(spec.file).toEqual({ label: 'File (.json)', accept: '.json', max: 65536 })
-      expect(calls('rail_edit')).toEqual([{ op: 'import', name: '{"version":1}' }])
+      expect(calls('rail_edit')).toEqual([{ op: 'import', text: '{"version":1}' }])
       expect(live()).toBe('2 servers added')
     })
 
