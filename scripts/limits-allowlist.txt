@@ -18,7 +18,6 @@ experimental/app/src/web_proxy.rs test
 experimental/app/src/web_shell.rs production
 experimental/app/src/web_trust.rs production
 linux/assets/rail-ui/rail.js production
-linux/scripts/gen-vectors.ts production
 linux/src/core/instances.ts production
 linux/src/core/proxy.ts production
 linux/src/core/selfupdate.ts production

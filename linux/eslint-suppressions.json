@@ -7,17 +7,6 @@
       "count": 3
     }
   },
-  "scripts/gen-vectors.ts": {
-    "max-lines": {
-      "count": 1
-    },
-    "max-lines-per-function": {
-      "count": 4
-    },
-    "sonarjs/cognitive-complexity": {
-      "count": 1
-    }
-  },
   "src/core/bundle.ts": {
     "sonarjs/cognitive-complexity": {
       "count": 1
@@ -108,11 +97,6 @@
   "src/main/shell.ts": {
     "max-lines": {
       "count": 1
-    }
-  },
-  "test/vectors.test.ts": {
-    "sonarjs/cognitive-complexity": {
-      "count": 2
     }
   }
 }
