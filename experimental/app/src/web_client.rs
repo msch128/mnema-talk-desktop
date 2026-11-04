@@ -2656,7 +2656,7 @@ mod drop_tests {
     /// trusted local UI listens for native drops.
     #[test]
     fn the_instance_page_takes_file_drops_itself() {
-        let shell = include_str!("web_shell.rs");
+        let shell = include_str!("web_shell/pages.rs");
         let start = shell
             .find("fn instance_page(")
             .or_else(|| shell.find("let label = instance_label(id);"))
