@@ -420,6 +420,12 @@ fn unwrap_paste(input: &str) -> &str {
     input
 }
 
+/// The authority of what follows `://`: up to the first `/`, `?` or `#`. An `@` in the path or
+/// query (a `/@name` profile link, an e-mail in `?q=`) is page content, not credentials.
+fn authority_of(rest: &str) -> &str {
+    rest.split(['/', '?', '#']).next().unwrap_or(rest)
+}
+
 /// The pasted text as a URL, before the page (path, query, fragment) is removed.
 fn parsed(input: &str) -> Result<Url, String> {
     if input.len() > 2048 || input.chars().any(char::is_control) {
@@ -439,7 +445,7 @@ fn parsed(input: &str) -> Result<Url, String> {
         || url.password().is_some()
         || raw
             .split_once("://")
-            .is_some_and(|(_, authority)| authority.contains('@'));
+            .is_some_and(|(_, rest)| authority_of(rest).contains('@'));
     if url.host_str().is_none() {
         return Err("Invalid instance address.".into());
     }

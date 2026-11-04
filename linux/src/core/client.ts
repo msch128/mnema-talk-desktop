@@ -37,7 +37,8 @@ function prepared(input: string): URL {
   } catch {
     throw new Error('Invalid instance address.')
   }
-  const authority = raw.slice(raw.indexOf('://') + 3)
+  // Only the authority can carry credentials; an "@" in the path or query is page content.
+  const authority = raw.slice(raw.indexOf('://') + 3).split(/[/?#]/u)[0] ?? ''
   if (url.hostname === '') throw new Error('Invalid instance address.')
   if (url.username !== '' || url.password !== '' || authority.includes('@') || (url.protocol !== 'https:' && url.protocol !== 'http:')) {
     throw new Error('Use an HTTPS origin without credentials, a path or query.')
