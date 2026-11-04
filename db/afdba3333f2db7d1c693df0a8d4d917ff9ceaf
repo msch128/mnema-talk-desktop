@@ -1,0 +1,22 @@
+experimental/app/src/web_proxy.rs
+  h_0ff4f4713441f4 489-490,506-509,2249,2291,2302-2303
+linux/scripts/gen-vectors.ts
+  h_0ff4f4713441f4 761
+linux/src/core/proxy.ts
+  h_0ff4f4713441f4 197-199,206
+linux/test/proxy.test.ts
+  h_0ff4f4713441f4 472,482-483
+test-vectors/proxy.json
+  h_0ff4f4713441f4 206-221
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "dbafdba3333f2db7d1c693df0a8d4d917ff9ceaf",
+  "prompts": {},
+  "humans": {
+    "h_0ff4f4713441f4": {
+      "author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}
