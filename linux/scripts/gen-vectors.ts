@@ -758,7 +758,7 @@ function proxyVectors(): Json {
     .map((input) => ({ origin, input, href: target(new URL(origin), input)?.href ?? null }))
   const upload = '/api/channels/00000000-0000-4000-8000-000000000000/upload'
   const capSteps = [
-    { announce: [], path: upload }, { announce: [10], path: upload }, { announce: [10], path: '/api/channels/x/messages' }, { announce: [10], path: '/api/users/me/avatar' },
+    { announce: [], path: upload }, { announce: [10], path: upload }, { announce: [10], path: '/api/channels/x/messages' }, { announce: [10], path: '/api/users/me/avatar' }, { announce: [10], path: '/api/wiki/images' }, { announce: [10], path: '/api/wiki/images/x' },
     { announce: [10], path: '/api/channels//upload' }, { announce: [10], path: '/api/channels/a/b/upload' }, { announce: [512], path: upload }, { announce: [512, 0, 999_999], path: upload }, { announce: [2048], path: upload },
     { announce: [1], path: upload }, { announce: [2049], path: upload },
   ].map((c) => {

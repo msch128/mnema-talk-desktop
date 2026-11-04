@@ -486,7 +486,8 @@ fn create_private_dir(dir: &std::path::Path) {
 /// The kinds of request body the proxy tells apart.
 enum Route {
     /// One picture the server parses in memory: avatar, banner, community
-    /// icon, the avatar of a bot or webhook, the cover of an event.
+    /// icon, the avatar of a bot or webhook, the cover of an event, a picture
+    /// of the wiki.
     Picture,
     Upload,
     Json,
@@ -502,7 +503,10 @@ impl Route {
         };
         matches!(
             path,
-            "/api/users/me/avatar" | "/api/users/me/banner" | "/api/admin/community/icon"
+            "/api/users/me/avatar"
+                | "/api/users/me/banner"
+                | "/api/admin/community/icon"
+                | "/api/wiki/images"
         ) || between("/api/admin/bots/", "/avatar")
             || between("/api/admin/webhooks/", "/avatar")
             || between("/api/events/", "/cover")
@@ -2242,6 +2246,7 @@ mod tests {
             ("POST", "avatar", format!("/api/admin/bots/{id}/avatar")),
             ("POST", "avatar", format!("/api/admin/webhooks/{id}/avatar")),
             ("POST", "cover", format!("/api/events/{id}/cover")),
+            ("POST", "image", "/api/wiki/images".to_owned()),
             ("POST", "file", format!("/api/channels/{id}/upload")),
         ];
         // Around the megabyte the first server-side size classes meet, and
@@ -2283,6 +2288,7 @@ mod tests {
             format!("/api/admin/bots/{id}/avatar"),
             format!("/api/admin/webhooks/{id}/avatar"),
             format!("/api/events/{id}/cover"),
+            "/api/wiki/images".to_owned(),
         ] {
             assert_eq!(limits.request_cap(&path), MAX_AVATAR_BODY, "{path}");
         }
@@ -2293,6 +2299,8 @@ mod tests {
             "/api/admin/bots/a/b/avatar",
             "/api/events//cover",
             "/api/events/a/b/cover",
+            "/api/wiki/images/x",
+            "/api/wiki/pages",
         ] {
             assert_eq!(limits.request_cap(path), MAX_JSON_BODY, "{path}");
         }
