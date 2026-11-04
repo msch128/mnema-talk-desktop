@@ -1,0 +1,18 @@
+.github/workflows/public-tls.yml
+  h_0ff4f4713441f4 16,76
+experimental/app/src/storage.rs
+  h_0ff4f4713441f4 317-340
+experimental/app/src/web_client/tests/discover.rs
+  h_0ff4f4713441f4 198-216
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0fdccc267ab43990277df0de146cd29e7824649d",
+  "prompts": {},
+  "humans": {
+    "h_0ff4f4713441f4": {
+      "author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}
