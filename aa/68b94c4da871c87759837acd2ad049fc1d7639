@@ -1,0 +1,18 @@
+experimental/README.md
+  h_0ff4f4713441f4 126-127
+experimental/app/src/web_bundle.rs
+  h_0ff4f4713441f4 515-516
+experimental/app/src/web_shell.rs
+  h_0ff4f4713441f4 651-652
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "aa68b94c4da871c87759837acd2ad049fc1d7639",
+  "prompts": {},
+  "humans": {
+    "h_0ff4f4713441f4": {
+      "author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}
