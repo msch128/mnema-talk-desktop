@@ -49,42 +49,52 @@ export type HostEdit =
   | { op: 'import', text: string }
 export type RailEdit = Edit | HostEdit
 
+function placeEdit(args: Args): Edit {
+  const target = string({ target: args['target'] ?? '' }, 'target', 10)
+  const before = string({ before: args['before'] ?? '' }, 'before', 16)
+  if (target !== '' && !validFolderId(target)) throw new Error('invalid arguments')
+  if (before !== '' && !validId(before) && !validFolderId(before)) throw new Error('invalid arguments')
+  return { op: 'place', id: either(args, 'id'), target, before }
+}
+
+function stepEdit(args: Args): Edit {
+  const delta = args['delta']
+  if (delta !== 1 && delta !== -1) throw new Error('invalid arguments')
+  return { op: 'step', id: either(args, 'id'), delta }
+}
+
+function toggleEdit(args: Args): Edit {
+  const flag = args['flag'] ?? null
+  if (flag !== null && typeof flag !== 'boolean') throw new Error('invalid arguments')
+  return { op: 'toggle', id: folder(args, 'id'), flag }
+}
+
+function folderEdit(args: Args): Edit {
+  const color = args['color'] ?? null
+  if (color !== null && (typeof color !== 'string' || (color !== '' && !COLOR.test(color)))) throw new Error('invalid arguments')
+  return { op: 'folder_edit', id: folder(args, 'id'), name: string(args, 'name'), color: color === '' ? null : color }
+}
+
+function muteEdit(args: Args): HostEdit {
+  const until = args['until']
+  if (typeof until !== 'number' || !Number.isSafeInteger(until) || until < -1) throw new Error('invalid arguments')
+  return { op: 'mute', id: server(args, 'id'), until }
+}
+
 /** The change of layout (or the other change) a `rail_edit` call asks for. The folder a change makes gets its id from the host, never from the page. */
 export function parseEdit(args: Args): RailEdit {
   const op = string(args, 'op', 24)
   switch (op) {
-    case 'place': {
-      const target = string({ target: args['target'] ?? '' }, 'target', 10)
-      const before = string({ before: args['before'] ?? '' }, 'before', 16)
-      if (target !== '' && !validFolderId(target)) throw new Error('invalid arguments')
-      if (before !== '' && !validId(before) && !validFolderId(before)) throw new Error('invalid arguments')
-      return { op, id: either(args, 'id'), target, before }
-    }
+    case 'place': return placeEdit(args)
     case 'group': return { op, id: server(args, 'id'), target: server(args, 'target') }
     case 'new_folder': return { op, id: server(args, 'id') }
     case 'ungroup': return { op, id: server(args, 'id') }
-    case 'step': {
-      const delta = args['delta']
-      if (delta !== 1 && delta !== -1) throw new Error('invalid arguments')
-      return { op, id: either(args, 'id'), delta }
-    }
-    case 'toggle': {
-      const flag = args['flag'] ?? null
-      if (flag !== null && typeof flag !== 'boolean') throw new Error('invalid arguments')
-      return { op, id: folder(args, 'id'), flag }
-    }
-    case 'folder_edit': {
-      const color = args['color'] ?? null
-      if (color !== null && (typeof color !== 'string' || (color !== '' && !COLOR.test(color)))) throw new Error('invalid arguments')
-      return { op, id: folder(args, 'id'), name: string(args, 'name'), color: color === '' ? null : color }
-    }
+    case 'step': return stepEdit(args)
+    case 'toggle': return toggleEdit(args)
+    case 'folder_edit': return folderEdit(args)
     case 'folder_delete': return { op, id: folder(args, 'id') }
     case 'rename': return { op, id: server(args, 'id'), name: string(args, 'name') }
-    case 'mute': {
-      const until = args['until']
-      if (typeof until !== 'number' || !Number.isSafeInteger(until) || until < -1) throw new Error('invalid arguments')
-      return { op, id: server(args, 'id'), until }
-    }
+    case 'mute': return muteEdit(args)
     case 'mark_read': return { op, id: server(args, 'id') }
     case 'export': return { op }
     case 'import': return { op, text: string(args, 'text', MAX_IMPORT_BYTES) }
@@ -173,6 +183,58 @@ function text(value: unknown, max: number, empty = false): string {
   return value
 }
 
+function dialogInput(input: unknown): NonNullable<DialogSpec['input']> {
+  if (!isRecord(input)) throw new Error('invalid dialog')
+  const max = input['max']
+  if (typeof max !== 'number' || !Number.isInteger(max) || max < 1 || max > 80) throw new Error('invalid dialog')
+  const value = text(input['value'], 40, true)
+  return { label: text(input['label'], 60), value, max, ...(input['placeholder'] !== undefined ? { placeholder: text(input['placeholder'], 40) } : {}) }
+}
+
+/** A list is the dialog's only field. */
+function dialogList(list: unknown, spec: DialogSpec): NonNullable<DialogSpec['list']> {
+  if (spec.input || !isRecord(list) || !Array.isArray(list['choices']) || list['choices'].length === 0 || list['choices'].length > 12) throw new Error('invalid dialog')
+  const choices = (list['choices'] as unknown[]).map((choice) => {
+    if (!isRecord(choice)) throw new Error('invalid dialog')
+    const id = text(choice['id'], 24)
+    if (!CHOICE_ID.test(id)) throw new Error('invalid dialog')
+    return { id, text: text(choice['text'], 100), ...(choice['hint'] !== undefined ? { hint: text(choice['hint'], 60) } : {}) }
+  })
+  if (new Set(choices.map((c) => c.id)).size !== choices.length) throw new Error('invalid dialog')
+  return { label: text(list['label'], 60), ...(list['placeholder'] !== undefined ? { placeholder: text(list['placeholder'], 40) } : {}), choices }
+}
+
+/** A file to choose is the dialog's only field. */
+function dialogFile(file: unknown, spec: DialogSpec): NonNullable<DialogSpec['file']> {
+  if (spec.input || spec.list || !isRecord(file) || file['accept'] !== '.json') throw new Error('invalid dialog')
+  const max = file['max']
+  if (typeof max !== 'number' || !Number.isInteger(max) || max < 1 || max > MAX_IMPORT_BYTES) throw new Error('invalid dialog')
+  return { label: text(file['label'], 60), accept: '.json', max }
+}
+
+function dialogColors(colors: unknown): NonNullable<DialogSpec['colors']> {
+  if (!isRecord(colors) || !Array.isArray(colors['choices']) || colors['choices'].length === 0 || colors['choices'].length > 12) throw new Error('invalid dialog')
+  const choices = (colors['choices'] as unknown[]).map((choice) => {
+    if (!isRecord(choice)) throw new Error('invalid dialog')
+    const value = text(choice['value'], 7, true)
+    if (value !== '' && !COLOR.test(value)) throw new Error('invalid dialog')
+    return { value, label: text(choice['label'], 40) }
+  })
+  const value = text(colors['value'], 7, true)
+  if (value !== '' && !COLOR.test(value)) throw new Error('invalid dialog')
+  return { label: text(colors['label'], 60), value, choices }
+}
+
+function dialogButtons(buttons: unknown): DialogButton[] {
+  if (!Array.isArray(buttons) || buttons.length < 1 || buttons.length > 3) throw new Error('invalid dialog')
+  return (buttons as unknown[]).map((button) => {
+    if (!isRecord(button)) throw new Error('invalid dialog')
+    const id = text(button['id'], 24)
+    if (!BUTTON_ID.test(id)) throw new Error('invalid dialog')
+    return { id, text: text(button['text'], 40), ...(button['primary'] === true ? { primary: true } : {}), ...(button['danger'] === true ? { danger: true } : {}) }
+  })
+}
+
 /** A dialog as the page describes it, or an error. */
 export function parseDialogSpec(raw: string): DialogSpec {
   let json: unknown
@@ -180,54 +242,11 @@ export function parseDialogSpec(raw: string): DialogSpec {
   if (!isRecord(json)) throw new Error('invalid dialog')
   const spec: DialogSpec = { title: text(json['title'], 80), buttons: [], cancel: '' }
   if (json['message'] !== undefined) spec.message = text(json['message'], 300)
-  const input = json['input']
-  if (input !== undefined) {
-    if (!isRecord(input)) throw new Error('invalid dialog')
-    const max = input['max']
-    if (typeof max !== 'number' || !Number.isInteger(max) || max < 1 || max > 80) throw new Error('invalid dialog')
-    const value = text(input['value'], 40, true)
-    spec.input = { label: text(input['label'], 60), value, max, ...(input['placeholder'] !== undefined ? { placeholder: text(input['placeholder'], 40) } : {}) }
-  }
-  const list = json['list']
-  if (list !== undefined) {
-    if (spec.input || !isRecord(list) || !Array.isArray(list['choices']) || list['choices'].length === 0 || list['choices'].length > 12) throw new Error('invalid dialog')
-    const choices = (list['choices'] as unknown[]).map((choice) => {
-      if (!isRecord(choice)) throw new Error('invalid dialog')
-      const id = text(choice['id'], 24)
-      if (!CHOICE_ID.test(id)) throw new Error('invalid dialog')
-      return { id, text: text(choice['text'], 100), ...(choice['hint'] !== undefined ? { hint: text(choice['hint'], 60) } : {}) }
-    })
-    if (new Set(choices.map((c) => c.id)).size !== choices.length) throw new Error('invalid dialog')
-    spec.list = { label: text(list['label'], 60), ...(list['placeholder'] !== undefined ? { placeholder: text(list['placeholder'], 40) } : {}), choices }
-  }
-  const file = json['file']
-  if (file !== undefined) {
-    if (spec.input || spec.list || !isRecord(file) || file['accept'] !== '.json') throw new Error('invalid dialog')
-    const max = file['max']
-    if (typeof max !== 'number' || !Number.isInteger(max) || max < 1 || max > MAX_IMPORT_BYTES) throw new Error('invalid dialog')
-    spec.file = { label: text(file['label'], 60), accept: '.json', max }
-  }
-  const colors = json['colors']
-  if (colors !== undefined) {
-    if (!isRecord(colors) || !Array.isArray(colors['choices']) || colors['choices'].length === 0 || colors['choices'].length > 12) throw new Error('invalid dialog')
-    const choices = (colors['choices'] as unknown[]).map((choice) => {
-      if (!isRecord(choice)) throw new Error('invalid dialog')
-      const value = text(choice['value'], 7, true)
-      if (value !== '' && !COLOR.test(value)) throw new Error('invalid dialog')
-      return { value, label: text(choice['label'], 40) }
-    })
-    const value = text(colors['value'], 7, true)
-    if (value !== '' && !COLOR.test(value)) throw new Error('invalid dialog')
-    spec.colors = { label: text(colors['label'], 60), value, choices }
-  }
-  const buttons = json['buttons']
-  if (!Array.isArray(buttons) || buttons.length < 1 || buttons.length > 3) throw new Error('invalid dialog')
-  spec.buttons = (buttons as unknown[]).map((button) => {
-    if (!isRecord(button)) throw new Error('invalid dialog')
-    const id = text(button['id'], 24)
-    if (!BUTTON_ID.test(id)) throw new Error('invalid dialog')
-    return { id, text: text(button['text'], 40), ...(button['primary'] === true ? { primary: true } : {}), ...(button['danger'] === true ? { danger: true } : {}) }
-  })
+  if (json['input'] !== undefined) spec.input = dialogInput(json['input'])
+  if (json['list'] !== undefined) spec.list = dialogList(json['list'], spec)
+  if (json['file'] !== undefined) spec.file = dialogFile(json['file'], spec)
+  if (json['colors'] !== undefined) spec.colors = dialogColors(json['colors'])
+  spec.buttons = dialogButtons(json['buttons'])
   if (new Set(spec.buttons.map((b) => b.id)).size !== spec.buttons.length) throw new Error('invalid dialog')
   spec.cancel = text(json['cancel'], 24)
   if (!spec.buttons.some((b) => b.id === spec.cancel)) throw new Error('invalid dialog')

@@ -18,34 +18,6 @@
       "count": 1
     }
   },
-  "src/core/bundle.ts": {
-    "sonarjs/cognitive-complexity": {
-      "count": 1
-    }
-  },
-  "src/core/client.ts": {
-    "sonarjs/cognitive-complexity": {
-      "count": 1
-    }
-  },
-  "src/core/json.ts": {
-    "sonarjs/cognitive-complexity": {
-      "count": 1
-    }
-  },
-  "src/core/proxy.ts": {
-    "max-lines": {
-      "count": 1
-    },
-    "sonarjs/cognitive-complexity": {
-      "count": 1
-    }
-  },
-  "src/core/railui.ts": {
-    "sonarjs/cognitive-complexity": {
-      "count": 2
-    }
-  },
   "test/vectors.test.ts": {
     "sonarjs/cognitive-complexity": {
       "count": 2

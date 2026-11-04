@@ -19,5 +19,4 @@ experimental/app/src/web_shell.rs production
 experimental/app/src/web_trust.rs production
 linux/assets/rail-ui/rail.js production
 linux/scripts/gen-vectors.ts production
-linux/src/core/proxy.ts production
 src/game_library.rs production

@@ -164,35 +164,51 @@ function isId(value: string): boolean {
 const SLUG = /^[a-z0-9-]{1,80}$/
 const USERNAME = /^[A-Za-z0-9._~-]{1,64}$/
 
+type Part = string | undefined
+
+const isIdPart = (value: Part) => value !== undefined && isId(value)
+const isSlug = (value: Part) => value !== undefined && SLUG.test(value)
+const isUsername = (value: Part) => value !== undefined && USERNAME.test(value)
+/** `m` (a message) or `t` (a thread) followed by its id. */
+const isTail = (kind: Part, value: Part) => (kind === 'm' || kind === 't') && isIdPart(value)
+
 export function appPath(path: string): boolean {
   if (['', '/', '/index.html', '/login'].includes(path)) return true
   if (path.length > 200) return false
   const parts = path.split('/')
   if (parts[0] !== '') return false
   const [, first, second, third, fourth, fifth] = parts
-  const id = (value: string | undefined) => value !== undefined && isId(value)
-  const slug = (value: string | undefined) => value !== undefined && SLUG.test(value)
-  const username = (value: string | undefined) => value !== undefined && USERNAME.test(value)
-  const tail = (kind: string | undefined, value: string | undefined) => (kind === 'm' || kind === 't') && id(value)
   switch (parts.length) {
     case 2: return first === 'admin'
-    case 3:
-      if (first === 'invite') return inviteSegment(second)
-      if (first === 'admin') return ['users', 'channels', 'invites', 'media', 'system'].includes(second as string)
-      if (first === 'dm') return username(second)
-      return (first === 'c' || first === 'v') && slug(second)
-    case 4:
-      if (first === 'invite') return third === '' && inviteSegment(second)
-      if (first === 'dm') return second === 'g' && slug(third)
-      return first === 'v' && slug(second) && third === 'chat'
-    case 5:
-      if (first === 'dm') return username(second) && tail(third, fourth)
-      return first === 'c' && slug(second) && ((third === 'p' && slug(fourth)) || tail(third, fourth))
-    case 6:
-      if (first === 'dm') return second === 'g' && slug(third) && tail(fourth, fifth)
-      return first === 'v' && slug(second) && third === 'chat' && fourth === 'm' && id(fifth)
+    case 3: return twoSegments(first, second)
+    case 4: return threeSegments(first, second, third)
+    case 5: return fourSegments(first, second, third, fourth)
+    case 6: return fiveSegments(first, second, third, fourth, fifth)
     default: return false
   }
+}
+
+function twoSegments(first: Part, second: Part): boolean {
+  if (first === 'invite') return inviteSegment(second)
+  if (first === 'admin') return ['users', 'channels', 'invites', 'media', 'system'].includes(second as string)
+  if (first === 'dm') return isUsername(second)
+  return (first === 'c' || first === 'v') && isSlug(second)
+}
+
+function threeSegments(first: Part, second: Part, third: Part): boolean {
+  if (first === 'invite') return third === '' && inviteSegment(second)
+  if (first === 'dm') return second === 'g' && isSlug(third)
+  return first === 'v' && isSlug(second) && third === 'chat'
+}
+
+function fourSegments(first: Part, second: Part, third: Part, fourth: Part): boolean {
+  if (first === 'dm') return isUsername(second) && isTail(third, fourth)
+  return first === 'c' && isSlug(second) && ((third === 'p' && isSlug(fourth)) || isTail(third, fourth))
+}
+
+function fiveSegments(first: Part, second: Part, third: Part, fourth: Part, fifth: Part): boolean {
+  if (first === 'dm') return second === 'g' && isSlug(third) && isTail(fourth, fifth)
+  return first === 'v' && isSlug(second) && third === 'chat' && fourth === 'm' && isIdPart(fifth)
 }
 
 /** What the confirmation shows before a link leaves the app: the whole address, so a mailto: cannot hide a cc, bcc or body. */
