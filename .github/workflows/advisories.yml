@@ -74,12 +74,13 @@ jobs:
           bash scripts/deny-all.sh
 
   # The experimental host's license bundle binds the app Cargo.lock and the
-  # web app's package-lock.json. It must be regenerated with
-  # `node experimental/scripts/collect-licenses.mjs` (mnema-talk checked out at
-  # ./mnema-talk, `npm ci` in mnema-talk/web) whenever either changes; this job
-  # fails otherwise. It runs weekly and on pull requests that touch the locks or
-  # the bundle, not on every push, because the web app's lock lives in the other
-  # repository.
+  # web app's package-lock.json. The web lock is read from the mnema-talk commit
+  # pinned in experimental/licenses/web-source.txt, so this check depends only
+  # on this repository and does not fail when the web app's lock moves on. To
+  # refresh: set the pin to a newer mnema-talk commit, `npm ci` in
+  # mnema-talk/web, run `node experimental/scripts/collect-licenses.mjs`, review
+  # and commit the manifest. The weekly run reports (as a warning) when the web
+  # lock on main differs from the pinned one.
   licenses:
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -87,10 +88,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - id: pin
+        run: echo "sha=$(tr -d '[:space:]' < experimental/licenses/web-source.txt)" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: msch128/mnema-talk
-          ref: main
+          ref: ${{ steps.pin.outputs.sha }}
           path: mnema-talk
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -104,3 +107,13 @@ jobs:
           npm ci --prefix mnema-talk/web --ignore-scripts --no-audit --no-fund
           cargo +1.99.1 fetch --locked --manifest-path experimental/app/Cargo.toml
           node experimental/scripts/collect-licenses.mjs --check
+      - name: The web lock on main has moved on (weekly run only)
+        if: github.event_name == 'schedule'
+        run: |
+          set -euo pipefail
+          git -C mnema-talk fetch --quiet --depth=1 origin main
+          pinned=$(sha256sum mnema-talk/web/package-lock.json | cut -d' ' -f1)
+          current=$(git -C mnema-talk show FETCH_HEAD:web/package-lock.json | sha256sum | cut -d' ' -f1)
+          if [ "$pinned" != "$current" ]; then
+            echo "::warning::The web app's package-lock.json on main differs from the pinned commit; refresh experimental/licenses/web-source.txt and the manifest."
+          fi
