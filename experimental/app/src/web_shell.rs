@@ -635,7 +635,6 @@ fn rail_snapshot(app: &tauri::AppHandle) -> RailState {
     }
 }
 
-/// Shows the rail what it should draw, and renames the menu entries to match.
 /// The title of the window: the active server's name before the product, or
 /// the product alone while none is active.
 fn window_title(state: &RailState) -> String {
@@ -649,6 +648,8 @@ fn window_title(state: &RailState) -> String {
         )
 }
 
+/// Shows the rail what it should draw, titles the window after the server in
+/// front and renames the menu entries to match.
 pub fn push_rail(app: &tauri::AppHandle) {
     let state = rail_snapshot(app);
     // The window is titled with the server in front, by the name it gives itself.

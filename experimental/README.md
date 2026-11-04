@@ -123,7 +123,8 @@ From this repository's root, install the web app's dependencies with
 `npm ci --prefix mnema-talk/web` and build it, then build the host with
 `cargo build --locked --manifest-path experimental/app/Cargo.toml --features shell,web-client,custom-protocol`.
 Builds use Rust 1.99.1 and the committed Cargo lockfile. The result is an
-unsigned DEV executable without an automatic updater. Operating-system
+unsigned DEV executable that checks for updates like a release build does (signed
+with the pinned minisign key). Operating-system
 toolchains are required for native dependency compilation.
 
 The `Shared desktop client DEV builds` workflow builds this mode on Windows and
