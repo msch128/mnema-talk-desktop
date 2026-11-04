@@ -1,0 +1,18 @@
+.github/workflows/advisories.yml
+  h_0ff4f4713441f4 77-83,91-92,96,110-119
+experimental/licenses/web-source.txt
+  h_0ff4f4713441f4 1
+scripts/license-bundle.test.mjs
+  h_0ff4f4713441f4 147-157
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0fe10cfbc08fddc763aa7df245e14841b7c47a6f",
+  "prompts": {},
+  "humans": {
+    "h_0ff4f4713441f4": {
+      "author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}
