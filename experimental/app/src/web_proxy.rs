@@ -864,10 +864,14 @@ async fn forward_unsealed(
         return Resp::error(502, "UNAVAILABLE", "the server answered with a redirect");
     }
     let response_cap = instance.limits.response_cap();
-    if response
-        .content_length()
-        .is_some_and(|n| n > response_cap as u64)
-    {
+    // A HEAD answer announces the length of a body it does not carry: nothing
+    // to size, borrow memory for or allocate.
+    let announced = if method == reqwest::Method::HEAD {
+        None
+    } else {
+        response.content_length()
+    };
+    if announced.is_some_and(|n| n > response_cap as u64) {
         return Resp::error(
             502,
             "UNAVAILABLE",
@@ -876,7 +880,7 @@ async fn forward_unsealed(
     }
     // A large answer borrows its memory first; one of unknown length is held
     // to the small-body size.
-    let (reserve, read_cap) = match response.content_length() {
+    let (reserve, read_cap) = match announced {
         Some(n) => (n as usize, response_cap),
         None => (0, SMALL_BODY),
     };
@@ -887,11 +891,7 @@ async fn forward_unsealed(
             "too many large transfers at once, try again",
         );
     };
-    let mut out = Vec::with_capacity(
-        response
-            .content_length()
-            .map_or(0, |n| (n as usize).min(read_cap)),
-    );
+    let mut out = Vec::with_capacity(announced.map_or(0, |n| (n as usize).min(read_cap)));
     loop {
         match tokio::time::timeout(IDLE_TIMEOUT, response.chunk()).await {
             Ok(Ok(Some(chunk))) if chunk.len() <= read_cap - out.len() => {
@@ -2070,6 +2070,28 @@ mod tests {
             reply("200 OK", &["content-type: application/json"], ""),
             "HEAD",
             "/api/health",
+            &[],
+            b"",
+            Jar::new(None, 0),
+        )
+        .await;
+        assert_eq!(resp.status, 200);
+        assert!(resp.body.is_empty());
+    }
+
+    /// A HEAD answer repeats the length of the file it stands for. That must
+    /// not count against the size cap or the memory budget, or a HEAD for a
+    /// large download would fail or hold gigabytes for an empty body.
+    #[tokio::test]
+    async fn a_head_answer_for_a_huge_file_is_neither_refused_nor_given_memory() {
+        let raw = format!(
+            "HTTP/1.1 200 OK\r\ncontent-length: {}\r\ncontent-type: application/octet-stream\r\nconnection: close\r\n\r\n",
+            LARGE_BODY_BUDGET * 4
+        );
+        let (resp, _, _) = call(
+            raw.into_bytes(),
+            "HEAD",
+            "/api/media/x",
             &[],
             b"",
             Jar::new(None, 0),
