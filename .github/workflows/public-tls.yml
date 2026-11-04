@@ -14,6 +14,7 @@ on:
     paths:
       - experimental/app/src/web_client.rs
       - experimental/app/src/web_proxy.rs
+      - experimental/app/src/web_proxy/**
       - experimental/app/src/web_ws.rs
       - experimental/app/src/web_tls.rs
       - experimental/app/Cargo.toml
