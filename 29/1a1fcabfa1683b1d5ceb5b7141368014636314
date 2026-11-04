@@ -1,0 +1,16 @@
+src/game_library.rs
+  h_0ff4f4713441f4 13-17,240
+src/game_library/steam.rs
+  h_0ff4f4713441f4 1-201
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "291a1fcabfa1683b1d5ceb5b7141368014636314",
+  "prompts": {},
+  "humans": {
+    "h_0ff4f4713441f4": {
+      "author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}
