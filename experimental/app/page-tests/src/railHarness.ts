@@ -9,7 +9,7 @@ import { vi } from 'vitest'
 const dir = resolve(process.cwd(), '../rail-ui')
 const html = readFileSync(resolve(dir, 'index.html'), 'utf8')
 // The page's scripts in the order index.html loads them; they share one scope, as in the page.
-const script = [...html.matchAll(/<script src="([^"]+)"><\/script>/g)].map((m) => readFileSync(resolve(dir, m[1]!), 'utf8')).join('\n')
+const script = [...html.matchAll(/<script src="([^"]+)">/g)].map((m) => readFileSync(resolve(dir, m[1]!), 'utf8')).join('\n')
 
 export interface Server { id: string, name: string, original: string, alias: string | null, initial: string, hue: number, status: string, message: string | null, unread: number, mentions: number, icon: string | null, muted_until?: number | null }
 export type Item = { kind: 'server', id: string } | { kind: 'folder', id: string, name: string, color: string | null, collapsed: boolean, servers: string[] }

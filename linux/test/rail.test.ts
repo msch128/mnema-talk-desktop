@@ -5,7 +5,7 @@ import { test } from 'node:test'
 const here = (path: string) => new URL(path, import.meta.url)
 const read = (path: string) => readFileSync(here(path), 'utf8')
 // The scripts of the rail page, in the order the page loads them.
-const railScripts = () => [...read('../assets/rail-ui/index.html').matchAll(/<script src="([^"]+)"><\/script>/g)].map((m) => read(`../assets/rail-ui/${m[1]}`)).join('\n')
+const railScripts = () => [...read('../assets/rail-ui/index.html').matchAll(/<script src="([^"]+)">/g)].map((m) => read(`../assets/rail-ui/${m[1]}`)).join('\n')
 
 test('the rail page is the same file as in the Tauri host', () => {
   const shared = readdirSync(here('../../experimental/app/rail-ui/')).sort()
