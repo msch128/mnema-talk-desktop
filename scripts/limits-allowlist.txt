@@ -12,7 +12,6 @@ experimental/app/src/web_bundle.rs test
 experimental/app/src/web_client.rs production
 experimental/app/src/web_client.rs test
 experimental/app/src/web_gaming.rs production
-experimental/app/src/web_notify/mod.rs production
 experimental/app/src/web_proxy.rs production
 experimental/app/src/web_proxy.rs test
 experimental/app/src/web_shell.rs production
