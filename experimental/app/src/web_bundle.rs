@@ -141,7 +141,8 @@ impl Bundle {
 }
 
 /// Bundle-relative path rules, shared with the signing tool: UTF-8, forward
-/// slashes, no empty, `.` or `..` segment, no control character.
+/// slashes, no empty or dot-leading segment (hidden entries, `.` and `..`), no
+/// control character.
 pub fn valid_path(path: &str) -> bool {
     !path.is_empty()
         && path.len() <= MAX_PATH
@@ -150,7 +151,7 @@ pub fn valid_path(path: &str) -> bool {
             .any(|c| c < '\u{20}' || c == '\u{7f}' || c == '\\')
         && path
             .split('/')
-            .all(|segment| !segment.is_empty() && segment != "." && segment != "..")
+            .all(|segment| !segment.is_empty() && !segment.starts_with('.'))
 }
 
 /// The archive rules the zip crate does not enforce, the same as the Linux
@@ -1176,6 +1177,8 @@ mod tests {
             "a\0b",
             "a\u{7f}",
             "a\nb",
+            ".hidden",
+            "a/.well-known/x",
             long.as_str(),
         ] {
             assert!(!valid_path(bad), "{bad:?}");
