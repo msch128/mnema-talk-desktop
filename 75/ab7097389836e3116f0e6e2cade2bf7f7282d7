@@ -1,0 +1,18 @@
+experimental/app/src/web_trust.rs
+  h_0ff4f4713441f4 9-19,21,24,295,298,820
+experimental/app/src/web_trust/statement.rs
+  h_0ff4f4713441f4 1-156
+experimental/app/src/web_trust/updater.rs
+  h_0ff4f4713441f4 1-76
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "75ab7097389836e3116f0e6e2cade2bf7f7282d7",
+  "prompts": {},
+  "humans": {
+    "h_0ff4f4713441f4": {
+      "author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}
