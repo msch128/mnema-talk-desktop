@@ -1,0 +1,40 @@
+experimental/app/src/storage.rs
+  h_0ff4f4713441f4 313-345
+experimental/app/src/web_client.rs
+  h_0ff4f4713441f4 2653
+experimental/app/src/web_shell.rs
+  h_0ff4f4713441f4 10-36
+experimental/app/src/web_shell/assets.rs
+  h_0ff4f4713441f4 1-102
+experimental/app/src/web_shell/commands.rs
+  h_0ff4f4713441f4 1-421
+experimental/app/src/web_shell/icons.rs
+  h_0ff4f4713441f4 1-79
+experimental/app/src/web_shell/layout.rs
+  h_0ff4f4713441f4 1-324
+experimental/app/src/web_shell/menu.rs
+  h_0ff4f4713441f4 1-133
+experimental/app/src/web_shell/pages.rs
+  h_0ff4f4713441f4 1-277
+experimental/app/src/web_shell/rail.rs
+  h_0ff4f4713441f4 1-137
+experimental/app/src/web_shell/room.rs
+  h_0ff4f4713441f4 1-73
+experimental/app/src/web_shell/servers.rs
+  h_0ff4f4713441f4 1-303
+experimental/app/src/web_shell/storage.rs
+  h_0ff4f4713441f4 1-233
+experimental/app/src/web_shell/window.rs
+  h_0ff4f4713441f4 1-153
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e2d556942566c976ac35c8413ef3b1e2c4c274f9",
+  "prompts": {},
+  "humans": {
+    "h_0ff4f4713441f4": {
+      "author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}
