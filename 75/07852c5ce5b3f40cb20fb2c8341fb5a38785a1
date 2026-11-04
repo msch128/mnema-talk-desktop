@@ -1,0 +1,40 @@
+experimental/app/src/web_proxy.rs
+  h_0ff4f4713441f4 5-13,15-20,22,34-38,42
+experimental/app/src/web_proxy/bundle.rs
+  h_0ff4f4713441f4 1-103
+experimental/app/src/web_proxy/client.rs
+  h_0ff4f4713441f4 1-27
+experimental/app/src/web_proxy/forward.rs
+  h_0ff4f4713441f4 1-282
+experimental/app/src/web_proxy/jar.rs
+  h_0ff4f4713441f4 1-293
+experimental/app/src/web_proxy/limits.rs
+  h_0ff4f4713441f4 1-170
+experimental/app/src/web_proxy/resp.rs
+  h_0ff4f4713441f4 1-55
+experimental/app/src/web_proxy/rules.rs
+  h_0ff4f4713441f4 1-104
+experimental/app/src/web_proxy/tests.rs
+  h_0ff4f4713441f4 1-111
+experimental/app/src/web_proxy/tests/bundle.rs
+  h_0ff4f4713441f4 1-131
+experimental/app/src/web_proxy/tests/forward.rs
+  h_0ff4f4713441f4 1-448
+experimental/app/src/web_proxy/tests/jar.rs
+  h_0ff4f4713441f4 1-310
+experimental/app/src/web_proxy/tests/rules.rs
+  h_0ff4f4713441f4 1-119
+experimental/app/src/web_proxy/tests/transfers.rs
+  h_0ff4f4713441f4 1-438
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7507852c5ce5b3f40cb20fb2c8341fb5a38785a1",
+  "prompts": {},
+  "humans": {
+    "h_0ff4f4713441f4": {
+      "author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}
