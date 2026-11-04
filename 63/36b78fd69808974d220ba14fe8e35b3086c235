@@ -1,0 +1,30 @@
+.github/workflows/desktop-checks.yml
+  h_0ff4f4713441f4 138-140
+README.md
+  h_0ff4f4713441f4 340,348-358
+linux/eslint-suppressions.json
+  h_0ff4f4713441f4 1-118
+linux/eslint.config.ts
+  h_0ff4f4713441f4 3,21-41
+linux/package-lock.json
+  h_0ff4f4713441f4 22,706-712,1524-1546,2390-2415,2734-2740,3324-3333,3388-3394,4073-4099,4229-4243,4827-4842
+linux/package.json
+  h_0ff4f4713441f4 34
+scripts/check-limits.mjs
+  h_0ff4f4713441f4 1-85
+scripts/check-limits.test.mjs
+  h_0ff4f4713441f4 1-29
+scripts/limits-allowlist.txt
+  h_0ff4f4713441f4 1-27
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6336b78fd69808974d220ba14fe8e35b3086c235",
+  "prompts": {},
+  "humans": {
+    "h_0ff4f4713441f4": {
+      "author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}
