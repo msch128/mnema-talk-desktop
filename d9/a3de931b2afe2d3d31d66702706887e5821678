@@ -1,0 +1,22 @@
+experimental/app/src/web_notify/mod.rs
+  h_0ff4f4713441f4 95-97,103,588-595
+linux/node_modules
+  h_0ff4f4713441f4 1
+linux/src/core/notify.ts
+  h_0ff4f4713441f4 16
+linux/test/notify.test.ts
+  h_0ff4f4713441f4 21-22
+scripts/check-english-only.mjs
+  h_0ff4f4713441f4 84,92-94,101-105
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d9a3de931b2afe2d3d31d66702706887e5821678",
+  "prompts": {},
+  "humans": {
+    "h_0ff4f4713441f4": {
+      "author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}
