@@ -1,0 +1,16 @@
+experimental/app/src/native_updates.rs
+  h_0ff4f4713441f4 174-176,455-466,646-656,820
+experimental/app/src/native_updates/tests.rs
+  h_0ff4f4713441f4 699-718
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5e09b33cf942a40a6d4b56fe237c4c974190282f",
+  "prompts": {},
+  "humans": {
+    "h_0ff4f4713441f4": {
+      "author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}
