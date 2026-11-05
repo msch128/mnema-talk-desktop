@@ -17,6 +17,6 @@ test('the gaming hang script retries taking the focus and still fails when the g
   const script = readFileSync(new URL('./test-windows-gaming-hang.ps1', import.meta.url), 'utf8');
   assert.match(script, /AttachThreadInput/);
   assert.match(script, /GetForegroundWindow\(\) == h/);
-  assert.match(script, /\[Win\]::Acquire\(\$target, \d+, \d+, \[ref\]\$log\)/);
+  assert.match(script, /\[Win\]::Acquire\(\$target, \d+, \d+, \[ref\]\$focusLog\)/);
   assert.match(script, /if \(\$focused -lt 1\) \{ throw .*the check proved nothing/);
 });

@@ -190,11 +190,11 @@ try {
     if ($clock.ElapsedMilliseconds -ge $nextFocus) {
       $round++
       $target = if ($round % 2 -eq 1) { $gameWindow } else { $otherWindow }
-      $log = ''
-      $got = [Win]::Acquire($target, 8, 150, [ref]$log)
+      $focusLog = ''
+      $got = [Win]::Acquire($target, 8, 150, [ref]$focusLog)
       $name = if ($target -eq $gameWindow) { 'game' } else { 'other' }
-      Write-Host "round $round focus $name -> $(if ($got) { 'ok' } else { 'FAILED' })`n$($log.TrimEnd())"
-      if ($target -eq $gameWindow) { $focusTries++; $lastFocusLog = $log.TrimEnd(); if ($got) { $focused++ } }
+      Write-Host "round $round focus $name -> $(if ($got) { 'ok' } else { 'FAILED' })`n$($focusLog.TrimEnd())"
+      if ($target -eq $gameWindow) { $focusTries++; $lastFocusLog = $focusLog.TrimEnd(); if ($got) { $focused++ } }
       # A flood of key events, then the overlay shortcut (Alt+M) twice.
       for ($i = 0; $i -lt 100; $i++) { [Win]::Key(0x41, $true); [Win]::Key(0x41, $false) }
       [Win]::Key(0x12, $true); [Win]::Key(0x4D, $true); [Win]::Key(0x4D, $false); [Win]::Key(0x12, $false)
