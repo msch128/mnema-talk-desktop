@@ -1,0 +1,38 @@
+Cargo.toml
+  h_0ff4f4713441f4 15-19
+clippy.toml
+  h_0ff4f4713441f4 1-2
+experimental/app/Cargo.toml
+  h_0ff4f4713441f4 78-82
+experimental/app/clippy.toml
+  h_0ff4f4713441f4 1-2
+experimental/app/src/native_updates.rs
+  h_0ff4f4713441f4 604-607
+experimental/app/src/rail_menu.rs
+  h_0ff4f4713441f4 258-261
+experimental/app/src/web_bundle.rs
+  h_0ff4f4713441f4 565-568,2086-2090
+experimental/app/src/web_client.rs
+  h_0ff4f4713441f4 992-995,2434-2437,2566-2569
+experimental/app/src/web_gaming.rs
+  h_0ff4f4713441f4 1605-1608
+experimental/app/src/web_proxy.rs
+  h_0ff4f4713441f4 786-790,2316-2319
+experimental/app/src/web_shell.rs
+  h_0ff4f4713441f4 2054-2057
+experimental/app/src/web_ws.rs
+  h_0ff4f4713441f4 203-206
+src/input_windows.rs
+  h_0ff4f4713441f4 209-212
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9ceca6709ba8b3b11317593777e8359cdf1e5143",
+  "prompts": {},
+  "humans": {
+    "h_0ff4f4713441f4": {
+      "author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}

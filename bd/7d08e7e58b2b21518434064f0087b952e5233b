@@ -1,0 +1,30 @@
+experimental/app/src/native_updates.rs
+  h_0ff4f4713441f4 14-30,49
+experimental/app/src/native_updates/check.rs
+  h_0ff4f4713441f4 1-175
+experimental/app/src/native_updates/install.rs
+  h_0ff4f4713441f4 1-279
+experimental/app/src/native_updates/logic.rs
+  h_0ff4f4713441f4 1-122
+experimental/app/src/native_updates/state.rs
+  h_0ff4f4713441f4 1-291
+experimental/app/src/native_updates/tests.rs
+  h_0ff4f4713441f4 2-5,12,14,355-356
+experimental/app/src/native_updates/tests/flow.rs
+  h_0ff4f4713441f4 1-352
+experimental/app/src/native_updates/tests/package_and_portable.rs
+  h_0ff4f4713441f4 1-186
+experimental/app/src/native_updates/window.rs
+  h_0ff4f4713441f4 1-162
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "bd7d08e7e58b2b21518434064f0087b952e5233b",
+  "prompts": {},
+  "humans": {
+    "h_0ff4f4713441f4": {
+      "author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}

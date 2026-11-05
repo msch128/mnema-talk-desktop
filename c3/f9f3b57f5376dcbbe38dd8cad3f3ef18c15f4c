@@ -1,0 +1,16 @@
+.github/workflows/public-tls.yml
+  h_0ff4f4713441f4 17
+linux/test/contract.test.ts
+  h_0ff4f4713441f4 22,38,54,59
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c3f9f3b57f5376dcbbe38dd8cad3f3ef18c15f4c",
+  "prompts": {},
+  "humans": {
+    "h_0ff4f4713441f4": {
+      "author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}

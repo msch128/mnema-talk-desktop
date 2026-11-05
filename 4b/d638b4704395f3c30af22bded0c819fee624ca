@@ -1,0 +1,18 @@
+experimental/app/src/web_proxy.rs
+  h_0ff4f4713441f4 867-874,883,894,2082-2103
+linux/src/core/proxy.ts
+  h_0ff4f4713441f4 427-429,435
+linux/test/proxy.test.ts
+  h_0ff4f4713441f4 250-258
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4bd638b4704395f3c30af22bded0c819fee624ca",
+  "prompts": {},
+  "humans": {
+    "h_0ff4f4713441f4": {
+      "author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}

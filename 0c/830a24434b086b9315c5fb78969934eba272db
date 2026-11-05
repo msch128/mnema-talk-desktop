@@ -1,0 +1,60 @@
+experimental/app/page-tests/src/railFolders.test.ts
+  h_0ff4f4713441f4 1-535
+experimental/app/page-tests/src/railHarness.ts
+  h_0ff4f4713441f4 1-85
+experimental/app/page-tests/src/railPage.test.ts
+  h_0ff4f4713441f4 1,3
+experimental/app/rail-ui/index.html
+  h_0ff4f4713441f4 15-20
+experimental/app/rail-ui/rail-commands.js
+  h_0ff4f4713441f4 1-167
+experimental/app/rail-ui/rail-drag.js
+  h_0ff4f4713441f4 1-94
+experimental/app/rail-ui/rail-menu.js
+  h_0ff4f4713441f4 1-135
+experimental/app/rail-ui/rail-render.js
+  h_0ff4f4713441f4 1-217
+experimental/app/rail-ui/rail-state.js
+  h_0ff4f4713441f4 1-93
+experimental/app/rail-ui/rail-text.js
+  h_0ff4f4713441f4 1-57
+experimental/app/rail-ui/rail.js
+  h_0ff4f4713441f4 9-12
+experimental/app/src/rail_menu.rs
+  h_0ff4f4713441f4 323
+experimental/app/src/web_shell.rs
+  h_0ff4f4713441f4 53-58,76-81,1936-1941
+linux/assets/rail-ui/index.html
+  h_0ff4f4713441f4 15-20
+linux/assets/rail-ui/rail-commands.js
+  h_0ff4f4713441f4 1-167
+linux/assets/rail-ui/rail-drag.js
+  h_0ff4f4713441f4 1-94
+linux/assets/rail-ui/rail-menu.js
+  h_0ff4f4713441f4 1-135
+linux/assets/rail-ui/rail-render.js
+  h_0ff4f4713441f4 1-217
+linux/assets/rail-ui/rail-state.js
+  h_0ff4f4713441f4 1-93
+linux/assets/rail-ui/rail-text.js
+  h_0ff4f4713441f4 1-57
+linux/assets/rail-ui/rail.js
+  h_0ff4f4713441f4 9-12
+linux/eslint.config.ts
+  h_0ff4f4713441f4 44-46
+linux/test/rail.test.ts
+  h_0ff4f4713441f4 7-8,53,71-72
+scripts/english-only-allowlist.txt
+  h_0ff4f4713441f4 5-6,25
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0c830a24434b086b9315c5fb78969934eba272db",
+  "prompts": {},
+  "humans": {
+    "h_0ff4f4713441f4": {
+      "author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}

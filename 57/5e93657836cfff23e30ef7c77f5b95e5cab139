@@ -1,0 +1,16 @@
+experimental/app/src/rail_menu.rs
+  h_0ff4f4713441f4 258,267-270,288-291
+experimental/app/src/web_ws.rs
+  h_0ff4f4713441f4 203-240,258-260,265,273
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "575e93657836cfff23e30ef7c77f5b95e5cab139",
+  "prompts": {},
+  "humans": {
+    "h_0ff4f4713441f4": {
+      "author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}

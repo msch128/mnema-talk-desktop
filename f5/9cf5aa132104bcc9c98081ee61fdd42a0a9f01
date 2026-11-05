@@ -1,0 +1,20 @@
+linux/scripts/gen-vectors.ts
+  h_0ff4f4713441f4 329,362
+linux/src/core/json.ts
+  h_0ff4f4713441f4 70-71
+linux/test/strict.test.ts
+  h_0ff4f4713441f4 68-69,92-93
+test-vectors/json.json
+  h_0ff4f4713441f4 359-368,910-917
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f59cf5aa132104bcc9c98081ee61fdd42a0a9f01",
+  "prompts": {},
+  "humans": {
+    "h_0ff4f4713441f4": {
+      "author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}

@@ -1,0 +1,28 @@
+linux/src/main/ipc.ts
+  h_0ff4f4713441f4 63-101,116,118,153,155
+linux/src/core/layout.ts
+  h_0ff4f4713441f4 50-81,101
+linux/src/core/updates.ts
+  h_0ff4f4713441f4 38-39,52-65,77,80,83,97-127
+linux/eslint-suppressions.json
+  h_0ff4f4713441f4 80
+linux/src/core/icon.ts
+  h_0ff4f4713441f4 34-53,58,61-62,64-66,68-69,71,75-94,100,108,111-112
+linux/src/core/zip.ts
+  h_0ff4f4713441f4 74-75,82-104,133,138-157
+linux/src/main/protocol.ts
+  h_0ff4f4713441f4 98-115,126
+linux/src/core/cookies.ts
+  h_0ff4f4713441f4 42-53,65
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c9f39eb0880979669780b31be391ede13229ad6c",
+  "prompts": {},
+  "humans": {
+    "h_0ff4f4713441f4": {
+      "author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}

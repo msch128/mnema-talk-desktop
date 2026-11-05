@@ -1,0 +1,22 @@
+experimental/app/src/web_client.rs
+  h_0ff4f4713441f4 423-428,448
+linux/scripts/gen-vectors.ts
+  h_0ff4f4713441f4 834-835
+linux/src/core/client.ts
+  h_0ff4f4713441f4 40-41
+linux/test/client.test.ts
+  h_0ff4f4713441f4 49-53
+test-vectors/client.json
+  h_0ff4f4713441f4 140-159
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ea109276a6215ec351d9c5b0117a6bf24ce6f1b4",
+  "prompts": {},
+  "humans": {
+    "h_0ff4f4713441f4": {
+      "author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}

@@ -1,0 +1,16 @@
+README.md
+  h_0ff4f4713441f4 155-156,290-293,304-307
+experimental/README.md
+  h_0ff4f4713441f4 137-138
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6040516c2dfa72af808cbdf629a2307bd9ebd4e4",
+  "prompts": {},
+  "humans": {
+    "h_0ff4f4713441f4": {
+      "author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}

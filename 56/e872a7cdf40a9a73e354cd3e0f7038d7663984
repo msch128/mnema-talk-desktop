@@ -1,0 +1,26 @@
+experimental/app/page-tests/src/railPage.test.ts
+  h_0ff4f4713441f4 746
+experimental/app/rail-ui/rail.js
+  h_0ff4f4713441f4 508
+experimental/app/src/web_shell.rs
+  h_0ff4f4713441f4 1518,1525
+linux/assets/rail-ui/rail.js
+  h_0ff4f4713441f4 508
+linux/node_modules
+  h_0ff4f4713441f4 1
+linux/src/core/railui.ts
+  h_0ff4f4713441f4 90
+linux/test/extras.test.ts
+  h_0ff4f4713441f4 99-100
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "56e872a7cdf40a9a73e354cd3e0f7038d7663984",
+  "prompts": {},
+  "humans": {
+    "h_0ff4f4713441f4": {
+      "author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}

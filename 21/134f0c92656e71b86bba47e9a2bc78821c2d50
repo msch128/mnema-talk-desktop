@@ -1,0 +1,22 @@
+experimental/app/src/web_bundle.rs
+  h_0ff4f4713441f4 144-145,154,1180-1181
+linux/scripts/gen-vectors.ts
+  h_0ff4f4713441f4 62
+linux/src/core/bundle.ts
+  h_0ff4f4713441f4 46,53
+linux/test/bundle.test.ts
+  h_0ff4f4713441f4 36
+test-vectors/bundle.json
+  h_0ff4f4713441f4 159-166
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "21134f0c92656e71b86bba47e9a2bc78821c2d50",
+  "prompts": {},
+  "humans": {
+    "h_0ff4f4713441f4": {
+      "author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}
