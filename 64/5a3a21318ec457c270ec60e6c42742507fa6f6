@@ -1,0 +1,14 @@
+experimental/app/src/web_bundle.rs
+  h_0ff4f4713441f4 405-541,554-560,562-563,565-568,570
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "645a3a21318ec457c270ec60e6c42742507fa6f6",
+  "prompts": {},
+  "humans": {
+    "h_0ff4f4713441f4": {
+      "author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}
