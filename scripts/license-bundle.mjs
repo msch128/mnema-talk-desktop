@@ -7,7 +7,9 @@ import { dirname, join, relative, resolve } from 'node:path';
 
 const hash = (value) => createHash('sha256').update(value).digest('hex');
 const licenseName = /^(?:(?:licen[cs]e|copying|copyright|notice)(?:[-._ ].*)?|.+[-._ ]licen[cs]e)$/i;
-const excludedSource = /\.(?:rs|c|cc|cpp|h|hpp|js|ts|py)$/i;
+// Source and build output that merely has a license-like name (an icon called
+// copyright.mjs, its .map), not a notice.
+const excludedSource = /\.(?:rs|c|cc|cpp|h|hpp|[cm]?[jt]sx?|py|vue|map)$/i;
 const compare = (a, b) => a < b ? -1 : a > b ? 1 : 0;
 
 function findNotices(directory, root = directory) {
