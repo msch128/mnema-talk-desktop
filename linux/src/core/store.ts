@@ -3,13 +3,16 @@
  * selection against a server. A port of `Store` in
  * `experimental/app/src/web_bundle.rs`.
  */
-import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, unlinkSync } from 'node:fs'
+import { existsSync, mkdirSync, unlinkSync } from 'node:fs'
 import { join } from 'node:path'
 import { writeFileAtomic } from './atomic.ts'
-import { MAX_ZIP, type Bundle, type TrustedKey, BundleError, BundleRefused, verifyBundle } from './bundle.ts'
-import { type Version, ZERO, compareVersions, formatVersion, maxVersion, minVersion, parseVersion } from './version.ts'
+import { type Bundle, type TrustedKey, BundleError, BundleRefused, verifyBundle } from './bundle.ts'
+import type { Refusal } from './refusal.ts'
+import { type PersistedState, readMarks, readState, readVersions, verifyAll } from './storecache.ts'
+import { type Version, ZERO, compareVersions, formatVersion, maxVersion, minVersion } from './version.ts'
 
-const MAX_CACHED_FILES = 16
+export { type Refusal, refusalText } from './refusal.ts'
+
 /** Cached bundles kept besides the built-in one. */
 const KEEP_CACHED = 3
 export const CHECK_INTERVAL_SECS = 6 * 60 * 60
@@ -32,78 +35,7 @@ export interface ServerInfo {
   readonly communityIcon?: boolean
 }
 
-/** Why no held bundle fits a server. Never answered by running the server's own JavaScript. */
-export type Refusal =
-  | { kind: 'no_bundle' }
-  | { kind: 'server_newer' }
-  | { kind: 'server_too_old', needs: Version }
-  | { kind: 'server_contract_retired' }
-  | { kind: 'rolled_back' }
-  | { kind: 'signer_withdrawn' }
-
-export function refusalText(refusal: Refusal): string {
-  switch (refusal.kind) {
-    case 'no_bundle': return 'This client has no verified app. Reinstall the desktop client.'
-    case 'server_newer': return 'This server needs a newer Mnema app than this client has. Update the desktop client.'
-    case 'server_too_old': return `This server is too old for this desktop client (needs ${formatVersion(refusal.needs)} or newer). Ask the administrator to update it.`
-    case 'server_contract_retired': return 'This server speaks an older contract than any app in this client. Ask the administrator to update it.'
-    case 'signer_withdrawn': return 'The app in this client was signed with a key that is no longer trusted. Update the desktop client; it fetches a newly signed app at its next check.'
-    case 'rolled_back': return 'The newest verified app this client has used is no longer available, and older apps are refused. Update or reinstall the desktop client.'
-  }
-}
-
 export type SelectResult = { ok: true, held: Held } | { ok: false, refusal: Refusal }
-
-interface PersistedState {
-  /** Highest `security_floor` each signing key ever declared (key id). */
-  floors: Record<string, string>
-  /** Highest bundle version ever verified per `web_client_api` and signing key. */
-  marks: Record<string, Record<string, string>>
-  last_check: number
-}
-
-function readVersions(raw: unknown): Map<string, Version> {
-  const out = new Map<string, Version>()
-  if (typeof raw === 'object' && raw !== null) {
-    for (const [key, value] of Object.entries(raw)) {
-      const v = typeof value === 'string' ? parseVersion(value) : null
-      if (v) out.set(key, v)
-    }
-  }
-  return out
-}
-
-function verifyFile(path: string, keys: readonly TrustedKey[]): Bundle {
-  let size: number
-  try {
-    size = statSync(path).size
-  } catch {
-    throw new BundleError('unreadable')
-  }
-  if (size > MAX_ZIP) throw new BundleError('unreadable')
-  let bytes: Buffer
-  try {
-    bytes = readFileSync(path)
-  } catch {
-    throw new BundleError('unreadable')
-  }
-  return verifyBundle(bytes, keys)
-}
-
-function cachedFiles(dir: string | null): string[] {
-  if (!dir) return []
-  let names: string[]
-  try {
-    names = readdirSync(dir)
-  } catch {
-    return []
-  }
-  const files = names
-    .filter((name) => name.startsWith('mnema-web-') && name.endsWith('.zip'))
-    .filter((name) => { try { return statSync(join(dir, name)).isFile() } catch { return false } })
-    .sort()
-  return files.slice(0, MAX_CACHED_FILES)
-}
 
 export class Store {
   /** Names of cached files that failed verification (diagnostics only). */
@@ -126,38 +58,9 @@ export class Store {
    * earlier run recorded); bundles below it are dropped.
    */
   static load(dir: string | null, builtin: Uint8Array | null, keys: readonly TrustedKey[]): Store {
-    let state: Partial<PersistedState> = {}
-    if (dir) {
-      try {
-        const parsed: unknown = JSON.parse(readFileSync(join(dir, 'state.json'), 'utf8'))
-        if (typeof parsed === 'object' && parsed !== null) state = parsed as Partial<PersistedState>
-      } catch { /* a missing or damaged state is rebuilt from the held bundles */ }
-    }
-    const verified: Held[] = []
-    const rejected: string[] = []
-    if (builtin) {
-      try {
-        verified.push({ bundle: verifyBundle(builtin, keys), source: 'builtin' })
-      } catch (error) {
-        if (!(error instanceof BundleError)) throw error
-        rejected.push('built-in')
-      }
-    }
-    for (const name of cachedFiles(dir)) {
-      try {
-        const bundle = verifyFile(join(dir as string, name), keys)
-        if (!verified.some((h) => compareVersions(h.bundle.version, bundle.version) === 0)) verified.push({ bundle, source: 'cache' })
-      } catch (error) {
-        if (!(error instanceof BundleError)) throw error
-        rejected.push(name)
-      }
-    }
-    const marks = new Map<number, Map<string, Version>>()
-    for (const [api, by] of Object.entries(state.marks ?? {})) {
-      const n = Number(api)
-      if (Number.isInteger(n) && n >= 1) marks.set(n, readVersions(by))
-    }
-    const store = new Store(dir, verified, rejected, readVersions(state.floors), marks, keys.map((k) => k.id),
+    const state = readState(dir)
+    const { verified, rejected } = verifyAll(dir, builtin, keys)
+    const store = new Store(dir, verified, rejected, readVersions(state.floors), readMarks(state.marks), keys.map((k) => k.id),
       typeof state.last_check === 'number' ? state.last_check : 0)
     store.raiseFromHeld()
     store.recompute()

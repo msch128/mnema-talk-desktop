@@ -2,7 +2,8 @@ import { Menu, app } from 'electron'
 import { menuText } from '../core/selfupdate.ts'
 import { serverMenuAction } from '../core/notify.ts'
 import type { Context } from './context.ts'
-import { activateNth, quickSwitch, startAdding } from './shell.ts'
+import { quickSwitch } from './shell.ts'
+import { activateNth, startAdding } from './shelllayout.ts'
 import { openUpdater } from './windows.ts'
 
 /** Ctrl+1 to Ctrl+9 reach the servers, named as the rail names them; Ctrl+Shift+N adds one. */

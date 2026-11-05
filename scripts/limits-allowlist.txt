@@ -16,9 +16,4 @@ experimental/app/src/web_proxy.rs test
 experimental/app/src/web_shell.rs production
 experimental/app/src/web_trust.rs production
 linux/scripts/gen-vectors.ts production
-linux/src/core/instances.ts production
-linux/src/core/proxy.ts production
-linux/src/core/selfupdate.ts production
-linux/src/core/store.ts production
-linux/src/main/shell.ts production
 src/game_library.rs production

@@ -19,7 +19,7 @@ function tsConst(source: string, name: string): string | undefined {
 
 test('the size and time limits are the ones of the Tauri host', () => {
   const pairs: [string, string, string[]][] = [
-    ['web_proxy.rs', 'core/proxy.ts', ['MAX_BODY', 'MAX_JSON_BODY', 'MULTIPART_OVERHEAD', 'MAX_AVATAR_BODY', 'SMALL_BODY', 'LARGE_BODY_BUDGET', 'BUDGET_UNIT', 'MAX_ANNOUNCED_MB']],
+    ['web_proxy.rs', 'core/proxylimits.ts', ['MAX_BODY', 'MAX_JSON_BODY', 'MULTIPART_OVERHEAD', 'MAX_AVATAR_BODY', 'SMALL_BODY', 'LARGE_BODY_BUDGET', 'BUDGET_UNIT', 'MAX_ANNOUNCED_MB']],
     ['web_ws.rs', 'core/sockets.ts', ['MAX_FRAME', 'MAX_SOCKETS', 'MAX_OUTGOING']],
     ['web_updates.rs', 'core/updates.ts', ['MAX_RELEASE_JSON', 'MAX_DOWNLOAD']],
   ]
@@ -49,7 +49,7 @@ test('the content security policies are the ones of the Tauri host, except for i
 })
 
 test('the permissions policy, the forwarded headers and the capabilities are the ones of the Tauri host', () => {
-  const policy = /\['permissions-policy', '([^']+)'\]/.exec(ts('core/proxy.ts'))?.[1]
+  const policy = /\['permissions-policy', '([^']+)'\]/.exec(ts('core/staticserve.ts'))?.[1]
   assert.ok(policy)
   assert.ok(rust('web_proxy.rs').includes(`"permissions-policy".into(), "${policy}".into()`))
   const list = (source: string, pattern: RegExp) => [...(pattern.exec(source)?.[1] ?? '').matchAll(/"([^"]+)"|'([^']+)'/g)].map((m) => m[1] ?? m[2]).sort()

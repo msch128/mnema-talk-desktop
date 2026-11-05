@@ -31,30 +31,65 @@ function inside(width: number, height: number): boolean {
   return width >= 1 && height >= 1 && width <= MAX_ICON_SIDE && height <= MAX_ICON_SIDE
 }
 
+interface Size { width: number, height: number }
+
+/** The chunk of a PNG at `at`, if it lies inside the file and its CRC holds. */
+function pngChunk(view: Buffer, at: number): { type: string, length: number, end: number } | null {
+  if (at + 12 > view.length) return null
+  const length = view.readUInt32BE(at)
+  const type = view.toString('latin1', at + 4, at + 8)
+  const end = at + 8 + length
+  if (end + 4 > view.length) return null
+  if (crc32(view.subarray(at + 4, end)) !== view.readUInt32BE(end)) return null
+  return { type, length, end }
+}
+
+/** The size in the IHDR chunk at `at`, which must come first, be 13 bytes and name a known colour type. */
+function pngHeader(view: Buffer, at: number, chunk: { type: string, length: number }): Size | null {
+  if (chunk.type !== 'IHDR' || chunk.length !== 13) return null
+  if (![0, 2, 3, 4, 6].includes(view[at + 17] as number)) return null
+  return { width: view.readUInt32BE(at + 8), height: view.readUInt32BE(at + 12) }
+}
+
 function png(bytes: Uint8Array): IconInfo | null {
   const view = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.length)
   if (view.length < 8 || !view.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return null
   let at = 8
-  let size: { width: number, height: number } | null = null
+  let size: Size | null = null
   let data = false
   for (let first = true; ; first = false) {
-    if (at + 12 > view.length) return null
-    const length = view.readUInt32BE(at)
-    const type = view.toString('latin1', at + 4, at + 8)
-    const end = at + 8 + length
-    if (end + 4 > view.length) return null
-    if (crc32(view.subarray(at + 4, end)) !== view.readUInt32BE(end)) return null
+    const chunk = pngChunk(view, at)
+    if (!chunk) return null
     if (first) {
-      if (type !== 'IHDR' || length !== 13) return null
-      size = { width: view.readUInt32BE(at + 8), height: view.readUInt32BE(at + 12) }
-      if (![0, 2, 3, 4, 6].includes(view[at + 17] as number)) return null
-    } else if (type === 'IDAT') {
+      size = pngHeader(view, at, chunk)
+      if (!size) return null
+    } else if (chunk.type === 'IDAT') {
       data = true
-    } else if (type === 'IEND') {
-      return length === 0 && data && end + 4 === view.length && size && inside(size.width, size.height) ? { kind: 'png', ...size } : null
+    } else if (chunk.type === 'IEND') {
+      return chunk.length === 0 && data && chunk.end + 4 === view.length && size !== null && inside(size.width, size.height) ? { kind: 'png', ...size } : null
     }
-    at = end + 4
+    at = chunk.end + 4
   }
+}
+
+/** What the WebP chunks seen so far say about the picture. */
+interface WebpSizes { canvas: Size | null, picture: Size | null }
+
+/** One WebP chunk (`body` is where its payload starts); false when it is malformed. */
+function webpChunk(view: Buffer, type: string, body: number, length: number, first: boolean, seen: WebpSizes): boolean {
+  if (first && type !== 'VP8X' && type !== 'VP8 ' && type !== 'VP8L') return false
+  if (type === 'VP8X') {
+    if (!first || length < 10) return false
+    seen.canvas = { width: 1 + view.readUIntLE(body + 4, 3), height: 1 + view.readUIntLE(body + 7, 3) }
+  } else if (type === 'VP8 ') {
+    if (length < 10 || view[body + 3] !== 0x9d || view[body + 4] !== 0x01 || view[body + 5] !== 0x2a) return false
+    seen.picture ??= { width: view.readUInt16LE(body + 6) & 0x3fff, height: view.readUInt16LE(body + 8) & 0x3fff }
+  } else if (type === 'VP8L') {
+    if (length < 5 || view[body] !== 0x2f) return false
+    const bits = view.readUInt32LE(body + 1)
+    seen.picture ??= { width: 1 + (bits & 0x3fff), height: 1 + ((bits >>> 14) & 0x3fff) }
+  }
+  return true
 }
 
 function webp(bytes: Uint8Array): IconInfo | null {
@@ -62,8 +97,7 @@ function webp(bytes: Uint8Array): IconInfo | null {
   if (view.length < 20 || view.toString('latin1', 0, 4) !== 'RIFF' || view.toString('latin1', 8, 12) !== 'WEBP') return null
   if (view.readUInt32LE(4) !== view.length - 8) return null
   let at = 12
-  let canvas: { width: number, height: number } | null = null
-  let picture: { width: number, height: number } | null = null
+  const seen: WebpSizes = { canvas: null, picture: null }
   for (let first = true; at < view.length; first = false) {
     if (at + 8 > view.length) return null
     const type = view.toString('latin1', at, at + 4)
@@ -71,22 +105,11 @@ function webp(bytes: Uint8Array): IconInfo | null {
     const body = at + 8
     const next = body + length + (length & 1)
     if (next > view.length) return null
-    if (first && type !== 'VP8X' && type !== 'VP8 ' && type !== 'VP8L') return null
-    if (type === 'VP8X') {
-      if (!first || length < 10) return null
-      canvas = { width: 1 + view.readUIntLE(body + 4, 3), height: 1 + view.readUIntLE(body + 7, 3) }
-    } else if (type === 'VP8 ') {
-      if (length < 10 || view[body + 3] !== 0x9d || view[body + 4] !== 0x01 || view[body + 5] !== 0x2a) return null
-      picture ??= { width: view.readUInt16LE(body + 6) & 0x3fff, height: view.readUInt16LE(body + 8) & 0x3fff }
-    } else if (type === 'VP8L') {
-      if (length < 5 || view[body] !== 0x2f) return null
-      const bits = view.readUInt32LE(body + 1)
-      picture ??= { width: 1 + (bits & 0x3fff), height: 1 + ((bits >>> 14) & 0x3fff) }
-    }
+    if (!webpChunk(view, type, body, length, first, seen)) return null
     at = next
   }
-  const size = canvas ?? picture
-  return picture && size && inside(size.width, size.height) ? { kind: 'webp', ...size } : null
+  const size = seen.canvas ?? seen.picture
+  return seen.picture && size && inside(size.width, size.height) ? { kind: 'webp', ...size } : null
 }
 
 /** What these bytes are, if they are an icon the rail may show; `null` otherwise. The content type must agree with the bytes. */

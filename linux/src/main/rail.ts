@@ -12,7 +12,9 @@ import { parseDialogSpec, parseEdit, parseMenuSpec } from '../core/railui.ts'
 import type { Context } from './context.ts'
 import { handle, mainFrameUrl } from './handle.ts'
 import { showDialog, showMenu } from './railui.ts'
-import { activate, cancelAdding, railEdit, railSnapshot, reconnect, removeServer, startAdding } from './shell.ts'
+import { railEdit, reconnect } from './shell.ts'
+import { activate, cancelAdding, railSnapshot, startAdding } from './shelllayout.ts'
+import { removeServer } from './shellwipe.ts'
 
 function fromRail(ctx: Context, event: IpcMainInvokeEvent): boolean {
   const rail = ctx.shell.rail

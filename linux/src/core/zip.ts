@@ -71,26 +71,35 @@ export class ZipArchive {
     const entries: ZipEntry[] = []
     let at = cdOffset
     for (let i = 0; i < total; i++) {
-      if (at + 46 > cdOffset + cdSize || view.getUint32(at, true) !== CENTRAL) throw bad()
-      const flags = view.getUint16(at + 8, true)
-      const method = view.getUint16(at + 10, true)
-      const crc = view.getUint32(at + 16, true)
-      const compressedSize = view.getUint32(at + 20, true)
-      const size = view.getUint32(at + 24, true)
-      const nameLength = view.getUint16(at + 28, true)
-      const extraLength = view.getUint16(at + 30, true)
-      const commentLength = view.getUint16(at + 32, true)
-      const offset = view.getUint32(at + 42, true)
-      const end = at + 46 + nameLength + extraLength + commentLength
-      if (end > cdOffset + cdSize || compressedSize === 0xffffffff || size === 0xffffffff || offset === 0xffffffff) throw bad()
-      const decoded = this.decodeName(at + 46, nameLength)
-      // Unix modes are only meaningful when a Unix system wrote them.
-      const kind = view.getUint16(at + 4, true) >> 8 === 3 ? (view.getUint32(at + 38, true) >>> 16) & 0o170000 : 0
-      entries.push({ name: decoded ?? '', nameValid: decoded !== null, method, flags, crc, compressedSize, size, offset, special: kind !== 0 && kind !== 0o100000 })
+      const { entry, end } = this.centralEntry(at, cdOffset + cdSize)
+      entries.push(entry)
       at = end
     }
     if (total > 0 && !entries.some((e) => e.offset === 0)) throw bad()
     return entries
+  }
+
+  /** The central directory record at `at` and where the next one starts; `cdEnd` is where the directory ends. */
+  private centralEntry(at: number, cdEnd: number): { entry: ZipEntry, end: number } {
+    const bad = () => new ZipError('not a readable zip')
+    const { view } = this
+    if (at + 46 > cdEnd || view.getUint32(at, true) !== CENTRAL) throw bad()
+    const flags = view.getUint16(at + 8, true)
+    const method = view.getUint16(at + 10, true)
+    const crc = view.getUint32(at + 16, true)
+    const compressedSize = view.getUint32(at + 20, true)
+    const size = view.getUint32(at + 24, true)
+    const nameLength = view.getUint16(at + 28, true)
+    const extraLength = view.getUint16(at + 30, true)
+    const commentLength = view.getUint16(at + 32, true)
+    const offset = view.getUint32(at + 42, true)
+    const end = at + 46 + nameLength + extraLength + commentLength
+    if (end > cdEnd || compressedSize === 0xffffffff || size === 0xffffffff || offset === 0xffffffff) throw bad()
+    const decoded = this.decodeName(at + 46, nameLength)
+    // Unix modes are only meaningful when a Unix system wrote them.
+    const kind = view.getUint16(at + 4, true) >> 8 === 3 ? (view.getUint32(at + 38, true) >>> 16) & 0o170000 : 0
+    const entry = { name: decoded ?? '', nameValid: decoded !== null, method, flags, crc, compressedSize, size, offset, special: kind !== 0 && kind !== 0o100000 }
+    return { entry, end }
   }
 
   /** Names are UTF-8. A name that is not stays unreadable instead of being guessed. */
@@ -121,21 +130,28 @@ export class ZipArchive {
     if (entry.size > limit) throw new ZipError(`${name}: too large`)
     const packed = this.raw(entry)
     if (!packed) throw new ZipError('unreadable entry')
-    let out: Uint8Array
-    if (entry.method === 0) {
-      if (packed.length > limit) throw new ZipError(`${name}: too large`)
-      out = packed
-    } else {
-      try {
-        // One byte more than allowed tells a lying header from an exact size.
-        out = inflateRawSync(packed, { maxOutputLength: Math.max(1, limit + 1) })
-      } catch (error) {
-        if (error instanceof RangeError || (error as { code?: string }).code === 'ERR_BUFFER_TOO_LARGE') throw new ZipError(`${name}: too large`)
-        throw new ZipError(`${name}: damaged`)
-      }
-      if (out.length > limit) throw new ZipError(`${name}: too large`)
-    }
+    const out = entry.method === 0 ? stored(name, packed, limit) : inflateLimited(name, packed, limit)
     if (out.length !== entry.size || crc32(out) !== entry.crc) throw new ZipError(`${name}: damaged`)
     return out
   }
+}
+
+/** A stored (method 0) entry, as long as it fits the limit. */
+function stored(name: string, packed: Uint8Array, limit: number): Uint8Array {
+  if (packed.length > limit) throw new ZipError(`${name}: too large`)
+  return packed
+}
+
+/** A deflated (method 8) entry, inflated up to the limit. */
+function inflateLimited(name: string, packed: Uint8Array, limit: number): Uint8Array {
+  let out: Uint8Array
+  try {
+    // One byte more than allowed tells a lying header from an exact size.
+    out = inflateRawSync(packed, { maxOutputLength: Math.max(1, limit + 1) })
+  } catch (error) {
+    if (error instanceof RangeError || (error as { code?: string }).code === 'ERR_BUFFER_TOO_LARGE') throw new ZipError(`${name}: too large`)
+    throw new ZipError(`${name}: damaged`)
+  }
+  if (out.length > limit) throw new ZipError(`${name}: too large`)
+  return out
 }

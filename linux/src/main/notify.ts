@@ -7,7 +7,7 @@
 import { Notification, app, type WebContents } from 'electron'
 import { MAX_BODY, ToastGates, badgeCount, cleanText, taggedTitle, validId } from '../core/notify.ts'
 import type { Context } from './context.ts'
-import { bringForward } from './shell.ts'
+import { bringForward } from './shelllayout.ts'
 
 const gates = new ToastGates()
 /** Keep the shown toasts referenced until they are used or closed; a collected one never fires its click. The value is the generation of the page run it belongs to. */

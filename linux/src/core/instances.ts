@@ -8,26 +8,19 @@
  * isolation rules can be tested.
  */
 import { createHash, randomBytes } from 'node:crypto'
-import { readFileSync, statSync } from 'node:fs'
-import { writeFileAtomic } from './atomic.ts'
-import { type Edit, type Item, Layout } from './layout.ts'
-import { parseAddress } from './client.ts'
+import { type Edit, Layout } from './layout.ts'
 import { MAX_BADGE, badgeCount } from './notify.ts'
 import { isLowerHex } from './encoding.ts'
+import { MAX_INSTANCES, MAX_MUTE_SECONDS, type Stored, liveMutes } from './instancestore.ts'
+import { type RailState, hue, initial } from './railstate.ts'
 import type { Instance } from './proxy.ts'
 import type { Sockets } from './sockets.ts'
 import type { Held } from './store.ts'
 
-/** Ctrl+1 to Ctrl+9 reach the servers, so there are at most nine. */
-export const MAX_INSTANCES = 9
 /** What the badge and the rail show at most. */
 export const MAX_COUNT = MAX_BADGE
-const STORE_VERSION = 1
-const MAX_STORE_BYTES = 32 * 1024
-/** A mute may last a year and a day at most; -1 is for ever. */
-const MAX_MUTE_SECONDS = 366 * 24 * 3600
-/** What an imported list may weigh. */
-export const MAX_IMPORT_BYTES = 64 * 1024
+export { MAX_IMPORT_BYTES, MAX_INSTANCES, type Stored, emptyStored, loadStored, saveStored, storedFrom, storedText } from './instancestore.ts'
+export type { RailState } from './railstate.ts'
 
 /** A server the client talks to and the verified bundle its pages run. */
 export interface Session {
@@ -86,37 +79,6 @@ export class AddError extends Error {
   }
 }
 
-/** What the rail draws for one server (the shape the rail page reads). */
-interface RailInstance {
-  id: string
-  /** What the rail calls it: the local name if there is one, else `original`. */
-  name: string
-  /** What the server calls itself, or its address. */
-  original: string
-  /** The local name the person gave it. */
-  alias: string | null
-  initial: string
-  hue: number
-  status: 'starting' | 'ready' | 'refused'
-  message: string | null
-  unread: number
-  mentions: number
-  /** The version of the community icon (`rail_icon` fetches it), or none. */
-  icon: string | null
-  /** Muted until this time (epoch seconds), for ever (-1), or not muted. */
-  muted_until: number | null
-}
-
-export interface RailState {
-  active: string | null
-  adding: boolean
-  can_add: boolean
-  /** In the order they stand on the rail. */
-  instances: RailInstance[]
-  /** The structure of the rail: servers on their own and folders. */
-  items: Item[]
-}
-
 /** The address as a name: the host, with its port when it has one. */
 export function slotName(origin: URL): string {
   return origin.port === '' ? origin.hostname : `${origin.hostname}:${origin.port}`
@@ -130,101 +92,6 @@ export function slotName(origin: URL): string {
 export function nameOf(slot: Pick<Slot, 'origin' | 'phase'>): string {
   const community = slot.phase.kind === 'ready' ? slot.phase.session.community : null
   return community && community.toLowerCase() !== slot.origin.hostname.toLowerCase() ? community : slotName(slot.origin)
-}
-
-function initial(name: string): string {
-  const first = /[\p{L}\p{N}]/u.exec(name.replace(/^www\./, ''))
-  return first ? first[0].toUpperCase() : '?'
-}
-
-function hue(id: string): number {
-  return (Number.parseInt(id.slice(0, 4), 16) || 0) % 360
-}
-
-/** The list at rest: addresses only. No session, no name the page chose. */
-export interface Stored {
-  servers: URL[]
-  active: URL | null
-  /** The layout as written (`Layout.load` makes sense of it): absent in a list from before folders. */
-  items?: unknown
-  aliases?: unknown
-  /** Server id to the time (epoch seconds, -1 for ever) its notifications are off until. */
-  muted?: unknown
-  /** False when the file was there but could not be read in full (unreadable, too large, unknown version, an address that did not hold up): the list may be shorter than what the person had. */
-  complete?: boolean
-}
-
-export function emptyStored(): Stored {
-  return { servers: [], active: null }
-}
-
-/** A list that stands for something lost: nothing may be concluded from what is missing in it. */
-function partial(servers: URL[] = [], active: URL | null = null): Stored {
-  return { servers, active, complete: false }
-}
-
-/** Reads the list. Anything that does not hold up (unknown version, a bad address, a duplicate, too many) is dropped rather than trusted. */
-export function loadStored(file: string | null): Stored {
-  if (!file) return emptyStored()
-  let raw: unknown
-  try {
-    if (statSync(file).size > MAX_STORE_BYTES) return partial()
-    raw = JSON.parse(readFileSync(file, 'utf8'))
-  } catch (error) {
-    // No file is a list that was never written; any other failure is a list that exists and could not be read.
-    return (error as NodeJS.ErrnoException).code === 'ENOENT' ? emptyStored() : partial()
-  }
-  return storedFrom(raw) ?? partial()
-}
-
-/** The list in a JSON value; null when it is not a list of this version at all. Addresses are checked exactly like those typed in by hand. */
-export function storedFrom(raw: unknown): Stored | null {
-  if (typeof raw !== 'object' || raw === null) return null
-  const { version, servers, active, items, aliases, muted } = raw as Record<string, unknown>
-  if (version !== STORE_VERSION || !Array.isArray(servers)) return null
-  const list: URL[] = []
-  let complete = true
-  for (const address of servers) {
-    if (typeof address !== 'string' || list.length >= MAX_INSTANCES) { complete = false; continue }
-    try {
-      const origin = parseAddress(address)
-      if (!list.some((u) => u.href === origin.href)) list.push(origin)
-    } catch { complete = false }
-  }
-  let front: URL | null = null
-  if (typeof active === 'string') {
-    try { front = list.find((u) => u.href === parseAddress(active).href) ?? null } catch { front = null }
-  }
-  return complete ? { servers: list, active: front, items, aliases, muted } : { ...partial(list, front), items, aliases, muted }
-}
-
-/** The list as it is written to disk, and as it is exported: addresses, names, layout and mutes, nothing else. */
-export function storedText(stored: Stored): string {
-  return JSON.stringify({
-    version: STORE_VERSION,
-    servers: stored.servers.map((u) => u.href),
-    active: stored.active?.href ?? null,
-    ...(stored.items !== undefined ? { items: stored.items } : {}),
-    ...(stored.aliases !== undefined ? { aliases: stored.aliases } : {}),
-    ...(stored.muted !== undefined ? { muted: stored.muted } : {}),
-  })
-}
-
-export function saveStored(file: string | null, stored: Stored): void {
-  if (!file) return
-  try {
-    writeFileAtomic(file, Buffer.from(storedText(stored)), { dirMode: 0o700 })
-  } catch { /* the list is a convenience; the sessions do not depend on it */ }
-}
-
-/** The mutes of a stored list that still stand at `now`, for the servers in `known`. */
-function liveMutes(raw: unknown, known: (id: string) => boolean, now: number): Map<string, number> {
-  const out = new Map<string, number>()
-  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return out
-  for (const [id, until] of Object.entries(raw)) {
-    if (known(id) && typeof until === 'number' && Number.isFinite(until) && (until === -1 || (until > now && until <= now + MAX_MUTE_SECONDS))) out.set(id, Math.trunc(until))
-  }
-  return out
 }
 
 function nowSeconds(): number {
