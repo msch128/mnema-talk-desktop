@@ -1,0 +1,16 @@
+experimental/app/src/web_notify/mod.rs
+  h_0ff4f4713441f4 12,29-32,376,378
+experimental/app/src/web_notify/throttle.rs
+  h_0ff4f4713441f4 1-96
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "eae607fd1a79187d5b5c6d0df8436770f2a90962",
+  "prompts": {},
+  "humans": {
+    "h_0ff4f4713441f4": {
+      "author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}
