@@ -1,0 +1,18 @@
+experimental/app/Cargo.lock
+  h_0ff4f4713441f4 5471,5473
+experimental/app/Cargo.toml
+  h_0ff4f4713441f4 26
+experimental/licenses/manifest.json
+  h_0ff4f4713441f4 4,10355,10357,10362
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3702301144149e5bc2e65f8e7bbe77ffd11d2047",
+  "prompts": {},
+  "humans": {
+    "h_0ff4f4713441f4": {
+      "author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}
