@@ -255,6 +255,10 @@ mod tests {
     }
 
     #[test]
+    #[expect(
+        clippy::cognitive_complexity,
+        reason = "over the limit when the limits were introduced; split it"
+    )]
     fn anything_that_is_not_a_plain_menu_is_refused() {
         assert!(!ok("[]"));
         assert!(!ok(r#"{"token":"","items":[]}"#));

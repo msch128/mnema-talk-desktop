@@ -696,6 +696,26 @@ fn nothing_new_is_installed_without_a_fresh_trust_statement() {
     assert!(run(prepare_pending(app.handle())).is_none());
 }
 
+#[test]
+fn an_install_without_a_fresh_trust_statement_blames_the_trust_not_the_signature() {
+    let keys = keys();
+    let dir = data_dir("untrusted");
+    let port = publish(&release("0.2.0", &keys));
+    let app = app_with(&keys, port, &dir);
+    let handle = app.handle().clone();
+    // No trust statement was fetched in this run: nothing new is installed.
+    handle.manage(crate::web_client::Trusted::new(None, None));
+    run(look(&handle, true));
+    run(install(&handle, Mode::Later));
+    let snap = handle.state::<NativeUpdates>().snapshot();
+    assert_eq!(snap.phase, Phase::Failed, "{snap:?}");
+    // The update page words each failure by this name; "verify" would tell the
+    // person the signature is wrong, when it is the trust list that is missing.
+    assert_eq!(serde_json::to_value(snap.error).unwrap(), "untrusted");
+    assert_eq!(snap.received, 0, "nothing was downloaded");
+    assert!(!dir.join(PENDING_FILE).exists());
+}
+
 // -------------------------------------------------------- shared vectors
 
 /// The vectors in `test-vectors/` are shared with the Linux client, which

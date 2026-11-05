@@ -141,7 +141,8 @@ impl Bundle {
 }
 
 /// Bundle-relative path rules, shared with the signing tool: UTF-8, forward
-/// slashes, no empty, `.` or `..` segment, no control character.
+/// slashes, no empty or dot-leading segment (hidden entries, `.` and `..`), no
+/// control character.
 pub fn valid_path(path: &str) -> bool {
     !path.is_empty()
         && path.len() <= MAX_PATH
@@ -150,7 +151,7 @@ pub fn valid_path(path: &str) -> bool {
             .any(|c| c < '\u{20}' || c == '\u{7f}' || c == '\\')
         && path
             .split('/')
-            .all(|segment| !segment.is_empty() && segment != "." && segment != "..")
+            .all(|segment| !segment.is_empty() && !segment.starts_with('.'))
 }
 
 /// The archive rules the zip crate does not enforce, the same as the Linux
@@ -509,11 +510,11 @@ pub(crate) fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
 
 const STATE_FILE: &str = "state.json";
 const STATE_BACKUP: &str = "state.json.bak";
-/// Why a bundle did not verify when its signer is simply not trusted (now).
-/// Such a file stays on disk: the key may be trusted again.
 /// A cached file that could not be read (a sharing lock, a scan): it may be
 /// fine next start, so it is kept.
 const UNREADABLE: &str = "unreadable";
+/// Why a bundle did not verify when its signer is simply not trusted (now).
+/// Such a file stays on disk: the key may be trusted again.
 const NOT_TRUSTED: &str = "signature does not match a trusted key";
 
 /// The recorded marks. A state file that is there but cannot be parsed falls
@@ -562,6 +563,10 @@ impl Store {
     /// Verifies the built-in bundle and everything in the cache directory.
     /// The security floor is the highest floor any verified manifest declares
     /// (or an earlier run recorded); bundles below it are dropped.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit when the limits were introduced; split it"
+    )]
     pub fn load(dir: Option<&Path>, builtin: Option<&[u8]>, keys: &[TrustedKey]) -> Store {
         let state = dir.map(read_state).unwrap_or_default();
         let mut verified: Vec<Held> = Vec::new();
@@ -1176,6 +1181,8 @@ mod tests {
             "a\0b",
             "a\u{7f}",
             "a\nb",
+            ".hidden",
+            "a/.well-known/x",
             long.as_str(),
         ] {
             assert!(!valid_path(bad), "{bad:?}");
@@ -2079,6 +2086,11 @@ mod shared_vectors {
     }
 
     #[test]
+    #[expect(
+        clippy::cognitive_complexity,
+        clippy::too_many_lines,
+        reason = "over the limit when the limits were introduced; split it"
+    )]
     fn stores() {
         let v = load(include_str!("../../../test-vectors/store.json"));
         let bytes = |name: &Value| {

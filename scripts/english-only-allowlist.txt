@@ -11,7 +11,6 @@ path: linux/assets/picker-ui/picker.js | de/en locale table of the screen picker
 # Third-party and legal text.
 path: experimental/licenses/** | third-party license data (author names)
 text: Schr(ö|oe)der|Schr(ö|oe)ter | surnames of the author and of a third-party model author
-text: God of War Ragnarök | an official game title in the executable reference
 path: test-vectors/bundle.json | generated Unicode path test vector (see linux/scripts/gen-vectors.ts)
 
 # The guard names the words it looks for.

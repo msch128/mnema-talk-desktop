@@ -123,7 +123,8 @@ From this repository's root, install the web app's dependencies with
 `npm ci --prefix mnema-talk/web` and build it, then build the host with
 `cargo build --locked --manifest-path experimental/app/Cargo.toml --features shell,web-client,custom-protocol`.
 Builds use Rust 1.99.1 and the committed Cargo lockfile. The result is an
-unsigned DEV executable without an automatic updater. Operating-system
+unsigned DEV executable that checks for updates like a release build does (signed
+with the pinned minisign key). Operating-system
 toolchains are required for native dependency compilation.
 
 The `Shared desktop client DEV builds` workflow builds this mode on Windows and
@@ -134,10 +135,8 @@ installers, the signed update files and a portable ZIP (see "Releasing" in the
 main README). Acceptance dispatches can instead exercise an existing published
 EXE. Linking alone does not qualify runtime behavior or games.
 
-The shared client rejects desktop call joins, automatic call restoration, camera
-and screen sharing before capture or connection-state changes until the native
-protected-media owner is integrated. Browser voice behavior remains available.
-The browser's server-version reload banner is omitted for embedded desktop
+Voice, camera and screen sharing run in the instance's webview as in a browser;
+the host only decides the permission (see above). The browser's server-version reload banner is omitted for embedded desktop
 assets, because reloading cannot install a new desktop build.
 
 Existing vendored noise-filter assets retain their upstream notices; attribution

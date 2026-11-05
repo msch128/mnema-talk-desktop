@@ -67,7 +67,8 @@ class Reader {
     const token = NUMBER.exec(this.text.slice(this.at, this.at + 400))?.[0]
     if (token === undefined || token === '') this.fail()
     this.at += token.length
-    if (!INTEGER.test(token)) return new JsonFloat(token)
+    // serde_json reads `-0` as a float (there is no negative zero among integers), so it is no `u32` or `u64` either.
+    if (!INTEGER.test(token) || token === '-0') return new JsonFloat(token)
     const n = Number(token)
     return Number.isSafeInteger(n) ? n : BigInt(token)
   }

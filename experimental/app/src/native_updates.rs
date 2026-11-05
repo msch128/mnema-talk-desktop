@@ -171,6 +171,9 @@ pub enum Mode {
 pub enum Failure {
     Offline,
     Verify,
+    /// No current trust statement could be fetched, so nothing new is
+    /// installed; the signature is not at fault.
+    Untrusted,
     Install,
     Unknown,
 }
@@ -449,6 +452,18 @@ fn installs_allowed<R: Runtime>(app: &AppHandle<R>) -> bool {
         .is_none_or(|t| t.fresh())
 }
 
+/// Fetches the trust statement now, within the start timeout. Only for the
+/// pinned production endpoints: tests run against stand-in servers and must
+/// not reach the real statement.
+async fn refresh_trust<R: Runtime>(app: &AppHandle<R>, source: &Source) {
+    if !source.github_only {
+        return;
+    }
+    if let Some(trusted) = app.try_state::<crate::web_client::Trusted>() {
+        let _ = tokio::time::timeout(START_TIMEOUT, trusted.trust_round()).await;
+    }
+}
+
 fn updater<R: Runtime>(
     app: &AppHandle<R>,
     source: &Source,
@@ -601,6 +616,10 @@ async fn look<R: Runtime>(app: &AppHandle<R>, manual: bool) -> bool {
 
 /// Download, verify and either install at once (`Mode::Now`) or keep the
 /// verified installer for the next start (`Mode::Later`).
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit when the limits were introduced; split it"
+)]
 pub async fn install<R: Runtime>(app: &AppHandle<R>, mode: Mode) {
     let state = app.state::<NativeUpdates>();
     if state.source.portable {
@@ -628,10 +647,17 @@ pub async fn install<R: Runtime>(app: &AppHandle<R>, mode: Mode) {
     });
     let Some(Some(update)) = taken else { return };
     // The statement may have changed since the check. Without a fresh one
-    // (expired, or its fetch failed this round) nothing new is installed.
-    if !installs_allowed(app)
-        || crate::web_trust::updater_key(&state.source.pubkey, &update.signature).is_err()
-    {
+    // (expired, or its fetch failed this round) nothing new is installed. A
+    // client that started offline fetches it now instead of waiting for the
+    // next round, and says the trust is missing rather than blaming the
+    // signature.
+    if !installs_allowed(app) {
+        refresh_trust(app, &state.source).await;
+    }
+    if !installs_allowed(app) {
+        return fail(&state, Failure::Untrusted);
+    }
+    if crate::web_trust::updater_key(&state.source.pubkey, &update.signature).is_err() {
         return fail(&state, Failure::Verify);
     }
     let progress = app.clone();
@@ -794,9 +820,8 @@ async fn apply_pending<R: Runtime>(app: &AppHandle<R>) {
         .lock()
         .is_ok_and(|i| i.persisted.pending.is_some())
         && !installs_allowed(app)
-        && let Some(trusted) = app.try_state::<crate::web_client::Trusted>()
     {
-        let _ = tokio::time::timeout(START_TIMEOUT, trusted.trust_round()).await;
+        refresh_trust(app, &state.source).await;
     }
     let Some((update, bytes)) = prepare_pending(app).await else {
         return;

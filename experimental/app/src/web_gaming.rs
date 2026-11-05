@@ -1602,6 +1602,10 @@ mod tests {
         assert!(s.validate().is_err());
     }
     #[test]
+    #[expect(
+        clippy::cognitive_complexity,
+        reason = "over the limit when the limits were introduced; split it"
+    )]
     fn gaming_controls_require_fresh_own_voice_game_and_new_key_edges() {
         let mut g = Gaming {
             origin: Some("https://example.invalid".into()),

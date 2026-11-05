@@ -391,7 +391,7 @@ impl Jar {
                 continue;
             }
             let expires = match (cookie.max_age(), cookie.expires_datetime()) {
-                (Some(age), _) => Some(now + age.whole_seconds()),
+                (Some(age), _) => Some(now.saturating_add(age.whole_seconds())),
                 (None, Some(at)) => Some(at.unix_timestamp()),
                 (None, None) => None,
             };
@@ -486,7 +486,8 @@ fn create_private_dir(dir: &std::path::Path) {
 /// The kinds of request body the proxy tells apart.
 enum Route {
     /// One picture the server parses in memory: avatar, banner, community
-    /// icon, the avatar of a bot or webhook, the cover of an event.
+    /// icon, the avatar of a bot or webhook, the cover of an event, a picture
+    /// of the wiki.
     Picture,
     Upload,
     Json,
@@ -502,7 +503,10 @@ impl Route {
         };
         matches!(
             path,
-            "/api/users/me/avatar" | "/api/users/me/banner" | "/api/admin/community/icon"
+            "/api/users/me/avatar"
+                | "/api/users/me/banner"
+                | "/api/admin/community/icon"
+                | "/api/wiki/images"
         ) || between("/api/admin/bots/", "/avatar")
             || between("/api/admin/webhooks/", "/avatar")
             || between("/api/events/", "/cover")
@@ -783,6 +787,11 @@ pub async fn forward(
         .sealed()
 }
 
+#[expect(
+    clippy::cognitive_complexity,
+    clippy::too_many_lines,
+    reason = "over the limit when the limits were introduced; split it"
+)]
 async fn forward_unsealed(
     instance: &Instance,
     method: &str,
@@ -864,10 +873,14 @@ async fn forward_unsealed(
         return Resp::error(502, "UNAVAILABLE", "the server answered with a redirect");
     }
     let response_cap = instance.limits.response_cap();
-    if response
-        .content_length()
-        .is_some_and(|n| n > response_cap as u64)
-    {
+    // A HEAD answer announces the length of a body it does not carry: nothing
+    // to size, borrow memory for or allocate.
+    let announced = if method == reqwest::Method::HEAD {
+        None
+    } else {
+        response.content_length()
+    };
+    if announced.is_some_and(|n| n > response_cap as u64) {
         return Resp::error(
             502,
             "UNAVAILABLE",
@@ -876,7 +889,7 @@ async fn forward_unsealed(
     }
     // A large answer borrows its memory first; one of unknown length is held
     // to the small-body size.
-    let (reserve, read_cap) = match response.content_length() {
+    let (reserve, read_cap) = match announced {
         Some(n) => (n as usize, response_cap),
         None => (0, SMALL_BODY),
     };
@@ -887,11 +900,7 @@ async fn forward_unsealed(
             "too many large transfers at once, try again",
         );
     };
-    let mut out = Vec::with_capacity(
-        response
-            .content_length()
-            .map_or(0, |n| (n as usize).min(read_cap)),
-    );
+    let mut out = Vec::with_capacity(announced.map_or(0, |n| (n as usize).min(read_cap)));
     loop {
         match tokio::time::timeout(IDLE_TIMEOUT, response.chunk()).await {
             Ok(Ok(Some(chunk))) if chunk.len() <= read_cap - out.len() => {
@@ -1212,6 +1221,19 @@ mod tests {
             "s=1",
             "session cookies live as long as the process"
         );
+    }
+
+    #[test]
+    fn a_cookie_with_an_enormous_max_age_is_kept_for_good_not_wrapped_into_the_past() {
+        const T: i64 = 1_800_000_000;
+        let jar = Jar::new(None, T);
+        for age in [i64::MAX, i64::MAX - T + 1] {
+            jar.store(&[format!("s=1; Max-Age={age}")], true, T);
+            assert_eq!(jar.header(T + 1).as_deref(), Some("s=1"), "{age}");
+        }
+        // A cookie that long-lived is still deleted by the server's own Max-Age=0.
+        jar.store(&["s=; Max-Age=0".into()], true, T);
+        assert_eq!(jar.header(T + 1), None);
     }
 
     #[test]
@@ -2079,6 +2101,28 @@ mod tests {
         assert!(resp.body.is_empty());
     }
 
+    /// A HEAD answer repeats the length of the file it stands for. That must
+    /// not count against the size cap or the memory budget, or a HEAD for a
+    /// large download would fail or hold gigabytes for an empty body.
+    #[tokio::test]
+    async fn a_head_answer_for_a_huge_file_is_neither_refused_nor_given_memory() {
+        let raw = format!(
+            "HTTP/1.1 200 OK\r\ncontent-length: {}\r\ncontent-type: application/octet-stream\r\nconnection: close\r\n\r\n",
+            LARGE_BODY_BUDGET * 4
+        );
+        let (resp, _, _) = call(
+            raw.into_bytes(),
+            "HEAD",
+            "/api/media/x",
+            &[],
+            b"",
+            Jar::new(None, 0),
+        )
+        .await;
+        assert_eq!(resp.status, 200);
+        assert!(resp.body.is_empty());
+    }
+
     /// Against a real server (set MNEMA_TEST_INSTANCE, MNEMA_TEST_USER and
     /// MNEMA_TEST_PASSWORD): the Origin check passes, the session lands in the
     /// jar and not in the answer, and the next request is authenticated.
@@ -2242,6 +2286,7 @@ mod tests {
             ("POST", "avatar", format!("/api/admin/bots/{id}/avatar")),
             ("POST", "avatar", format!("/api/admin/webhooks/{id}/avatar")),
             ("POST", "cover", format!("/api/events/{id}/cover")),
+            ("POST", "image", "/api/wiki/images".to_owned()),
             ("POST", "file", format!("/api/channels/{id}/upload")),
         ];
         // Around the megabyte the first server-side size classes meet, and
@@ -2283,6 +2328,7 @@ mod tests {
             format!("/api/admin/bots/{id}/avatar"),
             format!("/api/admin/webhooks/{id}/avatar"),
             format!("/api/events/{id}/cover"),
+            "/api/wiki/images".to_owned(),
         ] {
             assert_eq!(limits.request_cap(&path), MAX_AVATAR_BODY, "{path}");
         }
@@ -2293,6 +2339,8 @@ mod tests {
             "/api/admin/bots/a/b/avatar",
             "/api/events//cover",
             "/api/events/a/b/cover",
+            "/api/wiki/images/x",
+            "/api/wiki/pages",
         ] {
             assert_eq!(limits.request_cap(path), MAX_JSON_BODY, "{path}");
         }
@@ -2308,6 +2356,10 @@ mod tests {
     }
 
     #[test]
+    #[expect(
+        clippy::cognitive_complexity,
+        reason = "over the limit when the limits were introduced; split it"
+    )]
     fn request_caps_follow_the_announced_upload_limit() {
         let limits = Limits::default();
         let upload = "/api/channels/00000000-0000-4000-8000-000000000000/upload";

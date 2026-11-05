@@ -194,14 +194,16 @@ class Budget {
 
 /**
  * Routes that take one picture, parsed in memory by the server: its member
- * avatar and banner, the community icon, and the avatar of a bot or webhook,
- * or the cover of an event (each with an id between the fixed parts).
+ * avatar and banner, the community icon, the avatar of a bot or webhook, the
+ * cover of an event (each with an id between the fixed parts) and a picture of
+ * the wiki.
  */
 const PICTURE_ROUTES = [
   /^\/api\/users\/me\/(?:avatar|banner)$/,
   /^\/api\/admin\/community\/icon$/,
   /^\/api\/admin\/(?:bots|webhooks)\/[^/]+\/avatar$/,
   /^\/api\/events\/[^/]+\/cover$/,
+  /^\/api\/wiki\/images$/,
 ]
 
 function routeKind(path: string): 'picture' | 'upload' | 'json' {
@@ -424,13 +426,15 @@ async function exchange(instance: Instance, method: string, url: URL, headers: r
     return errorResp(502, 'UNAVAILABLE', 'the server answered with a redirect')
   }
   const responseCap = instance.limits.responseCap()
-  if (response.contentLength !== null && response.contentLength > responseCap) {
+  // A HEAD answer announces the length of a body it does not carry: nothing to size or borrow memory for.
+  const announced = method === 'HEAD' ? null : response.contentLength
+  if (announced !== null && announced > responseCap) {
     response.destroy()
     return errorResp(502, 'UNAVAILABLE', "the server's answer is too large for this client")
   }
   // A large answer borrows its memory first; one of unknown length is held to
   // the small-body size.
-  const [reserve, readCap] = response.contentLength !== null ? [response.contentLength, responseCap] : [0, SMALL_BODY]
+  const [reserve, readCap] = announced !== null ? [announced, responseCap] : [0, SMALL_BODY]
   const answerMemory = await instance.limits.lend(reserve)
   if (!answerMemory) {
     response.destroy()

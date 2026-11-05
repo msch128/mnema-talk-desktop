@@ -207,6 +207,22 @@
    "announce": [
     10
    ],
+   "path": "/api/wiki/images",
+   "request_cap": 6291456,
+   "response_cap": 134217728
+  },
+  {
+   "announce": [
+    10
+   ],
+   "path": "/api/wiki/images/x",
+   "request_cap": 2097152,
+   "response_cap": 134217728
+  },
+  {
+   "announce": [
+    10
+   ],
    "path": "/api/channels//upload",
    "request_cap": 2097152,
    "response_cap": 134217728

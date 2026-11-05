@@ -89,15 +89,17 @@ TypeScript with shared vectors. The port won:
   also verify with the TypeScript code (the latter is a unit test, the former the
   end-to-end run).
 
-Known differences from the Rust code, all deliberate (the proxy answers 502 for every 3xx, 304 included, like the Rust host):
+Known difference from the Rust code, deliberate: the app CSP has no `ipc:`
+entries (this client does not use network IPC).
 
-* The app CSP has no `ipc:` entries (this client does not use network IPC).
-* ZIP64 and multi-disk archives are not bundles; a bundle larger than 4 GiB cannot
-  exist anyway (limits are 64 MiB per file and 256 MiB in total).
-* Ed25519 signatures are verified with Node's (OpenSSL) verifier, not
-  `verify_strict`; the keys are pinned or root-signed, so the small-order cases
-  strictness guards against cannot occur. Keys are still checked to be valid
-  curve points when they are parsed.
+Not differences, although an earlier version of this file said so: ZIP64 and
+multi-disk archives are refused in both (a bundle larger than 4 GiB cannot exist
+anyway: 64 MiB per file, 256 MiB in total); Ed25519 follows `verify_strict`
+(`src/core/ed25519.ts`): Node's (OpenSSL) verifier does the arithmetic, and
+around it a key must be a curve point that is not of small order, `R` must not
+be of small order and `S` must be below the group order, as in `ed25519_dalek`;
+and the proxy answers a redirect with 502 but passes a 304 on to the page,
+which answers its conditional request.
 
 ## How it fits together
 

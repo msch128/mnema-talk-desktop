@@ -247,6 +247,15 @@ test('head requests return no body', async () => {
   assert.equal(resp.body.length, 0)
 })
 
+test('a head answer for a huge file is neither refused nor given memory', async () => {
+  const { resp } = await call((_r, res) => {
+    res.writeHead(200, { 'content-length': String(MAX_BODY * 16), 'content-type': 'application/octet-stream' })
+    res.end()
+  }, 'HEAD', '/api/media/x')
+  assert.equal(resp.status, 200)
+  assert.equal(resp.body.length, 0)
+})
+
 const UPLOAD = '/api/channels/00000000-0000-4000-8000-000000000000/upload'
 const OVERHEAD = 1 << 20
 
@@ -469,6 +478,7 @@ const PICTURE_ROUTES = [
   '/api/admin/bots/3f0c1b2e-0000-4000-8000-000000000000/avatar',
   '/api/admin/webhooks/3f0c1b2e-0000-4000-8000-000000000000/avatar',
   '/api/events/3f0c1b2e-0000-4000-8000-000000000000/cover',
+  '/api/wiki/images',
 ]
 
 test('every picture route takes the 5 MiB the server allows, the other JSON routes stay small', () => {
@@ -478,6 +488,8 @@ test('every picture route takes the 5 MiB the server allows, the other JSON rout
   assert.equal(limits.requestCap('/api/users/me/avatar/x'), 2 << 20)
   assert.equal(limits.requestCap('/api/admin/bots//avatar'), 2 << 20)
   assert.equal(limits.requestCap('/api/admin/bots/a/b/avatar'), 2 << 20)
+  assert.equal(limits.requestCap('/api/wiki/images/x'), 2 << 20)
+  assert.equal(limits.requestCap('/api/wiki/pages'), 2 << 20)
 })
 
 /** Bytes that survive no accidental text handling: every value, no repeats within a block. */

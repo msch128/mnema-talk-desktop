@@ -81,6 +81,7 @@ function main() {
     .toString('utf8').split('\0').filter(Boolean)
   const problems = []
   const used = new Set()
+  const usedTexts = new Set()
   for (const file of tracked) {
     if (skipExt.test(file)) continue
     const rule = paths.findIndex((re) => re.test(file))
@@ -88,11 +89,18 @@ function main() {
     let buf
     try { buf = readFileSync(join(root, file)) } catch { continue }
     if (buf.includes(0)) continue
-    for (const [n, text] of germanLines(buf.toString('utf8'), texts, { decode: file.endsWith('.json') })) problems.push(`${file}:${n}: ${text}`)
+    const content = buf.toString('utf8')
+    texts.forEach((re, i) => { if (new RegExp(re.source, 'u').test(content)) usedTexts.add(i) })
+    for (const [n, text] of germanLines(content, texts, { decode: file.endsWith('.json') })) problems.push(`${file}:${n}: ${text}`)
   }
   const unused = paths.map((_, i) => i).filter((i) => !used.has(i))
   if (unused.length > 0) {
     console.error(`${allowlistPath} has path entries that match no file (remove them): ${unused.map((i) => paths[i].source).join(", ")}`)
+    process.exitCode = 1
+  }
+  const staleTexts = texts.map((_, i) => i).filter((i) => !usedTexts.has(i))
+  if (staleTexts.length > 0) {
+    console.error(`${allowlistPath} has text entries that match nothing (remove them): ${staleTexts.map((i) => texts[i].source).join(', ')}`)
     process.exitCode = 1
   }
   if (problems.length > 0) {

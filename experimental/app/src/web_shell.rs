@@ -635,7 +635,6 @@ fn rail_snapshot(app: &tauri::AppHandle) -> RailState {
     }
 }
 
-/// Shows the rail what it should draw, and renames the menu entries to match.
 /// The title of the window: the active server's name before the product, or
 /// the product alone while none is active.
 fn window_title(state: &RailState) -> String {
@@ -649,6 +648,8 @@ fn window_title(state: &RailState) -> String {
         )
 }
 
+/// Shows the rail what it should draw, titles the window after the server in
+/// front and renames the menu entries to match.
 pub fn push_rail(app: &tauri::AppHandle) {
     let state = rail_snapshot(app);
     // The window is titled with the server in front, by the name it gives itself.
@@ -1515,13 +1516,14 @@ pub fn rail_edit(
     name: Option<String>,
     color: Option<String>,
     until: Option<i64>,
+    text: Option<String>,
 ) -> Result<serde_json::Value, String> {
     let app = from_rail(&webview)?;
     match op.as_str() {
         "mute" => return mute(&app, id.as_deref(), until).map(|()| serde_json::Value::Null),
         "mark_read" => return mark_read(&app, id.as_deref()).map(|()| serde_json::Value::Null),
         "export" => return export_list(&app).map(serde_json::Value::from),
-        "import" => return import_list(&app, name.as_deref()).map(serde_json::Value::from),
+        "import" => return import_list(&app, text.as_deref()).map(serde_json::Value::from),
         _ => {}
     }
     let edit = crate::rail_layout::Edit {
@@ -2051,6 +2053,10 @@ mod tests {
     /// toasts, counters and gaming bridge and can neither drive the list nor
     /// add a server; only the page for adding may do that.
     #[test]
+    #[expect(
+        clippy::cognitive_complexity,
+        reason = "over the limit when the limits were introduced; split it"
+    )]
     fn the_commands_are_split_between_the_rail_the_pages_and_the_selector() {
         let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("capabilities");
         let mut rail_seen = false;

@@ -59,7 +59,7 @@ function outcome(name: string, keys: string[], zip: Buffer): { name: string, tru
 function bundleVectors(): Json {
   const versions = ['0.7.16', '0.0.0', '1.2.3', '123456789.0.0', '', '1', '1.2', '1.2.3.4', 'v1.2.3', '01.2.3', '1.2.x', '1..3', '1.2.3-rc1', '-1.0.0', '99999999999.0.0', '+1.0.0', '1.2.3 ', ' 1.2.3']
     .map((input) => ({ input, parsed: parseVersion(input) }))
-  const paths = ['index.html', 'assets/a-b.js', '\u00fcn\u00ef/x.js', 'a b/c', '', '/abs', 'a//b', 'a/./b', 'a/../b', '..', '.', 'a/', 'a\\b', 'a\0b', 'a\u007f', 'a\nb', 'a'.repeat(MAX_PATH), 'a'.repeat(MAX_PATH + 1)]
+  const paths = ['index.html', 'assets/a-b.js', '\u00fcn\u00ef/x.js', 'a b/c', '', '/abs', 'a//b', 'a/./b', 'a/../b', '..', '.', 'a/', 'a\\b', 'a\0b', 'a\u007f', 'a\nb', '.hidden', 'a/.well-known/x', 'a'.repeat(MAX_PATH), 'a'.repeat(MAX_PATH + 1)]
     .map((path) => ({ path, valid: validPath(path) }))
 
   const base = spec('0.8.0')
@@ -326,7 +326,7 @@ function jsonVectors(): Json {
     ['a repeated key with another value', raw('"schema":2,"schema":1')],
     typed('schema', '1'), typed('schema', true), typed('schema', null), typed('schema', 1.5), typed('schema', [1]),
     ['schema as 1.0', raw('"schema":1.0')], ['schema as 1e0', raw('"schema":1e0')], ['schema as 01', raw('"schema":01')], ['schema as +1', raw('"schema":+1')], ['schema as 1 with a space inside a number', raw('"schema":1 ')],
-    ['schema above u32', raw('"schema":4294967297')], ['schema negative', raw('"schema":-1')],
+    ['schema above u32', raw('"schema":4294967297')], ['schema negative', raw('"schema":-1')], ['schema as -0', raw('"schema":-0')],
     typed('name', 5), typed('name', null), typed('version', 8), typed('commit', null), typed('key_id', 7),
     typed('web_client_api', '1'), typed('web_client_api', 1.0), typed('web_client_api', 1.5),
     typed('files', {}), typed('files', 'x'), typed('files', null),
@@ -359,7 +359,7 @@ function jsonVectors(): Json {
     ...variants(stmt, { dup: '"serial":1', unknown: '"surprise":1' }),
     ['a repeated key with another value', stmtRaw('"serial":1', '"serial":0,"serial":1')],
     ['serial as 1.0', stmtRaw('"serial":1', '"serial":1.0')], ['serial as 1e0', stmtRaw('"serial":1', '"serial":1e0')],
-    ['serial as a string', stmtEdit((o) => { o.serial = '1' })], ['serial null', stmtEdit((o) => { o.serial = null })], ['serial negative', stmtEdit((o) => { o.serial = -1 })],
+    ['serial as a string', stmtEdit((o) => { o.serial = '1' })], ['serial null', stmtEdit((o) => { o.serial = null })], ['serial negative', stmtEdit((o) => { o.serial = -1 })], ['serial as -0', stmtRaw('"serial":1', '"serial":-0')],
     ['schema as a string', stmtEdit((o) => { o.schema = '1' })],
     ['issued_at as a number', stmtEdit((o) => { o.issued_at = 1 })], ['expires_at null', stmtEdit((o) => { o.expires_at = null })],
     ['bundle_keys as a string', stmtEdit((o) => { o.bundle_keys = hex(1) })], ['bundle_keys with a number', stmtEdit((o) => { o.bundle_keys = [1] })],
@@ -758,7 +758,7 @@ function proxyVectors(): Json {
     .map((input) => ({ origin, input, href: target(new URL(origin), input)?.href ?? null }))
   const upload = '/api/channels/00000000-0000-4000-8000-000000000000/upload'
   const capSteps = [
-    { announce: [], path: upload }, { announce: [10], path: upload }, { announce: [10], path: '/api/channels/x/messages' }, { announce: [10], path: '/api/users/me/avatar' },
+    { announce: [], path: upload }, { announce: [10], path: upload }, { announce: [10], path: '/api/channels/x/messages' }, { announce: [10], path: '/api/users/me/avatar' }, { announce: [10], path: '/api/wiki/images' }, { announce: [10], path: '/api/wiki/images/x' },
     { announce: [10], path: '/api/channels//upload' }, { announce: [10], path: '/api/channels/a/b/upload' }, { announce: [512], path: upload }, { announce: [512, 0, 999_999], path: upload }, { announce: [2048], path: upload },
     { announce: [1], path: upload }, { announce: [2049], path: upload },
   ].map((c) => {
@@ -831,7 +831,8 @@ function clientVectors(): Json {
     'http://LOCALHOST', '', 'http://community.example', 'http://127.0.0.1.example', 'http://192.168.1.10:8080', 'https://user@community.example', 'https://user:pw@community.example', 'https://community.example/path',
     'https://community.example:8443/?invite=code', 'http://community.example:8443/path?invite=code', 'http://localhost:8080/path?x=1',
     'https://community.example?token=x', 'https://community.example/#x', 'https://community.example\\other', 'https://community.example\n', 'https://community.example/?', 'https://a@b.example', 'ftp://community.example',
-    'https://', 'https://exa mple.com', 'http://0.0.0.0', 'http://[::]', 'https://community.example:99999', '<https://community.example:8443/>', '"https://community.example"']
+    'https://', 'https://exa mple.com', 'http://0.0.0.0', 'http://[::]', 'https://community.example:99999', '<https://community.example:8443/>', '"https://community.example"',
+    'https://community.example/@alice', 'https://community.example/?mail=a@b.example', 'https://community.example/#@x', 'community.example/@alice', 'https://user@community.example/@alice']
     .map((input) => {
       try { return { input, href: parseAddress(input).href } } catch (error) { return { input, error: (error as Error).message } }
     })

@@ -152,8 +152,8 @@ the file for your machine, x86_64 (also called amd64) or arm64:
 * **.deb**, `Mnema-Desktop-DEV_<version>_amd64.deb` or `..._arm64.deb`, for
   Debian and Ubuntu: `sudo apt install ./Mnema-Desktop-DEV_<version>_amd64.deb`.
   It installs to `/opt/Mnema Desktop DEV` with a menu entry and an AppArmor
-  profile, and is updated by downloading a newer package; the client tells
-  you when one exists and links to the release page.
+  profile, and updates itself through the package manager: the client verifies
+  the signed package, then asks for your password (polkit) to install it.
 
 At the first start enter the HTTPS address of your community's instance, as on
 the other platforms. Your data (the verified web apps, the trust statement, the
@@ -287,8 +287,10 @@ On macOS the updater replaces the app in place from the signed
 `.app.tar.gz`; `latest.json` carries a `darwin-aarch64` entry.
 
 On Linux the feed carries `linux-x86_64` and `linux-aarch64` entries that name
-the signed AppImages. Tauri clients look up their own platform and ignore these
-(the entries use the same fields, so nothing in the file changed for them). The
+the signed AppImages, and `linux-x86_64-deb` and `linux-aarch64-deb` entries that
+name the signed `.deb` packages. Tauri clients look up their own platform and
+ignore these (the entries use the same fields, so nothing in the file changed
+for them). The
 Electron client applies the same rules as the Tauri updater, in TypeScript: the
 minisign signature must verify against the pinned key (or a replacement key
 the trust statement lists, and never a revoked one), the version recorded inside
@@ -299,8 +301,10 @@ offers the same choices (**Update now**, **On next start**, **Skip this version*
 **Update now** replaces the AppImage file it was started from (a failed write
 leaves the installed one untouched) and restarts it; **On next start** keeps the
 verified AppImage and installs it, after verifying it again, at the next start.
-A `.deb` installation is owned by the package manager: the client announces
-the version and links to the release page instead. The AppImage has to be in a
+A `.deb` installation is updated through the package manager: the client reads
+its own `-deb` entry, verifies the package the same way, and hands it to
+`pkexec`, which asks for your password; it never writes under `/opt` itself. An
+installation of neither kind only gets a link to the release page. The AppImage has to be in a
 directory you can write to.
 
 At startup, enter the HTTPS address of your community's instance. Microsoft
@@ -337,12 +341,24 @@ cargo clippy --locked --manifest-path Cargo.toml --all-targets -- -D warnings
 cargo test --locked --manifest-path experimental/app/Cargo.toml --features shell,web-client,custom-protocol
 cargo clippy --locked --manifest-path experimental/app/Cargo.toml --features shell,web-client,custom-protocol --all-targets -- -D warnings
 node --test scripts/*.test.mjs
+node scripts/check-limits.mjs
 ```
 
 The first two commands build only the gaming logic of `src/`. The host and the
 page tests (`experimental/app/page-tests`) run in the *Shared desktop client DEV
 builds* and *Desktop checks* workflows. The small `go.mod` is only a module
 boundary preventing a parent Go module from scanning npm Go fixtures.
+
+### Size and complexity limits
+
+The same numbers as the server: production files up to 400 lines, test files up
+to 800 (a Rust `#[cfg(test)]` module counts as a test file of its own), functions
+up to 80 lines and cognitive complexity 15. `scripts/check-limits.mjs` checks the
+file sizes, ESLint (`linux/eslint.config.ts`) checks TypeScript and clippy checks
+Rust. Files and functions that were over the limit when it was introduced are
+listed in `scripts/limits-allowlist.txt` and `linux/eslint-suppressions.json`;
+those lists only shrink (an entry that is no longer needed fails the check).
+Never add to them or raise a limit: split the code by responsibility.
 
 Libraries and locked Rust dependency inventory: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 The app icons are generated from the project's existing `web/public/favicon.svg`.

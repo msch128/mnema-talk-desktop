@@ -144,3 +144,29 @@ test('an npm package without a license file takes its pinned override text, a ta
     assert.notEqual(f.run().status, 0);
   } finally { f.close(); }
 });
+
+test('source and build files with a license-like name are not collected as notices', () => {
+  const f = fixture();
+  try {
+    mkdirSync(join(f.desktop, 'ui/node_modules/example/dist'));
+    f.put('ui/node_modules/example/dist/copyright.mjs', 'export default "icon";');
+    f.put('ui/node_modules/example/dist/copyright.mjs.map', '{}');
+    f.put('ui/node_modules/example/dist/license.cjs', 'module.exports = 1;');
+    assert.equal(f.run().status, 0);
+    const manifest = JSON.parse(readFileSync(join(f.desktop, 'licenses', 'manifest.json'), 'utf8'));
+    const npm = manifest.packages.find((pkg) => pkg.ecosystem === 'npm');
+    assert.deepEqual(npm.texts.map((text) => text.name), ['LICENSE']);
+  } finally { f.close(); }
+});
+
+// The license check reads the web app's lock from a pinned mnema-talk commit, so it does not
+// fail every time the lock on main moves on.
+test('the license check is pinned to a full mnema-talk commit that the workflow checks out', () => {
+  const root = join(scripts, '..');
+  const pin = readFileSync(join(root, 'experimental/licenses/web-source.txt'), 'utf8').trim();
+  assert.match(pin, /^[0-9a-f]{40}$/);
+  const workflow = readFileSync(join(root, '.github/workflows/advisories.yml'), 'utf8');
+  assert.match(workflow, /web-source\.txt/);
+  assert.match(workflow, /fetch --quiet --depth=1 https:\/\/github\.com\/msch128\/mnema-talk\.git "\$sha"/);
+  assert.doesNotMatch(workflow, /ref: main/);
+});

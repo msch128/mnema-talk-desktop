@@ -46,7 +46,11 @@ test('an address keeps its port and drops a pasted invite link', () => {
   assert.equal(parseAddress('http://community.example:8443/path?invite=code').href, 'https://community.example:8443/')
   assert.equal(parseAddress('http://localhost:8080/path?x=1').href, 'http://localhost:8080/')
   assert.equal(parseAddress('<https://community.example:8443/>').href, 'https://community.example:8443/')
-  for (const invalid of ['', 'https://user@community.example', 'https://community.example\\other', 'https://community.example\n', 'https://a@b.example', 'ftp://community.example']) {
+  // An "@" after the authority is page content, not credentials.
+  for (const page of ['https://community.example/@alice', 'https://community.example/?mail=a@b.example', 'https://community.example/#@x', 'community.example/@alice']) {
+    assert.equal(parseAddress(page).href, 'https://community.example/', page)
+  }
+  for (const invalid of ['', 'https://user@community.example/@alice', 'https://user@community.example', 'https://community.example\\other', 'https://community.example\n', 'https://a@b.example', 'ftp://community.example']) {
     assert.throws(() => parseAddress(invalid), Error, JSON.stringify(invalid))
   }
   assert.throws(() => parseAddress('a'.repeat(3000)), /Enter an HTTPS instance address/)
