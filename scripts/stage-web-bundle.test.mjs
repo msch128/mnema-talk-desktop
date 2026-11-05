@@ -18,10 +18,14 @@ function stage(env = {}) {
   writeFileSync(join(bin, 'gh'), `#!/usr/bin/env bash
 if [ "$1 $2" = "release list" ]; then
   case "$*" in *--exclude-pre-releases*) ;; *) echo "pre-releases must be excluded" >&2; exit 2 ;; esac
-  printf 'v3\\nv2\\nv1\\n'; exit 0
+  printf "$FAKE_LIST"; exit 0
 fi
 tag="$3"; dir=""; while [ $# -gt 0 ]; do [ "$1" = "--dir" ] && dir="$2"; shift; done
 case "$tag" in
+  fresh) echo "no assets to download" >&2; exit 1 ;;
+  late) n=$(cat "$COUNT" 2>/dev/null || echo 0); echo $((n+1)) > "$COUNT"
+        if [ "$n" -lt 2 ]; then echo "no assets to download" >&2; exit 1; fi
+        printf "bundle-late" > "$dir/mnema-web-late.zip" ;;
   v3) echo "no assets match the file pattern" >&2; exit 1 ;;
   broken) echo "HTTP 502" >&2; exit 1 ;;
   *) printf "bundle-$tag" > "$dir/mnema-web-$tag.zip" ;;
@@ -32,7 +36,7 @@ esac
   const dir = join(root, 'out');
   const run = spawnSync('bash', [basename(script)], {
     cwd: dirname(script),
-    env: { ...process.env, [pathKey]: `${bin}${delimiter}${process.env[pathKey]}`, BUNDLE_DIR: dir, GITHUB_STEP_SUMMARY: summary, ...env },
+    env: { ...process.env, [pathKey]: `${bin}${delimiter}${process.env[pathKey]}`, BUNDLE_DIR: dir, FAKE_LIST: 'v3\\nv2\\nv1\\n', COUNT: join(root, 'count'), WEB_BUNDLE_STEP: '1', WEB_BUNDLE_WAIT: '5', GITHUB_STEP_SUMMARY: summary, ...env },
     encoding: 'utf8',
   });
   return { run, dir, summary };
@@ -63,4 +67,17 @@ test('a release build without any bundle fails, a plain build only warns', () =>
   const plain = stage({ WEB_BUNDLE_TAG: 'v3' });
   assert.equal(plain.run.status, 0);
   assert.match(plain.run.stdout, /::warning::/);
+});
+
+test('a newest release that has no assets yet is skipped for the next one with a bundle', () => {
+  const { run, dir } = stage({ FAKE_LIST: 'fresh\\nv2\\n', WEB_BUNDLE_WAIT: '0' });
+  assert.equal(run.status, 0, run.stderr);
+  assert.equal(readFileSync(join(dir, 'builtin.zip'), 'utf8'), 'bundle-v2');
+});
+
+test('the newest release is waited for while its bundle is being attached', () => {
+  const { run, dir } = stage({ FAKE_LIST: 'late\\nv2\\n' });
+  assert.equal(run.status, 0, run.stderr);
+  assert.match(run.stdout, /waiting for its web bundle/);
+  assert.equal(readFileSync(join(dir, 'builtin.zip'), 'utf8'), 'bundle-late');
 });
