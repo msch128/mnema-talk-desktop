@@ -114,7 +114,22 @@ try {
     Start-Sleep -Milliseconds 250
   }
   if (-not [Win]::Windows($app.Id, $true).Count) { throw 'The host never showed a window' }
-  Start-Sleep -Seconds 3
+  # A cold runner can keep the UI thread busy for many seconds right after the first window
+  # appears (WebView2 start-up, first-run scans). That is not what this check is about, so
+  # measure only once the host has answered 20 probes in a row (about 2 s), within 60 s, and
+  # print how long it took so a slow start is visible instead of silently failing the run.
+  $shown = [Diagnostics.Stopwatch]::StartNew()
+  $answeredInARow = 0
+  while ($answeredInARow -lt 20 -and $shown.Elapsed.TotalSeconds -lt 60) {
+    if ($app.HasExited) { throw "The host exited with code $($app.ExitCode)" }
+    $ok = $true
+    foreach ($h in [Win]::Windows($app.Id, $false)) { if ([Win]::IsHungAppWindow($h) -or -not [Win]::Answers($h, 1000)) { $ok = $false } }
+    if ($ok) { $answeredInARow++ } else { $answeredInARow = 0 }
+    Start-Sleep -Milliseconds 100
+  }
+  if ($answeredInARow -lt 20) { throw 'The host did not settle within 60 s of showing its window' }
+  Write-Host "host settled $([int]$shown.Elapsed.TotalMilliseconds) ms after its first window"
+  Start-Sleep -Seconds 1
 
   $procs += Start-Process -FilePath $other -ArgumentList 'other' -PassThru
   $gameProc = Start-Process -FilePath $game -ArgumentList 'game' -PassThru
@@ -147,8 +162,8 @@ try {
       $title = [Win]::Title($h)
       if ($title -like '*Sidepeek*') { $sidepeekSeen = $true }
       if ($title -like '*Gaming DEV*') { $overlaySeen = $true }
-      if ([Win]::IsHungAppWindow($h)) { $failures += "hung window '$title' at $($clock.ElapsedMilliseconds) ms" }
-      elseif (-not [Win]::Answers($h, 1000)) { $failures += "no answer from '$title' within 1 s at $($clock.ElapsedMilliseconds) ms" }
+      if ([Win]::IsHungAppWindow($h)) { $failures += "hung window '$title' at $($clock.ElapsedMilliseconds) ms (foreground: '$([Win]::Title([Win]::GetForegroundWindow()))', $($shown.Elapsed.TotalSeconds.ToString('0.0')) s since the host showed a window)" }
+      elseif (-not [Win]::Answers($h, 1000)) { $failures += "no answer from '$title' within 1 s at $($clock.ElapsedMilliseconds) ms (foreground: '$([Win]::Title([Win]::GetForegroundWindow()))', $($shown.Elapsed.TotalSeconds.ToString('0.0')) s since the host showed a window)" }
     }
     Start-Sleep -Milliseconds 50
   }
