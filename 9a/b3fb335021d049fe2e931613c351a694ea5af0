@@ -1,0 +1,48 @@
+experimental/app/src/web_client.rs
+  h_0ff4f4713441f4 6-27
+experimental/app/src/web_client/address.rs
+  h_0ff4f4713441f4 1-125
+experimental/app/src/web_client/commands.rs
+  h_0ff4f4713441f4 1-73
+experimental/app/src/web_client/dialog.rs
+  h_0ff4f4713441f4 1-135
+experimental/app/src/web_client/discover.rs
+  h_0ff4f4713441f4 1-183
+experimental/app/src/web_client/links.rs
+  h_0ff4f4713441f4 1-119
+experimental/app/src/web_client/requests.rs
+  h_0ff4f4713441f4 1-157
+experimental/app/src/web_client/rounds.rs
+  h_0ff4f4713441f4 1-113
+experimental/app/src/web_client/run.rs
+  h_0ff4f4713441f4 1-144
+experimental/app/src/web_client/tests.rs
+  h_0ff4f4713441f4 1-72
+experimental/app/src/web_client/tests/discover.rs
+  h_0ff4f4713441f4 1-197
+experimental/app/src/web_client/tests/links.rs
+  h_0ff4f4713441f4 1-240
+experimental/app/src/web_client/tests/origin.rs
+  h_0ff4f4713441f4 1-105
+experimental/app/src/web_client/tests/requests.rs
+  h_0ff4f4713441f4 1-190
+experimental/app/src/web_client/tests/run.rs
+  h_0ff4f4713441f4 1-55
+experimental/app/src/web_client/tests/trusted.rs
+  h_0ff4f4713441f4 1-229
+experimental/app/src/web_client/tests/vectors.rs
+  h_0ff4f4713441f4 1-244
+experimental/app/src/web_client/trusted.rs
+  h_0ff4f4713441f4 1-300
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9ab3fb335021d049fe2e931613c351a694ea5af0",
+  "prompts": {},
+  "humans": {
+    "h_0ff4f4713441f4": {
+      "author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}
