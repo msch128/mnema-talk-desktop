@@ -2,7 +2,7 @@
   "schema": "mnema-desktop-license-bundle-v1",
   "scope": "Conservative locked Rust graph and production npm closure; not a claim that all packages are linked.",
   "cargo_lock_sha256": "2b27f8657da2835707a9ed62173610d05749313ce86ea0e7749a0f2c2d8507e9",
-  "npm_lock_sha256": "003ab0cd56a24c72ce519ef01616d6bdb9784f737939e50467eb619eafd99968",
+  "npm_lock_sha256": "53b69e25b8790f35b9819f2d83232a2eb47f438e76bcfd88be813a8d2f67d935",
   "supplemental": {
     "rust_standard_library": {
       "version": "1.99.1",
@@ -10532,26 +10532,14 @@
     {
       "ecosystem": "npm",
       "name": "@lucide/vue",
-      "version": "1.61.0",
+      "version": "1.65.0",
       "license": "ISC",
-      "source": "https://www.npmjs.com/package/@lucide/vue/v/1.61.0",
+      "source": "https://www.npmjs.com/package/@lucide/vue/v/1.65.0",
       "texts": [
         {
           "name": "LICENSE",
           "sha256": "b495047bd93a9b06913511076f504daba17d5bbeb3e0650f3bb53a4220329c57",
-          "source": "https://www.npmjs.com/package/@lucide/vue/v/1.61.0",
-          "provenance": "npm-archive"
-        },
-        {
-          "name": "dist/esm/icons/copyright.mjs",
-          "sha256": "0122f88c3832bb45422b4e6c7259befdcf98daa344fea27f69e2cc047c205552",
-          "source": "https://www.npmjs.com/package/@lucide/vue/v/1.61.0",
-          "provenance": "npm-archive"
-        },
-        {
-          "name": "dist/esm/icons/copyright.mjs.map",
-          "sha256": "0e3f264fe9e86136898dbcafc89ae1478c41f2a08dfdc5cc7de70ef3bd164945",
-          "source": "https://www.npmjs.com/package/@lucide/vue/v/1.61.0",
+          "source": "https://www.npmjs.com/package/@lucide/vue/v/1.65.0",
           "provenance": "npm-archive"
         }
       ]
@@ -11113,20 +11101,20 @@
     {
       "ecosystem": "npm",
       "name": "swagger-ui-dist",
-      "version": "5.34.0",
+      "version": "5.34.1",
       "license": "Apache-2.0",
-      "source": "https://www.npmjs.com/package/swagger-ui-dist/v/5.34.0",
+      "source": "https://www.npmjs.com/package/swagger-ui-dist/v/5.34.1",
       "texts": [
         {
           "name": "LICENSE",
           "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
-          "source": "https://www.npmjs.com/package/swagger-ui-dist/v/5.34.0",
+          "source": "https://www.npmjs.com/package/swagger-ui-dist/v/5.34.1",
           "provenance": "npm-archive"
         },
         {
           "name": "NOTICE",
           "sha256": "0d20d1adef18aee3f40dd258172155521ce702ac445cb5f7b7d60ed32dad2fb2",
-          "source": "https://www.npmjs.com/package/swagger-ui-dist/v/5.34.0",
+          "source": "https://www.npmjs.com/package/swagger-ui-dist/v/5.34.1",
           "provenance": "npm-archive"
         }
       ]
