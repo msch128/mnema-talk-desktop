@@ -505,7 +505,7 @@ function importList() {
     cancel: 'cancel',
   }).then((answer) => {
     if (!answer || answer.button !== 'import' || typeof answer.value !== 'string') return;
-    attempt('rail_edit', { op: 'import', name: answer.value }).then(({ ok, value }) => { say(ok && typeof value === 'number' ? T.imported(value) : T.importFailed); });
+    attempt('rail_edit', { op: 'import', text: answer.value }).then(({ ok, value }) => { say(ok && typeof value === 'number' ? T.imported(value) : T.importFailed); });
   });
 }
 

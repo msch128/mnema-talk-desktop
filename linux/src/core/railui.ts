@@ -87,7 +87,7 @@ export function parseEdit(args: Args): RailEdit {
     }
     case 'mark_read': return { op, id: server(args, 'id') }
     case 'export': return { op }
-    case 'import': return { op, text: string(args, 'name', MAX_IMPORT_BYTES) }
+    case 'import': return { op, text: string(args, 'text', MAX_IMPORT_BYTES) }
     default: throw new Error('Unknown change.')
   }
 }
