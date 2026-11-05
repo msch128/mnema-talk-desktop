@@ -2666,10 +2666,19 @@ mod drop_tests {
         assert!(body[..end].contains(".disable_drag_drop_handler()"));
         for (name, source) in [
             ("web_shell", shell),
-            ("web_gaming", include_str!("web_gaming.rs")),
             ("native_updates", include_str!("native_updates.rs")),
         ] {
             assert!(!source.contains("onDragDropEvent"), "{name}");
         }
+        let gaming = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/web_gaming");
+        for entry in std::fs::read_dir(gaming).unwrap().flatten() {
+            let source = std::fs::read_to_string(entry.path()).unwrap();
+            assert!(
+                !source.contains("onDragDropEvent"),
+                "{:?}",
+                entry.file_name()
+            );
+        }
+        assert!(!include_str!("web_gaming.rs").contains("onDragDropEvent"));
     }
 }
