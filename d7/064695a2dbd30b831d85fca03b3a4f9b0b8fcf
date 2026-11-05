@@ -1,0 +1,16 @@
+experimental/app/src/web_client/run.rs
+  h_0ff4f4713441f4 115-123
+scripts/test-windows-gaming-hang.ps1
+  h_0ff4f4713441f4 117-132,165-166
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d7064695a2dbd30b831d85fca03b3a4f9b0b8fcf",
+  "prompts": {},
+  "humans": {
+    "h_0ff4f4713441f4": {
+      "author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}

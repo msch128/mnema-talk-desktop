@@ -1,0 +1,16 @@
+scripts/test-windows-gaming-hang.ps1
+  h_0ff4f4713441f4 193-194,196-197
+scripts/windows-scripts.test.mjs
+  h_0ff4f4713441f4 20
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "dfc5736bd4310055cae763426d89ac8d17812fd5",
+  "prompts": {},
+  "humans": {
+    "h_0ff4f4713441f4": {
+      "author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}
