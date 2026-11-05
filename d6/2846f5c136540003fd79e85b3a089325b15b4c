@@ -1,0 +1,14 @@
+experimental/app/src/selftest_multi/checks.rs
+  h_0ff4f4713441f4 280-282,287-297,299,301,303-304
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d62846f5c136540003fd79e85b3a089325b15b4c",
+  "prompts": {},
+  "humans": {
+    "h_0ff4f4713441f4": {
+      "author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}
