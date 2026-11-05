@@ -16,7 +16,9 @@ mod tests;
 mod trusted;
 
 pub(crate) use address::{address, invite_code, join_page};
-pub(crate) use commands::{allow_permission, app_api, instance_page, own_blob};
+#[cfg(any(target_os = "macos", test))]
+pub(crate) use commands::own_blob;
+pub(crate) use commands::{allow_permission, app_api, instance_page};
 pub(crate) use discover::{NO_HTTPS, SELECTOR_ONLY, discover};
 pub(crate) use links::{Link, confirm_add, invite_decision, navigation_allowed, open_external};
 pub(crate) use rounds::choose;
