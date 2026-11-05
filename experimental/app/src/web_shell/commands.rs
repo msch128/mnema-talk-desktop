@@ -92,6 +92,7 @@ pub fn rail_cancel_add(webview: Webview) -> Result<(), String> {
 /// The rail changes how it is laid out: order, folders, a server's local name.
 /// See `rail_layout::apply` for what is asked and what is refused.
 #[tauri::command]
+// One argument per field the rail page sends; Tauri fills them by name.
 #[allow(clippy::too_many_arguments)]
 pub fn rail_edit(
     webview: Webview,

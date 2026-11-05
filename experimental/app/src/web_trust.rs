@@ -94,6 +94,15 @@ struct Stored {
     revoked_updater_keys: Vec<String>,
 }
 
+/// What the state file (or an older client's statement pair) holds: the
+/// statement and its signature, and the revocations kept beside them.
+struct StoredBytes {
+    doc: Vec<u8>,
+    sig: Vec<u8>,
+    extra_bundle: Vec<String>,
+    extra_updater: Vec<String>,
+}
+
 struct Held {
     statement: Statement,
     doc: Vec<u8>,
@@ -140,8 +149,12 @@ impl TrustState {
                 .collect(),
             stored: true,
         };
-        if let Some((doc, sig, extra_bundle, extra_updater)) =
-            dir.and_then(|d| state.read_stored(d))
+        if let Some(StoredBytes {
+            doc,
+            sig,
+            extra_bundle,
+            extra_updater,
+        }) = dir.and_then(|d| state.read_stored(d))
             && let Ok(statement) = verify_statement(&doc, &sig, &state.root)
             // A statement below the floor is an older release's.
             && statement.serial >= floor.min_serial
@@ -154,21 +167,25 @@ impl TrustState {
     }
 
     /// The stored bytes: the state file, else the pair an older client wrote.
-    #[allow(clippy::type_complexity)]
-    fn read_stored(&self, dir: &Path) -> Option<(Vec<u8>, Vec<u8>, Vec<String>, Vec<String>)> {
+    fn read_stored(&self, dir: &Path) -> Option<StoredBytes> {
         if let Ok(raw) = std::fs::read(dir.join(STATE_FILE)) {
             let stored: Stored = serde_json::from_slice(&raw).ok()?;
             let ids = |list: Vec<String>| list.into_iter().filter(|id| is_hex_id16(id)).collect();
-            return Some((
-                STANDARD.decode(stored.statement).ok()?,
-                stored.signature.into_bytes(),
-                ids(stored.revoked_bundle_keys),
-                ids(stored.revoked_updater_keys),
-            ));
+            return Some(StoredBytes {
+                doc: STANDARD.decode(stored.statement).ok()?,
+                sig: stored.signature.into_bytes(),
+                extra_bundle: ids(stored.revoked_bundle_keys),
+                extra_updater: ids(stored.revoked_updater_keys),
+            });
         }
         let doc = std::fs::read(dir.join(STATEMENT_FILE)).ok()?;
         let sig = std::fs::read(dir.join(SIGNATURE_FILE)).ok()?;
-        Some((doc, sig, vec![], vec![]))
+        Some(StoredBytes {
+            doc,
+            sig,
+            extra_bundle: vec![],
+            extra_updater: vec![],
+        })
     }
 
     /// Puts a verified statement in force, with every revocation seen so far.
