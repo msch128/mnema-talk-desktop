@@ -19,7 +19,7 @@ function tsConst(source: string, name: string): string | undefined {
 
 test('the size and time limits are the ones of the Tauri host', () => {
   const pairs: [string, string, string[]][] = [
-    ['web_proxy.rs', 'core/proxylimits.ts', ['MAX_BODY', 'MAX_JSON_BODY', 'MULTIPART_OVERHEAD', 'MAX_AVATAR_BODY', 'SMALL_BODY', 'LARGE_BODY_BUDGET', 'BUDGET_UNIT', 'MAX_ANNOUNCED_MB']],
+    ['web_proxy/limits.rs', 'core/proxylimits.ts', ['MAX_BODY', 'MAX_JSON_BODY', 'MULTIPART_OVERHEAD', 'MAX_AVATAR_BODY', 'SMALL_BODY', 'LARGE_BODY_BUDGET', 'BUDGET_UNIT', 'MAX_ANNOUNCED_MB']],
     ['web_ws.rs', 'core/sockets.ts', ['MAX_FRAME', 'MAX_SOCKETS', 'MAX_OUTGOING']],
     ['web_updates.rs', 'core/updates.ts', ['MAX_RELEASE_JSON', 'MAX_DOWNLOAD']],
   ]
@@ -35,7 +35,7 @@ test('the size and time limits are the ones of the Tauri host', () => {
 
 /** The string literals of a Rust `concat!(...)` constant, joined. */
 function rustConcat(name: string): string {
-  const body = new RegExp(`const ${name}: &str = concat!\\(([^)]*)\\)`).exec(rust('web_proxy.rs'))?.[1] ?? ''
+  const body = new RegExp(`const ${name}: &str = concat!\\(([^)]*)\\)`).exec(rust('web_proxy/bundle.rs'))?.[1] ?? ''
   return [...body.matchAll(/"((?:[^"\\]|\\.)*)"/g)].map((m) => m[1]).join('')
 }
 
@@ -51,12 +51,12 @@ test('the content security policies are the ones of the Tauri host, except for i
 test('the permissions policy, the forwarded headers and the capabilities are the ones of the Tauri host', () => {
   const policy = /\['permissions-policy', '([^']+)'\]/.exec(ts('core/staticserve.ts'))?.[1]
   assert.ok(policy)
-  assert.ok(rust('web_proxy.rs').includes(`"permissions-policy".into(), "${policy}".into()`))
+  assert.ok(rust('web_proxy/bundle.rs').includes(`"permissions-policy".into(), "${policy}".into()`))
   const list = (source: string, pattern: RegExp) => [...(pattern.exec(source)?.[1] ?? '').matchAll(/"([^"]+)"|'([^']+)'/g)].map((m) => m[1] ?? m[2]).sort()
   for (const name of ['FORWARDED_REQUEST', 'FORWARDED_RESPONSE']) {
     const own = list(ts('core/proxy.ts'), new RegExp(`const ${name} = new Set\\(\\[([^\\]]*)\\]\\)`))
     assert.ok(own.length > 0, name)
-    assert.deepEqual(own, list(rust('web_proxy.rs'), new RegExp(`const ${name}: &\\[&str\\] = &\\[([^\\]]*)\\]`)), name)
+    assert.deepEqual(own, list(rust('web_proxy/rules.rs'), new RegExp(`const ${name}: &\\[&str\\] = &\\[([^\\]]*)\\]`)), name)
   }
   const caps = list(ts('main/ipc.ts'), /from\.role === 'instance' \? \[([^\]]*)\]/)
   assert.deepEqual(caps, list(rust('web_client.rs'), /if role == "instance" \{\s*&\[([^\]]*)\]/))
