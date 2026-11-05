@@ -194,14 +194,16 @@ class Budget {
 
 /**
  * Routes that take one picture, parsed in memory by the server: its member
- * avatar and banner, the community icon, and the avatar of a bot or webhook,
- * or the cover of an event (each with an id between the fixed parts).
+ * avatar and banner, the community icon, the avatar of a bot or webhook, the
+ * cover of an event (each with an id between the fixed parts) and a picture of
+ * the wiki.
  */
 const PICTURE_ROUTES = [
   /^\/api\/users\/me\/(?:avatar|banner)$/,
   /^\/api\/admin\/community\/icon$/,
   /^\/api\/admin\/(?:bots|webhooks)\/[^/]+\/avatar$/,
   /^\/api\/events\/[^/]+\/cover$/,
+  /^\/api\/wiki\/images$/,
 ]
 
 function routeKind(path: string): 'picture' | 'upload' | 'json' {
