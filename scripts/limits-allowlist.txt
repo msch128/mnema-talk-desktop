@@ -1,4 +1,2 @@
 # Files over the size limit (scripts/check-limits.mjs). The list only shrinks:
 # split a file by responsibility and delete its line; never add one.
-experimental/app/src/web_client.rs production
-experimental/app/src/web_client.rs test
