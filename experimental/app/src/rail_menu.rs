@@ -324,7 +324,7 @@ mod tests {
         let source = include_str!("rail_menu.rs");
         assert!(source.contains("menu.popup_at(window"));
         assert!(source.contains("menu.popup(window)"));
-        let page = include_str!("../rail-ui/rail.js");
+        let page = include_str!("../rail-ui/rail-menu.js");
         let html = include_str!("../rail-ui/index.html");
         assert!(page.contains("'rail_menu'"));
         assert!(!html.contains("id=\"menu\"") && !page.contains("$('menu')"));

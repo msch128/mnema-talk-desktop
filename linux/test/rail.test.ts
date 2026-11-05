@@ -4,6 +4,8 @@ import { test } from 'node:test'
 
 const here = (path: string) => new URL(path, import.meta.url)
 const read = (path: string) => readFileSync(here(path), 'utf8')
+// The scripts of the rail page, in the order the page loads them.
+const railScripts = () => [...read('../assets/rail-ui/index.html').matchAll(/<script src="([^"]+)">/g)].map((m) => read(`../assets/rail-ui/${m[1]}`)).join('\n')
 
 test('the rail page is the same file as in the Tauri host', () => {
   const shared = readdirSync(here('../../experimental/app/rail-ui/')).sort()
@@ -48,7 +50,7 @@ test('every server gets a session of its own, and its handler is bound to it', (
 })
 
 test('the rail keeps focus across a push, holds a push during a drag, and announces only what the host did', () => {
-  const rail = read('../assets/rail-ui/rail.js')
+  const rail = railScripts()
   const redraw = /function redraw\(\) \{[\s\S]*?\n\}/.exec(rail)?.[0] ?? ''
   // The tiles are replaced by render(): the focus is looked up again afterwards, never before.
   assert.ok(redraw.indexOf('render()') < redraw.indexOf('buttonOf(focused)'), 'the focus is restored after render')
@@ -66,8 +68,8 @@ test('the rail menu is the system\'s own popup, not a piece of the rail page tha
   assert.match(menu, /window\.mnemaRail&&window\.mnemaRail\.chosen\(/)
   // The page has no menu element of its own any more.
   assert.doesNotMatch(read('../assets/rail-ui/index.html'), /id="menu"/)
-  assert.doesNotMatch(read('../assets/rail-ui/rail.js'), /getElementById\('menu'\)|\$\('menu'\)/)
-  assert.match(read('../assets/rail-ui/rail.js'), /rail_menu/)
+  assert.doesNotMatch(railScripts(), /getElementById\('menu'\)|\$\('menu'\)/)
+  assert.match(railScripts(), /rail_menu/)
   // Only the latest menu, and only what it offered, is heard.
   assert.match(menu, /current\.token !== spec\.token \|\| !current\.ids\.has\(id\)/)
 })

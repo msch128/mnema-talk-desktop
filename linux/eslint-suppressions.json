@@ -1,12 +1,4 @@
 {
-  "assets/rail-ui/rail.js": {
-    "max-lines": {
-      "count": 1
-    },
-    "sonarjs/cognitive-complexity": {
-      "count": 3
-    }
-  },
   "scripts/gen-vectors.ts": {
     "max-lines": {
       "count": 1
