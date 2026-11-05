@@ -1,7 +1,7 @@
 {
   "schema": "mnema-desktop-license-bundle-v1",
   "scope": "Conservative locked Rust graph and production npm closure; not a claim that all packages are linked.",
-  "cargo_lock_sha256": "2b27f8657da2835707a9ed62173610d05749313ce86ea0e7749a0f2c2d8507e9",
+  "cargo_lock_sha256": "f2a8b9a534caded81dd21fac46c1d53561d55eb3d693993c76436abbdf9c57b9",
   "npm_lock_sha256": "53b69e25b8790f35b9819f2d83232a2eb47f438e76bcfd88be813a8d2f67d935",
   "supplemental": {
     "rust_standard_library": {
@@ -10352,14 +10352,14 @@
     {
       "ecosystem": "cargo",
       "name": "zip",
-      "version": "9.1.0",
+      "version": "9.1.2",
       "license": "MIT",
-      "source": "https://crates.io/crates/zip/9.1.0",
+      "source": "https://crates.io/crates/zip/9.1.2",
       "texts": [
         {
           "name": "LICENSE",
           "sha256": "58545fed1565e42d687aecec6897d35c6d37ccb71479a137c0deb2203e125c79",
-          "source": "https://crates.io/crates/zip/9.1.0",
+          "source": "https://crates.io/crates/zip/9.1.2",
           "provenance": "crate-archive"
         }
       ]
