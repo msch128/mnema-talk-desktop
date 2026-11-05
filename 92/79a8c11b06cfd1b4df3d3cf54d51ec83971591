@@ -1,0 +1,18 @@
+experimental/app/src/rail_layout.rs
+  h_0ff4f4713441f4 8-12
+experimental/app/src/rail_layout/edit.rs
+  h_0ff4f4713441f4 1-217
+experimental/app/src/rail_layout/request.rs
+  h_0ff4f4713441f4 1-94
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9279a8c11b06cfd1b4df3d3cf54d51ec83971591",
+  "prompts": {},
+  "humans": {
+    "h_0ff4f4713441f4": {
+      "author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}

@@ -1,0 +1,28 @@
+experimental/app/src/web_bundle.rs
+  h_0ff4f4713441f4 9-19,116,118,253,255-258
+experimental/app/src/web_bundle/serve.rs
+  h_0ff4f4713441f4 1-78
+experimental/app/src/web_bundle/store.rs
+  h_0ff4f4713441f4 1-224
+experimental/app/src/web_bundle/store/marks.rs
+  h_0ff4f4713441f4 1-174
+experimental/app/src/web_bundle/store/scan.rs
+  h_0ff4f4713441f4 1-138
+experimental/app/src/web_bundle/store/state.rs
+  h_0ff4f4713441f4 1-92
+experimental/app/src/web_bundle/store/tests.rs
+  h_0ff4f4713441f4 1-617
+experimental/app/src/web_bundle/verify.rs
+  h_0ff4f4713441f4 1-491
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b169c14d36b44f723837a5a8c094ebc829d82fc5",
+  "prompts": {},
+  "humans": {
+    "h_0ff4f4713441f4": {
+      "author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}

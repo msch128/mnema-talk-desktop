@@ -1,0 +1,14 @@
+src/input_windows.rs
+  h_0ff4f4713441f4 208-289,300
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "77abbed49e0a05c538427c390b95255ca18ac282",
+  "prompts": {},
+  "humans": {
+    "h_0ff4f4713441f4": {
+      "author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}

@@ -1,0 +1,52 @@
+.github/workflows/desktop-checks.yml
+  h_0ff4f4713441f4 138-140
+README.md
+  h_0ff4f4713441f4 344,352-362
+linux/eslint-suppressions.json
+  h_0ff4f4713441f4 1-9,10-100,101-102
+linux/eslint.config.ts
+  h_0ff4f4713441f4 3,21-41
+linux/package-lock.json
+  h_0ff4f4713441f4 22,706-712,1524-1546,2390-2415,2734-2740,3324-3333,3388-3394,4073-4099,4229-4243,4827-4842
+linux/package.json
+  h_0ff4f4713441f4 34
+scripts/check-limits.mjs
+  h_0ff4f4713441f4 1-85
+scripts/check-limits.test.mjs
+  h_0ff4f4713441f4 1-29
+scripts/limits-allowlist.txt
+  h_0ff4f4713441f4 1-20,21-26
+linux/scripts/gen-vectors.ts
+  h_0ff4f4713441f4 13-23
+linux/scripts/vectors/bundle.ts
+  h_0ff4f4713441f4 1-8,10-80
+linux/scripts/vectors/client.ts
+  h_0ff4f4713441f4 1-9,12-41
+linux/scripts/vectors/common.ts
+  h_0ff4f4713441f4 1-31
+linux/scripts/vectors/json.ts
+  h_0ff4f4713441f4 1-69,71-104,106-193
+linux/scripts/vectors/minisign.ts
+  h_0ff4f4713441f4 1-42
+linux/scripts/vectors/proxy.ts
+  h_0ff4f4713441f4 1-15,17-80
+linux/scripts/vectors/store.ts
+  h_0ff4f4713441f4 1-187
+linux/scripts/vectors/trust.ts
+  h_0ff4f4713441f4 1-156
+linux/scripts/vectors/zip.ts
+  h_0ff4f4713441f4 1-138
+linux/test/vectors.test.ts
+  h_0ff4f4713441f4 92-117,126-130,138-150,156-157,162
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "60ad7b150b16917de9aca5d1b14cd6ab72080e98",
+  "prompts": {},
+  "humans": {
+    "h_0ff4f4713441f4": {
+      "author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}
