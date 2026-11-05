@@ -18,7 +18,7 @@ pub enum Load {
 }
 
 impl Load {
-    #[allow(dead_code)] // the self-test and the tests read it
+    #[cfg(any(test, feature = "multi-selftest"))]
     pub fn found(self) -> Option<Vec<u8>> {
         match self {
             Load::Found(raw) => Some(raw),

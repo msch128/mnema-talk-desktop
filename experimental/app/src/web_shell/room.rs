@@ -22,12 +22,12 @@ pub(super) fn storage_isolated() -> bool {
 
 /// WKWebView's data store API (creating, listing and removing stores) exists
 /// from macOS 14. An unknown version is treated as too old.
-#[cfg_attr(not(any(target_os = "macos", test)), allow(dead_code))]
+#[cfg(any(target_os = "macos", test))]
 fn data_stores_available(major: Option<u32>) -> bool {
     major.is_some_and(|major| major >= 14)
 }
 
-#[cfg_attr(not(any(target_os = "macos", test)), allow(dead_code))]
+#[cfg(any(target_os = "macos", test))]
 fn macos_major(version: &str) -> Option<u32> {
     version.trim().split('.').next()?.parse().ok()
 }

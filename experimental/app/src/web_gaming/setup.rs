@@ -9,8 +9,10 @@ use std::{sync::Mutex, time::Duration};
 use tauri::Manager;
 
 /// The running foreground source, kept so it lives as long as the app.
-#[allow(dead_code)] // held, never read: dropping it would stop the hook
-struct Detection(Mutex<Option<Box<dyn foreground::ForegroundSource + Send>>>);
+struct Detection {
+    /// Held, never read: dropping it would stop the hook.
+    _source: Mutex<Option<Box<dyn foreground::ForegroundSource + Send>>>,
+}
 
 /// Starts event-driven game detection. Where the system offers no way to learn
 /// the focused window the note says so and detection stays off.
@@ -37,7 +39,9 @@ fn start_detection(app: &tauri::AppHandle) {
     {
         g.detection_note = Some(error.note());
     }
-    app.manage(Detection(Mutex::new(started.is_ok().then_some(source))));
+    app.manage(Detection {
+        _source: Mutex::new(started.is_ok().then_some(source)),
+    });
 }
 /// How often the launcher libraries are read again; saving the gaming settings
 /// also triggers a scan, so a game installed a moment ago is known soon.

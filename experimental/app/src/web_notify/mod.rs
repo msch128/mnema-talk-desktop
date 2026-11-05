@@ -47,11 +47,12 @@ pub struct Click {
 /// Notification API (`default` = not asked yet).
 #[derive(Serialize, Clone, Copy, Debug, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
-#[cfg_attr(not(target_os = "macos"), allow(dead_code))] // each platform builds the states it can have
 pub enum Permission {
     Granted,
     Denied,
+    #[cfg(any(target_os = "macos", test))]
     Default,
+    #[cfg(any(not(windows), test))]
     Unsupported,
 }
 

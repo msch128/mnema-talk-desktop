@@ -32,11 +32,9 @@ pub struct Gaming {
     pub(super) last_tick: Instant,
     /// The application in front, as the operating system last announced it.
     /// Updated by the foreground source's events, never by polling.
-    #[cfg_attr(not(windows), allow(dead_code))]
     pub(super) foreground: Option<foreground::Foreground>,
     /// File name of the last other application that was in front, offered only
     /// when the person asks to add it as a game. Never a path.
-    #[cfg_attr(not(windows), allow(dead_code))]
     pub(super) candidate: Option<String>,
     /// Why game detection is off on this system, when it is.
     pub(super) detection_note: Option<&'static str>,
