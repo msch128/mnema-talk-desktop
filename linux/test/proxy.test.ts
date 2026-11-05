@@ -247,6 +247,15 @@ test('head requests return no body', async () => {
   assert.equal(resp.body.length, 0)
 })
 
+test('a head answer for a huge file is neither refused nor given memory', async () => {
+  const { resp } = await call((_r, res) => {
+    res.writeHead(200, { 'content-length': String(MAX_BODY * 16), 'content-type': 'application/octet-stream' })
+    res.end()
+  }, 'HEAD', '/api/media/x')
+  assert.equal(resp.status, 200)
+  assert.equal(resp.body.length, 0)
+})
+
 const UPLOAD = '/api/channels/00000000-0000-4000-8000-000000000000/upload'
 const OVERHEAD = 1 << 20
 
