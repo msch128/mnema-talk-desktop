@@ -310,16 +310,39 @@ mod tests {
     /// call would put a portable copy's files into the profile again.
     #[test]
     fn nothing_else_asks_tauri_for_the_profile_folders() {
-        let sources = [
-            ("main.rs", include_str!("main.rs")),
-            ("native_updates.rs", include_str!("native_updates.rs")),
-            ("web_client.rs", include_str!("web_client.rs")),
-            ("web_gaming.rs", include_str!("web_gaming.rs")),
-            ("web_permissions.rs", include_str!("web_permissions.rs")),
-            ("web_shell.rs", include_str!("web_shell.rs")),
-            ("instances.rs", include_str!("instances.rs")),
-        ];
-        for (name, source) in sources {
+        let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut sources: Vec<(String, String)> = [
+            "main.rs",
+            "native_updates.rs",
+            "web_client.rs",
+            "web_gaming.rs",
+            "web_permissions.rs",
+            "web_shell.rs",
+            "instances.rs",
+        ]
+        .iter()
+        .map(|name| {
+            (
+                name.to_string(),
+                std::fs::read_to_string(src.join(name)).unwrap(),
+            )
+        })
+        .collect();
+        // The big modules are split into a folder of parts next to their file.
+        for module in ["web_gaming", "web_shell"] {
+            for entry in std::fs::read_dir(src.join(module))
+                .into_iter()
+                .flatten()
+                .flatten()
+            {
+                let path = entry.path();
+                sources.push((
+                    format!("{module}/{}", entry.file_name().to_string_lossy()),
+                    std::fs::read_to_string(&path).unwrap(),
+                ));
+            }
+        }
+        for (name, source) in &sources {
             let code = source.split("#[cfg(test)]").next().unwrap_or(source);
             for call in [
                 "app_local_data_dir",

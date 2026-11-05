@@ -123,7 +123,7 @@ test('Ctrl+N counts the servers in the order of the rail, folders opened up', ()
 test('a muted server shows no toast and the badge leaves it out', () => {
   const notify = readFileSync(new URL('../src/main/notify.ts', import.meta.url), 'utf8')
   assert.match(notify, /registry\.isMuted\(server\)[^\n]*return null/)
-  assert.match(readFileSync(new URL('../src/main/shell.ts', import.meta.url), 'utf8'), /setLauncherBadge\(ctx\.trusted\.registry\.badge\(\)\)/)
+  assert.match(readFileSync(new URL('../src/main/shelllayout.ts', import.meta.url), 'utf8'), /setLauncherBadge\(ctx\.trusted\.registry\.badge\(\)\)/)
 })
 
 test('marking a server read tells its own page, and only a running one', () => {

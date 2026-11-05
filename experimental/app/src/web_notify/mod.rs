@@ -9,11 +9,7 @@
 //! rail or the selector, and a toast always belongs to the server that asked
 //! for it.
 use serde::Serialize;
-use std::{
-    collections::HashMap,
-    sync::Mutex,
-    time::{Duration, Instant},
-};
+use std::time::Instant;
 use tauri::{Manager, Webview};
 
 #[cfg(target_os = "macos")]
@@ -30,13 +26,15 @@ mod other;
 use other as platform;
 #[cfg(feature = "notify-selftest")]
 mod selftest;
+mod throttle;
+
+pub use throttle::Notifier;
+use throttle::{Offer, Toast};
 
 const MAX_TITLE: usize = 100;
 const MAX_BODY: usize = 240;
 const MAX_SERVER_NAME: usize = 60;
 const MAX_ID: usize = 64;
-/// Shortest gap between two toasts, so a flooding page cannot spam the desktop.
-const MIN_GAP: Duration = Duration::from_millis(300);
 
 /// What the page learns when a toast was used.
 #[derive(Serialize, Clone, Debug, PartialEq, Eq)]
@@ -55,40 +53,6 @@ pub enum Permission {
     Denied,
     Default,
     Unsupported,
-}
-
-/// What a page asked to show, before the server's name is added.
-struct Toast {
-    title: String,
-    body: String,
-    click: Click,
-}
-
-/// What the host remembers between two toasts.
-#[derive(Default)]
-pub struct Notifier {
-    state: Mutex<Throttle>,
-}
-
-/// Per server, so one that floods does not hold up the others.
-#[derive(Default)]
-struct Throttle {
-    /// When each server last showed a toast.
-    last: HashMap<String, Instant>,
-    /// The newest toast that arrived too soon after the last one; it is shown
-    /// when the gap is over, and older held ones are replaced by it.
-    held: HashMap<String, Toast>,
-}
-
-/// What to do with a toast that arrived.
-enum Offer {
-    Show(Toast),
-    /// Kept for later. `flush` says whether this call has to schedule the
-    /// showing (no earlier held toast did already).
-    Held {
-        wait: Duration,
-        flush: bool,
-    },
 }
 
 /// Invisible format characters (Unicode `Cf`) that reorder or hide text:
@@ -128,57 +92,6 @@ pub fn valid_id(id: &str) -> bool {
     !id.is_empty()
         && id.len() <= MAX_ID
         && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
-}
-
-impl Notifier {
-    /// Lets a toast through when the server's last one is far enough back;
-    /// otherwise keeps it, replacing an earlier held one.
-    fn offer(&self, server: &str, now: Instant, toast: Toast) -> Offer {
-        let Ok(mut state) = self.state.lock() else {
-            return Offer::Held {
-                wait: MIN_GAP,
-                flush: false,
-            };
-        };
-        let elapsed = state.last.get(server).map(|at| now.duration_since(*at));
-        match elapsed {
-            Some(gap) if gap < MIN_GAP => {
-                let flush = state.held.insert(server.to_owned(), toast).is_none();
-                Offer::Held {
-                    wait: MIN_GAP - gap,
-                    flush,
-                }
-            }
-            _ => {
-                // The newest toast supersedes one still waiting for its flush.
-                state.held.remove(server);
-                state.last.insert(server.to_owned(), now);
-                Offer::Show(toast)
-            }
-        }
-    }
-
-    /// The held toast of a server, if its gap is over; it counts as shown now.
-    fn take_held(&self, server: &str, now: Instant) -> Option<Toast> {
-        let mut state = self.state.lock().ok()?;
-        let toast = state.held.remove(server)?;
-        state.last.insert(server.to_owned(), now);
-        Some(toast)
-    }
-
-    /// A toast that did not reach the screen does not hold up the next one.
-    fn release(&self, server: &str) {
-        if let Ok(mut state) = self.state.lock() {
-            state.last.remove(server);
-        }
-    }
-
-    fn forget(&self, server: &str) {
-        if let Ok(mut state) = self.state.lock() {
-            state.last.remove(server);
-            state.held.remove(server);
-        }
-    }
 }
 
 /// A plain toast from the host itself, for a hint the person should see once.
@@ -460,7 +373,9 @@ pub fn closed(app: &tauri::AppHandle, server: &str, generation: &str) {
 
 #[cfg(test)]
 mod tests {
+    use super::throttle::MIN_GAP;
     use super::*;
+    use std::time::Duration;
 
     #[test]
     fn text_is_flattened_and_bounded() {

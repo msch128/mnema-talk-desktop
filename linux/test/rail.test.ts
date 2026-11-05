@@ -4,6 +4,8 @@ import { test } from 'node:test'
 
 const here = (path: string) => new URL(path, import.meta.url)
 const read = (path: string) => readFileSync(here(path), 'utf8')
+// The scripts of the rail page, in the order the page loads them.
+const railScripts = () => [...read('../assets/rail-ui/index.html').matchAll(/<script src="([^"]+)">/g)].map((m) => read(`../assets/rail-ui/${m[1]}`)).join('\n')
 
 test('the rail page is the same file as in the Tauri host', () => {
   const shared = readdirSync(here('../../experimental/app/rail-ui/')).sort()
@@ -48,7 +50,7 @@ test('every server gets a session of its own, and its handler is bound to it', (
 })
 
 test('the rail keeps focus across a push, holds a push during a drag, and announces only what the host did', () => {
-  const rail = read('../assets/rail-ui/rail.js')
+  const rail = railScripts()
   const redraw = /function redraw\(\) \{[\s\S]*?\n\}/.exec(rail)?.[0] ?? ''
   // The tiles are replaced by render(): the focus is looked up again afterwards, never before.
   assert.ok(redraw.indexOf('render()') < redraw.indexOf('buttonOf(focused)'), 'the focus is restored after render')
@@ -66,8 +68,8 @@ test('the rail menu is the system\'s own popup, not a piece of the rail page tha
   assert.match(menu, /window\.mnemaRail&&window\.mnemaRail\.chosen\(/)
   // The page has no menu element of its own any more.
   assert.doesNotMatch(read('../assets/rail-ui/index.html'), /id="menu"/)
-  assert.doesNotMatch(read('../assets/rail-ui/rail.js'), /getElementById\('menu'\)|\$\('menu'\)/)
-  assert.match(read('../assets/rail-ui/rail.js'), /rail_menu/)
+  assert.doesNotMatch(railScripts(), /getElementById\('menu'\)|\$\('menu'\)/)
+  assert.match(railScripts(), /rail_menu/)
   // Only the latest menu, and only what it offered, is heard.
   assert.match(menu, /current\.token !== spec\.token \|\| !current\.ids\.has\(id\)/)
 })
@@ -102,7 +104,7 @@ test('the community icon is asked for at the server alone, and its files go with
   assert.match(icon, /new URL\(ICON_PATH, origin\)/)
   assert.doesNotMatch(icon, /maxRedirects|followRedirect|headers\.location/i)
   const shell = read('../src/main/shell.ts')
-  assert.match(shell, /trusted\.icons\.clear\(id\)/)
+  assert.match(read('../src/main/shellwipe.ts'), /trusted\.icons\.clear\(id\)/)
   const trusted = read('../src/core/trusted.ts')
   assert.match(trusted, /this\.registry\.readInFull\) this\.icons\.sweep\(/)
   // Refreshed once the server answered, without holding the page up.
@@ -116,7 +118,7 @@ test('the picker says so when there is nothing to share', () => {
 })
 
 test('unread reports push the rail only: the menu is rebuilt when the list changes', () => {
-  const shell = read('../src/main/shell.ts')
+  const shell = read('../src/main/shelllayout.ts')
   const body = (name: string) => new RegExp(`function ${name}\\([^)]*\\)[^{]*\\{([\\s\\S]*?)\\n\\}`).exec(shell)?.[1] ?? ''
   assert.doesNotMatch(body('pushRail'), /buildMenu/)
   assert.doesNotMatch(body('countsChanged'), /buildMenu/)
@@ -127,7 +129,7 @@ test('a failed start tells the person, and a second launch raises the window of 
   const main = read('../src/main/main.ts')
   assert.match(main, /could not start[\s\S]*?errorBox\(message\)[\s\S]*?app\.exit\(1\)/)
   assert.match(main, /second-instance[\s\S]*?raiseWindow\(running\)/)
-  assert.match(read('../src/main/shell.ts'), /function raiseWindow[\s\S]*?isMinimized\(\)\) window\.restore\(\)/)
+  assert.match(read('../src/main/shelllayout.ts'), /function raiseWindow[\s\S]*?isMinimized\(\)\) window\.restore\(\)/)
 })
 
 test('the picker cannot leave a screen share request unanswered', () => {

@@ -35,16 +35,8 @@ export function bundleAsset(json: Uint8Array, allowHttp = false): { version: Ver
   const version = parseVersion(tag.slice(1))
   if (!version) return null
   const wanted = `mnema-web-${formatVersion(version)}.zip`
-  if (assets !== undefined && !Array.isArray(assets)) return null
-  // A release document with any malformed asset is refused as a whole, as serde does.
-  const listed: { name: string, href: string, size: number }[] = []
-  for (const asset of (assets ?? []) as unknown[]) {
-    if (typeof asset !== 'object' || asset === null) return null
-    const { name, browser_download_url: href, size: rawSize = 0 } = asset as { name?: unknown, browser_download_url?: unknown, size?: unknown }
-    const size = asU64(rawSize)
-    if (typeof name !== 'string' || typeof href !== 'string' || size === null) return null
-    listed.push({ name, href, size })
-  }
+  const listed = listAssets(assets)
+  if (!listed) return null
   const asset = listed.find((a) => a.name === wanted && a.size <= MAX_DOWNLOAD)
   if (!asset) return null
   let url: URL
@@ -55,6 +47,20 @@ export function bundleAsset(json: Uint8Array, allowHttp = false): { version: Ver
   }
   const scheme = url.protocol === 'https:' || (allowHttp && url.protocol === 'http:')
   return scheme && url.username === '' && url.password === '' ? { version, url } : null
+}
+
+/** The assets of a release document; a document with any malformed asset is refused as a whole, as serde does. */
+function listAssets(assets: unknown): { name: string, href: string, size: number }[] | null {
+  if (assets !== undefined && !Array.isArray(assets)) return null
+  const listed: { name: string, href: string, size: number }[] = []
+  for (const asset of (assets ?? []) as unknown[]) {
+    if (typeof asset !== 'object' || asset === null) return null
+    const { name, browser_download_url: href, size: rawSize = 0 } = asset as { name?: unknown, browser_download_url?: unknown, size?: unknown }
+    const size = asU64(rawSize)
+    if (typeof name !== 'string' || typeof href !== 'string' || size === null) return null
+    listed.push({ name, href, size })
+  }
+  return listed
 }
 
 export interface FetchOptions {
@@ -68,31 +74,13 @@ export interface FetchOptions {
 
 /** GET with at most five redirects, HTTPS only (downloads are redirected to GitHub's asset hosts). */
 export async function fetchLimited(url: URL, accept: string, limit: number, options: FetchOptions = {}): Promise<Buffer> {
-  if (url.protocol !== 'https:' && !(options.allowHttp && url.protocol === 'http:')) throw new Error('unsupported scheme')
+  if (!schemeAllowed(url, options.allowHttp)) throw new Error('unsupported scheme')
   let current = url
   for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
-    let response: HttpResponse
-    try {
-      response = await send({
-        method: 'GET',
-        url: current,
-        headers: { accept, 'user-agent': 'mnema-desktop' },
-        connectTimeoutMs: 10_000,
-        totalTimeoutMs: options.timeoutMs ?? 120_000,
-      })
-    } catch {
-      throw new Error('unreachable')
-    }
+    const response = await getOnce(current, accept, options)
     if (response.status >= 300 && response.status < 400 && response.headers.location) {
       response.destroy()
-      let next: URL
-      try {
-        next = new URL(response.headers.location, current)
-      } catch {
-        throw new Error('status 302')
-      }
-      if (next.protocol !== 'https:' && !(options.allowHttp && next.protocol === 'http:')) throw new Error(`status ${response.status}`)
-      current = next
+      current = redirectTarget(response.status, response.headers.location, current, options.allowHttp)
       continue
     }
     if (response.status < 200 || response.status >= 300) {
@@ -104,6 +92,37 @@ export async function fetchLimited(url: URL, accept: string, limit: number, opti
     return body
   }
   throw new Error('too many redirects')
+}
+
+function schemeAllowed(url: URL, allowHttp: boolean | undefined): boolean {
+  return url.protocol === 'https:' || (allowHttp === true && url.protocol === 'http:')
+}
+
+/** One request; any failure to get an answer is "unreachable". */
+async function getOnce(url: URL, accept: string, options: FetchOptions): Promise<HttpResponse> {
+  try {
+    return await send({
+      method: 'GET',
+      url,
+      headers: { accept, 'user-agent': 'mnema-desktop' },
+      connectTimeoutMs: 10_000,
+      totalTimeoutMs: options.timeoutMs ?? 120_000,
+    })
+  } catch {
+    throw new Error('unreachable')
+  }
+}
+
+/** Where a redirect leads, if the scheme is allowed. */
+function redirectTarget(status: number, location: string, current: URL, allowHttp: boolean | undefined): URL {
+  let next: URL
+  try {
+    next = new URL(location, current)
+  } catch {
+    throw new Error('status 302')
+  }
+  if (!schemeAllowed(next, allowHttp)) throw new Error(`status ${status}`)
+  return next
 }
 
 /** Where to look; tests point it at a loopback server. */

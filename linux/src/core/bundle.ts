@@ -153,21 +153,8 @@ function readEntry(zip: ZipArchive, index: number, limit: number): Uint8Array {
  * files the manifest lists with the listed sizes and hashes.
  */
 export function verifyBundle(data: Uint8Array, keys: readonly TrustedKey[]): Bundle {
-  let zip: ZipArchive
-  try {
-    zip = new ZipArchive(data)
-  } catch (error) {
-    if (error instanceof ZipError) fail(error.message)
-    throw error
-  }
-  if (zip.length > MAX_ENTRIES + 2) fail('too many entries')
-  const index = new Map<string, number>()
-  for (let i = 0; i < zip.length; i++) {
-    const entry = zip.entries[i] as (typeof zip.entries)[number]
-    if (!entry.nameValid) fail('invalid entry name')
-    if (index.has(entry.name)) fail(`duplicate entry ${entry.name}`)
-    index.set(entry.name, i)
-  }
+  const zip = openZip(data)
+  const index = indexEntries(zip)
   const manifestAt = index.get('manifest.json')
   const signatureAt = index.get('manifest.sig')
   if (manifestAt === undefined || signatureAt === undefined) fail('manifest or signature is missing')
@@ -182,6 +169,41 @@ export function verifyBundle(data: Uint8Array, keys: readonly TrustedKey[]): Bun
   if (!manifest) fail('unreadable manifest')
   const { version, min, floor } = checkManifest(manifest, signer.id)
   if (index.size !== manifest.files.length + 2) fail('zip entries do not match the manifest')
+  return new Bundle({
+    version,
+    webClientApi: manifest.web_client_api,
+    minServerVersion: min,
+    securityFloor: floor,
+    keyId: manifest.key_id,
+    commit: manifest.commit,
+    files: readListedFiles(zip, index, manifest),
+  })
+}
+
+function openZip(data: Uint8Array): ZipArchive {
+  try {
+    return new ZipArchive(data)
+  } catch (error) {
+    if (error instanceof ZipError) fail(error.message)
+    throw error
+  }
+}
+
+/** Entry name to position; a name that is not valid UTF-8 or appears twice refuses the bundle. */
+function indexEntries(zip: ZipArchive): Map<string, number> {
+  if (zip.length > MAX_ENTRIES + 2) fail('too many entries')
+  const index = new Map<string, number>()
+  for (let i = 0; i < zip.length; i++) {
+    const entry = zip.entries[i] as (typeof zip.entries)[number]
+    if (!entry.nameValid) fail('invalid entry name')
+    if (index.has(entry.name)) fail(`duplicate entry ${entry.name}`)
+    index.set(entry.name, i)
+  }
+  return index
+}
+
+/** The files the manifest lists, each read at its listed size and checked against its listed hash. */
+function readListedFiles(zip: ZipArchive, index: Map<string, number>, manifest: Manifest): Map<string, Uint8Array> {
   const files = new Map<string, Uint8Array>()
   for (const file of manifest.files) {
     const at = index.get(`app/${file.path}`)
@@ -191,15 +213,7 @@ export function verifyBundle(data: Uint8Array, keys: readonly TrustedKey[]): Bun
     if (sha256Hex(body) !== file.sha256) fail(`${file.path}: content does not match the manifest`)
     files.set(file.path, body)
   }
-  return new Bundle({
-    version,
-    webClientApi: manifest.web_client_api,
-    minServerVersion: min,
-    securityFloor: floor,
-    keyId: manifest.key_id,
-    commit: manifest.commit,
-    files,
-  })
+  return files
 }
 
 /** Checks the signed manifest; returns the versions it parsed so they are read once. */

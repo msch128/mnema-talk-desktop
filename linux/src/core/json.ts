@@ -80,28 +80,32 @@ class Reader {
       const c = this.text[this.at++]
       if (c === undefined || c < ' ') this.fail()
       if (c === '"') return out
-      if (c !== '\\') { out += c; continue }
-      const e = this.text[this.at++]
-      if (e === undefined) this.fail()
-      if (e !== 'u') {
-        const mapped = ESCAPES[e]
-        if (mapped === undefined) this.fail()
-        out += mapped
-        continue
-      }
-      const unit = this.hex4()
-      if (unit >= 0xd800 && unit <= 0xdbff) {
-        if (this.text[this.at] !== '\\' || this.text[this.at + 1] !== 'u') this.fail()
-        this.at += 2
-        const low = this.hex4()
-        if (low < 0xdc00 || low > 0xdfff) this.fail()
-        out += String.fromCharCode(unit, low)
-      } else if (unit >= 0xdc00 && unit <= 0xdfff) {
-        this.fail()
-      } else {
-        out += String.fromCharCode(unit)
-      }
+      out += c === '\\' ? this.escape() : c
     }
+  }
+
+  /** What the escape after a backslash stands for. */
+  private escape(): string {
+    const e = this.text[this.at++]
+    if (e === undefined) this.fail()
+    if (e === 'u') return this.unicodeEscape()
+    const mapped = ESCAPES[e]
+    if (mapped === undefined) this.fail()
+    return mapped
+  }
+
+  /** A `\u` escape; a surrogate must come as a high and a low half together, a lone one is invalid. */
+  private unicodeEscape(): string {
+    const unit = this.hex4()
+    if (unit >= 0xd800 && unit <= 0xdbff) {
+      if (this.text[this.at] !== '\\' || this.text[this.at + 1] !== 'u') this.fail()
+      this.at += 2
+      const low = this.hex4()
+      if (low < 0xdc00 || low > 0xdfff) this.fail()
+      return String.fromCharCode(unit, low)
+    }
+    if (unit >= 0xdc00 && unit <= 0xdfff) this.fail()
+    return String.fromCharCode(unit)
   }
 
   private hex4(): number {

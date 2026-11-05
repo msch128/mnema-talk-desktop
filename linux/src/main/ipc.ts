@@ -15,7 +15,8 @@ import type { Context, Role } from './context.ts'
 import { handle, mainFrameUrl } from './handle.ts'
 import { pickerChoose, pickerSources } from './permissions.ts'
 import { notify, notifyOpen, notifyPermission } from './notify.ts'
-import { addServer, countsChanged } from './shell.ts'
+import { addServer } from './shell.ts'
+import { countsChanged } from './shelllayout.ts'
 
 /** The page this call comes from, with the server it belongs to (decided by the host when it made the page). */
 interface Caller { role: Role, contents: WebContents, server: string | null }
@@ -60,6 +61,45 @@ function text(args: Args, name: string): string {
   return value
 }
 
+type Session = NonNullable<ReturnType<Context['trusted']['session']>>
+
+/** Opens a socket for the page: events reach it on the callback channel it named, numbered so it can keep them in order. */
+function openSocket(from: Caller, session: Session, args: Args): number {
+  const { contents } = from
+  const dm = socketRequest(text(args, 'path'))
+  const channel = wholeNumber(args, 'onEvent')
+  let index = 0
+  const send = (message: object) => {
+    if (contents.isDestroyed()) return false
+    contents.send('mnema:callback', channel, message)
+    return true
+  }
+  return session.sockets.connect(session.instance, dm, (event: WsEvent) => {
+    const delivered = send({ index: index++, message: event })
+    if (event.kind === 'close') send({ index: index++, end: true })
+    return delivered
+  })
+}
+
+/** One button of the update window; answers the state afterwards. */
+function updateAction(ctx: Context, args: Args): unknown {
+  const updater = ctx.updater
+  if (!updater) throw new Error('Updates are not available.')
+  const external = updater.snapshot().external
+  switch (text(args, 'action')) {
+    case 'check': void updater.check(true); break
+    case 'now': if (external) void shell.openExternal(RELEASES_PAGE); else void updater.install('now'); break
+    case 'later': if (external) void shell.openExternal(RELEASES_PAGE); else void updater.install('later'); break
+    case 'download_page': void shell.openExternal(RELEASES_PAGE); break
+    // The footer link: the page of the offered version, else of the installed one; the address is built here.
+    case 'release_page': { const snap = updater.snapshot(); void shell.openExternal(releasePage(snap.version ?? snap.current)); break }
+    case 'skip': updater.skip(); break
+    case 'close': ctx.windows.updater?.close(); break
+    default: throw new Error('Unknown action.')
+  }
+  return updater.snapshot()
+}
+
 async function run(ctx: Context, from: Caller, command: string, args: Args): Promise<unknown> {
   const { role, contents } = from
   const only = (...roles: Role[]) => { if (!roles.includes(role)) throw new Error('Not allowed.') }
@@ -74,23 +114,9 @@ async function run(ctx: Context, from: Caller, command: string, args: Args): Pro
       if (role !== 'selector') throw new Error(SELECTOR_ONLY)
       await addServer(ctx, text(args, 'address'))
       return null
-    case 'desktop_ws_open': {
+    case 'desktop_ws_open':
       only('instance')
-      const session = own()
-      const dm = socketRequest(text(args, 'path'))
-      const channel = wholeNumber(args, 'onEvent')
-      let index = 0
-      const send = (message: object) => {
-        if (contents.isDestroyed()) return false
-        contents.send('mnema:callback', channel, message)
-        return true
-      }
-      return session.sockets.connect(session.instance, dm, (event: WsEvent) => {
-        const delivered = send({ index: index++, message: event })
-        if (event.kind === 'close') send({ index: index++, end: true })
-        return delivered
-      })
-    }
+      return openSocket(from, own(), args)
     case 'desktop_ws_send':
       only('instance')
       own().sockets.send(wholeNumber(args, 'id'), text(args, 'data'))
@@ -125,24 +151,9 @@ async function run(ctx: Context, from: Caller, command: string, args: Args): Pro
     case 'native_update_state':
       only('updater')
       return ctx.updater?.snapshot() ?? null
-    case 'native_update_action': {
+    case 'native_update_action':
       only('updater')
-      const updater = ctx.updater
-      if (!updater) throw new Error('Updates are not available.')
-      const external = updater.snapshot().external
-      switch (text(args, 'action')) {
-        case 'check': void updater.check(true); break
-        case 'now': if (external) void shell.openExternal(RELEASES_PAGE); else void updater.install('now'); break
-        case 'later': if (external) void shell.openExternal(RELEASES_PAGE); else void updater.install('later'); break
-        case 'download_page': void shell.openExternal(RELEASES_PAGE); break
-        // The footer link: the page of the offered version, else of the installed one; the address is built here.
-        case 'release_page': { const snap = updater.snapshot(); void shell.openExternal(releasePage(snap.version ?? snap.current)); break }
-        case 'skip': updater.skip(); break
-        case 'close': ctx.windows.updater?.close(); break
-        default: throw new Error('Unknown action.')
-      }
-      return updater.snapshot()
-    }
+      return updateAction(ctx, args)
     case 'picker_sources':
       only('picker')
       return pickerSources(ctx)

@@ -2,8 +2,8 @@
 # See scripts/english-only-allowlist.txt format in scripts/check-english-only.mjs.
 
 # The de/en tables of static pages.
-path: linux/assets/rail-ui/rail.js | de/en locale table of the server rail page
-path: experimental/app/rail-ui/rail.js | de/en locale table of the server rail page
+path: linux/assets/rail-ui/rail-text.js | de/en locale table of the server rail page
+path: experimental/app/rail-ui/rail-text.js | de/en locale table of the server rail page
 path: linux/assets/update-ui/update.js | de/en locale table of the update page
 path: experimental/app/update-ui/update.js | de/en locale table of the update page
 path: linux/assets/picker-ui/picker.js | de/en locale table of the screen picker page
@@ -21,3 +21,4 @@ path: scripts/english-only-allowlist.txt | quotes the names it allows
 # Tests that assert the German UI text.
 path: experimental/app/page-tests/src/nativeUpdatePage.test.ts | asserts German UI output
 path: experimental/app/page-tests/src/railPage.test.ts | asserts German UI output
+path: experimental/app/page-tests/src/railFolders.test.ts | asserts German UI output

@@ -18,192 +18,25 @@
  * install is updated through the package manager (`debinstall.ts`) from its own
  * feed entry (`linux-<arch>-deb`); other installations only get the release page.
  */
-import { chmodSync, existsSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
-import { writeFileAtomic } from './atomic.ts'
-import { parseStrictJson } from './json.ts'
 import { verifyPackage } from './minisign.ts'
-import { CHECK_INTERVAL_SECS } from './store.ts'
-import { type Statement, chooseUpdaterKey } from './trust.ts'
-import { type FetchOptions, fetchLimited, updatesDisabled } from './updates.ts'
-import { type Version, compareVersions, parseVersion } from './version.ts'
+import { chooseUpdaterKey } from './trust.ts'
+import { fetchLimited, updatesDisabled } from './updates.ts'
+import { type Update, checkDue, downloadUrlOk, isSkipped, offerable, parseFeed } from './updatefeed.ts'
+import { PENDING_FILE, STATE_FILE, type Persisted, loadPersisted, writeAtomic } from './updaterstate.ts'
+import { type Failure, type Mode, type Snapshot, type UpdaterEnv, FailureError, classify, withTimeout } from './updatertypes.ts'
+
+export { checkDue, downloadUrlOk, isSkipped, offerable, parseFeed, platformKey, trimNotes, type Update } from './updatefeed.ts'
+export { replaceAppImage } from './appimage.ts'
+export { type Failure, type Mode, type Phase, type Snapshot, type UpdaterEnv, menuText } from './updatertypes.ts'
 
 export const POLL_MS = 15 * 60 * 1000
 const CHECK_TIMEOUT_MS = 30_000
 const DOWNLOAD_TIMEOUT_MS = 15 * 60 * 1000
 const START_TIMEOUT_MS = 8_000
-const NOTES_MAX = 2000
 const MAX_FEED = 1 << 20
 const MAX_PACKAGE = 512 << 20
-const STATE_FILE = 'native-update.json'
-const PENDING_FILE = 'native-update.pending'
-
-export type Phase = 'idle' | 'checking' | 'up_to_date' | 'available' | 'downloading' | 'ready' | 'installing' | 'failed'
-export type Mode = 'now' | 'later'
-/** `untrusted`: no current trust statement could be fetched, so nothing new is installed (the signature is not at fault). */
-export type Failure = 'offline' | 'verify' | 'untrusted' | 'install' | 'unknown'
-
-/** What the update window shows. No raw error text crosses to the page. */
-export interface Snapshot {
-  current: string
-  phase: Phase
-  version: string | null
-  notes: string | null
-  received: number
-  total: number | null
-  mode: Mode | null
-  error: Failure | null
-  /** The package manager owns this installation: the window points to the download page instead of installing. */
-  external: boolean
-}
-
-// ---------------------------------------------------------------- pure logic
-
-/** Whether the interval has passed. A clock set back counts as due. */
-export function checkDue(lastCheck: number, now: number): boolean {
-  return lastCheck > now || now - lastCheck >= CHECK_INTERVAL_SECS
-}
-
-/** The candidate version when it is strictly newer than `current`. Versions are plain `MAJOR.MINOR.PATCH`; anything else is not offered. */
-export function offerable(current: string, candidate: string): Version | null {
-  const next = parseVersion(candidate)
-  const now = parseVersion(current)
-  return next && now && compareVersions(next, now) > 0 ? next : null
-}
-
-/** A skipped version stays quiet; a newer one is offered again. */
-export function isSkipped(skipped: string | null, candidate: string): boolean {
-  return skipped === candidate
-}
-
-/**
- * The package is fetched from GitHub's release downloads over HTTPS (which
- * redirects to GitHub's asset hosts). The signature decides trust; this keeps
- * the request from going elsewhere in the first place.
- */
-export function downloadUrlOk(url: URL): boolean {
-  return url.protocol === 'https:' && url.hostname === 'github.com' && url.username === '' && url.password === '' && url.port === ''
-}
-
-/** The `{os}-{arch}` key of the feed for this machine. */
-export function platformKey(platform: string = process.platform, arch: string = process.arch, deb = false): string | null {
-  if (platform !== 'linux') return null
-  const suffix = deb ? '-deb' : ''
-  if (arch === 'x64') return `linux-x86_64${suffix}`
-  if (arch === 'arm64') return `linux-aarch64${suffix}`
-  return null
-}
-
-export interface Update {
-  version: string
-  notes: string | null
-  signature: string
-  url: URL
-  /** The minisign public key this update must verify against (pinned, or listed by the trust statement). */
-  key: string
-}
-
-/** Reads the feed. Tauri clients and this one share it; entries for other platforms are ignored. */
-export function parseFeed(bytes: Uint8Array, platform: string): Omit<Update, 'key'> | null {
-  let feed: unknown
-  try {
-    feed = parseStrictJson(bytes)
-  } catch {
-    return null
-  }
-  if (typeof feed !== 'object' || feed === null) return null
-  const { version, notes, platforms } = feed as { version?: unknown, notes?: unknown, platforms?: unknown }
-  if (typeof version !== 'string' || typeof platforms !== 'object' || platforms === null) return null
-  const entry = (platforms as Record<string, unknown>)[platform]
-  if (typeof entry !== 'object' || entry === null) return null
-  const { signature, url } = entry as { signature?: unknown, url?: unknown }
-  if (typeof signature !== 'string' || typeof url !== 'string') return null
-  let parsed: URL
-  try {
-    parsed = new URL(url)
-  } catch {
-    return null
-  }
-  return { version: version.replace(/^v/, ''), notes: trimNotes(typeof notes === 'string' ? notes : null), signature, url: parsed }
-}
-
-export function trimNotes(body: string | null): string | null {
-  if (body === null) return null
-  const kept = [...body].filter((c) => !/\p{Cc}/u.test(c) || c === '\n').slice(0, NOTES_MAX).join('')
-  return kept.trim() === '' ? null : kept
-}
-
-// ------------------------------------------------------------------- state
-
-interface Pending { version: string }
-
-interface Persisted {
-  last_check: number
-  skipped: string | null
-  pending: Pending | null
-}
-
-function loadPersisted(dir: string | null): Persisted {
-  const empty: Persisted = { last_check: 0, skipped: null, pending: null }
-  if (!dir) return empty
-  try {
-    const raw: unknown = JSON.parse(readFileSync(join(dir, STATE_FILE), 'utf8'))
-    if (typeof raw !== 'object' || raw === null) return empty
-    const { last_check: last, skipped, pending } = raw as Record<string, unknown>
-    const held = typeof pending === 'object' && pending !== null ? (pending as Record<string, unknown>) : null
-    return {
-      last_check: typeof last === 'number' && Number.isInteger(last) && last >= 0 ? last : 0,
-      skipped: typeof skipped === 'string' ? skipped : null,
-      pending: held && typeof held.version === 'string' ? { version: held.version } : null,
-    }
-  } catch {
-    return empty
-  }
-}
-
-function writeAtomic(path: string, bytes: Uint8Array): void {
-  writeFileAtomic(path, bytes, { dirMode: 0o700 })
-}
-
-/** A dot marks a waiting update; the word is the same in every language. */
-export function menuText(phase: Phase): string {
-  return phase === 'available' || phase === 'ready' || phase === 'failed' ? 'Update •' : 'Updates'
-}
-
-/** What the updater needs from its surroundings. */
-export interface UpdaterEnv {
-  /** Version of the running program. */
-  current: string
-  /** Application data directory; null keeps everything in memory. */
-  dir: string | null
-  endpoints: readonly URL[]
-  /** The pinned minisign public key. */
-  pubkey: string
-  /** The platform key of the feed, or null where there is no package for this machine. */
-  platform: string | null
-  /** The trust statement in force. */
-  statement(): Statement | null
-  /** A fresh trust statement is in force and this round's fetch succeeded. */
-  installsAllowed(): boolean
-  /** Fetches (a fresh) trust statement; resolves when the attempt is over. */
-  trustRound?(): Promise<unknown>
-  /** Replaces the installed program with the verified package. */
-  install?(bytes: Buffer, version: string): Promise<void | 'handoff'>
-  /** Asks before a kept package is installed at start (the installer needs the user's password). */
-  confirmStart?(version: string): Promise<boolean>
-  /** Starts the new version and quits this one. */
-  restart?(): void
-  now(): number
-  /** Production only downloads from github.com; tests use a loopback server. */
-  githubOnly: boolean
-  fetchOptions?: FetchOptions
-  /** The package manager owns this installation. */
-  external: boolean
-  onChange?(snapshot: Snapshot): void
-  /** An update to announce (a new version, not skipped, found by a background check). */
-  announce?(snapshot: Snapshot): void
-  disabled?(): boolean
-}
 
 export class SelfUpdater {
   private persisted: Persisted
@@ -301,35 +134,44 @@ export class SelfUpdater {
       this.busy = false
       // A failed look (offline at start) does not use up the interval: the next poll tries again.
       if (!failure) this.persisted.last_check = this.env.now()
-      if (failure) {
-        if (manual) { this.snap.phase = 'failed'; this.snap.error = failure } else if (this.snap.phase === 'checking') this.snap.phase = 'idle'
-      } else if (found) {
-        const version = found.version
-        const ready = this.persisted.pending?.version === version
-        this.snap.version = version
-        this.snap.notes = found.notes
-        this.snap.received = 0
-        this.snap.total = null
-        this.snap.mode = null
-        this.snap.error = null
-        this.snap.phase = ready ? 'ready' : 'available'
-        announce = !ready && !isSkipped(this.persisted.skipped, version)
-        this.update = found
-      } else {
-        // Nothing newer. A held package for a version that is no longer offered is stale.
-        this.update = null
-        if (this.persisted.pending) {
-          this.persisted.pending = null
-          const path = this.pendingPath()
-          if (path) rmSync(path, { force: true })
-        }
-        this.snap.version = null
-        this.snap.notes = null
-        this.snap.phase = manual ? 'up_to_date' : 'idle'
-      }
+      if (failure) this.lookFailed(manual, failure)
+      else if (found) announce = this.lookFound(found)
+      else this.lookNothing(manual)
       this.save()
     })
     return announce
+  }
+
+  private lookFailed(manual: boolean, failure: Failure): void {
+    if (manual) { this.snap.phase = 'failed'; this.snap.error = failure } else if (this.snap.phase === 'checking') this.snap.phase = 'idle'
+  }
+
+  /** A newer version is on offer; true when it should be announced (new, not skipped, not already kept). */
+  private lookFound(found: Update): boolean {
+    const version = found.version
+    const ready = this.persisted.pending?.version === version
+    this.snap.version = version
+    this.snap.notes = found.notes
+    this.snap.received = 0
+    this.snap.total = null
+    this.snap.mode = null
+    this.snap.error = null
+    this.snap.phase = ready ? 'ready' : 'available'
+    this.update = found
+    return !ready && !isSkipped(this.persisted.skipped, version)
+  }
+
+  private lookNothing(manual: boolean): void {
+    // Nothing newer. A held package for a version that is no longer offered is stale.
+    this.update = null
+    if (this.persisted.pending) {
+      this.persisted.pending = null
+      const path = this.pendingPath()
+      if (path) rmSync(path, { force: true })
+    }
+    this.snap.version = null
+    this.snap.notes = null
+    this.snap.phase = manual ? 'up_to_date' : 'idle'
   }
 
   /** Download, verify and either install at once (`now`) or keep the verified package for the next start (`later`). */
@@ -346,43 +188,64 @@ export class SelfUpdater {
       this.snap.total = null
       this.snap.error = null
     })
+    const bytes = await this.obtainPackage(update)
+    if (bytes === null) return
+    if (mode === 'later') {
+      this.keepForLater(update, bytes)
+      return
+    }
+    await this.installNow(update, bytes)
+  }
+
+  /** The verified package of `update`, from disk or the network; null once the failure has been recorded. */
+  private async obtainPackage(update: Update): Promise<Buffer | null> {
     // The statement may have changed since the check. Without a fresh one
     // (expired, or its fetch failed this round) nothing new is installed.
     if (!this.env.installsAllowed() && this.env.trustRound) {
       // Started offline, say: the statement of this round is fetched now instead of reporting the signature as wrong.
       await withTimeout(this.env.trustRound(), START_TIMEOUT_MS).catch(() => undefined)
     }
-    if (!this.env.installsAllowed()) return this.fail('untrusted')
-    if (!chooseUpdaterKey(this.env.pubkey, this.env.statement(), update.signature).ok) return this.fail('verify')
-    let bytes = this.heldPackage(update)
-    if (!bytes) {
-      try {
-        bytes = await fetchLimited(update.url, 'application/octet-stream', MAX_PACKAGE, {
-          ...this.env.fetchOptions,
-          timeoutMs: DOWNLOAD_TIMEOUT_MS,
-          progress: (received, total) => this.change(() => { this.snap.received = received; this.snap.total = total }),
-        })
-      } catch (error) {
-        return this.fail(classify(error))
-      }
-      // The signature decides, whatever the download said.
-      if (verifyPackage(bytes, update.signature, update.key, update.version) !== null) return this.fail('verify')
-    }
-    if (mode === 'later') {
-      const path = this.pendingPath()
-      let stored = false
-      if (path) {
-        try { writeAtomic(path, bytes); stored = true } catch { stored = false }
-      }
-      if (!stored) return this.fail('install')
-      this.change(() => {
-        this.busy = false
-        this.persisted.pending = { version: update.version }
-        this.save()
-        this.snap.phase = 'ready'
+    if (!this.env.installsAllowed()) return this.failed('untrusted')
+    if (!chooseUpdaterKey(this.env.pubkey, this.env.statement(), update.signature).ok) return this.failed('verify')
+    const held = this.heldPackage(update)
+    if (held) return held
+    let bytes: Buffer
+    try {
+      bytes = await fetchLimited(update.url, 'application/octet-stream', MAX_PACKAGE, {
+        ...this.env.fetchOptions,
+        timeoutMs: DOWNLOAD_TIMEOUT_MS,
+        progress: (received, total) => this.change(() => { this.snap.received = received; this.snap.total = total }),
       })
-      return
+    } catch (error) {
+      return this.failed(classify(error))
     }
+    // The signature decides, whatever the download said.
+    if (verifyPackage(bytes, update.signature, update.key, update.version) !== null) return this.failed('verify')
+    return bytes
+  }
+
+  private failed(failure: Failure): null {
+    this.fail(failure)
+    return null
+  }
+
+  /** Keeps the verified package on disk for the next start. */
+  private keepForLater(update: Update, bytes: Buffer): void {
+    const path = this.pendingPath()
+    let stored = false
+    if (path) {
+      try { writeAtomic(path, bytes); stored = true } catch { stored = false }
+    }
+    if (!stored) return this.fail('install')
+    this.change(() => {
+      this.busy = false
+      this.persisted.pending = { version: update.version }
+      this.save()
+      this.snap.phase = 'ready'
+    })
+  }
+
+  private async installNow(update: Update, bytes: Buffer): Promise<void> {
     this.change(() => { this.snap.phase = 'installing' })
     try {
       if (!this.env.install) throw new FailureError('install')
@@ -515,48 +378,5 @@ export class SelfUpdater {
 
   isBusyOrWaiting(): boolean {
     return ['available', 'ready', 'downloading', 'installing'].includes(this.snap.phase)
-  }
-}
-
-class FailureError extends Error {
-  readonly failure: Failure
-
-  constructor(failure: Failure) {
-    super(failure)
-    this.failure = failure
-  }
-}
-
-function classify(error: unknown): Failure {
-  if (error instanceof FailureError) return error.failure
-  return 'offline'
-}
-
-function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error('timeout')), ms)
-    promise.then((value) => { clearTimeout(timer); resolve(value) }, (error: unknown) => { clearTimeout(timer); reject(error instanceof Error ? error : new Error(String(error))) })
-  })
-}
-
-// ------------------------------------------------------------ installation
-
-/**
- * Replaces the running AppImage with a verified package: the new file is
- * written next to it and renamed over it, so a failure leaves the installed
- * program untouched. A running AppImage keeps working after the rename (its
- * inode stays mapped until it exits).
- */
-export function replaceAppImage(target: string, bytes: Uint8Array): void {
-  if (bytes.length < 4 || bytes[0] !== 0x7f || bytes[1] !== 0x45 || bytes[2] !== 0x4c || bytes[3] !== 0x46) throw new Error('not an executable')
-  if (!existsSync(target)) throw new Error('the AppImage is not where it was started from')
-  const fresh = `${target}.new`
-  try {
-    writeFileSync(fresh, bytes, { mode: 0o755 })
-    chmodSync(fresh, 0o755)
-    renameSync(fresh, target)
-  } catch (error) {
-    rmSync(fresh, { force: true })
-    throw error
   }
 }

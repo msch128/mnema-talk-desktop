@@ -39,6 +39,18 @@ interface Parsed {
   expires: number | null
 }
 
+/** One `Set-Cookie` attribute; an attribute the jar does not use, or a malformed value, is ignored. */
+function applyAttribute(parsed: Parsed, key: string, value: string | null): void {
+  if (key === 'secure') parsed.secure = true
+  else if (key === 'path' && value !== null && value !== '') parsed.path = value
+  else if (key === 'domain' && value !== null && value.replace(/^\./, '') !== '') parsed.domain = value.replace(/^\./, '').toLowerCase()
+  else if (key === 'max-age' && value !== null && /^-?[0-9]+$/.test(value)) parsed.maxAge = Math.min(MAX_MAX_AGE, Math.max(0, Number(value)))
+  else if (key === 'expires' && value !== null) {
+    const at = Date.parse(value)
+    if (!Number.isNaN(at)) parsed.expires = Math.floor(at / 1000)
+  }
+}
+
 /** `Set-Cookie` as the `cookie` crate reads it, as far as the jar needs it. */
 function parseSetCookie(raw: string): Parsed | null {
   const [pair = '', ...attributes] = raw.split(';')
@@ -50,15 +62,7 @@ function parseSetCookie(raw: string): Parsed | null {
   for (const attribute of attributes) {
     const at = attribute.indexOf('=')
     const key = (at < 0 ? attribute : attribute.slice(0, at)).trim().toLowerCase()
-    const value = at < 0 ? null : attribute.slice(at + 1).trim()
-    if (key === 'secure') parsed.secure = true
-    else if (key === 'path' && value !== null && value !== '') parsed.path = value
-    else if (key === 'domain' && value !== null && value.replace(/^\./, '') !== '') parsed.domain = value.replace(/^\./, '').toLowerCase()
-    else if (key === 'max-age' && value !== null && /^-?[0-9]+$/.test(value)) parsed.maxAge = Math.min(MAX_MAX_AGE, Math.max(0, Number(value)))
-    else if (key === 'expires' && value !== null) {
-      const at2 = Date.parse(value)
-      if (!Number.isNaN(at2)) parsed.expires = Math.floor(at2 / 1000)
-    }
+    applyAttribute(parsed, key, at < 0 ? null : attribute.slice(at + 1).trim())
   }
   return parsed
 }

@@ -47,6 +47,38 @@ export type Edit =
   | { op: 'folder_delete', id: string }
   | { op: 'rename', id: string, name: string }
 
+/** A stored folder, or null when its id is bad or repeated; `claim` takes the servers it may still place. */
+function restoreFolder(raw: Record<string, unknown>, folders: Set<string>, claim: (id: unknown) => id is string): FolderItem | null {
+  const id = raw['id']
+  if (typeof id !== 'string' || !FOLDER_ID.test(id) || folders.has(id)) return null
+  folders.add(id)
+  return {
+    kind: 'folder',
+    id,
+    name: typeof raw['name'] === 'string' ? cleanName(raw['name']) : '',
+    color: cleanColor(raw['color']) ?? null,
+    collapsed: raw['collapsed'] === true,
+    servers: (Array.isArray(raw['servers']) ? raw['servers'] as unknown[] : []).filter(claim),
+  }
+}
+
+/** The stored items that hold up, in order. */
+function restoreItems(rawItems: unknown, claim: (id: unknown) => id is string): Item[] {
+  const items: Item[] = []
+  const folders = new Set<string>()
+  for (const raw of Array.isArray(rawItems) ? rawItems as unknown[] : []) {
+    if (!isRecord(raw)) continue
+    if (raw['kind'] === 'server') {
+      const id = raw['id']
+      if (claim(id)) items.push({ kind: 'server', id })
+    } else if (raw['kind'] === 'folder') {
+      const folder = restoreFolder(raw, folders, claim)
+      if (folder) items.push(folder)
+    }
+  }
+  return items
+}
+
 export class Layout {
   items: Item[] = []
   readonly aliases = new Map<string, string>()
@@ -61,31 +93,12 @@ export class Layout {
     const layout = new Layout()
     for (const id of known) layout.known.add(id)
     const seen = new Set<string>()
-    const folders = new Set<string>()
     const claim = (id: unknown): id is string => {
       if (typeof id !== 'string' || !layout.known.has(id) || seen.has(id)) return false
       seen.add(id)
       return true
     }
-    for (const raw of Array.isArray(rawItems) ? rawItems as unknown[] : []) {
-      if (!isRecord(raw)) continue
-      if (raw['kind'] === 'server') {
-        if (claim(raw['id'])) layout.items.push({ kind: 'server', id: raw['id'] })
-      } else if (raw['kind'] === 'folder') {
-        const id = raw['id']
-        if (typeof id !== 'string' || !FOLDER_ID.test(id) || folders.has(id)) continue
-        folders.add(id)
-        const servers = (Array.isArray(raw['servers']) ? raw['servers'] as unknown[] : []).filter(claim)
-        layout.items.push({
-          kind: 'folder',
-          id,
-          name: typeof raw['name'] === 'string' ? cleanName(raw['name']) : '',
-          color: cleanColor(raw['color']) ?? null,
-          collapsed: raw['collapsed'] === true,
-          servers,
-        })
-      }
-    }
+    layout.items.push(...restoreItems(rawItems, claim))
     for (const id of order) if (layout.known.has(id) && !seen.has(id)) { seen.add(id); layout.items.push({ kind: 'server', id }) }
     layout.prune()
     if (isRecord(rawAliases)) {
