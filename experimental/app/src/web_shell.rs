@@ -2053,6 +2053,10 @@ mod tests {
     /// toasts, counters and gaming bridge and can neither drive the list nor
     /// add a server; only the page for adding may do that.
     #[test]
+    #[expect(
+        clippy::cognitive_complexity,
+        reason = "over the limit when the limits were introduced; split it"
+    )]
     fn the_commands_are_split_between_the_rail_the_pages_and_the_selector() {
         let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("capabilities");
         let mut rail_seen = false;

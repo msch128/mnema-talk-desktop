@@ -787,6 +787,11 @@ pub async fn forward(
         .sealed()
 }
 
+#[expect(
+    clippy::cognitive_complexity,
+    clippy::too_many_lines,
+    reason = "over the limit when the limits were introduced; split it"
+)]
 async fn forward_unsealed(
     instance: &Instance,
     method: &str,
@@ -2351,6 +2356,10 @@ mod tests {
     }
 
     #[test]
+    #[expect(
+        clippy::cognitive_complexity,
+        reason = "over the limit when the limits were introduced; split it"
+    )]
     fn request_caps_follow_the_announced_upload_limit() {
         let limits = Limits::default();
         let upload = "/api/channels/00000000-0000-4000-8000-000000000000/upload";
