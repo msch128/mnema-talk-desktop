@@ -1,0 +1,20 @@
+.github/workflows/desktop-client.yml
+  h_0ff4f4713441f4 217-219,667-668
+experimental/app/src/web_shell/commands.rs
+  h_0ff4f4713441f4 95
+experimental/app/src/web_trust.rs
+  h_0ff4f4713441f4 97-105,152-157,170,174-179,183-188
+experimental/app/src/web_ws.rs
+  h_0ff4f4713441f4 474,543
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "494a9d6123784ace2dd065fc4d2a0d844553ee65",
+  "prompts": {},
+  "humans": {
+    "h_0ff4f4713441f4": {
+      "author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}
