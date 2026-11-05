@@ -137,6 +137,26 @@
   {
    "input": "\"https://community.example\"",
    "href": "https://community.example/"
+  },
+  {
+   "input": "https://community.example/@alice",
+   "href": "https://community.example/"
+  },
+  {
+   "input": "https://community.example/?mail=a@b.example",
+   "href": "https://community.example/"
+  },
+  {
+   "input": "https://community.example/#@x",
+   "href": "https://community.example/"
+  },
+  {
+   "input": "community.example/@alice",
+   "href": "https://community.example/"
+  },
+  {
+   "input": "https://user@community.example/@alice",
+   "error": "Use an HTTPS origin without credentials, a path or query."
   }
  ],
  "healths": [

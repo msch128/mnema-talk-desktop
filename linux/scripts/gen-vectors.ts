@@ -831,7 +831,8 @@ function clientVectors(): Json {
     'http://LOCALHOST', '', 'http://community.example', 'http://127.0.0.1.example', 'http://192.168.1.10:8080', 'https://user@community.example', 'https://user:pw@community.example', 'https://community.example/path',
     'https://community.example:8443/?invite=code', 'http://community.example:8443/path?invite=code', 'http://localhost:8080/path?x=1',
     'https://community.example?token=x', 'https://community.example/#x', 'https://community.example\\other', 'https://community.example\n', 'https://community.example/?', 'https://a@b.example', 'ftp://community.example',
-    'https://', 'https://exa mple.com', 'http://0.0.0.0', 'http://[::]', 'https://community.example:99999', '<https://community.example:8443/>', '"https://community.example"']
+    'https://', 'https://exa mple.com', 'http://0.0.0.0', 'http://[::]', 'https://community.example:99999', '<https://community.example:8443/>', '"https://community.example"',
+    'https://community.example/@alice', 'https://community.example/?mail=a@b.example', 'https://community.example/#@x', 'community.example/@alice', 'https://user@community.example/@alice']
     .map((input) => {
       try { return { input, href: parseAddress(input).href } } catch (error) { return { input, error: (error as Error).message } }
     })
