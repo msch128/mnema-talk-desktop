@@ -1,0 +1,22 @@
+experimental/app/src/instances.rs
+  h_0ff4f4713441f4 16,19-29,37-42,201
+experimental/app/src/instances/mutes.rs
+  h_0ff4f4713441f4 1-48
+experimental/app/src/instances/rail.rs
+  h_0ff4f4713441f4 1-90
+experimental/app/src/instances/registry.rs
+  h_0ff4f4713441f4 1-260
+experimental/app/src/instances/stored.rs
+  h_0ff4f4713441f4 1-207
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "dc9124cbd74ac97fbce88d7562ec92d1f6afb155",
+  "prompts": {},
+  "humans": {
+    "h_0ff4f4713441f4": {
+      "author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}
