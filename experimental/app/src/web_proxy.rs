@@ -391,7 +391,7 @@ impl Jar {
                 continue;
             }
             let expires = match (cookie.max_age(), cookie.expires_datetime()) {
-                (Some(age), _) => Some(now + age.whole_seconds()),
+                (Some(age), _) => Some(now.saturating_add(age.whole_seconds())),
                 (None, Some(at)) => Some(at.unix_timestamp()),
                 (None, None) => None,
             };
@@ -1216,6 +1216,19 @@ mod tests {
             "s=1",
             "session cookies live as long as the process"
         );
+    }
+
+    #[test]
+    fn a_cookie_with_an_enormous_max_age_is_kept_for_good_not_wrapped_into_the_past() {
+        const T: i64 = 1_800_000_000;
+        let jar = Jar::new(None, T);
+        for age in [i64::MAX, i64::MAX - T + 1] {
+            jar.store(&[format!("s=1; Max-Age={age}")], true, T);
+            assert_eq!(jar.header(T + 1).as_deref(), Some("s=1"), "{age}");
+        }
+        // A cookie that long-lived is still deleted by the server's own Max-Age=0.
+        jar.store(&["s=; Max-Age=0".into()], true, T);
+        assert_eq!(jar.header(T + 1), None);
     }
 
     #[test]
