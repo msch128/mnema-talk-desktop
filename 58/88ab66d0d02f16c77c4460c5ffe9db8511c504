@@ -1,0 +1,42 @@
+experimental/app/src/selftest_multi.rs
+  h_0ff4f4713441f4 47-59,102
+experimental/app/src/selftest_multi/checks.rs
+  h_0ff4f4713441f4 247-252,279-304
+experimental/app/src/ui_watch.rs
+  h_0ff4f4713441f4 9-10
+experimental/app/src/web_client.rs
+  h_0ff4f4713441f4 19
+experimental/app/src/web_client/commands.rs
+  h_0ff4f4713441f4 69
+experimental/app/src/web_client/dialog.rs
+  h_0ff4f4713441f4 46
+experimental/app/src/web_client/tests/origin.rs
+  h_0ff4f4713441f4 3
+experimental/app/src/web_gaming.rs
+  h_0ff4f4713441f4 9-10
+experimental/app/src/web_gaming/setup.rs
+  h_0ff4f4713441f4 12-15,42-44
+experimental/app/src/web_notify/mod.rs
+  h_0ff4f4713441f4 53,55
+experimental/app/src/web_shell/pages.rs
+  h_0ff4f4713441f4 143
+experimental/app/src/web_shell/room.rs
+  h_0ff4f4713441f4 25,30
+experimental/app/src/web_shell/storage.rs
+  h_0ff4f4713441f4 16
+experimental/app/src/web_vault.rs
+  h_0ff4f4713441f4 21
+src/game_library_scan.rs
+  h_0ff4f4713441f4 295-298,301,320
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5888ab66d0d02f16c77c4460c5ffe9db8511c504",
+  "prompts": {},
+  "humans": {
+    "h_0ff4f4713441f4": {
+      "author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}
