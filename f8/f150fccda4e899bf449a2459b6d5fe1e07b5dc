@@ -1,0 +1,14 @@
+.github/workflows/desktop-checks.yml
+  h_0ff4f4713441f4 62-68,73-86
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f8f150fccda4e899bf449a2459b6d5fe1e07b5dc",
+  "prompts": {},
+  "humans": {
+    "h_0ff4f4713441f4": {
+      "author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}
