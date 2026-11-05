@@ -1,0 +1,14 @@
+experimental/app/src/web_client.rs
+  h_0ff4f4713441f4 19
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ba381984ba8860b3b3be21d7ba9168332b9ccf3e",
+  "prompts": {},
+  "humans": {
+    "h_0ff4f4713441f4": {
+      "author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}
