@@ -89,6 +89,32 @@ test('json vectors: byte order marks, repeated keys, unknown fields, wrong types
   assert.deepEqual(opened(v.healths, (c) => c.result.ok), ['a plain document', 'spaces and newlines around the document', 'an unknown field', 'an escaped value', 'an unknown field nested 100 deep', 'an unknown field nested 120 deep', 'an unknown field nested 125 deep', 'an unknown field nested 126 deep'])
 })
 
+/** What one store scenario holds while its steps are replayed. */
+type StoreRun = { store: Store, dir: string | null, builtin: Buffer | null, bytes: (name: string) => Buffer, pick: (names: string[]) => TrustedKey[] }
+
+const storeSteps: Record<string, (run: StoreRun, step: Json, where: string) => void> = {
+  install({ store, bytes, pick }, step, where) {
+    let got: Json
+    try { got = { ok: formatVersion(store.install(bytes(step.bundle), pick(step.trusted))) } } catch (e) { got = { error: (e as Error).message } }
+    assert.deepEqual(got, step.expect, where)
+  },
+  select({ store }, step, where) {
+    const r = store.select({ version: step.server.version === null ? null : parseVersion(step.server.version), webClientApi: step.server.api })
+    const got = r.ok ? { ok: formatVersion(r.held.bundle.version) } : { refusal: r.refusal.kind, ...(r.refusal.kind === 'server_too_old' ? { needs: formatVersion(r.refusal.needs) } : {}) }
+    assert.deepEqual(got, step.expect, where)
+  },
+  reconcile: ({ store, pick }, step, where) => assert.equal(store.reconcile(pick(step.trusted)), step.expect, where),
+  caps: ({ store }, step) => store.applyCaps(new Map(Object.entries(step.caps as Record<string, string>).map(([k, ver]) => [Number(k), parseVersion(ver) as [number, number, number]]))),
+  state({ store }, step, where) {
+    const highWater: Json = {}
+    for (const api of [1, 2, 3]) { const m = store.highWater(api); if (m) highWater[String(api)] = formatVersion(m) }
+    assert.deepEqual({ floor: formatVersion(store.floor()), high_water: highWater, held: store.held().map((h) => `${formatVersion(h.bundle.version)}:${h.source}`), rejected: store.rejected.length }, step.expect, where)
+  },
+  restart(run, step) { run.store = Store.load(run.dir, run.builtin, run.pick(step.trusted)) },
+  remove_cached: (run, step) => unlinkSync(join(run.dir as string, `mnema-web-${step.version}.zip`)),
+  forget_state(run) { if (existsSync(join(run.dir as string, 'state.json'))) unlinkSync(join(run.dir as string, 'state.json')) },
+}
+
 test('store vectors: selection, rollback marks, revocation and caps', () => {
   const v = load('store')
   const pick = (names: string[]) => keys(names.map((n) => v.keys[n]))
@@ -97,36 +123,11 @@ test('store vectors: selection, rollback marks, revocation and caps', () => {
     const dir = s.persist ? mkdtempSync(join(tmpdir(), 'mnema-vec-')) : null
     try {
       const builtin = s.builtin ? bytes(s.builtin) : null
-      let store = Store.load(dir, builtin, pick(s.trusted))
-      let n = 0
-      for (const step of s.steps) {
-        const where = `${s.name} #${n++} ${step.op}`
-        switch (step.op) {
-          case 'install': {
-            let got: Json
-            try { got = { ok: formatVersion(store.install(bytes(step.bundle), pick(step.trusted))) } } catch (e) { got = { error: (e as Error).message } }
-            assert.deepEqual(got, step.expect, where)
-            break
-          }
-          case 'select': {
-            const r = store.select({ version: step.server.version === null ? null : parseVersion(step.server.version), webClientApi: step.server.api })
-            const got = r.ok ? { ok: formatVersion(r.held.bundle.version) } : { refusal: r.refusal.kind, ...(r.refusal.kind === 'server_too_old' ? { needs: formatVersion(r.refusal.needs) } : {}) }
-            assert.deepEqual(got, step.expect, where)
-            break
-          }
-          case 'reconcile': assert.equal(store.reconcile(pick(step.trusted)), step.expect, where); break
-          case 'caps': store.applyCaps(new Map(Object.entries(step.caps as Record<string, string>).map(([k, ver]) => [Number(k), parseVersion(ver) as [number, number, number]]))); break
-          case 'state': {
-            const highWater: Json = {}
-            for (const api of [1, 2, 3]) { const m = store.highWater(api); if (m) highWater[String(api)] = formatVersion(m) }
-            assert.deepEqual({ floor: formatVersion(store.floor()), high_water: highWater, held: store.held().map((h) => `${formatVersion(h.bundle.version)}:${h.source}`), rejected: store.rejected.length }, step.expect, where)
-            break
-          }
-          case 'restart': store = Store.load(dir, builtin, pick(step.trusted)); break
-          case 'remove_cached': unlinkSync(join(dir as string, `mnema-web-${step.version}.zip`)); break
-          case 'forget_state': if (existsSync(join(dir as string, 'state.json'))) unlinkSync(join(dir as string, 'state.json')); break
-          default: assert.fail(`unknown step ${step.op}`)
-        }
+      const run: StoreRun = { store: Store.load(dir, builtin, pick(s.trusted)), dir, builtin, bytes, pick }
+      for (const [n, step] of s.steps.entries()) {
+        const handle = storeSteps[step.op]
+        if (!handle) assert.fail(`unknown step ${step.op}`)
+        handle(run, step, `${s.name} #${n} ${step.op}`)
       }
     } finally {
       if (dir) rmSync(dir, { recursive: true, force: true })
@@ -134,27 +135,31 @@ test('store vectors: selection, rollback marks, revocation and caps', () => {
   }
 })
 
+/** What `verifyStatement` answers for one statement of the trust vectors. */
+function verifyOutcome(c: Json, root: ReturnType<typeof rootKey>): Json {
+  try {
+    const st = verifyStatement(Buffer.from(c.doc), Buffer.from(c.sig), root)
+    return { ok: { serial: st.serial, bundle_keys: statementBundleKeys(st).map((k) => k.id), caps: Object.fromEntries([...statementCaps(st)].map(([k, ver]) => [String(k), formatVersion(ver)])), updater_keys: st.updater_keys.length } }
+  } catch (e) { return { error: (e as Error).message } }
+}
+
+/** What a fresh `TrustState` answers when given a statement. */
+function acceptOutcome(trust: TrustState, c: Json, now: number): Json {
+  try { return trust.accept(Buffer.from(c.doc), Buffer.from(c.sig), now) } catch (e) { return { error: (e as Error).message } }
+}
+
 test('trust vectors: times, statements, serial order, minisign ids and updater key choice', () => {
   const v = load('trust')
   const root = rootKey(v.root)
   for (const c of v.times) assert.equal(parseUtc(c.input), c.secs, JSON.stringify(c.input))
   for (const c of v.statements) {
-    let verify: Json
-    try {
-      const st = verifyStatement(Buffer.from(c.doc), Buffer.from(c.sig), root)
-      verify = { ok: { serial: st.serial, bundle_keys: statementBundleKeys(st).map((k) => k.id), caps: Object.fromEntries([...statementCaps(st)].map(([k, ver]) => [String(k), formatVersion(ver)])), updater_keys: st.updater_keys.length } }
-    } catch (e) { verify = { error: (e as Error).message } }
-    assert.deepEqual(verify, c.verify, `verify: ${c.name}`)
-    let accept: Json
-    try { accept = TrustState.load(null, root).accept(Buffer.from(c.doc), Buffer.from(c.sig), c.now) } catch (e) { accept = { error: (e as Error).message } }
-    assert.deepEqual(accept, c.accept, `accept: ${c.name}`)
+    assert.deepEqual(verifyOutcome(c, root), c.verify, `verify: ${c.name}`)
+    assert.deepEqual(acceptOutcome(TrustState.load(null, root), c, c.now), c.accept, `accept: ${c.name}`)
   }
   for (const seq of v.sequences) {
     const trust = TrustState.load(null, root)
     for (const [i, s] of seq.steps.entries()) {
-      let got: Json
-      try { got = trust.accept(Buffer.from(s.doc), Buffer.from(s.sig), s.now) } catch (e) { got = { error: (e as Error).message } }
-      assert.deepEqual(got, s.expect, `${seq.name} #${i}`)
+      assert.deepEqual(acceptOutcome(trust, s, s.now), s.expect, `${seq.name} #${i}`)
       assert.equal(trust.statement()?.serial ?? null, s.serial, `${seq.name} #${i} serial`)
     }
   }
