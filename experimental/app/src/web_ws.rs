@@ -471,6 +471,7 @@ mod tests {
     }
 
     #[tokio::test]
+    // The handshake callback returns tungstenite's own large error type.
     #[allow(clippy::result_large_err)]
     async fn the_host_connects_as_the_instance_would_see_a_browser_and_relays_text() {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -539,6 +540,7 @@ mod tests {
     }
 
     #[tokio::test]
+    // The handshake callback returns tungstenite's own large error type.
     #[allow(clippy::result_large_err)]
     async fn the_conversation_question_is_sent_to_the_server_when_the_page_asked_it() {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
