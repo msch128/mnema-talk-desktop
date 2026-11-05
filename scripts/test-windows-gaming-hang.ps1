@@ -17,8 +17,8 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 
-$work = Join-Path $env:RUNNER_TEMP 'gaming-hang'
-if (-not $env:RUNNER_TEMP) { $work = Join-Path $env:TEMP 'gaming-hang' }
+$tempRoot = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { $env:TEMP }
+$work = Join-Path $tempRoot 'gaming-hang'
 New-Item -ItemType Directory -Force $work | Out-Null
 $game = Join-Path $work 'mnema-fakegame.exe'
 $other = Join-Path $work 'other-window.exe'
