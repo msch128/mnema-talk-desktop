@@ -277,29 +277,31 @@ async fn survivors(app: &tauri::AppHandle, trusted: &Trusted, a: &str, second: &
 }
 
 /// Checks that the removed server's engine storage is gone: its profile folder
-/// where the engine keeps one, its data store on macOS.
-async fn browser_storage_wiped(app: &tauri::AppHandle, profile: Option<std::path::PathBuf>) {
-    #[cfg(not(target_os = "macos"))]
+/// where the engine keeps one.
+#[cfg(not(target_os = "macos"))]
+async fn browser_storage_wiped(_app: &tauri::AppHandle, profile: Option<std::path::PathBuf>) {
     if let Some(dir) = profile {
         let wiped = until("B's storage is wiped", || !dir.exists()).await;
         check("B's browser storage is wiped", wiped, dir.display());
     }
-    #[cfg(target_os = "macos")]
-    {
-        let _ = profile;
-        let wiped = async {
-            for _ in 0..50 {
-                let ids = app.fetch_data_store_identifiers().await.unwrap_or_default();
-                if ids.len() <= 2 {
-                    return true;
-                }
-                tokio::time::sleep(Duration::from_millis(200)).await;
+}
+
+/// Checks that the removed server's engine storage is gone: its data store on
+/// macOS, which has no profile folder.
+#[cfg(target_os = "macos")]
+async fn browser_storage_wiped(app: &tauri::AppHandle, _profile: Option<std::path::PathBuf>) {
+    let wiped = async {
+        for _ in 0..50 {
+            let ids = app.fetch_data_store_identifiers().await.unwrap_or_default();
+            if ids.len() <= 2 {
+                return true;
             }
-            false
+            tokio::time::sleep(Duration::from_millis(200)).await;
         }
-        .await;
-        check("B's browser storage is wiped", wiped, "data store remains");
+        false
     }
+    .await;
+    check("B's browser storage is wiped", wiped, "data store remains");
 }
 
 fn a_text(trusted: &Trusted, id: &str) -> String {
