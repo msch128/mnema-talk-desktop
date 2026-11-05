@@ -1,0 +1,54 @@
+linux/src/core/appimage.ts
+  h_0ff4f4713441f4 1-21
+linux/src/core/instances.ts
+  h_0ff4f4713441f4 11,14-15,22-23
+linux/src/core/instancestore.ts
+  h_0ff4f4713441f4 1-103
+linux/src/core/railstate.ts
+  h_0ff4f4713441f4 1-42
+linux/src/core/refusal.ts
+  h_0ff4f4713441f4 1-22
+linux/src/core/selfupdate.ts
+  h_0ff4f4713441f4 21,24-32,137-139,145-176,191-201,208-217,219-220,222-248
+linux/src/core/store.ts
+  h_0ff4f4713441f4 6,9-14,61-63
+linux/src/core/storecache.ts
+  h_0ff4f4713441f4 1-109
+linux/src/core/updatefeed.ts
+  h_0ff4f4713441f4 1-84
+linux/src/core/updaterstate.ts
+  h_0ff4f4713441f4 1-37
+linux/src/core/updatertypes.ts
+  h_0ff4f4713441f4 1-86
+linux/src/main/ipc.ts
+  h_0ff4f4713441f4 18-19
+linux/src/main/main.ts
+  h_0ff4f4713441f4 27-29
+linux/src/main/menu.ts
+  h_0ff4f4713441f4 5-6
+linux/src/main/notify.ts
+  h_0ff4f4713441f4 10
+linux/src/main/rail.ts
+  h_0ff4f4713441f4 15-17
+linux/src/main/shell.ts
+  h_0ff4f4713441f4 14-15,23-24,28-29
+linux/src/main/shelllayout.ts
+  h_0ff4f4713441f4 1-108
+linux/src/main/shellwipe.ts
+  h_0ff4f4713441f4 1-92
+linux/test/extras.test.ts
+  h_0ff4f4713441f4 126
+linux/test/rail.test.ts
+  h_0ff4f4713441f4 105,119,130
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "84d4e0466cfb2827c9914feadd2a0860f98f75cb",
+  "prompts": {},
+  "humans": {
+    "h_0ff4f4713441f4": {
+      "author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}

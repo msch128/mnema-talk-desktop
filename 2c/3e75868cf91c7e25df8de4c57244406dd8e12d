@@ -1,0 +1,44 @@
+.github/workflows/desktop-checks.yml
+  h_0ff4f4713441f4 138-140
+README.md
+  h_0ff4f4713441f4 344,352-362
+linux/eslint-suppressions.json
+  h_0ff4f4713441f4 1-30,31-40,41-69,70-79,80
+linux/eslint.config.ts
+  h_0ff4f4713441f4 3,21-41
+linux/package-lock.json
+  h_0ff4f4713441f4 22,706-712,1524-1546,2390-2415,2734-2740,3324-3333,3388-3394,4073-4099,4229-4243,4827-4842
+linux/package.json
+  h_0ff4f4713441f4 34
+scripts/check-limits.mjs
+  h_0ff4f4713441f4 1-85
+scripts/check-limits.test.mjs
+  h_0ff4f4713441f4 1-29
+scripts/limits-allowlist.txt
+  h_0ff4f4713441f4 1-27
+linux/src/main/ipc.ts
+  h_0ff4f4713441f4 63-101,116,118,153,155
+linux/src/core/layout.ts
+  h_0ff4f4713441f4 50-81,101
+linux/src/core/updates.ts
+  h_0ff4f4713441f4 38-39,52-65,77,80,83,97-127
+linux/src/core/icon.ts
+  h_0ff4f4713441f4 34-53,58,61-62,64-66,68-69,71,75-94,100,108,111-112
+linux/src/core/zip.ts
+  h_0ff4f4713441f4 74-75,82-104,133,138-157
+linux/src/main/protocol.ts
+  h_0ff4f4713441f4 98-115,126
+linux/src/core/cookies.ts
+  h_0ff4f4713441f4 42-53,65
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2c3e75868cf91c7e25df8de4c57244406dd8e12d",
+  "prompts": {},
+  "humans": {
+    "h_0ff4f4713441f4": {
+      "author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}
