@@ -200,10 +200,44 @@ pub fn open(
     Ok(id)
 }
 
-#[expect(
-    clippy::cognitive_complexity,
-    reason = "over the limit when the limits were introduced; split it"
-)]
+type Socket =
+    tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>;
+
+/// Writes one text frame; false when it could not be written in time.
+async fn write_text(ws: &mut Socket, text: String) -> bool {
+    let sent = tokio::time::timeout(WRITE_TIMEOUT, ws.send(Message::text(text))).await;
+    matches!(sent, Ok(Ok(())))
+}
+
+/// Hands a frame from the server to the page. `Some(goodbye)` ends the
+/// connection (`true` when this side should say goodbye), `None` carries on.
+fn on_incoming(
+    id: u64,
+    incoming: Option<Result<Message, tokio_tungstenite::tungstenite::Error>>,
+    emit: &impl Fn(WsEvent) -> bool,
+) -> Option<bool> {
+    match incoming {
+        Some(Ok(Message::Text(text))) => {
+            let data = text.as_str().to_owned();
+            (!emit(WsEvent::Message { id, data })).then_some(true)
+        }
+        // Pings are answered by the library; the app only speaks text.
+        Some(Ok(Message::Ping(_) | Message::Pong(_) | Message::Binary(_) | Message::Frame(_))) => {
+            None
+        }
+        Some(Ok(Message::Close(_)) | Err(_)) | None => Some(false),
+    }
+}
+
+/// Writes what the page queued before the connection is closed.
+async fn flush_queued(ws: &mut Socket, rx: &mut mpsc::Receiver<String>) {
+    while let Ok(text) = rx.try_recv() {
+        if !write_text(ws, text).await {
+            break;
+        }
+    }
+}
+
 async fn run(
     id: u64,
     instance: &Instance,
@@ -221,20 +255,14 @@ async fn run(
     // `true` when this side ends the connection and should say goodbye.
     let goodbye = loop {
         tokio::select! {
-            incoming = ws.next() => match incoming {
-                Some(Ok(Message::Text(text))) => {
-                    if !emit(WsEvent::Message { id, data: text.as_str().to_owned() }) {
-                        break true;
-                    }
+            incoming = ws.next() => {
+                if let Some(goodbye) = on_incoming(id, incoming, emit) {
+                    break goodbye;
                 }
-                // Pings are answered by the library; the app only speaks text.
-                Some(Ok(Message::Ping(_) | Message::Pong(_) | Message::Binary(_) | Message::Frame(_))) => {}
-                Some(Ok(Message::Close(_))) | Some(Err(_)) | None => break false,
             },
             outgoing = rx.recv() => match outgoing {
                 Some(text) => {
-                    let sent = tokio::time::timeout(WRITE_TIMEOUT, ws.send(Message::text(text))).await;
-                    if !matches!(sent, Ok(Ok(()))) {
+                    if !write_text(&mut ws, text).await {
                         break false;
                     }
                 }
@@ -242,12 +270,7 @@ async fn run(
             },
             () = close.notified() => {
                 // A browser socket writes what was queued before it closes.
-                while let Ok(text) = rx.try_recv() {
-                    let sent = tokio::time::timeout(WRITE_TIMEOUT, ws.send(Message::text(text))).await;
-                    if !matches!(sent, Ok(Ok(()))) {
-                        break;
-                    }
-                }
+                flush_queued(&mut ws, &mut rx).await;
                 break true;
             }
         }

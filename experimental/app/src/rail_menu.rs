@@ -255,11 +255,7 @@ mod tests {
     }
 
     #[test]
-    #[expect(
-        clippy::cognitive_complexity,
-        reason = "over the limit when the limits were introduced; split it"
-    )]
-    fn anything_that_is_not_a_plain_menu_is_refused() {
+    fn a_menu_needs_a_short_token_and_nothing_else_besides_its_items() {
         assert!(!ok("[]"));
         assert!(!ok(r#"{"token":"","items":[]}"#));
         assert!(!ok(r#"{"token":"A","items":[]}"#));
@@ -268,6 +264,10 @@ mod tests {
             "a".repeat(41)
         )));
         assert!(!ok(r#"{"token":"a","items":[],"extra":1}"#));
+    }
+
+    #[test]
+    fn items_need_an_id_and_a_text_and_use_each_id_once() {
         // Items need an id and a text; ids are lower case words.
         assert!(!ok(r#"{"token":"a","items":[{"id":"x"}]}"#));
         assert!(!ok(r#"{"token":"a","items":[{"id":"X","text":"x"}]}"#));
@@ -285,6 +285,10 @@ mod tests {
         assert!(!ok(
             r#"{"token":"a","items":[{"id":"x","text":"1"},{"id":"x","text":"2"}]}"#
         ));
+    }
+
+    #[test]
+    fn submenus_are_not_empty_not_checked_one_level_deep_and_a_menu_is_not_too_long() {
         // Submenus: not empty, not checked, not inside a submenu.
         assert!(!ok(
             r#"{"token":"a","items":[{"id":"s","text":"S","items":[]}]}"#
