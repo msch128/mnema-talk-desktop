@@ -1,0 +1,36 @@
+linux/eslint-suppressions.json
+  h_0ff4f4713441f4 2-9,21-112,118
+linux/scripts/gen-vectors.ts
+  h_0ff4f4713441f4 13-23
+linux/scripts/vectors/bundle.ts
+  h_0ff4f4713441f4 1-80
+linux/scripts/vectors/client.ts
+  h_0ff4f4713441f4 1-41
+linux/scripts/vectors/common.ts
+  h_0ff4f4713441f4 1-31
+linux/scripts/vectors/json.ts
+  h_0ff4f4713441f4 1-193
+linux/scripts/vectors/minisign.ts
+  h_0ff4f4713441f4 1-42
+linux/scripts/vectors/proxy.ts
+  h_0ff4f4713441f4 1-80
+linux/scripts/vectors/store.ts
+  h_0ff4f4713441f4 1-187
+linux/scripts/vectors/trust.ts
+  h_0ff4f4713441f4 1-156
+linux/scripts/vectors/zip.ts
+  h_0ff4f4713441f4 1-138
+linux/test/vectors.test.ts
+  h_0ff4f4713441f4 92-117,126-130,138-150,156-157,162
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6c09334349512ba37855120f8c94ff2ed39b91b7",
+  "prompts": {},
+  "humans": {
+    "h_0ff4f4713441f4": {
+      "author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}
