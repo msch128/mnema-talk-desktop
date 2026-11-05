@@ -134,10 +134,8 @@ installers, the signed update files and a portable ZIP (see "Releasing" in the
 main README). Acceptance dispatches can instead exercise an existing published
 EXE. Linking alone does not qualify runtime behavior or games.
 
-The shared client rejects desktop call joins, automatic call restoration, camera
-and screen sharing before capture or connection-state changes until the native
-protected-media owner is integrated. Browser voice behavior remains available.
-The browser's server-version reload banner is omitted for embedded desktop
+Voice, camera and screen sharing run in the instance's webview as in a browser;
+the host only decides the permission (see above). The browser's server-version reload banner is omitted for embedded desktop
 assets, because reloading cannot install a new desktop build.
 
 Existing vendored noise-filter assets retain their upstream notices; attribution
