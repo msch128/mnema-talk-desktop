@@ -1,0 +1,16 @@
+scripts/stage-web-bundle.sh
+  h_0ff4f4713441f4 11-15,21-22,28,30-53
+scripts/stage-web-bundle.test.mjs
+  h_0ff4f4713441f4 21,25-28,39,71-83
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ab1f2274e9484cf2e945e4785d169a7a51595abe",
+  "prompts": {},
+  "humans": {
+    "h_0ff4f4713441f4": {
+      "author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}
