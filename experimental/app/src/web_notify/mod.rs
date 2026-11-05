@@ -92,14 +92,16 @@ enum Offer {
 }
 
 /// Invisible format characters (Unicode `Cf`) that reorder or hide text:
-/// zero-width spaces and marks, bidi overrides and isolates, the word joiner
-/// and the byte order mark. The zero-width joiner stays: emoji sequences need it.
+/// zero-width spaces and marks, bidi overrides and isolates, the word joiner,
+/// the byte order mark and the tag characters (which spell ASCII text that no
+/// one sees). The zero-width joiner stays (emoji sequences need it) and so does the
+/// zero-width non-joiner (Persian words need it).
 fn is_invisible(c: char) -> bool {
     matches!(
         c,
-        '\u{ad}' | '\u{61c}' | '\u{180e}' | '\u{200b}'..='\u{200c}' | '\u{200e}'..='\u{200f}'
+        '\u{ad}' | '\u{61c}' | '\u{180e}' | '\u{200b}' | '\u{200e}'..='\u{200f}'
             | '\u{202a}'..='\u{202e}' | '\u{2060}'..='\u{2064}' | '\u{2066}'..='\u{206f}'
-            | '\u{feff}'
+            | '\u{feff}' | '\u{e0000}'..='\u{e007f}'
     )
 }
 
@@ -583,6 +585,22 @@ mod tests {
         assert_eq!(
             clean("a\u{202e}b\u{200b}c\u{feff}d\u{2066}e\u{2069}", 50),
             "abcde"
+        );
+        assert_eq!(
+            clean(
+                "pay\u{e0069}\u{e0067}\u{e006e}\u{e006f}\u{e0072}\u{e0065} now",
+                50
+            ),
+            "pay now",
+            "tag characters hide text and are dropped"
+        );
+        assert_eq!(
+            clean(
+                "\u{645}\u{6cc}\u{200c}\u{62e}\u{648}\u{627}\u{647}\u{645}",
+                50
+            ),
+            "\u{645}\u{6cc}\u{200c}\u{62e}\u{648}\u{627}\u{647}\u{645}",
+            "the zero-width non-joiner belongs to Persian words"
         );
         assert_eq!(
             clean("\u{1f468}\u{200d}\u{1f469}", 50),

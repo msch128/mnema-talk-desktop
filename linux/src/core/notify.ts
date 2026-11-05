@@ -13,7 +13,7 @@ export const MAX_BADGE = 999
 export const MIN_GAP_MS = 300
 
 export function cleanText(text: string, max: number): string {
-  const flat = text.replace(/[\p{Cc}\u200E\u200F\u202A-\u202E\u2066-\u2069\uFEFF]/gu, ' ').split(/\s+/u).filter((part) => part !== '').join(' ')
+  const flat = text.replace(/[\p{Cc}\u200E\u200F\u202A-\u202E\u2066-\u2069\uFEFF\u{E0000}-\u{E007F}]/gu, ' ').split(/\s+/u).filter((part) => part !== '').join(' ')
   const chars = Array.from(flat)
   if (chars.length <= max) return flat
   return `${chars.slice(0, Math.max(0, max - 1)).join('')}…`

@@ -18,6 +18,8 @@ test('format characters that belong to words stay, bidi controls go', () => {
   assert.equal(cleanText(family, 50), family)
   assert.equal(cleanText('\u0645\u06CC\u200C\u062E\u0648\u0627\u0647\u0645', 50), '\u0645\u06CC\u200C\u062E\u0648\u0627\u0647\u0645')
   assert.equal(cleanText('a\u202Eb\u2066c\u200Fd\uFEFFe', 50), 'a b c d e')
+  // Tag characters spell ASCII text nobody sees ("ignore" below).
+  assert.equal(cleanText('pay\u{E0069}\u{E0067}\u{E006E}\u{E006F}\u{E0072}\u{E0065} now', 50), 'pay now')
 })
 
 test('only plain identifiers may name the message of a toast', () => {
