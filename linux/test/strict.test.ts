@@ -65,6 +65,8 @@ test('the strict reader refuses what serde refuses', () => {
   assert.ok(parseStrictJson(bytes('1.0')) instanceof JsonFloat)
   assert.ok(parseStrictJson(bytes('1e0')) instanceof JsonFloat)
   assert.equal(parseStrictJson(bytes('9007199254740993')), 9007199254740993n)
+  // serde_json turns -0 into a float, which no unsigned field takes.
+  assert.ok(parseStrictJson(bytes('-0')) instanceof JsonFloat)
   assert.equal(Object.getPrototypeOf(parseStrictJson(bytes('{"__proto__":1}'))), null)
 })
 
@@ -87,6 +89,8 @@ test('a signed manifest is read as strictly as the Tauri host reads it', () => {
   refused(original.replace('"schema":1', '"schema":1.0'), 'schema written as 1.0')
   refused(original.replace('"web_client_api":1', '"web_client_api":1e0'), 'api written as 1e0')
   refused(original.replace(/"size":(\d+)/, '"size":$1.0'), 'size written as 1.0')
+  refused(original.replace(/"size":(\d+)/, '"size":-0'), 'size written as -0')
+  refused(original.replace('"schema":1', '"schema":-0'), 'schema written as -0')
 })
 
 test('a trust statement is read strictly, and a signature is trimmed like Rust trims it', () => {
