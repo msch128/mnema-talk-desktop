@@ -92,7 +92,7 @@ public static class Win {
     return SendMessageTimeout(h, 0, UIntPtr.Zero, IntPtr.Zero, 0x2 /* SMTO_ABORTIFHUNG */, ms, out r) != IntPtr.Zero;
   }
   [DllImport("user32.dll")] static extern bool AttachThreadInput(uint from, uint to, bool attach);
-  [DllImport("user32.dll")] static extern uint GetCurrentThreadId();
+  [DllImport("kernel32.dll")] static extern uint GetCurrentThreadId();
   [DllImport("user32.dll")] static extern bool BringWindowToTop(IntPtr h);
   [DllImport("user32.dll")] static extern bool ShowWindow(IntPtr h, int cmd);
   [DllImport("user32.dll")] static extern bool IsIconic(IntPtr h);
