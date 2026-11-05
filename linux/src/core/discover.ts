@@ -19,7 +19,10 @@ export function unreachableReason(error: unknown): string {
   const name = error instanceof Error ? error.name : ''
   if (code === 'ECONNREFUSED') return `The instance refused the connection. Check the address and the port. ${NAT_HINT}`
   if (code === 'ENOTFOUND' || code === 'EAI_AGAIN') return 'The instance address could not be resolved. Check the address and your network.'
-  if (code === 'ETIMEDOUT' || name === 'TimeoutError' || (error instanceof Error && error.message === 'connect timeout')) {
+  // The request's own deadline reaches us as an AbortError that carries the TimeoutError of `AbortSignal.timeout`.
+  const cause = error instanceof Error ? error.cause : undefined
+  const deadline = name === 'TimeoutError' || (cause instanceof Error && cause.name === 'TimeoutError')
+  if (code === 'ETIMEDOUT' || deadline || (error instanceof Error && error.message === 'connect timeout')) {
     return `The instance did not answer in time. Check the address, the port and your network. ${NAT_HINT}`
   }
   if (CERTIFICATE_CODE.test(code)) {
