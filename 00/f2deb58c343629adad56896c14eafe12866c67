@@ -1,0 +1,44 @@
+.github/workflows/public-tls.yml
+  h_0ff4f4713441f4 17
+experimental/app/src/web_proxy.rs
+  h_0ff4f4713441f4 5-13,15-20,22,34-38,42
+experimental/app/src/web_proxy/bundle.rs
+  h_0ff4f4713441f4 1-103
+experimental/app/src/web_proxy/client.rs
+  h_0ff4f4713441f4 1-27
+experimental/app/src/web_proxy/forward.rs
+  h_0ff4f4713441f4 1-282
+experimental/app/src/web_proxy/jar.rs
+  h_0ff4f4713441f4 1-293
+experimental/app/src/web_proxy/limits.rs
+  h_0ff4f4713441f4 1-174
+experimental/app/src/web_proxy/resp.rs
+  h_0ff4f4713441f4 1-55
+experimental/app/src/web_proxy/rules.rs
+  h_0ff4f4713441f4 1-104
+experimental/app/src/web_proxy/tests.rs
+  h_0ff4f4713441f4 1-111
+experimental/app/src/web_proxy/tests/bundle.rs
+  h_0ff4f4713441f4 1-131
+experimental/app/src/web_proxy/tests/forward.rs
+  h_0ff4f4713441f4 1-448
+experimental/app/src/web_proxy/tests/jar.rs
+  h_0ff4f4713441f4 1-323
+experimental/app/src/web_proxy/tests/rules.rs
+  h_0ff4f4713441f4 1-119
+experimental/app/src/web_proxy/tests/transfers.rs
+  h_0ff4f4713441f4 1-442
+linux/test/contract.test.ts
+  h_0ff4f4713441f4 22,38,54,59
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "00f2deb58c343629adad56896c14eafe12866c67",
+  "prompts": {},
+  "humans": {
+    "h_0ff4f4713441f4": {
+      "author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}
