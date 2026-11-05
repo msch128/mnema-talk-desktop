@@ -43,14 +43,14 @@ export function parseKey(rawHex: string): TrustedKey | null {
   return key ? { id: keyId(raw), raw, key } : null
 }
 
-/** Bundle-relative path rules, shared with the signing tool. */
+/** Bundle-relative path rules, shared with the signing tool: no empty or dot-leading segment (hidden entries, `.` and `..`). */
 export function validPath(path: string): boolean {
   if (path.length === 0 || Buffer.byteLength(path) > MAX_PATH) return false
   for (const ch of path) {
     const code = ch.codePointAt(0) as number
     if (code < 0x20 || code === 0x7f || ch === '\\') return false
   }
-  return path.split('/').every((segment) => segment !== '' && segment !== '.' && segment !== '..')
+  return path.split('/').every((segment) => segment !== '' && !segment.startsWith('.'))
 }
 
 interface FileEntry { path: string, sha256: string, size: number }

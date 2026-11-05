@@ -59,7 +59,7 @@ function outcome(name: string, keys: string[], zip: Buffer): { name: string, tru
 function bundleVectors(): Json {
   const versions = ['0.7.16', '0.0.0', '1.2.3', '123456789.0.0', '', '1', '1.2', '1.2.3.4', 'v1.2.3', '01.2.3', '1.2.x', '1..3', '1.2.3-rc1', '-1.0.0', '99999999999.0.0', '+1.0.0', '1.2.3 ', ' 1.2.3']
     .map((input) => ({ input, parsed: parseVersion(input) }))
-  const paths = ['index.html', 'assets/a-b.js', '\u00fcn\u00ef/x.js', 'a b/c', '', '/abs', 'a//b', 'a/./b', 'a/../b', '..', '.', 'a/', 'a\\b', 'a\0b', 'a\u007f', 'a\nb', 'a'.repeat(MAX_PATH), 'a'.repeat(MAX_PATH + 1)]
+  const paths = ['index.html', 'assets/a-b.js', '\u00fcn\u00ef/x.js', 'a b/c', '', '/abs', 'a//b', 'a/./b', 'a/../b', '..', '.', 'a/', 'a\\b', 'a\0b', 'a\u007f', 'a\nb', '.hidden', 'a/.well-known/x', 'a'.repeat(MAX_PATH), 'a'.repeat(MAX_PATH + 1)]
     .map((path) => ({ path, valid: validPath(path) }))
 
   const base = spec('0.8.0')
