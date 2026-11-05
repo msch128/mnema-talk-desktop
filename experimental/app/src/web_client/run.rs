@@ -112,8 +112,15 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     crate::web_notify::setup(app.handle());
     crate::native_updates::setup(app.handle());
     crate::ui_watch::start(app.handle());
-    crate::web_gaming::setup(app.handle());
-    crate::web_shell::create(app.handle())?;
+    {
+        let _step = crate::ui_watch::ui_guard::doing("start the gaming watcher");
+        crate::web_gaming::setup(app.handle());
+    }
+    {
+        // Creating the window starts WebView2, which on a cold machine can take long.
+        let _step = crate::ui_watch::ui_guard::doing("create the main window");
+        crate::web_shell::create(app.handle())?;
+    }
     refresh_in_background(app.handle());
     Ok(())
 }
