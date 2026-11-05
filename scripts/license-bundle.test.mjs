@@ -158,3 +158,15 @@ test('source and build files with a license-like name are not collected as notic
     assert.deepEqual(npm.texts.map((text) => text.name), ['LICENSE']);
   } finally { f.close(); }
 });
+
+// The license check reads the web app's lock from a pinned mnema-talk commit, so it does not
+// fail every time the lock on main moves on.
+test('the license check is pinned to a full mnema-talk commit that the workflow checks out', () => {
+  const root = join(scripts, '..');
+  const pin = readFileSync(join(root, 'experimental/licenses/web-source.txt'), 'utf8').trim();
+  assert.match(pin, /^[0-9a-f]{40}$/);
+  const workflow = readFileSync(join(root, '.github/workflows/advisories.yml'), 'utf8');
+  assert.match(workflow, /web-source\.txt/);
+  assert.match(workflow, /fetch --quiet --depth=1 https:\/\/github\.com\/msch128\/mnema-talk\.git "\$sha"/);
+  assert.doesNotMatch(workflow, /ref: main/);
+});
