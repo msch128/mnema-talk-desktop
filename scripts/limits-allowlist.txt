@@ -1,6 +1,5 @@
 # Files over the size limit (scripts/check-limits.mjs). The list only shrinks:
 # split a file by responsibility and delete its line; never add one.
-experimental/app/src/instances.rs production
 experimental/app/src/rail_layout.rs production
 experimental/app/src/web_bundle.rs production
 experimental/app/src/web_bundle.rs test
