@@ -135,6 +135,9 @@ jobs:
       - name: Script tests
         shell: bash
         run: node --test scripts/*.test.mjs
+      - name: File size limits
+        shell: bash
+        run: node scripts/check-limits.mjs
       - name: Tests of the rail and update pages
         shell: bash
         run: |
