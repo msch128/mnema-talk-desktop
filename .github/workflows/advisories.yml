@@ -88,14 +88,13 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - id: pin
-        run: echo "sha=$(tr -d '[:space:]' < experimental/licenses/web-source.txt)" >> "$GITHUB_OUTPUT"
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: msch128/mnema-talk
-          ref: ${{ steps.pin.outputs.sha }}
-          path: mnema-talk
-          persist-credentials: false
+      - name: Fetch the pinned mnema-talk commit
+        run: |
+          set -euo pipefail
+          sha=$(tr -d '[:space:]' < experimental/licenses/web-source.txt)
+          git init --quiet mnema-talk
+          git -C mnema-talk fetch --quiet --depth=1 https://github.com/msch128/mnema-talk.git "$sha"
+          git -C mnema-talk checkout --quiet --detach FETCH_HEAD
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '26'
@@ -111,7 +110,7 @@ jobs:
         if: github.event_name == 'schedule'
         run: |
           set -euo pipefail
-          git -C mnema-talk fetch --quiet --depth=1 origin main
+          git -C mnema-talk fetch --quiet --depth=1 https://github.com/msch128/mnema-talk.git main
           pinned=$(sha256sum mnema-talk/web/package-lock.json | cut -d' ' -f1)
           current=$(git -C mnema-talk show FETCH_HEAD:web/package-lock.json | sha256sum | cut -d' ' -f1)
           if [ "$pinned" != "$current" ]; then
