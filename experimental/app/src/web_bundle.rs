@@ -509,11 +509,11 @@ pub(crate) fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
 
 const STATE_FILE: &str = "state.json";
 const STATE_BACKUP: &str = "state.json.bak";
-/// Why a bundle did not verify when its signer is simply not trusted (now).
-/// Such a file stays on disk: the key may be trusted again.
 /// A cached file that could not be read (a sharing lock, a scan): it may be
 /// fine next start, so it is kept.
 const UNREADABLE: &str = "unreadable";
+/// Why a bundle did not verify when its signer is simply not trusted (now).
+/// Such a file stays on disk: the key may be trusted again.
 const NOT_TRUSTED: &str = "signature does not match a trusted key";
 
 /// The recorded marks. A state file that is there but cannot be parsed falls
