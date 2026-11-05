@@ -205,11 +205,89 @@ pub struct RawInputSource {
     running: Option<(JoinHandle<()>, u32)>,
 }
 
+/// The thread that owns the hidden window: registers the raw input devices,
+/// reports through `ready` whether that worked (with the thread id on success)
+/// and pumps messages until `WM_QUIT`.
+fn input_thread(sink: Sink, ready: mpsc::Sender<Result<u32, InputError>>) {
+    let thread = unsafe { GetCurrentThreadId() };
+    // SAFETY: window class, window and registrations are created,
+    // pumped and removed on this one thread.
+    unsafe {
+        let module = GetModuleHandleW(null());
+        let class = wide(CLASS);
+        let window_class = WNDCLASSW {
+            style: 0,
+            lpfnWndProc: Some(window_proc),
+            cbClsExtra: 0,
+            cbWndExtra: 0,
+            hInstance: module,
+            hIcon: null_mut(),
+            hCursor: null_mut(),
+            hbrBackground: null_mut(),
+            lpszMenuName: null(),
+            lpszClassName: class.as_ptr(),
+        };
+        if RegisterClassW(&window_class) == 0 {
+            let _ = ready.send(Err(InputError::Failed("Windows refused the input window.")));
+            return;
+        }
+        // A hidden, never-activated tool window: no taskbar entry, never shown.
+        let hwnd = CreateWindowExW(
+            WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
+            class.as_ptr(),
+            null(),
+            WS_POPUP,
+            0,
+            0,
+            0,
+            0,
+            null_mut(),
+            null_mut(),
+            module,
+            null(),
+        );
+        if hwnd.is_null() {
+            UnregisterClassW(class.as_ptr(), module);
+            let _ = ready.send(Err(InputError::Failed("Windows refused the input window.")));
+            return;
+        }
+        if registered_elsewhere() {
+            // Another part of the process owns the keyboard or mouse
+            // registration; taking it over would break that part.
+            DestroyWindow(hwnd);
+            UnregisterClassW(class.as_ptr(), module);
+            let _ = ready.send(Err(InputError::Conflict(
+                "Another part of Mnema already receives raw input, so push-to-talk works only while Mnema is in front.",
+            )));
+            return;
+        }
+        if !register(hwnd, RIDEV_INPUTSINK) {
+            DestroyWindow(hwnd);
+            UnregisterClassW(class.as_ptr(), module);
+            let _ = ready.send(Err(InputError::Failed("Windows refused raw input.")));
+            return;
+        }
+        let session = WTSRegisterSessionNotification(hwnd, NOTIFY_FOR_THIS_SESSION) != 0;
+        SINK.with(|slot| *slot.borrow_mut() = Some(Arc::new(sink)));
+        let _ = ready.send(Ok(thread));
+
+        let mut message: MSG = zeroed();
+        while GetMessageW(&mut message, null_mut(), 0, 0) > 0 {
+            TranslateMessage(&message);
+            DispatchMessageW(&message);
+        }
+
+        SINK.with(|slot| *slot.borrow_mut() = None);
+        if session {
+            WTSUnRegisterSessionNotification(hwnd);
+        }
+        register(hwnd, RIDEV_REMOVE);
+        DestroyWindow(hwnd);
+        UnregisterClassW(class.as_ptr(), module);
+    }
+}
+
 impl InputSource for RawInputSource {
-    #[expect(
-        clippy::too_many_lines,
-        reason = "over the limit when the limits were introduced; split it"
-    )]
     fn start(&mut self, sink: Sink) -> Result<(), InputError> {
         if self.running.is_some() {
             // The running thread keeps its own sink; say so instead of
@@ -219,84 +297,7 @@ impl InputSource for RawInputSource {
         let (ready, started) = mpsc::channel();
         let handle = std::thread::Builder::new()
             .name("mnema-input".into())
-            .spawn(move || {
-                let thread = unsafe { GetCurrentThreadId() };
-                // SAFETY: window class, window and registrations are created,
-                // pumped and removed on this one thread.
-                unsafe {
-                    let module = GetModuleHandleW(null());
-                    let class = wide(CLASS);
-                    let window_class = WNDCLASSW {
-                        style: 0,
-                        lpfnWndProc: Some(window_proc),
-                        cbClsExtra: 0,
-                        cbWndExtra: 0,
-                        hInstance: module,
-                        hIcon: null_mut(),
-                        hCursor: null_mut(),
-                        hbrBackground: null_mut(),
-                        lpszMenuName: null(),
-                        lpszClassName: class.as_ptr(),
-                    };
-                    if RegisterClassW(&window_class) == 0 {
-                        let _ = ready.send(Err(InputError::Failed("Windows refused the input window.")));
-                        return;
-                    }
-                    // A hidden, never-activated tool window: no taskbar entry, never shown.
-                    let hwnd = CreateWindowExW(
-                        WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
-                        class.as_ptr(),
-                        null(),
-                        WS_POPUP,
-                        0,
-                        0,
-                        0,
-                        0,
-                        null_mut(),
-                        null_mut(),
-                        module,
-                        null(),
-                    );
-                    if hwnd.is_null() {
-                        UnregisterClassW(class.as_ptr(), module);
-                        let _ = ready.send(Err(InputError::Failed("Windows refused the input window.")));
-                        return;
-                    }
-                    if registered_elsewhere() {
-                        // Another part of the process owns the keyboard or mouse
-                        // registration; taking it over would break that part.
-                        DestroyWindow(hwnd);
-                        UnregisterClassW(class.as_ptr(), module);
-                        let _ = ready.send(Err(InputError::Conflict(
-                            "Another part of Mnema already receives raw input, so push-to-talk works only while Mnema is in front.",
-                        )));
-                        return;
-                    }
-                    if !register(hwnd, RIDEV_INPUTSINK) {
-                        DestroyWindow(hwnd);
-                        UnregisterClassW(class.as_ptr(), module);
-                        let _ = ready.send(Err(InputError::Failed("Windows refused raw input.")));
-                        return;
-                    }
-                    let session = WTSRegisterSessionNotification(hwnd, NOTIFY_FOR_THIS_SESSION) != 0;
-                    SINK.with(|slot| *slot.borrow_mut() = Some(Arc::new(sink)));
-                    let _ = ready.send(Ok(thread));
-
-                    let mut message: MSG = zeroed();
-                    while GetMessageW(&mut message, null_mut(), 0, 0) > 0 {
-                        TranslateMessage(&message);
-                        DispatchMessageW(&message);
-                    }
-
-                    SINK.with(|slot| *slot.borrow_mut() = None);
-                    if session {
-                        WTSUnRegisterSessionNotification(hwnd);
-                    }
-                    register(hwnd, RIDEV_REMOVE);
-                    DestroyWindow(hwnd);
-                    UnregisterClassW(class.as_ptr(), module);
-                }
-            })
+            .spawn(move || input_thread(sink, ready))
             .map_err(|_| InputError::Failed("Input could not start."))?;
         match started.recv() {
             Ok(Ok(thread)) => {
