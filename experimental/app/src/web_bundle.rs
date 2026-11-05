@@ -402,19 +402,146 @@ mod shared_vectors {
         }
     }
 
+    /// One scenario of `store.json` while its steps run: the vector file, the
+    /// store under test and the folder and built-in bundle it was loaded from.
+    struct Scenario<'a> {
+        v: &'a Value,
+        store: Store,
+        dir: Option<PathBuf>,
+        builtin: Option<Vec<u8>>,
+    }
+
+    impl Scenario<'_> {
+        fn bytes(&self, name: &Value) -> Vec<u8> {
+            STANDARD
+                .decode(self.v["bundles"][name.as_str().unwrap()].as_str().unwrap())
+                .unwrap()
+        }
+
+        fn load(&self, trusted: &Value) -> Store {
+            Store::load(
+                self.dir.as_deref(),
+                self.builtin.as_deref(),
+                &named_keys(self.v, trusted),
+            )
+        }
+
+        fn install(&mut self, step: &Value, at: &str) {
+            let bundle = self.bytes(&step["bundle"]);
+            let got = self
+                .store
+                .install(&bundle, &named_keys(self.v, &step["trusted"]));
+            match (&got, &step["expect"]["ok"], &step["expect"]["error"]) {
+                (Ok(version), ok, Value::Null) => {
+                    assert_eq!(version.to_string(), ok.as_str().unwrap(), "{at}")
+                }
+                (Err(message), Value::Null, error) => {
+                    assert_eq!(message, error.as_str().unwrap(), "{at}")
+                }
+                _ => panic!("{at}: {got:?} against {}", step["expect"]),
+            }
+        }
+
+        fn select(&self, step: &Value, at: &str) {
+            let server = ServerInfo {
+                version: step["server"]["version"]
+                    .as_str()
+                    .map(|s| Version::parse(s).unwrap()),
+                web_client_api: step["server"]["api"].as_u64().unwrap() as u32,
+            };
+            match self.store.select(&server) {
+                Ok(held) => assert_eq!(
+                    held.bundle.version.to_string(),
+                    step["expect"]["ok"].as_str().unwrap(),
+                    "{at}"
+                ),
+                Err(refusal) => {
+                    assert_eq!(
+                        refusal_kind(&refusal),
+                        step["expect"]["refusal"].as_str().unwrap(),
+                        "{at}"
+                    );
+                    if let Refusal::ServerTooOld { needs } = refusal {
+                        assert_eq!(
+                            needs.to_string(),
+                            step["expect"]["needs"].as_str().unwrap(),
+                            "{at}"
+                        );
+                    }
+                }
+            }
+        }
+
+        fn caps(&mut self, step: &Value) {
+            let caps: BTreeMap<u32, Version> = step["caps"]
+                .as_object()
+                .unwrap()
+                .iter()
+                .map(|(k, c)| {
+                    (
+                        k.parse().unwrap(),
+                        Version::parse(c.as_str().unwrap()).unwrap(),
+                    )
+                })
+                .collect();
+            self.store.apply_caps(&caps);
+        }
+
+        fn state(&self, step: &Value, at: &str) {
+            let expect = &step["expect"];
+            assert_eq!(
+                self.store.floor().to_string(),
+                expect["floor"].as_str().unwrap(),
+                "{at}"
+            );
+            let mut high_water = serde_json::Map::new();
+            for api in 1..=3u32 {
+                if let Some(mark) = self.store.high_water(api) {
+                    high_water.insert(api.to_string(), Value::String(mark.to_string()));
+                }
+            }
+            assert_eq!(Value::Object(high_water), expect["high_water"], "{at}");
+            let held: Vec<String> = self
+                .store
+                .held()
+                .iter()
+                .map(|h| format!("{}:{}", h.bundle.version, h.source.as_str()))
+                .collect();
+            assert_eq!(held, strings(&expect["held"]), "{at}");
+            assert_eq!(
+                self.store.rejected.len() as u64,
+                expect["rejected"].as_u64().unwrap(),
+                "{at}"
+            );
+        }
+
+        fn step(&mut self, step: &Value, at: &str) {
+            match step["op"].as_str().unwrap() {
+                "install" => self.install(step, at),
+                "select" => self.select(step, at),
+                "reconcile" => assert_eq!(
+                    self.store.reconcile(&named_keys(self.v, &step["trusted"])),
+                    step["expect"].as_bool().unwrap(),
+                    "{at}"
+                ),
+                "caps" => self.caps(step),
+                "state" => self.state(step, at),
+                "restart" => self.store = self.load(&step["trusted"]),
+                "remove_cached" => {
+                    let file = format!("mnema-web-{}.zip", step["version"].as_str().unwrap());
+                    std::fs::remove_file(self.dir.as_ref().unwrap().join(file)).unwrap();
+                }
+                "forget_state" => {
+                    let _ = std::fs::remove_file(self.dir.as_ref().unwrap().join("state.json"));
+                }
+                other => panic!("{at}: unknown step {other}"),
+            }
+        }
+    }
+
     #[test]
-    #[expect(
-        clippy::cognitive_complexity,
-        clippy::too_many_lines,
-        reason = "over the limit when the limits were introduced; split it"
-    )]
     fn stores() {
         let v = load(include_str!("../../../test-vectors/store.json"));
-        let bytes = |name: &Value| {
-            STANDARD
-                .decode(v["bundles"][name.as_str().unwrap()].as_str().unwrap())
-                .unwrap()
-        };
         for (index, s) in v["scenarios"].as_array().unwrap().iter().enumerate() {
             let name = s["name"].as_str().unwrap();
             let dir = s["persist"].as_bool().unwrap().then(|| {
@@ -424,125 +551,23 @@ mod shared_vectors {
                 std::fs::create_dir_all(&d).unwrap();
                 d
             });
-            let builtin = s["builtin"]
+            let mut run = Scenario {
+                v: &v,
+                store: Store::load(None, None, &[]),
+                dir,
+                builtin: None,
+            };
+            run.builtin = s["builtin"]
                 .as_str()
-                .map(|b| bytes(&Value::String(b.to_owned())));
-            let mut store = Store::load(
-                dir.as_deref(),
-                builtin.as_deref(),
-                &named_keys(&v, &s["trusted"]),
-            );
+                .map(|b| run.bytes(&Value::String(b.to_owned())));
+            run.store = run.load(&s["trusted"]);
             for (n, step) in s["steps"].as_array().unwrap().iter().enumerate() {
-                let op = step["op"].as_str().unwrap();
-                let at = format!("{name} #{n} {op}");
-                match op {
-                    "install" => {
-                        let got = store
-                            .install(&bytes(&step["bundle"]), &named_keys(&v, &step["trusted"]));
-                        match (&got, &step["expect"]["ok"], &step["expect"]["error"]) {
-                            (Ok(version), ok, Value::Null) => {
-                                assert_eq!(version.to_string(), ok.as_str().unwrap(), "{at}")
-                            }
-                            (Err(message), Value::Null, error) => {
-                                assert_eq!(message, error.as_str().unwrap(), "{at}")
-                            }
-                            _ => panic!("{at}: {got:?} against {}", step["expect"]),
-                        }
-                    }
-                    "select" => {
-                        let server = ServerInfo {
-                            version: step["server"]["version"]
-                                .as_str()
-                                .map(|s| Version::parse(s).unwrap()),
-                            web_client_api: step["server"]["api"].as_u64().unwrap() as u32,
-                        };
-                        match store.select(&server) {
-                            Ok(held) => assert_eq!(
-                                held.bundle.version.to_string(),
-                                step["expect"]["ok"].as_str().unwrap(),
-                                "{at}"
-                            ),
-                            Err(refusal) => {
-                                assert_eq!(
-                                    refusal_kind(&refusal),
-                                    step["expect"]["refusal"].as_str().unwrap(),
-                                    "{at}"
-                                );
-                                if let Refusal::ServerTooOld { needs } = refusal {
-                                    assert_eq!(
-                                        needs.to_string(),
-                                        step["expect"]["needs"].as_str().unwrap(),
-                                        "{at}"
-                                    );
-                                }
-                            }
-                        }
-                    }
-                    "reconcile" => {
-                        assert_eq!(
-                            store.reconcile(&named_keys(&v, &step["trusted"])),
-                            step["expect"].as_bool().unwrap(),
-                            "{at}"
-                        );
-                    }
-                    "caps" => {
-                        let caps: BTreeMap<u32, Version> = step["caps"]
-                            .as_object()
-                            .unwrap()
-                            .iter()
-                            .map(|(k, c)| {
-                                (
-                                    k.parse().unwrap(),
-                                    Version::parse(c.as_str().unwrap()).unwrap(),
-                                )
-                            })
-                            .collect();
-                        store.apply_caps(&caps);
-                    }
-                    "state" => {
-                        let expect = &step["expect"];
-                        assert_eq!(
-                            store.floor().to_string(),
-                            expect["floor"].as_str().unwrap(),
-                            "{at}"
-                        );
-                        let mut high_water = serde_json::Map::new();
-                        for api in 1..=3u32 {
-                            if let Some(mark) = store.high_water(api) {
-                                high_water.insert(api.to_string(), Value::String(mark.to_string()));
-                            }
-                        }
-                        assert_eq!(Value::Object(high_water), expect["high_water"], "{at}");
-                        let held: Vec<String> = store
-                            .held()
-                            .iter()
-                            .map(|h| format!("{}:{}", h.bundle.version, h.source.as_str()))
-                            .collect();
-                        assert_eq!(held, strings(&expect["held"]), "{at}");
-                        assert_eq!(
-                            store.rejected.len() as u64,
-                            expect["rejected"].as_u64().unwrap(),
-                            "{at}"
-                        );
-                    }
-                    "restart" => {
-                        store = Store::load(
-                            dir.as_deref(),
-                            builtin.as_deref(),
-                            &named_keys(&v, &step["trusted"]),
-                        );
-                    }
-                    "remove_cached" => {
-                        let file = format!("mnema-web-{}.zip", step["version"].as_str().unwrap());
-                        std::fs::remove_file(dir.as_ref().unwrap().join(file)).unwrap();
-                    }
-                    "forget_state" => {
-                        let _ = std::fs::remove_file(dir.as_ref().unwrap().join("state.json"));
-                    }
-                    other => panic!("{at}: unknown step {other}"),
-                }
+                run.step(
+                    step,
+                    &format!("{name} #{n} {}", step["op"].as_str().unwrap()),
+                );
             }
-            if let Some(d) = dir {
+            if let Some(d) = run.dir {
                 let _ = std::fs::remove_dir_all(d);
             }
         }
