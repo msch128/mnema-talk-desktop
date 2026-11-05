@@ -1,5 +1,6 @@
 //! What counts as the app: its origin, its routes and its own downloads.
 use super::*;
+use crate::web_client::commands::own_blob;
 
 #[test]
 fn only_the_instance_window_announces_notifications() {

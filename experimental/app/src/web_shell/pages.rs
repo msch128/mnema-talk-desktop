@@ -140,7 +140,7 @@ fn save_download(
 
 /// Where a download goes in `dir`: the suggested name reduced to a plain file
 /// name, with " (2)", " (3)" and so on before the extension while `taken`.
-#[cfg_attr(not(any(target_os = "macos", test)), allow(dead_code))]
+#[cfg(any(target_os = "macos", test))]
 fn download_target(
     dir: &std::path::Path,
     suggested: &str,

@@ -6,6 +6,8 @@
 //! sidepeek belong to exactly one: the server that owns the Talk the person is
 //! in. Only that server's page may feed them, and only its page receives what
 //! they send back.
+// The modules below are shared with the gaming-logic crate, which tests all of them on every
+// OS; this host uses the parts that its platform has, so the rest is dead code here.
 #[allow(dead_code)]
 #[path = "../../../src/foreground.rs"]
 mod foreground;

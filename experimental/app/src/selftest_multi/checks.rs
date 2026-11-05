@@ -244,27 +244,12 @@ pub(super) async fn removal(
         trusted.registry.lock().is_ok_and(|r| r.badge() == 0),
         "",
     );
-    #[cfg(not(target_os = "macos"))]
-    if let Some(dir) = profile {
-        let wiped = until("B's storage is wiped", || !dir.exists()).await;
-        check("B's browser storage is wiped", wiped, dir.display());
-    }
-    #[cfg(target_os = "macos")]
-    {
-        let _ = profile;
-        let wiped = async {
-            for _ in 0..50 {
-                let ids = app.fetch_data_store_identifiers().await.unwrap_or_default();
-                if ids.len() <= 2 {
-                    return true;
-                }
-                tokio::time::sleep(Duration::from_millis(200)).await;
-            }
-            false
-        }
-        .await;
-        check("B's browser storage is wiped", wiped, "data store remains");
-    }
+    browser_storage_wiped(app, profile).await;
+    survivors(app, trusted, a, second).await;
+}
+
+/// What the removal must leave alone: the list on disk and the other server.
+async fn survivors(app: &tauri::AppHandle, trusted: &Trusted, a: &str, second: &str) {
     let list = trusted
         .instances_file()
         .and_then(|f| std::fs::read_to_string(f).ok())
@@ -289,6 +274,32 @@ pub(super) async fn removal(
         Ok(Some(true))
     );
     check("A keeps running", reload, "");
+}
+
+/// Checks that the removed server's engine storage is gone: its profile folder
+/// where the engine keeps one, its data store on macOS.
+async fn browser_storage_wiped(app: &tauri::AppHandle, profile: Option<std::path::PathBuf>) {
+    #[cfg(not(target_os = "macos"))]
+    if let Some(dir) = profile {
+        let wiped = until("B's storage is wiped", || !dir.exists()).await;
+        check("B's browser storage is wiped", wiped, dir.display());
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let _ = profile;
+        let wiped = async {
+            for _ in 0..50 {
+                let ids = app.fetch_data_store_identifiers().await.unwrap_or_default();
+                if ids.len() <= 2 {
+                    return true;
+                }
+                tokio::time::sleep(Duration::from_millis(200)).await;
+            }
+            false
+        }
+        .await;
+        check("B's browser storage is wiped", wiped, "data store remains");
+    }
 }
 
 fn a_text(trusted: &Trusted, id: &str) -> String {

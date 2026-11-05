@@ -43,7 +43,7 @@ pub(super) fn show_dialog(kind: Dialog, text: &str) -> bool {
 /// text and the title as its `argv`. Cancel makes `osascript` fail. An error
 /// offers "Copy", which puts the whole text on the clipboard: the text of a
 /// macOS alert cannot be selected.
-#[cfg_attr(not(any(target_os = "macos", test)), allow(dead_code))]
+#[cfg(any(target_os = "macos", test))]
 pub(super) fn osascript_args(kind: Dialog, text: &str) -> Vec<String> {
     let lines: &[&str] = match kind {
         Dialog::Error => &[

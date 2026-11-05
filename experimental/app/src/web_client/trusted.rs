@@ -267,7 +267,6 @@ impl Trusted {
         self.list_unreadable
     }
 
-    #[cfg_attr(target_os = "macos", allow(dead_code))]
     pub(crate) fn data_dir(&self) -> Option<&std::path::Path> {
         self.data_dir.as_deref()
     }

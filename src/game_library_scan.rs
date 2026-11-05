@@ -292,10 +292,13 @@ impl Launcher for Ea {
 
 /// The launchers this system can have.
 pub fn default_launchers() -> Vec<Box<dyn Launcher>> {
-    #[cfg_attr(not(windows), allow(unused_mut))]
-    let mut launchers: Vec<Box<dyn Launcher>> = Vec::new();
+    #[cfg(not(windows))]
+    {
+        Vec::new()
+    }
     #[cfg(windows)]
     {
+        let mut launchers: Vec<Box<dyn Launcher>> = Vec::new();
         let mut roots = vec![PathBuf::from(r"C:\Program Files (x86)\Steam")];
         if let Some(key) = registry::Key::open_machine(r"SOFTWARE\WOW6432Node\Valve\Steam")
             && let Some(path) = key.text("InstallPath")
@@ -314,8 +317,8 @@ pub fn default_launchers() -> Vec<Box<dyn Launcher>> {
         }
         launchers.push(Box::new(Gog));
         launchers.push(Box::new(Ea));
+        launchers
     }
-    launchers
 }
 
 /// The finished index, shared with the foreground path.

@@ -13,7 +13,7 @@ use tauri::{
     webview::WebviewBuilder,
 };
 
-#[cfg_attr(target_os = "macos", allow(dead_code))]
+#[cfg(not(target_os = "macos"))]
 const PROFILES: &str = "profiles";
 const WIPE_ATTEMPTS: u32 = 20;
 

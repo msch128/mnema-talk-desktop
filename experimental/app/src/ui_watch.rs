@@ -6,6 +6,8 @@
 #[cfg(windows)]
 #[path = "../../../src/hung_window.rs"]
 pub mod hung_window;
+// Shared with the gaming-logic crate, which tests all of it on every OS; the stall tracker
+// is only used on Windows.
 #[allow(dead_code)]
 #[path = "../../../src/ui_guard.rs"]
 pub mod ui_guard;

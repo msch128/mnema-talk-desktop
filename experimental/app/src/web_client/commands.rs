@@ -66,7 +66,7 @@ pub(crate) fn app_api(url: &Url) -> bool {
 
 /// A `blob:` address the page made itself (`blob:<app origin>/<id>`), as the
 /// recovery codes' download uses.
-#[cfg_attr(not(any(target_os = "macos", test)), allow(dead_code))]
+#[cfg(any(target_os = "macos", test))]
 pub(crate) fn own_blob(url: &Url) -> bool {
     url.scheme() == "blob"
         && Url::parse(url.path()).is_ok_and(|inner| local_origin(&inner).is_some())

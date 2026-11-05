@@ -44,6 +44,19 @@ pub fn start(app: &tauri::AppHandle) {
     });
 }
 
+/// Waits (up to ten seconds) until the page can reach the host.
+async fn wait_for_bridge(app: &tauri::AppHandle, label: &str) {
+    for _ in 0..100 {
+        if eval(app, label, "typeof window.__TAURI_INTERNALS__")
+            .await
+            .is_some_and(|v| v == "\"object\"")
+        {
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+}
+
 async fn drive(app: &tauri::AppHandle, first: &str, second: &str) {
     let trusted = app.state::<Trusted>();
     let (a, b) = (
@@ -86,15 +99,7 @@ async fn drive(app: &tauri::AppHandle, first: &str, second: &str) {
         return;
     }
     for label in [&page_a, &page_b] {
-        for _ in 0..100 {
-            if eval(app, label, "typeof window.__TAURI_INTERNALS__")
-                .await
-                .is_some_and(|v| v == "\"object\"")
-            {
-                break;
-            }
-            tokio::time::sleep(Duration::from_millis(100)).await;
-        }
+        wait_for_bridge(app, label).await;
     }
     isolation(app, &page_a, &page_b).await;
     counters(app, &a, &b, &page_a, &page_b).await;
