@@ -1,0 +1,113 @@
+//! The network rounds: choosing the bundle for a server, and the background
+//! check for trust statements and newer bundles.
+use super::trusted::{ROUND_REUSE, Trusted};
+use crate::web_bundle::{Held, Refusal, ServerInfo, Version};
+use crate::web_proxy::now;
+use tauri::Manager;
+
+/// The verified bundle for this server. When the server is ahead of every
+/// bundle held, look for an update first; never fall back to the server's own
+/// JavaScript.
+pub(crate) async fn choose(trusted: &Trusted, server: &ServerInfo) -> Result<Held, String> {
+    let first = trusted.store.lock().map_err(|_| "busy")?.select(server);
+    match first {
+        Ok(held) => Ok(held),
+        Err(Refusal::ServerNewer) => {
+            // Servers that start together queue here for one round. Whoever
+            // comes next first looks at what the round before it brought, and
+            // does not fetch again within `ROUND_REUSE`, offline or not.
+            let mut last = trusted.round.lock().await;
+            let select = || {
+                trusted
+                    .store
+                    .lock()
+                    .map_err(|_| "busy".to_owned())?
+                    .select(server)
+                    .map_err(|refusal| refusal.to_string())
+            };
+            if let Ok(held) = select() {
+                return Ok(held);
+            }
+            if last.is_none_or(|at| at.elapsed() >= ROUND_REUSE) {
+                if !trusted.fresh() {
+                    trusted.trust_round().await;
+                }
+                if trusted.fresh() {
+                    let _ =
+                        crate::web_updates::check_and_install(&trusted.store, &trusted.keys).await;
+                }
+                *last = Some(std::time::Instant::now());
+            }
+            select()
+        }
+        Err(refusal) => Err(refusal.to_string()),
+    }
+}
+
+/// Verifies updates in the background; a bundle that arrives while no bundle
+/// is usable (first start without a built-in one) is picked up at once.
+pub(super) fn refresh_in_background(app: &tauri::AppHandle) {
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let mut first = true;
+        loop {
+            refresh_once(&app, first).await;
+            first = false;
+            tokio::time::sleep(std::time::Duration::from_secs(
+                crate::web_bundle::CHECK_INTERVAL_SECS,
+            ))
+            .await;
+        }
+    });
+}
+
+/// Whether a round really looked for a bundle. A round that was skipped
+/// (no fresh trust statement) or failed (offline, refused) did not, and must
+/// not postpone the next check.
+pub(super) fn looked(result: Option<&Result<Option<Version>, String>>) -> bool {
+    result.is_some_and(Result::is_ok)
+}
+
+/// One round: the trust statement first (a revoked key must stop counting
+/// before anything else is installed), then newer bundles. The statement is
+/// fetched even when the update check is switched off: that switch spares the
+/// release request to GitHub, and must not stop a revoked key from counting.
+async fn refresh_once(app: &tauri::AppHandle, first: bool) {
+    let trusted = app.state::<Trusted>();
+    let mut last = trusted.round.lock().await;
+    let dropped = trusted.trust_round().await;
+    let updates = !crate::web_updates::disabled();
+    let had_bundle = trusted
+        .store
+        .lock()
+        .map(|s| s.newest().is_some())
+        .unwrap_or(false);
+    let due = trusted
+        .store
+        .lock()
+        .map(|s| s.check_due(now() as u64))
+        .unwrap_or(false);
+    let installed = if updates && (!had_bundle || dropped || due || !first) {
+        // Freeze protection: no new bundles without a fresh trust statement.
+        let result = if trusted.fresh() {
+            Some(crate::web_updates::check_and_install(&trusted.store, &trusted.keys).await)
+        } else {
+            None
+        };
+        if looked(result.as_ref())
+            && let Ok(mut store) = trusted.store.lock()
+        {
+            store.mark_checked(now() as u64);
+        }
+        *last = Some(std::time::Instant::now());
+        result
+    } else {
+        None
+    };
+    drop(last);
+    // Pages that were showing a withdrawn bundle, or none, move to the newly
+    // installed one, or show why there is none.
+    if dropped || (!had_bundle && matches!(installed, Some(Ok(Some(_))))) {
+        crate::web_shell::bundles_changed(app);
+    }
+}

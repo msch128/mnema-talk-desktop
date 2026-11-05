@@ -329,13 +329,16 @@ mod tests {
         })
         .collect();
         // The big modules are split into a folder of parts next to their file.
-        for module in ["web_gaming", "web_shell"] {
+        for module in ["web_client", "web_gaming", "web_shell"] {
             for entry in std::fs::read_dir(src.join(module))
                 .into_iter()
                 .flatten()
                 .flatten()
             {
                 let path = entry.path();
+                if !path.is_file() {
+                    continue;
+                }
                 sources.push((
                     format!("{module}/{}", entry.file_name().to_string_lossy()),
                     std::fs::read_to_string(&path).unwrap(),

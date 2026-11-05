@@ -13,6 +13,7 @@ on:
   pull_request:
     paths:
       - experimental/app/src/web_client.rs
+      - experimental/app/src/web_client/**
       - experimental/app/src/web_proxy.rs
       - experimental/app/src/web_proxy/**
       - experimental/app/src/web_ws.rs
@@ -73,7 +74,7 @@ jobs:
       - name: A public certificate on a non-default port is trusted
         shell: bash
         run: |
-          cargo test --locked --manifest-path experimental/app/Cargo.toml --features shell,web-client,custom-protocol a_public_certificate_on_a_non_default_port_is_trusted -- --exact web_client::shared_vectors::a_public_certificate_on_a_non_default_port_is_trusted --nocapture
+          cargo test --locked --manifest-path experimental/app/Cargo.toml --features shell,web-client,custom-protocol a_public_certificate_on_a_non_default_port_is_trusted -- --exact web_client::tests::discover::a_public_certificate_on_a_non_default_port_is_trusted --nocapture
 
   linux:
     name: public-tls (linux)
