@@ -10,3 +10,13 @@ test('the gaming hang script falls back to TEMP before it builds a path from RUN
   const root = script.indexOf('if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { $env:TEMP }');
   assert.ok(root > 0 && root < script.indexOf('Join-Path $tempRoot'));
 });
+
+// Windows grants SetForegroundWindow only some of the time, so the gaming check retries the focus
+// change and verifies it. A run in which the game never took the focus must still fail.
+test('the gaming hang script retries taking the focus and still fails when the game never got it', () => {
+  const script = readFileSync(new URL('./test-windows-gaming-hang.ps1', import.meta.url), 'utf8');
+  assert.match(script, /AttachThreadInput/);
+  assert.match(script, /GetForegroundWindow\(\) == h/);
+  assert.match(script, /\[Win\]::Acquire\(\$target, \d+, \d+, \[ref\]\$focusLog\)/);
+  assert.match(script, /if \(\$focused -lt 1\) \{ throw .*the check proved nothing/);
+});

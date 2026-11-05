@@ -91,11 +91,50 @@ public static class Win {
     UIntPtr r;
     return SendMessageTimeout(h, 0, UIntPtr.Zero, IntPtr.Zero, 0x2 /* SMTO_ABORTIFHUNG */, ms, out r) != IntPtr.Zero;
   }
-  public static bool Focus(IntPtr h) {
-    keybd_event(0x12, 0, 0, UIntPtr.Zero);      // an Alt tap lets this process take the foreground
-    keybd_event(0x12, 0, 2, UIntPtr.Zero);
-    SetForegroundWindow(h);
-    return GetForegroundWindow() == h;
+  [DllImport("user32.dll")] static extern bool AttachThreadInput(uint from, uint to, bool attach);
+  [DllImport("kernel32.dll")] static extern uint GetCurrentThreadId();
+  [DllImport("user32.dll")] static extern bool BringWindowToTop(IntPtr h);
+  [DllImport("user32.dll")] static extern bool ShowWindow(IntPtr h, int cmd);
+  [DllImport("user32.dll")] static extern bool IsIconic(IntPtr h);
+  [DllImport("user32.dll")] static extern void SwitchToThisWindow(IntPtr h, bool alt);
+  [DllImport("user32.dll")] static extern bool SystemParametersInfo(uint action, uint param, IntPtr value, uint flags);
+
+  // "title (process.exe)" of a window, for messages that say who held the foreground.
+  public static string Describe(IntPtr h) {
+    if (h == IntPtr.Zero) return "no window";
+    uint pid; GetWindowThreadProcessId(h, out pid);
+    string name = "?";
+    try { name = System.Diagnostics.Process.GetProcessById((int)pid).ProcessName + ".exe"; } catch { }
+    return "'" + Title(h) + "' (" + name + ")";
+  }
+  // Windows lets SetForegroundWindow through only sometimes, so one call is not enough. Each
+  // attempt joins the input queue of the current foreground thread, taps Alt, restores,
+  // raises and switches to the window, then checks GetForegroundWindow. Returns true as soon
+  // as the window is in front; `log` has one line per attempt either way.
+  public static bool Acquire(IntPtr h, int attempts, int gapMs, out string log) {
+    StringBuilder sb = new StringBuilder();
+    SystemParametersInfo(0x2001 /* SPI_SETFOREGROUNDLOCKTIMEOUT */, 0, IntPtr.Zero, 0);
+    bool ok = false;
+    for (int n = 1; n <= attempts && !ok; n++) {
+      IntPtr fg = GetForegroundWindow();
+      if (fg != h) {
+        uint pid; uint fgThread = fg == IntPtr.Zero ? 0 : GetWindowThreadProcessId(fg, out pid);
+        uint me = GetCurrentThreadId();
+        bool attached = fgThread != 0 && fgThread != me && AttachThreadInput(me, fgThread, true);
+        keybd_event(0x12, 0, 0, UIntPtr.Zero);      // an Alt tap lets this process take the foreground
+        keybd_event(0x12, 0, 2, UIntPtr.Zero);
+        if (IsIconic(h)) ShowWindow(h, 9 /* SW_RESTORE */);
+        BringWindowToTop(h);
+        SetForegroundWindow(h);
+        SwitchToThisWindow(h, true);
+        if (attached) AttachThreadInput(me, fgThread, false);
+        System.Threading.Thread.Sleep(gapMs);
+      }
+      ok = GetForegroundWindow() == h;
+      sb.Append("attempt " + n + ": " + (ok ? "in front" : "held by " + Describe(GetForegroundWindow())) + "\n");
+    }
+    log = sb.ToString();
+    return ok;
   }
   public static void Key(byte vk, bool down) { keybd_event(vk, 0, down ? 0u : 2u, UIntPtr.Zero); }
 }
@@ -144,14 +183,18 @@ try {
   }
   if (-not $gameWindow -or -not $otherWindow) { throw 'The stand-in windows did not appear' }
 
-  $round = 0; $probes = 0; $failures = @(); $focused = 0; $sidepeekSeen = $false; $overlaySeen = $false
+  $round = 0; $probes = 0; $failures = @(); $focused = 0; $focusTries = 0; $lastFocusLog = ''; $sidepeekSeen = $false; $overlaySeen = $false
   $clock = [Diagnostics.Stopwatch]::StartNew()
   $nextFocus = 0
   while ($clock.Elapsed.TotalSeconds -lt $Seconds) {
     if ($clock.ElapsedMilliseconds -ge $nextFocus) {
       $round++
       $target = if ($round % 2 -eq 1) { $gameWindow } else { $otherWindow }
-      if ([Win]::Focus($target) -and $target -eq $gameWindow) { $focused++ }
+      $focusLog = ''
+      $got = [Win]::Acquire($target, 8, 150, [ref]$focusLog)
+      $name = if ($target -eq $gameWindow) { 'game' } else { 'other' }
+      Write-Host "round $round focus $name -> $(if ($got) { 'ok' } else { 'FAILED' })`n$($focusLog.TrimEnd())"
+      if ($target -eq $gameWindow) { $focusTries++; $lastFocusLog = $focusLog.TrimEnd(); if ($got) { $focused++ } }
       # A flood of key events, then the overlay shortcut (Alt+M) twice.
       for ($i = 0; $i -lt 100; $i++) { [Win]::Key(0x41, $true); [Win]::Key(0x41, $false) }
       [Win]::Key(0x12, $true); [Win]::Key(0x4D, $true); [Win]::Key(0x4D, $false); [Win]::Key(0x12, $false)
@@ -171,7 +214,7 @@ try {
   Write-Host "probes=$probes focusedGame=$focused sidepeek=$sidepeekSeen overlay=$overlaySeen failures=$($failures.Count)"
   if (Test-Path $log) { Write-Host '--- desktop.log ---'; Get-Content $log | Write-Host } else { Write-Host 'no desktop.log' }
   if ($failures.Count) { $failures | Select-Object -First 20 | ForEach-Object { Write-Host $_ }; throw 'The host stopped answering while a full-screen game took the focus' }
-  if ($focused -lt 1) { throw "The stand-in game took the focus only $focused times; the check proved nothing" }
+  if ($focused -lt 1) { throw "The stand-in game never took the focus in $focusTries rounds of up to 8 attempts each; the check proved nothing. Last round: $lastFocusLog. Foreground now: $([Win]::Describe([Win]::GetForegroundWindow()))" }
   if (-not $sidepeekSeen) { throw 'The host never detected the stand-in game (no sidepeek window); the check proved nothing' }
   if (-not (Test-Path $log) -or -not (Select-String -Path $log -Pattern ' started ' -Quiet)) { throw 'The host wrote no desktop.log' }
   if ($app.HasExited) { throw 'The host exited during the check' }
