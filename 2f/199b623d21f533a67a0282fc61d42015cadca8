@@ -1,0 +1,42 @@
+scripts/real-server-selftest.mjs
+  s_06fcde5dbef956::t_c3f79c8616c14e 1-147
+  s_06fcde5dbef956::t_8bc957e96e4f51 148-201
+experimental/app/src/selftest_real/page.rs
+  s_06fcde5dbef956::t_39a04b82ece145 1-60
+experimental/app/src/selftest_real.rs
+  s_06fcde5dbef956::t_e83ac75c71fce9 12-15,18,21-22,26,31-38,75-89,99-100,107,118,123-131,134-135,138-143,151-155,163-166,168-170,172-176,178-211,214-223,225,228-244
+  s_06fcde5dbef956::t_af0ef76fbde085 1-11,16-17,19-20,23-25,27-30,39-74,90-98,101-104,106,108-116,119-122,132-133,136-137,144-146,148-150,156-162,167,177,212-213,224,226-227,245
+  s_06fcde5dbef956::t_431aedc26523d4 105,117,147,171,246-249
+experimental/app/src/selftest_real/restart.rs
+  s_06fcde5dbef956::t_07aeb78752d31c 1-43
+.github/workflows/desktop-client.yml
+  s_06fcde5dbef956::t_b710cdea233517 69-74,620-804
+experimental/app/Cargo.toml
+  s_06fcde5dbef956::t_107509e210411f 13-14
+experimental/app/src/main.rs
+  s_06fcde5dbef956::t_3fce57e415b502 23-26
+experimental/app/src/selftest_multi/probe.rs
+  s_06fcde5dbef956::t_adccacf8cacad4 25
+experimental/app/src/selftest_page.rs
+  s_06fcde5dbef956::t_9ba2e756819ff4 1-42
+experimental/app/src/web_shell.rs
+  s_06fcde5dbef956::t_0d61c9898af447 28-29,32
+experimental/app/src/web_shell/window.rs
+  s_06fcde5dbef956::t_466e762f2cb570 130-131
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2f199b623d21f533a67a0282fc61d42015cadca8",
+  "prompts": {},
+  "sessions": {
+    "s_06fcde5dbef956": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "94b73314-95fe-4e96-8c43-d20b0f28358d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}
