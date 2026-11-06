@@ -88,6 +88,8 @@ const PKG = Buffer.concat([Buffer.from([0x7f, 0x45, 0x4c, 0x46]), Buffer.from('a
 
 test('pure rules: versions, skips, intervals, urls, platforms and notes', () => {
   assert.deepEqual(offerable('0.1.0', '0.1.1'), [0, 1, 1])
+  assert.deepEqual(offerable('1.3.3', '1.3.4'), [1, 3, 4])
+  assert.equal(offerable('1.3.4', '1.3.3'), null)
   assert.deepEqual(offerable('0.3.9', '1.2.0'), [1, 2, 0])
   assert.equal(offerable('0.1.1', '0.1.1'), null)
   assert.equal(offerable('0.2.0', '0.1.9'), null)

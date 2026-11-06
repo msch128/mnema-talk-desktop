@@ -29,6 +29,8 @@ fn the_interval_matches_the_web_bundles_and_a_clock_set_back_is_due() {
 #[test]
 fn only_strictly_newer_plain_versions_are_offered() {
     assert_eq!(offerable("0.1.0", "0.1.1"), Version::parse("0.1.1"));
+    assert_eq!(offerable("1.3.3", "1.3.4"), Version::parse("1.3.4"));
+    assert_eq!(offerable("1.3.4", "1.3.3"), None);
     assert_eq!(offerable("0.1.9", "0.2.0"), Version::parse("0.2.0"));
     assert_eq!(offerable("0.9.0", "0.10.0"), Version::parse("0.10.0"));
     assert_eq!(offerable("0.3.9", "1.2.0"), Version::parse("1.2.0"));

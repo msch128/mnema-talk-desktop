@@ -56,6 +56,30 @@ test('an address keeps its port and drops a pasted invite link', () => {
   assert.throws(() => parseAddress('a'.repeat(3000)), /Enter an HTTPS instance address/)
 })
 
+test('a port survives in every form a person types it', () => {
+  const href = (input: string) => parseAddress(input).href
+  assert.equal(href('community.example:8443'), 'https://community.example:8443/')
+  assert.equal(href('localhost:8080'), 'https://localhost:8080/')
+  assert.equal(href('[::1]:3000'), 'https://[::1]:3000/')
+  assert.equal(href('https://[::1]:8443/'), 'https://[::1]:8443/')
+  assert.equal(href('http://[::1]:3000'), 'http://[::1]:3000/')
+  assert.equal(href('http://localhost:8080/invite/abc234xyz789'), 'http://localhost:8080/')
+  assert.equal(href('https://community.example:8443/invite/abc234xyz789'), 'https://community.example:8443/')
+  assert.equal(href('community.example:8443/invite/abc234xyz789'), 'https://community.example:8443/')
+  assert.throws(() => parseAddress('https://community.example:99999'), Error)
+})
+
+test('an invite link with a port carries a code of 6 to 64 characters', () => {
+  const link = (code: string) => `https://community.example:8443/invite/${code}`
+  assert.equal(inviteCode(link('abc234')), 'abc234')
+  assert.equal(inviteCode(link('a'.repeat(64))), 'a'.repeat(64))
+  assert.equal(inviteCode(link('abc23')), null)
+  assert.equal(inviteCode(link('a'.repeat(65))), null)
+  assert.equal(inviteCode('http://[::1]:3000/invite/abc234xyz789'), 'abc234xyz789')
+  assert.equal(inviteCode('community.example:8443/invite/abc234xyz789'), 'abc234xyz789')
+  assert.equal(inviteCode(`${link('abc234xyz789')}/extra`), null)
+})
+
 test('a pasted invite opens the join screen and a bare address does not', () => {
   assert.equal(inviteCode('community.example:8443'), null)
   assert.equal(inviteCode('https://community.example:8443/?invite=abc234xyz789'), 'abc234xyz789')
