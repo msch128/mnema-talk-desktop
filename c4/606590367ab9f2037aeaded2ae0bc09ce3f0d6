@@ -1,0 +1,29 @@
+experimental/app/src/native_updates/tests.rs
+  s_06fcde5dbef956::t_7850eada7035fa 32-33
+linux/scripts/vectors/client.ts
+  s_06fcde5dbef956::t_796da738a9dd75 11-14,42-45
+linux/test/client.test.ts
+  s_06fcde5dbef956::t_7dd878f10bbd0e 59-82
+linux/test/e2e/port.e2e.ts
+  s_06fcde5dbef956::t_2c009075ff025a 1-115
+linux/test/selfupdate.test.ts
+  s_06fcde5dbef956::t_1b32fc1b293429 91-92
+test-vectors/client.json
+  s_06fcde5dbef956::t_531e4b23eafb4c 160-207,761-800
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c4606590367ab9f2037aeaded2ae0bc09ce3f0d6",
+  "prompts": {},
+  "sessions": {
+    "s_06fcde5dbef956": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "94b73314-95fe-4e96-8c43-d20b0f28358d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Marius Schröder <git@schroeder.systems>"
+    }
+  }
+}
