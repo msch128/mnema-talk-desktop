@@ -58,7 +58,7 @@ fn parsed(input: &str) -> Result<Url, String> {
         return Err("Invalid instance address.".into());
     }
     if credentials || (url.scheme() != "https" && url.scheme() != "http") {
-        return Err("Use an HTTPS origin without credentials, a path or query.".into());
+        return Err("Use a web address (https://…) without a user name or password.".into());
     }
     Ok(url)
 }

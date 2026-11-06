@@ -15,10 +15,11 @@ import { existsSync } from 'node:fs'
 import { BaseWindow, WebContentsView, app } from 'electron'
 import { inviteCode, parseAddress } from '../core/client.ts'
 import { writeFileAtomic } from '../core/atomic.ts'
-import { AddError, MAX_IMPORT_BYTES, MAX_INSTANCES, idFor, storedFrom, storedText } from '../core/instances.ts'
+import { AddError, MAX_IMPORT_BYTES, MAX_INSTANCES, type Slot, idFor, storedFrom, storedText } from '../core/instances.ts'
 import { type RailEdit, exportTarget } from '../core/railui.ts'
 import { APP_URL } from '../core/origin.ts'
 import { closeSocketsWithDocument } from '../core/pagesockets.ts'
+import { isTransportFailure, retries } from '../core/retry.ts'
 import { Tickets } from '../core/tickets.ts'
 import { TITLE } from '../core/title.ts'
 import { PARTITIONS, type Context } from './context.ts'
@@ -201,18 +202,27 @@ function openPage(ctx: Context, id: string, code: string | null = null): void {
 
 const starts = new Tickets()
 
+/** Says why a server could not be started; one that could not be reached is tried again soon, one refused for a lasting reason waits for a person. */
+function refuse(ctx: Context, id: string, slot: Slot, error: unknown, attempt: number): void {
+  const why = error instanceof Error ? error.message.slice(0, 300) : 'The server could not be started.'
+  slot.phase = { kind: 'refused', why }
+  if (!isTransportFailure(why)) return
+  retries.schedule(id, attempt, (next) => { if (!ctx.trusted.registry.session(id)) void startServer(ctx, id, next) })
+}
+
 /**
  * Checks a server and starts its page: the server is asked what it is, the
  * verified bundle for it is chosen (never its own JavaScript), and the page
  * opens. A server that cannot be served keeps its place in the list and says
  * why in its own tab.
  */
-export async function startServer(ctx: Context, id: string): Promise<void> {
+export async function startServer(ctx: Context, id: string, attempt = 0): Promise<void> {
   const registry = ctx.trusted.registry
   const slot = registry.slot(id)
   if (!slot) return
   // A start that is asked for again while it runs (the trust round, a reconnect) supersedes the first: only the newest one's result is used.
   const ticket = starts.begin(id)
+  retries.cancel(id)
   slot.phase = { kind: 'starting' }
   pushRail(ctx)
   try {
@@ -225,7 +235,7 @@ export async function startServer(ctx: Context, id: string): Promise<void> {
   } catch (error) {
     if (!starts.current(id, ticket)) return
     const current = registry.slot(id)
-    if (current) current.phase = { kind: 'refused', why: error instanceof Error ? error.message.slice(0, 300) : 'The server could not be started.' }
+    if (current) refuse(ctx, id, current, error, attempt)
   }
   const page = ctx.shell.pages.get(id)
   if (registry.session(id)) {

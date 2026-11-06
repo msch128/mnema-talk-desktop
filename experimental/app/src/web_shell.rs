@@ -14,6 +14,7 @@ mod layout;
 mod menu;
 mod pages;
 mod rail;
+mod retry;
 mod room;
 mod servers;
 mod storage;

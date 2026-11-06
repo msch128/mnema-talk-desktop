@@ -29,6 +29,30 @@ pub(super) fn invite_segment(value: &str) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
 }
 
+/// The tabs of the admin console and the sections of the settings dialog
+/// (web app `lib/adminNav.ts`, `lib/settingsDialog.ts`).
+const ADMIN_TABS: [&str; 16] = [
+    "users",
+    "roles",
+    "channels",
+    "invites",
+    "onboarding",
+    "access",
+    "emoji",
+    "reports",
+    "automod",
+    "bans",
+    "bots",
+    "import",
+    "media",
+    "audit",
+    "system",
+    "status",
+];
+const SETTINGS_TABS: [&str; 7] = [
+    "audio", "app", "signin", "sessions", "privacy", "roles", "data",
+];
+
 pub(super) fn app_path(path: &str) -> bool {
     if ["", "/", "/index.html", "/login"].contains(&path) {
         return true;
@@ -38,8 +62,11 @@ pub(super) fn app_path(path: &str) -> bool {
     }
     let parts = path.split('/').collect::<Vec<_>>();
     match parts.as_slice() {
-        ["", "admin"] => true,
-        ["", "admin", tab] => ["users", "channels", "invites", "media", "system"].contains(tab),
+        ["", "admin" | "settings" | "wiki"] => true,
+        ["", "admin", tab] => ADMIN_TABS.contains(tab),
+        ["", "settings", tab] => SETTINGS_TABS.contains(tab),
+        ["", "wiki", page] => slug(page),
+        ["", "wiki", page, "history" | "edit"] => slug(page),
         ["", "invite", code] | ["", "invite", code, ""] => invite_segment(code),
         ["", "c" | "v", channel] => slug(channel),
         ["", "c", channel, "m" | "t", message] => slug(channel) && id(message),

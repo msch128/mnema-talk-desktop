@@ -60,11 +60,11 @@
   },
   {
    "input": "https://user@community.example",
-   "error": "Use an HTTPS origin without credentials, a path or query."
+   "error": "Use a web address (https://…) without a user name or password."
   },
   {
    "input": "https://user:pw@community.example",
-   "error": "Use an HTTPS origin without credentials, a path or query."
+   "error": "Use a web address (https://…) without a user name or password."
   },
   {
    "input": "https://community.example/path",
@@ -104,11 +104,11 @@
   },
   {
    "input": "https://a@b.example",
-   "error": "Use an HTTPS origin without credentials, a path or query."
+   "error": "Use a web address (https://…) without a user name or password."
   },
   {
    "input": "ftp://community.example",
-   "error": "Use an HTTPS origin without credentials, a path or query."
+   "error": "Use a web address (https://…) without a user name or password."
   },
   {
    "input": "https://",
@@ -156,7 +156,7 @@
   },
   {
    "input": "https://user@community.example/@alice",
-   "error": "Use an HTTPS origin without credentials, a path or query."
+   "error": "Use a web address (https://…) without a user name or password."
   }
  ],
  "healths": [
@@ -302,6 +302,110 @@
    "ok": true
   },
   {
+   "path": "/admin/roles",
+   "ok": true
+  },
+  {
+   "path": "/admin/onboarding",
+   "ok": true
+  },
+  {
+   "path": "/admin/access",
+   "ok": true
+  },
+  {
+   "path": "/admin/emoji",
+   "ok": true
+  },
+  {
+   "path": "/admin/reports",
+   "ok": true
+  },
+  {
+   "path": "/admin/automod",
+   "ok": true
+  },
+  {
+   "path": "/admin/bans",
+   "ok": true
+  },
+  {
+   "path": "/admin/bots",
+   "ok": true
+  },
+  {
+   "path": "/admin/import",
+   "ok": true
+  },
+  {
+   "path": "/admin/audit",
+   "ok": true
+  },
+  {
+   "path": "/admin/status",
+   "ok": true
+  },
+  {
+   "path": "/settings",
+   "ok": true
+  },
+  {
+   "path": "/settings/audio",
+   "ok": true
+  },
+  {
+   "path": "/settings/app",
+   "ok": true
+  },
+  {
+   "path": "/settings/signin",
+   "ok": true
+  },
+  {
+   "path": "/settings/sessions",
+   "ok": true
+  },
+  {
+   "path": "/settings/privacy",
+   "ok": true
+  },
+  {
+   "path": "/settings/roles",
+   "ok": true
+  },
+  {
+   "path": "/settings/data",
+   "ok": true
+  },
+  {
+   "path": "/wiki",
+   "ok": true
+  },
+  {
+   "path": "/wiki/search",
+   "ok": true
+  },
+  {
+   "path": "/wiki/new",
+   "ok": true
+  },
+  {
+   "path": "/wiki/deleted",
+   "ok": true
+  },
+  {
+   "path": "/wiki/release-notes",
+   "ok": true
+  },
+  {
+   "path": "/wiki/release-notes/history",
+   "ok": true
+  },
+  {
+   "path": "/wiki/release-notes/edit",
+   "ok": true
+  },
+  {
    "path": "/c/11111111-1111-1111-1111-111111111111",
    "ok": true
   },
@@ -387,6 +491,30 @@
   },
   {
    "path": "/admin/unknown",
+   "ok": false
+  },
+  {
+   "path": "/settings/unknown",
+   "ok": false
+  },
+  {
+   "path": "/settings/audio/extra",
+   "ok": false
+  },
+  {
+   "path": "/wiki/Not-A-Slug",
+   "ok": false
+  },
+  {
+   "path": "/wiki/release-notes/delete",
+   "ok": false
+  },
+  {
+   "path": "/wiki/release-notes/edit/extra",
+   "ok": false
+  },
+  {
+   "path": "/wiki/",
    "ok": false
   },
   {

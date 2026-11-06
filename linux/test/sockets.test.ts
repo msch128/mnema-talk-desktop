@@ -150,3 +150,19 @@ test('the conversation question reaches the server only when asked', async () =>
   assert.deepEqual(urls, ['/api/ws', '/api/ws?dm=1'])
   sockets.closeAll()
 })
+
+test('the page learns the close code of the instance, so a replaced session does not reconnect', async () => {
+  const instance = await start((socket) => socket.close(4001, 'replaced'))
+  const ev = events()
+  const id = new Sockets().connect(instance, false, ev.emit)
+  await ev.until('close')
+  assert.deepEqual(ev.list.at(-1), { kind: 'close', id, code: 4001 })
+})
+
+test('a connection that ends without a close code reports a close without one', async () => {
+  const instance = await start((socket) => socket.terminate())
+  const ev = events()
+  const id = new Sockets().connect(instance, false, ev.emit)
+  await ev.until('close')
+  assert.deepEqual(ev.list.at(-1), { kind: 'close', id })
+})

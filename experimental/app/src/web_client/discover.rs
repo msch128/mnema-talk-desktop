@@ -28,6 +28,25 @@ struct Health {
     web_client_api: Option<u32>,
 }
 
+/// Whether a refusal says the server could not be reached or asked (offline,
+/// DNS, timeout, a refused connection, an answer that is not the health
+/// check), which another try later can fix. A certificate or TLS-version
+/// problem, a server that needs an update and a withdrawn bundle stay refused
+/// until someone acts.
+pub(crate) fn is_transport_failure(why: &str) -> bool {
+    [
+        "The instance refused the connection.",
+        "The instance did not answer in time.",
+        "The instance address could not be resolved.",
+        "Unable to reach the instance using trusted HTTPS.",
+        UNAVAILABLE,
+        CHECK_FAILED,
+        INVALID_RESPONSE,
+    ]
+    .iter()
+    .any(|known| why.starts_with(known))
+}
+
 pub(super) fn parse_health(bytes: &[u8]) -> Result<ServerInfo, String> {
     let health: Health = crate::web_json::parse(bytes).ok_or(NEEDS_UPDATE)?;
     match (health.status.as_str(), health.web_client_api) {

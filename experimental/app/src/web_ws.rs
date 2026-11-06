@@ -36,9 +36,20 @@ const WRITE_TIMEOUT: Duration = if cfg!(test) {
 #[derive(Serialize, Clone, Debug, PartialEq)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum WsEvent {
-    Open { id: u64 },
-    Message { id: u64, data: String },
-    Close { id: u64 },
+    Open {
+        id: u64,
+    },
+    Message {
+        id: u64,
+        data: String,
+    },
+    /// `code` is the close code the instance sent, so the page can tell a
+    /// replaced session (4001) from a dropped connection; absent otherwise.
+    Close {
+        id: u64,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        code: Option<u16>,
+    },
 }
 
 /// What the page can do to an open socket: queue text, ask it to close.
@@ -189,11 +200,11 @@ pub fn open(
         );
         let sockets = Arc::clone(sockets);
         tauri::async_runtime::spawn(async move {
-            run(id, &instance, dm, rx, &close, &emit).await;
+            let code = run(id, &instance, dm, rx, &close, &emit).await;
             if let Ok(mut open) = sockets.open.lock() {
                 open.remove(&id);
             }
-            emit(WsEvent::Close { id });
+            emit(WsEvent::Close { id, code });
         });
         id
     };
@@ -210,22 +221,24 @@ async fn write_text(ws: &mut Socket, text: String) -> bool {
 }
 
 /// Hands a frame from the server to the page. `Some(goodbye)` ends the
-/// connection (`true` when this side should say goodbye), `None` carries on.
+/// connection (`true` when this side should say goodbye, plus the close code
+/// the instance sent, if any), `None` carries on.
 fn on_incoming(
     id: u64,
     incoming: Option<Result<Message, tokio_tungstenite::tungstenite::Error>>,
     emit: &impl Fn(WsEvent) -> bool,
-) -> Option<bool> {
+) -> Option<(bool, Option<u16>)> {
     match incoming {
         Some(Ok(Message::Text(text))) => {
             let data = text.as_str().to_owned();
-            (!emit(WsEvent::Message { id, data })).then_some(true)
+            (!emit(WsEvent::Message { id, data })).then_some((true, None))
         }
         // Pings are answered by the library; the app only speaks text.
         Some(Ok(Message::Ping(_) | Message::Pong(_) | Message::Binary(_) | Message::Frame(_))) => {
             None
         }
-        Some(Ok(Message::Close(_)) | Err(_)) | None => Some(false),
+        Some(Ok(Message::Close(frame))) => Some((false, frame.map(|f| u16::from(f.code)))),
+        Some(Err(_)) | None => Some((false, None)),
     }
 }
 
@@ -245,33 +258,34 @@ async fn run(
     mut rx: mpsc::Receiver<String>,
     close: &Notify,
     emit: &impl Fn(WsEvent) -> bool,
-) {
+) -> Option<u16> {
     let Ok(mut ws) = connect(instance, dm).await else {
-        return;
+        return None;
     };
     if !emit(WsEvent::Open { id }) {
-        return;
+        return None;
     }
-    // `true` when this side ends the connection and should say goodbye.
-    let goodbye = loop {
+    // `goodbye` is true when this side ends the connection and should say
+    // goodbye; `code` is the close code the instance ended it with.
+    let (goodbye, code) = loop {
         tokio::select! {
             incoming = ws.next() => {
-                if let Some(goodbye) = on_incoming(id, incoming, emit) {
-                    break goodbye;
+                if let Some(ending) = on_incoming(id, incoming, emit) {
+                    break ending;
                 }
             },
             outgoing = rx.recv() => match outgoing {
                 Some(text) => {
                     if !write_text(&mut ws, text).await {
-                        break false;
+                        break (false, None);
                     }
                 }
-                None => break true,
+                None => break (true, None),
             },
             () = close.notified() => {
                 // A browser socket writes what was queued before it closes.
                 flush_queued(&mut ws, &mut rx).await;
-                break true;
+                break (true, None);
             }
         }
     };
@@ -279,6 +293,7 @@ async fn run(
     if goodbye {
         let _ = tokio::time::timeout(WRITE_TIMEOUT, ws.close(None)).await;
     }
+    code
 }
 
 #[cfg(test)]
@@ -380,8 +395,35 @@ mod tests {
             r#"{"kind":"message","id":3,"data":"x"}"#
         );
         assert_eq!(
-            serde_json::to_string(&WsEvent::Close { id: 3 }).unwrap(),
+            serde_json::to_string(&WsEvent::Close { id: 3, code: None }).unwrap(),
             r#"{"kind":"close","id":3}"#
+        );
+    }
+
+    #[test]
+    fn the_page_learns_the_close_code_of_the_instance_and_nothing_else_about_it() {
+        use tokio_tungstenite::tungstenite::protocol::{CloseFrame, frame::coding::CloseCode};
+        let emit = |_: WsEvent| true;
+        let replaced = Message::Close(Some(CloseFrame {
+            code: CloseCode::from(4001),
+            reason: "replaced".into(),
+        }));
+        assert_eq!(
+            on_incoming(1, Some(Ok(replaced)), &emit),
+            Some((false, Some(4001)))
+        );
+        assert_eq!(
+            on_incoming(1, Some(Ok(Message::Close(None))), &emit),
+            Some((false, None))
+        );
+        assert_eq!(on_incoming(1, None, &emit), Some((false, None)));
+        assert_eq!(
+            serde_json::to_string(&WsEvent::Close {
+                id: 3,
+                code: Some(4001)
+            })
+            .unwrap(),
+            r#"{"kind":"close","id":3,"code":4001}"#
         );
     }
 
@@ -531,7 +573,7 @@ mod tests {
             }
         );
         sockets.close(id);
-        assert_eq!(next(&mut events).await, WsEvent::Close { id });
+        assert_eq!(next(&mut events).await, WsEvent::Close { id, code: None });
         assert!(
             events.recv().await.is_none(),
             "Close is the last event, sent once"
@@ -574,7 +616,7 @@ mod tests {
         let sockets = Arc::new(Sockets::default());
         let (emit, mut events) = collector();
         let id = open(&sockets, instance, false, emit).unwrap();
-        assert_eq!(next(&mut events).await, WsEvent::Close { id });
+        assert_eq!(next(&mut events).await, WsEvent::Close { id, code: None });
         assert_eq!(sockets.count(), 0);
     }
 
@@ -679,7 +721,7 @@ mod tests {
             }
         }
         sockets.close(id);
-        assert_eq!(next(&mut events).await, WsEvent::Close { id });
+        assert_eq!(next(&mut events).await, WsEvent::Close { id, code: None });
         assert_eq!(sockets.count(), 0);
     }
 
@@ -720,6 +762,6 @@ mod tests {
         };
         assert!(data.contains("\"type\""), "{data}");
         sockets.close(id);
-        while next(&mut events).await != (WsEvent::Close { id }) {}
+        while next(&mut events).await != (WsEvent::Close { id, code: None }) {}
     }
 }
