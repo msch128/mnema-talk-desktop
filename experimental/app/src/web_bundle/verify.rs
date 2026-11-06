@@ -149,7 +149,13 @@ fn check_layout(data: &[u8]) -> Result<Vec<bool>, String> {
         } else {
             0
         };
-        refused.push(flags & (1 | 0x40 | 0x2000) != 0 || (kind != 0 && kind != 0o100_000));
+        // Stored and deflated entries only: a newer zip crate opens other methods and fails later.
+        let method = u16_at(at + 10);
+        refused.push(
+            flags & (1 | 0x40 | 0x2000) != 0
+                || !matches!(method, 0 | 8)
+                || (kind != 0 && kind != 0o100_000),
+        );
         starts_file |= sizes[2] == 0;
         at = end;
     }

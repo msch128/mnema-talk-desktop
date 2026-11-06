@@ -21,21 +21,24 @@
     "e2e": "npm run build && node --test --test-timeout=120000 \"test/e2e/*.e2e.ts\""
   },
   "dependencies": {
-    "ws": "8.22.0"
+    "ws": "8.22.1"
   },
   "devDependencies": {
     "@electron/fuses": "2.1.3",
     "@eslint/js": "10.0.1",
-    "@types/node": "26.6.5",
+    "@types/node": "26.6.6",
     "@types/ws": "8.18.2",
-    "electron": "45.0.0",
+    "electron": "45.2.3",
     "electron-builder": "26.18.0",
-    "eslint": "10.13.0",
+    "eslint": "10.14.0",
     "eslint-plugin-sonarjs": "4.2.2",
-    "globals": "17.13.0",
+    "globals": "17.14.0",
     "jiti": "2.7.0",
     "typescript": "6.0.3",
     "typescript-eslint": "8.72.1"
   },
-  "desktopName": "mnema-desktop-dev.desktop"
+  "desktopName": "mnema-desktop-dev.desktop",
+  "overrides": {
+    "minimatch@>=7 <11": "11.0.5"
+  }
 }

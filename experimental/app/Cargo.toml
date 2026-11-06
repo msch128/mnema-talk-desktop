@@ -23,9 +23,9 @@ ed25519-dalek = { version = "=3.0.0", optional = true, default-features = false,
 sha2 = { version = "=0.11.1", optional = true }
 hex = { version = "=0.4.3", optional = true }
 base64 = { version = "=0.23.1", optional = true }
-zip = { version = "=9.1.2", optional = true, default-features = false, features = ["deflate-flate2"] }
+zip = { version = "=9.4.1", optional = true, default-features = false, features = ["deflate-flate2"] }
 # zip selects flate2 without a backend; the pure-Rust one keeps the build free of C.
-flate2 = { version = "=1.1.10", optional = true, default-features = false, features = ["rust_backend"] }
+flate2 = { version = "=1.1.11", optional = true, default-features = false, features = ["rust_backend"] }
 cookie = { version = "=0.18.2", optional = true, default-features = false }
 tokio-tungstenite = { version = "=0.30.0", optional = true, default-features = false, features = ["connect", "handshake", "rustls-tls-native-roots"] }
 futures-util = { version = "=0.3.34", optional = true, default-features = false, features = ["sink", "std"] }
@@ -43,7 +43,7 @@ tokio = { version = "=1.54.1", features = ["sync", "time", "rt", "macros"] }
 tauri = { version = "=2.12.5", optional = true, features = ["unstable"] }
 # Signed native self-update. The same rustls stack and platform verifier as the rest of the host (its default provider is installed in web_tls.rs); no system proxy.
 # No `zip` feature: it is only for legacy zip-wrapped Windows packages (and pulls a vulnerable zip 4).
-tauri-plugin-updater = { version = "=2.14.0", optional = true, default-features = false, features = ["rustls-tls"] }
+tauri-plugin-updater = { version = "=2.14.1", optional = true, default-features = false, features = ["rustls-tls"] }
 minisign-verify = { version = "=0.3.0", optional = true }
 [target.'cfg(target_os="macos")'.dependencies]
 apple-native-keyring-store = { version = "=1.0.2", optional = true, default-features = false, features = ["keychain"] }
