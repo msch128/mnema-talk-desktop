@@ -127,6 +127,8 @@ pub fn create(app: &tauri::AppHandle) -> tauri::Result<()> {
     push_rail(app);
     #[cfg(feature = "multi-selftest")]
     crate::selftest_multi::start(app);
+    #[cfg(feature = "real-selftest")]
+    crate::selftest_real::start(app);
     Ok(())
 }
 

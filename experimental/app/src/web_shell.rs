@@ -25,9 +25,11 @@ pub use commands::*;
 pub use icons::*;
 pub use menu::menu_clicked;
 pub use rail::{bring_forward, counts_changed};
+#[cfg(any(feature = "multi-selftest", feature = "real-selftest"))]
+pub(crate) use servers::add_server;
 pub use servers::bundles_changed;
 #[cfg(feature = "multi-selftest")]
-pub(crate) use servers::{add_server, remove_server};
+pub(crate) use servers::remove_server;
 pub use storage::host_profile_window;
 #[cfg(feature = "multi-selftest")]
 pub(crate) use storage::{open_default_page, wipe_default_storage};

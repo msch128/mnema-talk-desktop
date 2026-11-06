@@ -20,6 +20,10 @@ mod rail_menu;
 mod rail_notify;
 #[cfg(feature = "multi-selftest")]
 mod selftest_multi;
+#[cfg(any(feature = "multi-selftest", feature = "real-selftest"))]
+mod selftest_page;
+#[cfg(feature = "real-selftest")]
+mod selftest_real;
 #[cfg(feature = "web-client")]
 mod storage;
 #[cfg(feature = "web-client")]
