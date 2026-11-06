@@ -17,7 +17,7 @@ const MAX_BUFFERED = 4 << 20
 export type WsEvent =
   | { kind: 'open', id: number }
   | { kind: 'message', id: number, data: string }
-  | { kind: 'close', id: number }
+  | { kind: 'close', id: number, code?: number }
 
 /**
  * What a page may ask the host to open: the instance's `/api/ws`, with the one
@@ -67,11 +67,12 @@ export class Sockets {
     })
     this.open.set(id, ws)
     let closed = false
-    const finish = () => {
+    const finish = (code?: number) => {
       if (closed) return
       closed = true
       this.open.delete(id)
-      emit({ kind: 'close', id })
+      // 1005/1006 mean "no code received"; only a code the instance sent is passed on.
+      emit(code && code !== 1005 && code !== 1006 ? { kind: 'close', id, code } : { kind: 'close', id })
     }
     ws.on('open', () => {
       if (!emit({ kind: 'open', id })) ws.terminate()
@@ -82,7 +83,7 @@ export class Sockets {
       if (!emit({ kind: 'message', id, data: Buffer.isBuffer(data) ? data.toString('utf8') : Buffer.concat(data as Buffer[]).toString('utf8') })) ws.terminate()
     })
     ws.on('error', () => ws.terminate())
-    ws.on('close', finish)
+    ws.on('close', (code) => finish(code))
     return id
   }
 

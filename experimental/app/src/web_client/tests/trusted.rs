@@ -227,3 +227,13 @@ fn a_client_without_any_bundle_says_so_instead_of_loading_server_code() {
     assert!(file.starts_with(dir.join("sessions")));
     assert_ne!(file, with_dir.jar_file(&url("https://b.example/")).unwrap());
 }
+
+#[test]
+fn a_round_that_reached_nothing_is_repeated_in_minutes_not_hours() {
+    use std::time::Duration;
+    assert_eq!(
+        next_delay(true),
+        Duration::from_secs(crate::web_bundle::CHECK_INTERVAL_SECS)
+    );
+    assert_eq!(next_delay(false), Duration::from_secs(10 * 60));
+}

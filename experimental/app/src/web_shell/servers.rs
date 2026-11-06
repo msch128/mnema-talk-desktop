@@ -9,7 +9,7 @@ use super::storage::wipe_storage;
 use super::{ADD, NEEDS_NEWER_MACOS};
 use crate::instances::{AddError, Phase, Session, attachment_label, id_for, instance_label};
 use crate::web_bundle::Held;
-use crate::web_client::{Trusted, app_url, choose, discover};
+use crate::web_client::{Trusted, app_url, choose, discover, is_transport_failure};
 use crate::web_proxy::{Instance, Jar, Limits, client, now};
 use crate::web_vault::{Os, Vault};
 use crate::web_ws::Sockets;
@@ -63,6 +63,11 @@ fn make_session(
 /// opens. A server that cannot be served keeps its place in the list and says
 /// why in its own tab.
 pub(super) async fn start_server(app: &tauri::AppHandle, id: &str) {
+    start_attempt(app, id, 0).await;
+}
+
+/// One start; `attempt` counts the automatic retries before it.
+pub(super) async fn start_attempt(app: &tauri::AppHandle, id: &str, attempt: u32) {
     let trusted = app.state::<Trusted>();
     // One start at a time per server: a second caller (the bundle arriving, a
     // click on Reconnect) finds the first one running and leaves it be.
@@ -81,6 +86,7 @@ pub(super) async fn start_server(app: &tauri::AppHandle, id: &str) {
     } else {
         Err(NEEDS_NEWER_MACOS.to_owned())
     };
+    let mut unreachable = false;
     let ready = match outcome {
         Ok(session) => {
             let set = trusted
@@ -99,6 +105,7 @@ pub(super) async fn start_server(app: &tauri::AppHandle, id: &str) {
             (set && trusted.keep_if_held(id, &session)).then_some(session)
         }
         Err(why) => {
+            unreachable = is_transport_failure(&why);
             if let Ok(mut registry) = trusted.registry.lock()
                 && let Some(slot) = registry.slot_mut(id)
             {
@@ -116,6 +123,9 @@ pub(super) async fn start_server(app: &tauri::AppHandle, id: &str) {
     }
     refresh_pages(app, id);
     push_rail(app);
+    if unreachable {
+        super::retry::schedule(app, id, attempt);
+    }
 }
 
 async fn connect(

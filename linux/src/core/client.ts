@@ -41,7 +41,7 @@ function prepared(input: string): URL {
   const authority = raw.slice(raw.indexOf('://') + 3).split(/[/?#]/u)[0] ?? ''
   if (url.hostname === '') throw new Error('Invalid instance address.')
   if (url.username !== '' || url.password !== '' || authority.includes('@') || (url.protocol !== 'https:' && url.protocol !== 'http:')) {
-    throw new Error('Use an HTTPS origin without credentials, a path or query.')
+    throw new Error('Use a web address (https://…) without a user name or password.')
   }
   return url
 }
@@ -162,6 +162,9 @@ function isId(value: string): boolean {
  * content permission.
  */
 const SLUG = /^[a-z0-9-]{1,80}$/
+/** The tabs of the admin console and the sections of the settings dialog (web app lib/adminNav.ts, lib/settingsDialog.ts). */
+const ADMIN_TABS = ['users', 'roles', 'channels', 'invites', 'onboarding', 'access', 'emoji', 'reports', 'automod', 'bans', 'bots', 'import', 'media', 'audit', 'system', 'status']
+const SETTINGS_TABS = ['audio', 'app', 'signin', 'sessions', 'privacy', 'roles', 'data']
 const USERNAME = /^[A-Za-z0-9._~-]{1,64}$/
 
 type Part = string | undefined
@@ -179,7 +182,7 @@ export function appPath(path: string): boolean {
   if (parts[0] !== '') return false
   const [, first, second, third, fourth, fifth] = parts
   switch (parts.length) {
-    case 2: return first === 'admin'
+    case 2: return first === 'admin' || first === 'settings' || first === 'wiki'
     case 3: return twoSegments(first, second)
     case 4: return threeSegments(first, second, third)
     case 5: return fourSegments(first, second, third, fourth)
@@ -190,7 +193,9 @@ export function appPath(path: string): boolean {
 
 function twoSegments(first: Part, second: Part): boolean {
   if (first === 'invite') return inviteSegment(second)
-  if (first === 'admin') return ['users', 'channels', 'invites', 'media', 'system'].includes(second as string)
+  if (first === 'admin') return ADMIN_TABS.includes(second as string)
+  if (first === 'settings') return SETTINGS_TABS.includes(second as string)
+  if (first === 'wiki') return isSlug(second)
   if (first === 'dm') return isUsername(second)
   return (first === 'c' || first === 'v') && isSlug(second)
 }
@@ -198,6 +203,8 @@ function twoSegments(first: Part, second: Part): boolean {
 function threeSegments(first: Part, second: Part, third: Part): boolean {
   if (first === 'invite') return third === '' && inviteSegment(second)
   if (first === 'dm') return second === 'g' && isSlug(third)
+  // A wiki page's history or editor.
+  if (first === 'wiki') return isSlug(second) && (third === 'history' || third === 'edit')
   return first === 'v' && isSlug(second) && third === 'chat'
 }
 

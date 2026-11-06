@@ -5,6 +5,7 @@
 import { existsSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { app, session } from 'electron'
+import { retries } from '../core/retry.ts'
 import { orphanPartitions, wipeWithRetry } from '../core/wipe.ts'
 import { LEGACY_PARTITION, serverPartition, type Context } from './context.ts'
 import { toastsClosed } from './notify.ts'
@@ -31,6 +32,7 @@ function wipeDirectory(ctx: Context, id: string, dir: string): void {
 export async function removeServer(ctx: Context, id: string): Promise<void> {
   const { trusted } = ctx
   const partition = serverPartition(id)
+  retries.cancel(id)
   const slot = trusted.registry.remove(id)
   if (!slot) return
   if (slot.phase.kind === 'ready') {
