@@ -47,7 +47,6 @@ build tooling and is not shipped.
 | [atomic-waker](https://crates.io/crates/atomic-waker/1.1.2) | 1.1.2 | Apache-2.0 OR MIT |
 | [autocfg](https://crates.io/crates/autocfg/1.5.1) | 1.5.1 | Apache-2.0 OR MIT |
 | [base64](https://crates.io/crates/base64/0.21.7) | 0.21.7 | MIT OR Apache-2.0 |
-| [base64](https://crates.io/crates/base64/0.22.1) | 0.22.1 | MIT OR Apache-2.0 |
 | [base64](https://crates.io/crates/base64/0.23.1) | 0.23.1 | MIT OR Apache-2.0 |
 | [bit-set](https://crates.io/crates/bit-set/0.8.0) | 0.8.0 | Apache-2.0 OR MIT |
 | [bit-vec](https://crates.io/crates/bit-vec/0.8.0) | 0.8.0 | Apache-2.0 OR MIT |
@@ -57,8 +56,8 @@ build tooling and is not shipped.
 | [block-buffer](https://crates.io/crates/block-buffer/0.10.4) | 0.10.4 | MIT OR Apache-2.0 |
 | [block-buffer](https://crates.io/crates/block-buffer/0.12.1) | 0.12.1 | MIT OR Apache-2.0 |
 | [block2](https://crates.io/crates/block2/0.6.2) | 0.6.2 | MIT |
-| [brotli](https://crates.io/crates/brotli/9.1.0) | 9.1.0 | BSD-3-Clause AND MIT |
-| [brotli-decompressor](https://crates.io/crates/brotli-decompressor/6.2.0) | 6.2.0 | BSD-3-Clause/MIT |
+| [brotli](https://crates.io/crates/brotli/9.1.1) | 9.1.1 | BSD-3-Clause AND MIT |
+| [brotli-decompressor](https://crates.io/crates/brotli-decompressor/6.3.0) | 6.3.0 | BSD-3-Clause/MIT |
 | [bs58](https://crates.io/crates/bs58/0.5.1) | 0.5.1 | MIT/Apache-2.0 |
 | [bumpalo](https://crates.io/crates/bumpalo/3.20.3) | 3.20.3 | MIT OR Apache-2.0 |
 | [bytemuck](https://crates.io/crates/bytemuck/1.25.2) | 1.25.2 | Zlib OR Apache-2.0 OR MIT |
@@ -70,7 +69,7 @@ build tooling and is not shipped.
 | [cargo-platform](https://crates.io/crates/cargo-platform/0.1.9) | 0.1.9 | MIT OR Apache-2.0 |
 | [cargo_metadata](https://crates.io/crates/cargo_metadata/0.19.2) | 0.19.2 | MIT |
 | [cargo_toml](https://crates.io/crates/cargo_toml/1.0.1) | 1.0.1 | Apache-2.0 OR MIT |
-| [cc](https://crates.io/crates/cc/1.10.0) | 1.10.0 | MIT OR Apache-2.0 |
+| [cc](https://crates.io/crates/cc/1.11.1) | 1.11.1 | MIT OR Apache-2.0 |
 | [cesu8](https://crates.io/crates/cesu8/1.1.0) | 1.1.0 | Apache-2.0/MIT |
 | [cfb](https://crates.io/crates/cfb/0.14.0) | 0.14.0 | MIT |
 | [cfg-expr](https://crates.io/crates/cfg-expr/0.15.8) | 0.15.8 | MIT OR Apache-2.0 |
@@ -89,7 +88,7 @@ build tooling and is not shipped.
 | [core-graphics-types](https://crates.io/crates/core-graphics-types/0.2.0) | 0.2.0 | MIT OR Apache-2.0 |
 | [cpufeatures](https://crates.io/crates/cpufeatures/0.2.17) | 0.2.17 | MIT OR Apache-2.0 |
 | [cpufeatures](https://crates.io/crates/cpufeatures/0.3.1) | 0.3.1 | MIT OR Apache-2.0 |
-| [crc32fast](https://crates.io/crates/crc32fast/1.5.3) | 1.5.3 | MIT OR Apache-2.0 |
+| [crc32fast](https://crates.io/crates/crc32fast/1.5.4) | 1.5.4 | MIT OR Apache-2.0 |
 | [crossbeam-channel](https://crates.io/crates/crossbeam-channel/0.5.17) | 0.5.17 | MIT OR Apache-2.0 |
 | [crossbeam-utils](https://crates.io/crates/crossbeam-utils/0.8.23) | 0.8.23 | MIT OR Apache-2.0 |
 | [crypto-common](https://crates.io/crates/crypto-common/0.1.7) | 0.1.7 | MIT OR Apache-2.0 |
@@ -139,7 +138,7 @@ build tooling and is not shipped.
 | [field-offset](https://crates.io/crates/field-offset/0.3.6) | 0.3.6 | MIT OR Apache-2.0 |
 | [filetime](https://crates.io/crates/filetime/0.2.29) | 0.2.29 | MIT/Apache-2.0 |
 | [find-msvc-tools](https://crates.io/crates/find-msvc-tools/0.1.15) | 0.1.15 | MIT OR Apache-2.0 |
-| [flate2](https://crates.io/crates/flate2/1.1.10) | 1.1.10 | MIT OR Apache-2.0 |
+| [flate2](https://crates.io/crates/flate2/1.1.11) | 1.1.11 | MIT OR Apache-2.0 |
 | [fnv](https://crates.io/crates/fnv/1.0.7) | 1.0.7 | Apache-2.0 / MIT |
 | [foldhash](https://crates.io/crates/foldhash/0.2.0) | 0.2.0 | Zlib |
 | [foreign-types](https://crates.io/crates/foreign-types/0.5.0) | 0.5.0 | MIT/Apache-2.0 |
@@ -211,9 +210,9 @@ build tooling and is not shipped.
 | [itoa](https://crates.io/crates/itoa/1.0.18) | 1.0.18 | MIT OR Apache-2.0 |
 | [javascriptcore-rs](https://crates.io/crates/javascriptcore-rs/1.1.2) | 1.1.2 | MIT |
 | [javascriptcore-rs-sys](https://crates.io/crates/javascriptcore-rs-sys/1.1.1) | 1.1.1 | MIT |
-| [jiff](https://crates.io/crates/jiff/0.2.38) | 0.2.38 | Unlicense OR MIT |
-| [jiff-core](https://crates.io/crates/jiff-core/0.1.1) | 0.1.1 | Unlicense OR MIT |
-| [jiff-static](https://crates.io/crates/jiff-static/0.2.38) | 0.2.38 | Unlicense OR MIT |
+| [jiff](https://crates.io/crates/jiff/0.2.39) | 0.2.39 | Unlicense OR MIT |
+| [jiff-core](https://crates.io/crates/jiff-core/0.1.2) | 0.1.2 | Unlicense OR MIT |
+| [jiff-static](https://crates.io/crates/jiff-static/0.2.39) | 0.2.39 | Unlicense OR MIT |
 | [jiff-tzdb](https://crates.io/crates/jiff-tzdb/0.1.9) | 0.1.9 | Unlicense OR MIT |
 | [jiff-tzdb-platform](https://crates.io/crates/jiff-tzdb-platform/0.1.3) | 0.1.3 | Unlicense OR MIT |
 | [jni](https://crates.io/crates/jni/0.21.1) | 0.21.1 | MIT/Apache-2.0 |
@@ -222,7 +221,7 @@ build tooling and is not shipped.
 | [jni-sys](https://crates.io/crates/jni-sys/0.3.1) | 0.3.1 | MIT OR Apache-2.0 |
 | [jni-sys](https://crates.io/crates/jni-sys/0.4.1) | 0.4.1 | MIT OR Apache-2.0 |
 | [jni-sys-macros](https://crates.io/crates/jni-sys-macros/0.4.1) | 0.4.1 | MIT OR Apache-2.0 |
-| [js-sys](https://crates.io/crates/js-sys/0.3.106) | 0.3.106 | MIT OR Apache-2.0 |
+| [js-sys](https://crates.io/crates/js-sys/0.3.107) | 0.3.107 | MIT OR Apache-2.0 |
 | [json-patch](https://crates.io/crates/json-patch/4.2.0) | 4.2.0 | MIT/Apache-2.0 |
 | [jsonptr](https://crates.io/crates/jsonptr/0.7.1) | 0.7.1 | MIT OR Apache-2.0 |
 | [keyboard-types](https://crates.io/crates/keyboard-types/0.8.3) | 0.8.3 | MIT OR Apache-2.0 |
@@ -238,11 +237,11 @@ build tooling and is not shipped.
 | [linux-raw-sys](https://crates.io/crates/linux-raw-sys/0.12.1) | 0.12.1 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT |
 | [litemap](https://crates.io/crates/litemap/0.8.3) | 0.8.3 | Unicode-3.0 |
 | [lock_api](https://crates.io/crates/lock_api/0.4.14) | 0.4.14 | MIT OR Apache-2.0 |
-| [log](https://crates.io/crates/log/0.4.34) | 0.4.34 | MIT OR Apache-2.0 |
+| [log](https://crates.io/crates/log/0.4.35) | 0.4.35 | MIT OR Apache-2.0 |
 | [markup5ever](https://crates.io/crates/markup5ever/0.39.0) | 0.39.0 | MIT OR Apache-2.0 |
 | [memchr](https://crates.io/crates/memchr/2.8.3) | 2.8.3 | Unlicense OR MIT |
 | [memoffset](https://crates.io/crates/memoffset/0.9.1) | 0.9.1 | MIT |
-| [mime](https://crates.io/crates/mime/0.3.17) | 0.3.17 | MIT OR Apache-2.0 |
+| [mime](https://crates.io/crates/mime/0.3.18) | 0.3.18 | MIT OR Apache-2.0 |
 | [minimal-lexical](https://crates.io/crates/minimal-lexical/0.2.1) | 0.2.1 | MIT/Apache-2.0 |
 | [minisign](https://crates.io/crates/minisign/0.10.0) | 0.10.0 | MIT |
 | [minisign-verify](https://crates.io/crates/minisign-verify/0.3.0) | 0.3.0 | MIT |
@@ -282,7 +281,7 @@ build tooling and is not shipped.
 | [objc2-web-kit](https://crates.io/crates/objc2-web-kit/0.3.2) | 0.3.2 | Zlib OR Apache-2.0 OR MIT |
 | [oid-registry](https://crates.io/crates/oid-registry/0.8.1) | 0.8.1 | MIT OR Apache-2.0 |
 | [once_cell](https://crates.io/crates/once_cell/1.21.4) | 1.21.4 | MIT OR Apache-2.0 |
-| [openssl-probe](https://crates.io/crates/openssl-probe/0.2.1) | 0.2.1 | MIT OR Apache-2.0 |
+| [openssl-probe](https://crates.io/crates/openssl-probe/0.2.2) | 0.2.2 | MIT OR Apache-2.0 |
 | [option-ext](https://crates.io/crates/option-ext/0.2.0) | 0.2.0 | MPL-2.0 |
 | [osakit](https://crates.io/crates/osakit/0.3.1) | 0.3.1 | MIT OR Apache-2.0 |
 | [pango](https://crates.io/crates/pango/0.18.3) | 0.18.3 | MIT |
@@ -334,7 +333,7 @@ build tooling and is not shipped.
 | [rustc-hash](https://crates.io/crates/rustc-hash/2.1.3) | 2.1.3 | Apache-2.0 OR MIT |
 | [rustc_version](https://crates.io/crates/rustc_version/0.4.1) | 0.4.1 | MIT OR Apache-2.0 |
 | [rusticata-macros](https://crates.io/crates/rusticata-macros/4.1.0) | 4.1.0 | MIT/Apache-2.0 |
-| [rustix](https://crates.io/crates/rustix/1.1.5) | 1.1.5 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT |
+| [rustix](https://crates.io/crates/rustix/1.1.6) | 1.1.6 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT |
 | [rustls](https://crates.io/crates/rustls/0.23.46) | 0.23.46 | Apache-2.0 OR ISC OR MIT |
 | [rustls-native-certs](https://crates.io/crates/rustls-native-certs/0.8.5) | 0.8.5 | Apache-2.0 OR ISC OR MIT |
 | [rustls-pki-types](https://crates.io/crates/rustls-pki-types/1.15.1) | 1.15.1 | MIT OR Apache-2.0 |
@@ -364,7 +363,7 @@ build tooling and is not shipped.
 | [serde_json](https://crates.io/crates/serde_json/1.0.154) | 1.0.154 | MIT OR Apache-2.0 |
 | [serde_repr](https://crates.io/crates/serde_repr/0.1.21) | 0.1.21 | MIT OR Apache-2.0 |
 | [serde_spanned](https://crates.io/crates/serde_spanned/0.6.9) | 0.6.9 | MIT OR Apache-2.0 |
-| [serde_spanned](https://crates.io/crates/serde_spanned/1.1.2) | 1.1.2 | MIT OR Apache-2.0 |
+| [serde_spanned](https://crates.io/crates/serde_spanned/1.1.3) | 1.1.3 | MIT OR Apache-2.0 |
 | [serde_with](https://crates.io/crates/serde_with/3.24.0) | 3.24.0 | MIT OR Apache-2.0 |
 | [serde_with_macros](https://crates.io/crates/serde_with_macros/3.24.0) | 3.24.0 | MIT OR Apache-2.0 |
 | [serialize-to-javascript](https://crates.io/crates/serialize-to-javascript/0.1.2) | 0.1.2 | MIT OR Apache-2.0 |
@@ -408,7 +407,7 @@ build tooling and is not shipped.
 | [tauri-codegen](https://crates.io/crates/tauri-codegen/2.7.4) | 2.7.4 | Apache-2.0 OR MIT |
 | [tauri-macros](https://crates.io/crates/tauri-macros/2.7.4) | 2.7.4 | Apache-2.0 OR MIT |
 | [tauri-plugin](https://crates.io/crates/tauri-plugin/2.7.2) | 2.7.2 | Apache-2.0 OR MIT |
-| [tauri-plugin-updater](https://crates.io/crates/tauri-plugin-updater/2.14.0) | 2.14.0 | Apache-2.0 OR MIT |
+| [tauri-plugin-updater](https://crates.io/crates/tauri-plugin-updater/2.14.1) | 2.14.1 | Apache-2.0 OR MIT |
 | [tauri-runtime](https://crates.io/crates/tauri-runtime/2.12.2) | 2.12.2 | Apache-2.0 OR MIT |
 | [tauri-runtime-wry](https://crates.io/crates/tauri-runtime-wry/2.12.3) | 2.12.3 | Apache-2.0 OR MIT |
 | [tauri-utils](https://crates.io/crates/tauri-utils/2.10.2) | 2.10.2 | Apache-2.0 OR MIT |
@@ -431,14 +430,14 @@ build tooling and is not shipped.
 | [tokio-tungstenite](https://crates.io/crates/tokio-tungstenite/0.30.0) | 0.30.0 | MIT |
 | [tokio-util](https://crates.io/crates/tokio-util/0.7.20) | 0.7.20 | MIT |
 | [toml](https://crates.io/crates/toml/0.8.2) | 0.8.2 | MIT OR Apache-2.0 |
-| [toml](https://crates.io/crates/toml/1.1.8+spec-1.1.0) | 1.1.8+spec-1.1.0 | MIT OR Apache-2.0 |
+| [toml](https://crates.io/crates/toml/1.2.1+spec-1.1.0) | 1.2.1+spec-1.1.0 | MIT OR Apache-2.0 |
 | [toml_datetime](https://crates.io/crates/toml_datetime/0.6.3) | 0.6.3 | MIT OR Apache-2.0 |
-| [toml_datetime](https://crates.io/crates/toml_datetime/1.1.2+spec-1.1.0) | 1.1.2+spec-1.1.0 | MIT OR Apache-2.0 |
+| [toml_datetime](https://crates.io/crates/toml_datetime/1.1.3+spec-1.1.0) | 1.1.3+spec-1.1.0 | MIT OR Apache-2.0 |
 | [toml_edit](https://crates.io/crates/toml_edit/0.19.15) | 0.19.15 | MIT OR Apache-2.0 |
 | [toml_edit](https://crates.io/crates/toml_edit/0.20.2) | 0.20.2 | MIT OR Apache-2.0 |
-| [toml_edit](https://crates.io/crates/toml_edit/0.25.17+spec-1.1.0) | 0.25.17+spec-1.1.0 | MIT OR Apache-2.0 |
+| [toml_edit](https://crates.io/crates/toml_edit/0.25.19+spec-1.1.0) | 0.25.19+spec-1.1.0 | MIT OR Apache-2.0 |
 | [toml_parser](https://crates.io/crates/toml_parser/1.1.5+spec-1.1.0) | 1.1.5+spec-1.1.0 | MIT OR Apache-2.0 |
-| [toml_writer](https://crates.io/crates/toml_writer/1.1.3+spec-1.1.0) | 1.1.3+spec-1.1.0 | MIT OR Apache-2.0 |
+| [toml_writer](https://crates.io/crates/toml_writer/1.2.0+spec-1.1.0) | 1.2.0+spec-1.1.0 | MIT OR Apache-2.0 |
 | [tower](https://crates.io/crates/tower/0.5.3) | 0.5.3 | MIT |
 | [tower-http](https://crates.io/crates/tower-http/0.6.11) | 0.6.11 | MIT |
 | [tower-layer](https://crates.io/crates/tower-layer/0.3.3) | 0.3.3 | MIT |
@@ -456,7 +455,8 @@ build tooling and is not shipped.
 | [untrusted](https://crates.io/crates/untrusted/0.9.0) | 0.9.0 | ISC |
 | [url](https://crates.io/crates/url/2.5.8) | 2.5.8 | MIT OR Apache-2.0 |
 | [urlpattern](https://crates.io/crates/urlpattern/0.6.0) | 0.6.0 | MIT |
-| [utf8_iter](https://crates.io/crates/utf8_iter/1.0.4) | 1.0.4 | Apache-2.0 OR MIT |
+| [utf8_iter](https://crates.io/crates/utf8_iter/1.1.0) | 1.1.0 | Apache-2.0 OR MIT |
+| [utf_types](https://crates.io/crates/utf_types/1.0.0) | 1.0.0 | Apache-2.0 OR MIT |
 | [uuid](https://crates.io/crates/uuid/1.29.0) | 1.29.0 | Apache-2.0 OR MIT |
 | [version-compare](https://crates.io/crates/version-compare/0.2.1) | 0.2.1 | MIT |
 | [version_check](https://crates.io/crates/version_check/0.9.5) | 0.9.5 | MIT/Apache-2.0 |
@@ -466,13 +466,13 @@ build tooling and is not shipped.
 | [want](https://crates.io/crates/want/0.3.2) | 0.3.2 | MIT |
 | [wasi](https://crates.io/crates/wasi/0.11.1+wasi-snapshot-preview1) | 0.11.1+wasi-snapshot-preview1 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT |
 | [wasip2](https://crates.io/crates/wasip2/1.0.4+wasi-0.2.12) | 1.0.4+wasi-0.2.12 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT |
-| [wasm-bindgen](https://crates.io/crates/wasm-bindgen/0.2.129) | 0.2.129 | MIT OR Apache-2.0 |
-| [wasm-bindgen-futures](https://crates.io/crates/wasm-bindgen-futures/0.4.79) | 0.4.79 | MIT OR Apache-2.0 |
-| [wasm-bindgen-macro](https://crates.io/crates/wasm-bindgen-macro/0.2.129) | 0.2.129 | MIT OR Apache-2.0 |
-| [wasm-bindgen-macro-support](https://crates.io/crates/wasm-bindgen-macro-support/0.2.129) | 0.2.129 | MIT OR Apache-2.0 |
-| [wasm-bindgen-shared](https://crates.io/crates/wasm-bindgen-shared/0.2.129) | 0.2.129 | MIT OR Apache-2.0 |
+| [wasm-bindgen](https://crates.io/crates/wasm-bindgen/0.2.130) | 0.2.130 | MIT OR Apache-2.0 |
+| [wasm-bindgen-futures](https://crates.io/crates/wasm-bindgen-futures/0.4.80) | 0.4.80 | MIT OR Apache-2.0 |
+| [wasm-bindgen-macro](https://crates.io/crates/wasm-bindgen-macro/0.2.130) | 0.2.130 | MIT OR Apache-2.0 |
+| [wasm-bindgen-macro-support](https://crates.io/crates/wasm-bindgen-macro-support/0.2.130) | 0.2.130 | MIT OR Apache-2.0 |
+| [wasm-bindgen-shared](https://crates.io/crates/wasm-bindgen-shared/0.2.130) | 0.2.130 | MIT OR Apache-2.0 |
 | [wasm-streams](https://crates.io/crates/wasm-streams/0.5.0) | 0.5.0 | MIT OR Apache-2.0 |
-| [web-sys](https://crates.io/crates/web-sys/0.3.106) | 0.3.106 | MIT OR Apache-2.0 |
+| [web-sys](https://crates.io/crates/web-sys/0.3.107) | 0.3.107 | MIT OR Apache-2.0 |
 | [web-time](https://crates.io/crates/web-time/1.1.0) | 1.1.0 | MIT OR Apache-2.0 |
 | [web_atoms](https://crates.io/crates/web_atoms/0.2.6) | 0.2.6 | MIT OR Apache-2.0 |
 | [webkit2gtk](https://crates.io/crates/webkit2gtk/2.0.2) | 2.0.2 | MIT |
@@ -530,7 +530,7 @@ build tooling and is not shipped.
 | [windows_x86_64_msvc](https://crates.io/crates/windows_x86_64_msvc/0.52.6) | 0.52.6 | MIT OR Apache-2.0 |
 | [windows_x86_64_msvc](https://crates.io/crates/windows_x86_64_msvc/0.53.1) | 0.53.1 | MIT OR Apache-2.0 |
 | [winnow](https://crates.io/crates/winnow/0.5.40) | 0.5.40 | MIT |
-| [winnow](https://crates.io/crates/winnow/1.0.4) | 1.0.4 | MIT |
+| [winnow](https://crates.io/crates/winnow/1.0.5) | 1.0.5 | MIT |
 | [winreg](https://crates.io/crates/winreg/0.56.0) | 0.56.0 | MIT |
 | [wit-bindgen](https://crates.io/crates/wit-bindgen/0.57.1) | 0.57.1 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT |
 | [writeable](https://crates.io/crates/writeable/0.6.4) | 0.6.4 | Unicode-3.0 |
@@ -538,7 +538,7 @@ build tooling and is not shipped.
 | [x11](https://crates.io/crates/x11/2.21.0) | 2.21.0 | MIT |
 | [x11-dl](https://crates.io/crates/x11-dl/2.21.0) | 2.21.0 | MIT |
 | [x509-parser](https://crates.io/crates/x509-parser/0.18.1) | 0.18.1 | MIT OR Apache-2.0 |
-| [xattr](https://crates.io/crates/xattr/1.6.1) | 1.6.1 | MIT OR Apache-2.0 |
+| [xattr](https://crates.io/crates/xattr/1.7.0) | 1.7.0 | MIT OR Apache-2.0 |
 | [yasna](https://crates.io/crates/yasna/0.6.0) | 0.6.0 | MIT OR Apache-2.0 |
 | [yoke](https://crates.io/crates/yoke/0.8.4) | 0.8.4 | Unicode-3.0 |
 | [yoke-derive](https://crates.io/crates/yoke-derive/0.8.4) | 0.8.4 | Unicode-3.0 |
@@ -548,6 +548,6 @@ build tooling and is not shipped.
 | [zerotrie](https://crates.io/crates/zerotrie/0.2.5) | 0.2.5 | Unicode-3.0 |
 | [zerovec](https://crates.io/crates/zerovec/0.11.9) | 0.11.9 | Unicode-3.0 |
 | [zerovec-derive](https://crates.io/crates/zerovec-derive/0.11.7) | 0.11.7 | Unicode-3.0 |
-| [zip](https://crates.io/crates/zip/9.1.0) | 9.1.0 | MIT |
+| [zip](https://crates.io/crates/zip/9.4.1) | 9.4.1 | MIT |
 | [zlib-rs](https://crates.io/crates/zlib-rs/0.6.8) | 0.6.8 | Zlib |
 | [zmij](https://crates.io/crates/zmij/1.0.23) | 1.0.23 | MIT |

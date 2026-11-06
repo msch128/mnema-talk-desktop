@@ -12,10 +12,10 @@ inventory is [../THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md).
 
 | Software | Version | Licence | Where |
 |---|---|---|---|
-| [Electron](https://www.electronjs.org/) | 45.0.0 | MIT | the program (`mnema-desktop-dev`) and its libraries |
+| [Electron](https://www.electronjs.org/) | 45.2.3 | MIT | the program (`mnema-desktop-dev`) and its libraries |
 | [Chromium](https://www.chromium.org/) | embedded in Electron | BSD-3-Clause and the licences of its own dependencies | `LICENSES.chromium.html` lists every one |
 | [Node.js](https://nodejs.org/) | embedded in Electron | MIT and the licences of its own dependencies | `LICENSES.chromium.html` |
-| [ws](https://github.com/websockets/ws) | 8.22.0 | MIT | `resources/app.asar` (`node_modules/ws`), text below |
+| [ws](https://github.com/websockets/ws) | 8.22.1 | MIT | `resources/app.asar` (`node_modules/ws`), text below |
 | Mnema Talk web app | the signed bundle's version | AGPL-3.0, with its own notices | `resources/app.asar` (`bundle/builtin.zip`); the notices of its dependencies are in the app (account menu) and in [mnema-talk](https://github.com/msch128/mnema-talk/blob/main/THIRD_PARTY_NOTICES.md) |
 
 The AppImage also carries the AppImage runtime (MIT, [AppImage/type2-runtime](https://github.com/AppImage/type2-runtime)),
