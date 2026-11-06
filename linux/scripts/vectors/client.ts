@@ -8,7 +8,10 @@ export function clientVectors(): Json {
     'https://community.example:8443/?invite=code', 'http://community.example:8443/path?invite=code', 'http://localhost:8080/path?x=1',
     'https://community.example?token=x', 'https://community.example/#x', 'https://community.example\\other', 'https://community.example\n', 'https://community.example/?', 'https://a@b.example', 'ftp://community.example',
     'https://', 'https://exa mple.com', 'http://0.0.0.0', 'http://[::]', 'https://community.example:99999', '<https://community.example:8443/>', '"https://community.example"',
-    'https://community.example/@alice', 'https://community.example/?mail=a@b.example', 'https://community.example/#@x', 'community.example/@alice', 'https://user@community.example/@alice']
+    'https://community.example/@alice', 'https://community.example/?mail=a@b.example', 'https://community.example/#@x', 'community.example/@alice', 'https://user@community.example/@alice',
+    // A port in every form a person types it: bare, with a scheme, IPv6, and inside an invite link.
+    'community.example:8443', 'localhost:8080', '127.0.0.1:8080', '[::1]:3000', 'https://[::1]:8443/', 'https://localhost:8443', 'http://localhost:8080/invite/abc234xyz789',
+    'https://community.example:8443/invite/abc234xyz789', 'community.example:8443/invite/abc234xyz789', 'http://community.example:8443/invite/abc234xyz789', 'https://community.example:1', 'https://community.example:65535']
     .map((input) => {
       try { return { input, href: parseAddress(input).href } } catch (error) { return { input, error: (error as Error).message } }
     })
@@ -36,6 +39,10 @@ export function clientVectors(): Json {
     '<https://community.example:8443/?invite=abc234xyz789>', 'community.example:8443',
     'https://community.example/?invite=short', 'https://community.example/invite/nope',
     'https://user@community.example/?invite=abc234xyz789',
+    // An invite link with a port: the code is 6 to 64 characters.
+    'https://community.example:8443/invite/abc234xyz789', 'https://community.example:8443/invite/abc234', 'https://community.example:8443/invite/abc23',
+    `https://community.example:8443/invite/${'a'.repeat(64)}`, `https://community.example:8443/invite/${'a'.repeat(65)}`, 'community.example:8443/invite/abc234xyz789',
+    'http://localhost:8080/invite/abc234xyz789', 'http://[::1]:3000/invite/abc234xyz789', 'https://[::1]:8443/invite/Team_Night-2026/', 'https://community.example:8443/invite/abc234xyz789/extra',
   ].map((input) => ({ input, code: inviteCode(input) }))
   return { addresses, healths, externals, app_paths: paths, invites }
 }
