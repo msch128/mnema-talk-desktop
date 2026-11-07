@@ -45,6 +45,14 @@ on:
 permissions:
   contents: read
 
+env:
+  # The mnema-talk release the real-server job builds and runs, by tag and by
+  # the commit that tag names; the same pin as in desktop-client.yml.
+  REAL_SERVER_TAG: v3.0.0
+  REAL_SERVER_REV: 26e4b2f7b2123da7b8358a6e87d8864935bed602
+  # SeaweedFS (the server's object storage) as a release binary, with its digest.
+  SEAWEEDFS_VERSION: '4.52'
+
 concurrency:
   group: linux-client-${{ inputs.tag || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -164,3 +172,80 @@ jobs:
             linux/release/*.deb
           if-no-files-found: error
           retention-days: 1
+
+  # The Electron client against a REAL mnema-talk server instead of stand-ins:
+  # the Go binary is built from the pinned release and listens on port 18443,
+  # PostgreSQL runs in Docker and SeaweedFS as a local process.
+  # scripts/real-server-selftest.mjs (--run) starts the server and restarts it
+  # on request, and linux/test/e2e/real/server.e2e.ts drives the client: it adds
+  # http://localhost:18443, runs the signed bundle, signs in, opens the
+  # WebSocket, sends a message and sees it pushed, and follows the restart.
+  # No microphone, camera or audio is involved.
+  linux-real-server:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.ref || github.sha }}
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: msch128/mnema-talk
+          ref: ${{ env.REAL_SERVER_REV }}
+          path: server
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: server/go.mod
+          cache: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26
+          cache: npm
+          cache-dependency-path: linux/package-lock.json
+      - name: Install dependencies and build the client
+        working-directory: linux
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          node node_modules/electron/install.js
+          npm run build
+      - name: Stage the signed web bundle
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          BUNDLE_DIR: linux/bundle
+        run: bash scripts/stage-web-bundle.sh
+      - name: Build the server from the pinned release
+        working-directory: server
+        run: |
+          set -euo pipefail
+          [ "$(git rev-parse HEAD)" = "$REAL_SERVER_REV" ] || { echo '::error::the server checkout is not the pinned revision'; exit 1; }
+          CGO_ENABLED=0 go build -trimpath -ldflags "-X github.com/msch128/mnema-talk/internal/version.Version=${REAL_SERVER_TAG#v}" -o "$RUNNER_TEMP/mnema-server" ./cmd/server
+      - name: Fetch SeaweedFS
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          digest=8b538c22d47d0c3fb6792adaa6b0c735a967401270a53427d5a476dcaca9b7ae
+          gh release download "$SEAWEEDFS_VERSION" --repo seaweedfs/seaweedfs --pattern linux_amd64.tar.gz --dir "$RUNNER_TEMP/weed-download"
+          [ "$(sha256sum "$RUNNER_TEMP/weed-download/linux_amd64.tar.gz" | cut -d' ' -f1)" = "$digest" ] || { echo '::error::SeaweedFS archive digest mismatch'; exit 1; }
+          mkdir "$RUNNER_TEMP/weed"
+          tar -xzf "$RUNNER_TEMP/weed-download/linux_amd64.tar.gz" -C "$RUNNER_TEMP/weed"
+          echo "WEED_EXE=$RUNNER_TEMP/weed/weed" >> "$GITHUB_ENV"
+      - name: Start PostgreSQL
+        run: |
+          set -euo pipefail
+          docker run -d --name mnema-pg -e POSTGRES_USER=mnema -e POSTGRES_HOST_AUTH_METHOD=trust -e POSTGRES_DB=mnema_selftest -p 127.0.0.1:55432:5432 postgres:18-alpine
+          for _ in $(seq 1 60); do docker exec mnema-pg pg_isready -U mnema -d mnema_selftest && break; sleep 1; done
+          docker exec mnema-pg pg_isready -U mnema -d mnema_selftest
+          echo 'DATABASE_URL=postgres://mnema@127.0.0.1:55432/mnema_selftest?sslmode=disable' >> "$GITHUB_ENV"
+      - name: System packages for a headless display
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends xvfb x11-utils libasound2t64
+          # Ubuntu 24.04 restricts unprivileged user namespaces, which Chromium's sandbox uses.
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - name: The client against a real server, through a restart of it
+        if: hashFiles('linux/bundle/builtin.zip') != ''
+        run: node scripts/real-server-selftest.mjs --run "$RUNNER_TEMP/mnema-server" xvfb-run -a node --test --test-timeout=300000 linux/test/e2e/real/server.e2e.ts
