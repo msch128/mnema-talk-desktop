@@ -67,9 +67,10 @@ env:
   # The published desktop release whose signed packages feed the signature tests.
   FIXTURE_VERSION: 0.3.1
   # The mnema-talk release the real-server jobs build and run, by tag and by the
-  # commit that tag names. Move both together when a newer release is wanted.
-  REAL_SERVER_TAG: v2.9.20
-  REAL_SERVER_REV: aa5abeeaf0a8564119e11e1d6849fe53843eb8e7
+  # commit that tag names. Move both together when a newer release is wanted,
+  # and in desktop-linux.yml too (scripts/real-server-pins.test.mjs checks it).
+  REAL_SERVER_TAG: v3.0.0
+  REAL_SERVER_REV: 26e4b2f7b2123da7b8358a6e87d8864935bed602
   # SeaweedFS (the server's object storage) as a release binary, with its digest.
   SEAWEEDFS_VERSION: '4.52'
 

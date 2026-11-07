@@ -13,6 +13,12 @@
 // PostgreSQL is the caller's (DATABASE_URL). Object storage is a SeaweedFS
 // started here from WEED_EXE, or the caller's own S3 endpoint (S3_ENDPOINT).
 //
+// A client that is driven from outside (the Electron client, by a test) runs as
+//
+//   ... node scripts/real-server-selftest.mjs --run <server executable> <command> [arguments]
+//
+// with the same environment and the same restart protocol; its exit status is the verdict.
+//
 // The host appends `ok`/`fail` lines to a record (src/selftest_real.rs); it asks
 // for the restart with a `restart` line, and this script answers in a control file.
 import { spawn } from 'node:child_process'
@@ -22,8 +28,11 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomBytes } from 'node:crypto'
 
-const [hostExe, serverExe] = process.argv.slice(2)
-if (!hostExe || !existsSync(hostExe) || !serverExe || !existsSync(serverExe)) throw new Error('usage: real-server-selftest.mjs <host executable> <server executable>')
+const args = process.argv.slice(2)
+const driven = args[0] === '--run'
+const [hostExe, serverExe, ...driverArgs] = driven ? [args[2], args[1], ...args.slice(3)] : args
+const usage = 'usage: real-server-selftest.mjs <host executable> <server executable> | --run <server executable> <command> [arguments]'
+if (!hostExe || !serverExe || !existsSync(serverExe) || (!driven && !existsSync(hostExe))) throw new Error(usage)
 if (process.platform === 'win32' && !process.env.CI) throw new Error('this check uses the real profile on Windows; run it on a disposable machine (CI)')
 if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is required')
 if (!process.env.S3_ENDPOINT && !(process.env.WEED_EXE && existsSync(process.env.WEED_EXE))) throw new Error('S3_ENDPOINT or WEED_EXE is required')
@@ -145,7 +154,7 @@ try {
   console.log(`server ${version} on ${address}`)
 
   const home = join(dir, 'home')
-  const isolated = process.platform === 'win32' ? {} : { HOME: home, XDG_DATA_HOME: join(home, 'share') }
+  const isolated = driven || process.platform === 'win32' ? {} : { HOME: home, XDG_DATA_HOME: join(home, 'share') }
   const env = {
     ...process.env,
     ...isolated,
@@ -156,12 +165,12 @@ try {
     MNEMA_REAL_SELFTEST_PASSWORD: admin.password,
     MNEMA_REAL_SELFTEST_CONTROL: control,
   }
-  host = spawn(hostExe, [], { env, stdio: 'inherit' })
+  host = spawn(hostExe, driverArgs, { env, stdio: 'inherit' })
   const exited = new Promise((resolve) => host.on('exit', resolve))
   const deadline = Date.now() + 420_000
   let restarted = false
   let answered = false
-  while (!lines(record).includes('done') && Date.now() < deadline) {
+  while (!(!driven && lines(record).includes('done')) && Date.now() < deadline) {
     const seen = lines(record)
     if (seen.includes('restart') && !restarted) {
       restarted = true
@@ -179,12 +188,17 @@ try {
 
   const result = lines(record)
   console.log(result.join('\n'))
-  must(result.includes('done'), 'the host did not finish')
   must(restarted && answered, 'the host never asked for the restart')
-  for (const line of result.filter((l) => l.startsWith('fail'))) fails.push(line)
-  const passed = result.filter((l) => l.startsWith('ok ')).length
-  const total = Number(result.find((l) => l.startsWith('total '))?.slice(6))
-  must(total > 0 && passed === total, `${passed} of the host's ${total} checks passed`)
+  if (driven) {
+    await Promise.race([exited, sleep(60_000)])
+    must(host.exitCode === 0, `the command exited with ${host.exitCode}`)
+  } else {
+    must(result.includes('done'), 'the host did not finish')
+    for (const line of result.filter((l) => l.startsWith('fail'))) fails.push(line)
+    const passed = result.filter((l) => l.startsWith('ok ')).length
+    const total = Number(result.find((l) => l.startsWith('total '))?.slice(6))
+    must(total > 0 && passed === total, `${passed} of the host's ${total} checks passed`)
+  }
 } catch (error) {
   fails.push(String(error?.stack ?? error))
 } finally {
