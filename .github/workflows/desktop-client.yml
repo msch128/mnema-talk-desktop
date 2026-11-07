@@ -66,6 +66,12 @@ permissions:
 env:
   # The published desktop release whose signed packages feed the signature tests.
   FIXTURE_VERSION: 0.3.1
+  # The mnema-talk release the real-server jobs build and run, by tag and by the
+  # commit that tag names. Move both together when a newer release is wanted.
+  REAL_SERVER_TAG: v2.9.20
+  REAL_SERVER_REV: aa5abeeaf0a8564119e11e1d6849fe53843eb8e7
+  # SeaweedFS (the server's object storage) as a release binary, with its digest.
+  SEAWEEDFS_VERSION: '4.52'
 
 concurrency:
   group: shared-desktop-${{ inputs.acceptance_release && format('{0}-{1}', inputs.acceptance_release, github.sha) || inputs.tag || github.ref }}
@@ -610,6 +616,191 @@ jobs:
           $ErrorActionPreference = 'Stop'
           node scripts/multi-instance-selftest.mjs experimental/app/target/release/mnema-native-client-preview.exe
           if ($LASTEXITCODE -ne 0) { throw 'The multi-instance check failed' }
+
+  # The same host against a REAL mnema-talk server instead of stand-ins: the
+  # Go binary is built from the pinned release, PostgreSQL and SeaweedFS run
+  # as local processes (no Docker on Windows or macOS runners), and the server
+  # listens on a port of its own and is entered as http://localhost:18443. The
+  # test-only `real-selftest` feature (src/selftest_real.rs) adds it, loads the
+  # signed web bundle for it, signs in, opens the WebSocket, sends a message and
+  # sees it arrive; scripts/real-server-selftest.mjs then restarts the server on
+  # the same port and database and the host must carry on. No microphone,
+  # camera or audio is involved.
+  windows-real-server:
+    if: inputs.acceptance_release == ''
+    runs-on: windows-2025
+    timeout-minutes: 45
+    env:
+      RUST_VERSION: 1.99.1
+      CARGO_TARGET_DIR: ${{ github.workspace }}/experimental/app/target
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.ref || github.sha }}
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: msch128/mnema-talk
+          ref: ${{ env.REAL_SERVER_REV }}
+          path: server
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: server/go.mod
+          cache: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26
+      - name: Select pinned Rust toolchain
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          rustup toolchain install $env:RUST_VERSION --profile minimal
+          if ($LASTEXITCODE -ne 0) { throw 'Rust installation failed' }
+          rustup default $env:RUST_VERSION
+          if ($LASTEXITCODE -ne 0) { throw 'Rust selection failed' }
+      # Restored on pull requests, saved only on main.
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: experimental/app -> target
+          key: ${{ hashFiles('**/Cargo.lock') }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Stage the signed web bundle
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/stage-web-bundle.sh
+      - name: Build the host with the real-server self-test
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          cargo build --locked --release --manifest-path experimental/app/Cargo.toml --features shell,web-client,custom-protocol,real-selftest
+          if ($LASTEXITCODE -ne 0) { throw 'Host build failed' }
+      # The web app is not embedded: the host runs its own signed bundle, and
+      # the server is only asked for data. The tracked web/dist placeholder is enough to build.
+      - name: Build the server from the pinned release
+        shell: pwsh
+        working-directory: server
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ((git rev-parse HEAD) -ne $env:REAL_SERVER_REV) { throw 'The server checkout is not the pinned revision' }
+          $env:CGO_ENABLED = '0'
+          go build -trimpath -ldflags "-X github.com/msch128/mnema-talk/internal/version.Version=$($env:REAL_SERVER_TAG.Substring(1))" -o "$env:RUNNER_TEMP/mnema-server.exe" ./cmd/server
+          if ($LASTEXITCODE -ne 0) { throw 'Server build failed' }
+      - name: Fetch SeaweedFS
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $digest = 'e3dfe6c441686887b8fdde4420aa2c11ad9c8ce152340bd053e8176e07851a26'
+          gh release download $env:SEAWEEDFS_VERSION --repo seaweedfs/seaweedfs --pattern windows_amd64.zip --dir "$env:RUNNER_TEMP/weed-download"
+          if ($LASTEXITCODE -ne 0) { throw 'SeaweedFS download failed' }
+          $zip = "$env:RUNNER_TEMP/weed-download/windows_amd64.zip"
+          if ((Get-FileHash -Algorithm SHA256 $zip).Hash.ToLowerInvariant() -ne $digest) { throw 'SeaweedFS archive digest mismatch' }
+          Expand-Archive $zip "$env:RUNNER_TEMP/weed"
+          "WEED_EXE=$env:RUNNER_TEMP/weed/weed.exe" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+      # The runner's own PostgreSQL, as a private cluster on loopback (as the
+      # normal-backend fixture does it).
+      - name: Start PostgreSQL
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $pg = Get-ChildItem (Join-Path $env:ProgramFiles 'PostgreSQL') -Directory | Where-Object { $_.Name -in '17','18' } | Sort-Object Name -Descending | Select-Object -First 1
+          if ($null -eq $pg) { throw 'A preinstalled PostgreSQL 17 or 18 is required' }
+          $bin = Join-Path $pg.FullName 'bin'
+          $data = Join-Path $env:RUNNER_TEMP 'pg-data'
+          & (Join-Path $bin 'initdb.exe') -D $data -U mnema -A trust -E UTF8 --locale=C
+          if ($LASTEXITCODE -ne 0) { throw 'PostgreSQL cluster initialization failed' }
+          & (Join-Path $bin 'pg_ctl.exe') -D $data -l (Join-Path $env:RUNNER_TEMP 'postgres.log') -o '-h 127.0.0.1 -p 55432' -w -t 60 start
+          if ($LASTEXITCODE -ne 0) { throw 'PostgreSQL startup failed' }
+          & (Join-Path $bin 'createdb.exe') -h 127.0.0.1 -p 55432 -U mnema mnema_selftest
+          if ($LASTEXITCODE -ne 0) { throw 'Database creation failed' }
+          'DATABASE_URL=postgres://mnema@127.0.0.1:55432/mnema_selftest?sslmode=disable' | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+      - name: The host against a real server, through a restart of it
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          node scripts/real-server-selftest.mjs experimental/app/target/release/mnema-native-client-preview.exe "$env:RUNNER_TEMP/mnema-server.exe"
+          if ($LASTEXITCODE -ne 0) { throw 'The real-server check failed' }
+
+  macos-real-server:
+    if: inputs.acceptance_release == ''
+    runs-on: macos-15
+    timeout-minutes: 45
+    env:
+      RUST_VERSION: 1.99.1
+      CARGO_TARGET_DIR: ${{ github.workspace }}/experimental/app/target
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.ref || github.sha }}
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: msch128/mnema-talk
+          ref: ${{ env.REAL_SERVER_REV }}
+          path: server
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: server/go.mod
+          cache: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26
+      - name: Select pinned Rust toolchain
+        run: |
+          rustup toolchain install "$RUST_VERSION" --profile minimal
+          rustup default "$RUST_VERSION"
+      # Restored on pull requests, saved only on main.
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: experimental/app -> target
+          key: ${{ hashFiles('**/Cargo.lock') }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Stage the signed web bundle
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/stage-web-bundle.sh
+      - name: Build the host with the real-server self-test
+        run: cargo build --locked --manifest-path experimental/app/Cargo.toml --features shell,web-client,custom-protocol,real-selftest
+      - name: Build the server from the pinned release
+        working-directory: server
+        run: |
+          set -euo pipefail
+          [ "$(git rev-parse HEAD)" = "$REAL_SERVER_REV" ] || { echo '::error::the server checkout is not the pinned revision'; exit 1; }
+          CGO_ENABLED=0 go build -trimpath -ldflags "-X github.com/msch128/mnema-talk/internal/version.Version=${REAL_SERVER_TAG#v}" -o "$RUNNER_TEMP/mnema-server" ./cmd/server
+      - name: Fetch SeaweedFS
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          digest=7aed4f7db8048a8aedab47a71ea4dd3875caa5abdb925d6aa72fb65438a47910
+          gh release download "$SEAWEEDFS_VERSION" --repo seaweedfs/seaweedfs --pattern darwin_arm64.tar.gz --dir "$RUNNER_TEMP/weed-download"
+          [ "$(shasum -a 256 "$RUNNER_TEMP/weed-download/darwin_arm64.tar.gz" | cut -d' ' -f1)" = "$digest" ] || { echo '::error::SeaweedFS archive digest mismatch'; exit 1; }
+          mkdir "$RUNNER_TEMP/weed"
+          tar -xzf "$RUNNER_TEMP/weed-download/darwin_arm64.tar.gz" -C "$RUNNER_TEMP/weed"
+          echo "WEED_EXE=$RUNNER_TEMP/weed/weed" >> "$GITHUB_ENV"
+      # Homebrew can hiccup on the network: a bounded retry, nothing else.
+      - name: Start PostgreSQL
+        timeout-minutes: 10
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            brew install postgresql@18 && break
+            echo "brew install failed (attempt $attempt)" >&2
+            [ "$attempt" -lt 3 ] || exit 1
+            sleep 10
+          done
+          bin="$(brew --prefix postgresql@18)/bin"
+          data="$RUNNER_TEMP/pg-data"
+          "$bin/initdb" -D "$data" -U mnema --auth=trust -E UTF8 --locale=C >/dev/null
+          "$bin/pg_ctl" -D "$data" -o "-h 127.0.0.1 -p 55432 -k $RUNNER_TEMP" -l "$RUNNER_TEMP/postgres.log" -w start
+          "$bin/createdb" -h 127.0.0.1 -p 55432 -U mnema mnema_selftest
+          echo 'DATABASE_URL=postgres://mnema@127.0.0.1:55432/mnema_selftest?sslmode=disable' >> "$GITHUB_ENV"
+      - name: The host against a real server, through a restart of it
+        run: node scripts/real-server-selftest.mjs "$CARGO_TARGET_DIR/debug/mnema-native-client-preview" "$RUNNER_TEMP/mnema-server"
 
   # The same host on macOS: unit tests and Clippy on every change, and for a
   # release the Apple silicon (arm64) executable that desktop-release.yml
