@@ -276,7 +276,9 @@ pub async fn rail_notify_get(
         let session = session.clone();
         async move {
             let resp = forward(&session.instance, "GET", path, &[], Vec::new()).await;
-            (resp.status == 200).then_some(resp.body)
+            // The health answer lists the features in its 503 as well (a dependency such as object storage is down).
+            let answered = resp.status == 200 || (resp.status == 503 && path == HEALTH_PATH);
+            answered.then_some(resp.body)
         }
     };
     let supported = ask(HEALTH_PATH).await.is_some_and(|body| supports(&body));

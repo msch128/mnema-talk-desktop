@@ -80,12 +80,36 @@ fn clean_name(raw: &str) -> Option<String> {
     (!name.is_empty()).then_some(name)
 }
 
+/// What a `503` of the health check says about a server that answers but
+/// reports a dependency as down (object storage, for one: uploads and pictures
+/// fail then, chat and Talks work). Such a server sends what its `200` carries
+/// with the status `unavailable`. `None` for every other body: an older
+/// server sends only an error there, and that stays "unavailable".
+pub(super) fn parse_degraded_health(bytes: &[u8]) -> Option<ServerInfo> {
+    #[derive(Deserialize)]
+    struct Degraded {
+        status: String,
+        version: String,
+        web_client_api: u32,
+    }
+    let health: Degraded = crate::web_json::parse(bytes)?;
+    (health.status == "unavailable" && health.web_client_api >= 1).then(|| ServerInfo {
+        version: Version::parse(&health.version),
+        web_client_api: health.web_client_api,
+    })
+}
+
 /// Asks the server what it is: its health and the name it gives itself.
 /// The last is whether its health answer wants the community icon fetched.
 pub(crate) async fn discover(origin: &Url) -> Result<(ServerInfo, Option<String>, bool), String> {
-    let bytes = fetch_health(origin).await?;
+    let (bytes, degraded) = fetch_health(origin).await?;
+    let server = if degraded {
+        parse_degraded_health(&bytes).ok_or(UNAVAILABLE)?
+    } else {
+        parse_health(&bytes)?
+    };
     Ok((
-        parse_health(&bytes)?,
+        server,
         parse_community_name(&bytes),
         crate::rail_icon::wanted(&bytes),
     ))
@@ -173,13 +197,15 @@ pub(super) fn unreachable_reason(error: &(dyn std::error::Error + 'static)) -> S
     }
 }
 
-pub(super) async fn fetch_health(origin: &Url) -> Result<Vec<u8>, String> {
+/// The health answer and whether it came as a `503`, which only
+/// [`parse_degraded_health`] may accept. Every other status is no answer.
+pub(super) async fn fetch_health(origin: &Url) -> Result<(Vec<u8>, bool), String> {
     let client = crate::web_proxy::client_builder()
         .redirect(Policy::none())
         .timeout(Duration::from_secs(10))
         .build()
         .map_err(|_| NO_HTTPS)?;
-    let mut response = client
+    let response = client
         .get(
             origin
                 .join("api/health")
@@ -188,9 +214,18 @@ pub(super) async fn fetch_health(origin: &Url) -> Result<Vec<u8>, String> {
         .send()
         .await
         .map_err(|e| unreachable_reason(&e))?;
-    if response.status() != reqwest::StatusCode::OK {
-        return Err(UNAVAILABLE.into());
+    match response.status() {
+        reqwest::StatusCode::OK => Ok((read_bounded(response).await?, false)),
+        // A body that cannot be read or is too large is no health answer either.
+        reqwest::StatusCode::SERVICE_UNAVAILABLE => read_bounded(response)
+            .await
+            .map(|bytes| (bytes, true))
+            .map_err(|_| UNAVAILABLE.into()),
+        _ => Err(UNAVAILABLE.into()),
     }
+}
+
+async fn read_bounded(mut response: reqwest::Response) -> Result<Vec<u8>, String> {
     let mut bytes = Vec::new();
     while let Some(chunk) = response.chunk().await.map_err(|_| CHECK_FAILED)? {
         if chunk.len() > MAX_DISCOVERY_BYTES.saturating_sub(bytes.len()) {

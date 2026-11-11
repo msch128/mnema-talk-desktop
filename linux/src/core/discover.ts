@@ -1,5 +1,5 @@
 import { readBody, send } from './http.ts'
-import { parseCommunityName, parseHealth } from './client.ts'
+import { parseCommunityName, parseDegradedHealth, parseHealth } from './client.ts'
 import { iconWanted } from './icon.ts'
 import type { ServerInfo } from './store.ts'
 
@@ -34,7 +34,8 @@ export function unreachableReason(error: unknown): string {
 /**
  * Reads `version`, `web_client_api` and the server's own name from `/api/health` (bounded, no
  * redirects, system TLS). The answer only chooses among bundles the client
- * already verified; it never supplies code.
+ * already verified; it never supplies code. A `503` counts only when its body
+ * says what the server is (`parseDegradedHealth`); every other status is no answer.
  */
 export async function discover(origin: URL, timeoutMs = 10_000): Promise<ServerInfo> {
   let response
@@ -43,15 +44,18 @@ export async function discover(origin: URL, timeoutMs = 10_000): Promise<ServerI
   } catch (error) {
     throw new Error(unreachableReason(error), { cause: error })
   }
-  if (response.status !== 200) {
+  const degraded = response.status === 503
+  if (response.status !== 200 && !degraded) {
     response.destroy()
     throw new Error(UNAVAILABLE)
   }
   if (response.contentLength !== null && response.contentLength > MAX_DISCOVERY_BYTES) {
     response.destroy()
-    throw new Error(INVALID_RESPONSE)
+    throw new Error(degraded ? UNAVAILABLE : INVALID_RESPONSE)
   }
   const bytes = await readBody(response, MAX_DISCOVERY_BYTES)
-  if (!bytes) throw new Error(INVALID_RESPONSE)
-  return { ...parseHealth(bytes), communityName: parseCommunityName(bytes), communityIcon: iconWanted(bytes) }
+  if (!bytes) throw new Error(degraded ? UNAVAILABLE : INVALID_RESPONSE)
+  const server = degraded ? parseDegradedHealth(bytes) : parseHealth(bytes)
+  if (!server) throw new Error(UNAVAILABLE)
+  return { ...server, communityName: parseCommunityName(bytes), communityIcon: iconWanted(bytes) }
 }

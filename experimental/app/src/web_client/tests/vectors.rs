@@ -214,11 +214,34 @@ fn check_invites(v: &Value) {
     }
 }
 
+fn check_degraded_healths(v: &Value) {
+    for c in v["degraded_healths"].as_array().unwrap() {
+        let input = c["input"].as_str().unwrap();
+        let ok = &c["ok"];
+        match parse_degraded_health(input.as_bytes()) {
+            Some(info) => {
+                assert_eq!(
+                    info.version.map(|v| v.to_string()).as_deref(),
+                    ok["version"].as_str(),
+                    "{input}"
+                );
+                assert_eq!(
+                    Some(info.web_client_api as u64),
+                    ok["api"].as_u64(),
+                    "{input}"
+                );
+            }
+            None => assert!(ok.is_null(), "{input}"),
+        }
+    }
+}
+
 #[test]
 fn addresses_health_links_and_routes() {
     let v = load();
     check_addresses(&v);
     check_healths(&v);
+    check_degraded_healths(&v);
     check_externals(&v);
     check_app_paths(&v);
     check_invites(&v);

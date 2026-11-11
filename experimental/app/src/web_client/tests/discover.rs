@@ -196,6 +196,93 @@ fn health_decides_what_the_server_is() {
     );
 }
 
+/// A server that answers every request with this status line and JSON body.
+async fn health_server(status: &'static str, body: &'static str) -> Url {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let origin = Url::parse(&format!("http://{}/", listener.local_addr().unwrap())).unwrap();
+    tokio::spawn(async move {
+        loop {
+            let Ok((mut stream, _)) = listener.accept().await else {
+                return;
+            };
+            let mut buffer = vec![0u8; 8192];
+            let _ = stream.read(&mut buffer).await;
+            let answer = format!(
+                "HTTP/1.1 {status}\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            let _ = stream.write_all(answer.as_bytes()).await;
+        }
+    });
+    origin
+}
+
+const STORAGE_DOWN: &str = r#"{"error":{"code":"UNAVAILABLE","message":"file storage unavailable"},"status":"unavailable","unavailable":["storage"],"version":"3.0.4","web_client_api":1,"community_name":"Lantern","features":["dm"]}"#;
+
+#[tokio::test]
+async fn a_server_whose_storage_is_down_still_says_what_it_is() {
+    let origin = health_server("503 Service Unavailable", STORAGE_DOWN).await;
+    let (info, name, _) = discover(&origin).await.unwrap();
+    assert_eq!(
+        info,
+        ServerInfo {
+            version: Some(Version(3, 0, 4)),
+            web_client_api: 1
+        }
+    );
+    assert_eq!(name.as_deref(), Some("Lantern"));
+}
+
+#[tokio::test]
+async fn a_503_that_does_not_describe_the_server_stays_unavailable() {
+    for body in [
+        // What a server before the change sends.
+        r#"{"error":{"code":"UNAVAILABLE","message":"file storage unavailable"}}"#,
+        // A healthy document is no answer under a 503.
+        r#"{"status":"ok","version":"3.0.4","web_client_api":1}"#,
+        r#"{"status":"unavailable","version":"3.0.4"}"#,
+        r#"{"status":"unavailable","web_client_api":1}"#,
+        "<html>bad gateway</html>",
+        "",
+    ] {
+        let origin = health_server("503 Service Unavailable", body).await;
+        assert_eq!(discover(&origin).await.unwrap_err(), UNAVAILABLE, "{body}");
+    }
+}
+
+#[tokio::test]
+async fn any_other_status_is_unavailable_whatever_its_body_says() {
+    for status in [
+        "500 Internal Server Error",
+        "502 Bad Gateway",
+        "404 Not Found",
+    ] {
+        let origin = health_server(status, STORAGE_DOWN).await;
+        assert_eq!(
+            discover(&origin).await.unwrap_err(),
+            UNAVAILABLE,
+            "{status}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn a_200_is_read_as_before() {
+    let healthy =
+        r#"{"status":"ok","version":"3.0.4","web_client_api":1,"community_name":"Lantern"}"#;
+    let (info, name, _) = discover(&health_server("200 OK", healthy).await)
+        .await
+        .unwrap();
+    assert_eq!(info.version, Some(Version(3, 0, 4)));
+    assert_eq!(name.as_deref(), Some("Lantern"));
+    // The degraded document is not a healthy one: under a 200 it is refused as it always was.
+    let reason = discover(&health_server("200 OK", STORAGE_DOWN).await)
+        .await
+        .unwrap_err();
+    assert_eq!(reason, NOT_COMPATIBLE);
+}
+
 /// The host's TLS stack (rustls, verified by SChannel or Security.framework) against a real
 /// public server on a port that is not 443, with a Let's Encrypt
 /// certificate (badssl.com's test servers; one request per run). The
