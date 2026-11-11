@@ -274,6 +274,100 @@
    "error": "This instance needs an update for the desktop client."
   }
  ],
+ "degraded_healths": [
+  {
+   "input": "{\"error\":{\"code\":\"UNAVAILABLE\",\"message\":\"file storage unavailable\"},\"status\":\"unavailable\",\"unavailable\":[\"storage\"],\"version\":\"3.0.4\",\"web_client_api\":1,\"community_name\":\"Lantern\",\"features\":[\"dm\"]}",
+   "ok": {
+    "version": "3.0.4",
+    "api": 1
+   }
+  },
+  {
+   "input": "{\"status\":\"unavailable\",\"unavailable\":[\"database\",\"storage\"],\"version\":\"3.0.4\",\"web_client_api\":1}",
+   "ok": {
+    "version": "3.0.4",
+    "api": 1
+   }
+  },
+  {
+   "input": "{\"status\":\"unavailable\",\"version\":\"3.0.4\",\"web_client_api\":1}",
+   "ok": {
+    "version": "3.0.4",
+    "api": 1
+   }
+  },
+  {
+   "input": "{\"status\":\"unavailable\",\"version\":\"dev\",\"web_client_api\":3}",
+   "ok": {
+    "version": null,
+    "api": 3
+   }
+  },
+  {
+   "input": "{\"error\":{\"code\":\"UNAVAILABLE\",\"message\":\"file storage unavailable\"}}",
+   "ok": null
+  },
+  {
+   "input": "{\"status\":\"ok\",\"version\":\"3.0.4\",\"web_client_api\":1}",
+   "ok": null
+  },
+  {
+   "input": "{\"status\":\"down\",\"version\":\"3.0.4\",\"web_client_api\":1}",
+   "ok": null
+  },
+  {
+   "input": "{\"version\":\"3.0.4\",\"web_client_api\":1}",
+   "ok": null
+  },
+  {
+   "input": "{\"status\":\"unavailable\",\"web_client_api\":1}",
+   "ok": null
+  },
+  {
+   "input": "{\"status\":\"unavailable\",\"version\":null,\"web_client_api\":1}",
+   "ok": null
+  },
+  {
+   "input": "{\"status\":\"unavailable\",\"version\":\"3.0.4\"}",
+   "ok": null
+  },
+  {
+   "input": "{\"status\":\"unavailable\",\"version\":\"3.0.4\",\"web_client_api\":0}",
+   "ok": null
+  },
+  {
+   "input": "{\"status\":\"unavailable\",\"version\":\"3.0.4\",\"web_client_api\":\"1\"}",
+   "ok": null
+  },
+  {
+   "input": "{\"status\":\"unavailable\",\"version\":\"3.0.4\",\"web_client_api\":-1}",
+   "ok": null
+  },
+  {
+   "input": "{\"status\":\"unavailable\",\"version\":\"3.0.4\",\"web_client_api\":1.5}",
+   "ok": null
+  },
+  {
+   "input": "{\"status\":\"unavailable\",\"status\":\"unavailable\",\"version\":\"3.0.4\",\"web_client_api\":1}",
+   "ok": null
+  },
+  {
+   "input": "not JSON",
+   "ok": null
+  },
+  {
+   "input": "[]",
+   "ok": null
+  },
+  {
+   "input": "{}",
+   "ok": null
+  },
+  {
+   "input": "",
+   "ok": null
+  }
+ ],
  "externals": [
   {
    "url": "https://example.invalid/page?q=value",

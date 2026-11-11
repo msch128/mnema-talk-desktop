@@ -1,4 +1,4 @@
-import { appPath, externalAllowed, inviteCode, parseAddress, parseHealth } from '../../src/core/client.ts'
+import { appPath, externalAllowed, inviteCode, parseAddress, parseDegradedHealth, parseHealth } from '../../src/core/client.ts'
 import { formatVersion } from '../../src/core/version.ts'
 import { type Json } from './common.ts'
 
@@ -24,6 +24,18 @@ export function clientVectors(): Json {
         return { input, ok: { version: info.version === null ? null : formatVersion(info.version), api: info.webClientApi } }
       } catch (error) { return { input, error: (error as Error).message } }
     })
+  // The body of a 503: only a server that says what it is counts as reachable.
+  const about = '"version":"3.0.4","web_client_api":1'
+  const degradedHealths = [`{"error":{"code":"UNAVAILABLE","message":"file storage unavailable"},"status":"unavailable","unavailable":["storage"],${about},"community_name":"Lantern","features":["dm"]}`,
+    `{"status":"unavailable","unavailable":["database","storage"],${about}}`, `{"status":"unavailable",${about}}`, '{"status":"unavailable","version":"dev","web_client_api":3}',
+    '{"error":{"code":"UNAVAILABLE","message":"file storage unavailable"}}', `{"status":"ok",${about}}`, `{"status":"down",${about}}`, `{${about}}`, '{"status":"unavailable","web_client_api":1}',
+    '{"status":"unavailable","version":null,"web_client_api":1}', '{"status":"unavailable","version":"3.0.4"}', '{"status":"unavailable","version":"3.0.4","web_client_api":0}',
+    '{"status":"unavailable","version":"3.0.4","web_client_api":"1"}', '{"status":"unavailable","version":"3.0.4","web_client_api":-1}', '{"status":"unavailable","version":"3.0.4","web_client_api":1.5}',
+    `{"status":"unavailable","status":"unavailable",${about}}`, 'not JSON', '[]', '{}', '']
+    .map((input) => {
+      const info = parseDegradedHealth(Buffer.from(input))
+      return { input, ok: info === null ? null : { version: info.version === null ? null : formatVersion(info.version), api: info.webClientApi } }
+    })
   const externals = ['https://example.invalid/page?q=value', 'file:///tmp/example', 'javascript:alert(1)', 'mailto:user@example.invalid', 'tel:+4930123456', 'https://user:password@example.invalid/', 'http://example.invalid/', 'https://example.invalid/' + 'a'.repeat(5000)]
     .map((url) => ({ url, allowed: externalAllowed(new URL(url)) }))
   const ID = '11111111-1111-1111-1111-111111111111'
@@ -44,5 +56,5 @@ export function clientVectors(): Json {
     `https://community.example:8443/invite/${'a'.repeat(64)}`, `https://community.example:8443/invite/${'a'.repeat(65)}`, 'community.example:8443/invite/abc234xyz789',
     'http://localhost:8080/invite/abc234xyz789', 'http://[::1]:3000/invite/abc234xyz789', 'https://[::1]:8443/invite/Team_Night-2026/', 'https://community.example:8443/invite/abc234xyz789/extra',
   ].map((input) => ({ input, code: inviteCode(input) }))
-  return { addresses, healths, externals, app_paths: paths, invites }
+  return { addresses, healths, degraded_healths: degradedHealths, externals, app_paths: paths, invites }
 }

@@ -120,6 +120,26 @@ export function parseHealth(bytes: Uint8Array): ServerInfo {
   return { version: parseVersion(version ?? ''), webClientApi: api }
 }
 
+/**
+ * What a `503` of `/api/health` says about a server that answers but reports a
+ * dependency as down (object storage, for one: uploads and pictures fail then,
+ * chat and Talks work). Such a server sends what its `200` carries with the
+ * status `unavailable`. Null for every other body: an older server sends only
+ * an error there. Port of `parse_degraded_health`.
+ */
+export function parseDegradedHealth(bytes: Uint8Array): ServerInfo | null {
+  let health: unknown
+  try {
+    health = parseStrictJson(bytes)
+  } catch {
+    return null
+  }
+  if (typeof health !== 'object' || health === null || Array.isArray(health)) return null
+  const { status, version, web_client_api: api } = health as Record<string, unknown>
+  if (status !== 'unavailable' || typeof version !== 'string' || typeof api !== 'number' || !Number.isInteger(api) || asU32(api) === null || api < 1) return null
+  return { version: parseVersion(version), webClientApi: api }
+}
+
 const MAX_NAME_CHARS = 80
 
 /**

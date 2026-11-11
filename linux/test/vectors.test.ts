@@ -9,7 +9,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { type TrustedKey, parseKey, validPath, verifyBundle } from '../src/core/bundle.ts'
-import { SELECTOR_ONLY, appPath, externalAllowed, inviteCode, parseAddress, parseHealth } from '../src/core/client.ts'
+import { SELECTOR_ONLY, appPath, externalAllowed, inviteCode, parseAddress, parseDegradedHealth, parseHealth } from '../src/core/client.ts'
 import { Jar } from '../src/core/cookies.ts'
 import { verifyPackage } from '../src/core/minisign.ts'
 import { Limits, clampRange, inlineSafe, mimeFor, serveBundle, target } from '../src/core/proxy.ts'
@@ -216,6 +216,15 @@ test('client vectors: addresses, health, external links and app routes', () => {
   for (const c of v.externals) assert.equal(externalAllowed(new URL(c.url)), c.allowed, c.url.slice(0, 60))
   for (const c of v.app_paths) assert.equal(appPath(c.path), c.ok, JSON.stringify(c.path))
   for (const c of v.invites) assert.equal(inviteCode(c.input), c.code, c.input)
+})
+
+test('client vectors: the body of a 503 that says what the server is', () => {
+  const v = load('client')
+  for (const c of v.degraded_healths) {
+    const info = parseDegradedHealth(Buffer.from(c.input))
+    assert.deepEqual(info === null ? null : { version: info.version === null ? null : formatVersion(info.version), api: info.webClientApi }, c.ok, c.input)
+  }
+  assert.deepEqual(v.degraded_healths.filter((c: Json) => c.ok !== null).length, 4, 'the four bodies of a server that says what it is')
 })
 
 test('minisign vectors', () => {
