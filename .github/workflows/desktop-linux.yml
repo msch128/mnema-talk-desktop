@@ -48,8 +48,8 @@ permissions:
 env:
   # The mnema-talk release the real-server job builds and runs, by tag and by
   # the commit that tag names; the same pin as in desktop-client.yml.
-  REAL_SERVER_TAG: v3.0.0
-  REAL_SERVER_REV: 26e4b2f7b2123da7b8358a6e87d8864935bed602
+  REAL_SERVER_TAG: v3.0.10
+  REAL_SERVER_REV: 9d139b1fcbc8dc1dd3a179da1279cfb89c5f730e
   # SeaweedFS (the server's object storage) as a release binary, with its digest.
   SEAWEEDFS_VERSION: '4.52'
 
