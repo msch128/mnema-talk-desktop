@@ -107,6 +107,8 @@ function fresh(origin: URL): Slot {
 
 export class Registry {
   private slots: Slot[] = []
+  /** The slots by id, so that a list of any length is looked up in constant time. */
+  private readonly byId = new Map<string, Slot>()
   private layout = new Layout()
   private front: string | null = null
   private addingNow = false
@@ -118,9 +120,7 @@ export class Registry {
   static restore(stored: Stored): Registry {
     const registry = new Registry()
     registry.loadedInFull = stored.complete !== false
-    for (const origin of stored.servers) {
-      try { registry.add(origin) } catch { /* a duplicate */ }
-    }
+    registry.append(stored.servers)
     registry.layout = Layout.load(stored.items, stored.aliases, registry.ids(), registry.ids())
     registry.sort()
     for (const [id, until] of liveMutes(stored.muted, (x) => registry.contains(x), nowSeconds())) registry.mute(id, until)
@@ -141,7 +141,7 @@ export class Registry {
   }
 
   contains(id: string): boolean {
-    return this.slots.some((s) => s.id === id)
+    return this.byId.has(id)
   }
 
   ids(): string[] {
@@ -149,7 +149,7 @@ export class Registry {
   }
 
   slot(id: string): Slot | undefined {
-    return this.slots.find((s) => s.id === id)
+    return this.byId.get(id)
   }
 
   /** The running session of a server, or none if it is not (or no longer) in the list, still starting or refused. */
@@ -169,9 +169,22 @@ export class Registry {
   add(origin: URL): string {
     const id = idFor(origin)
     if (this.contains(id)) throw new AddError('known', id)
-    this.slots.push(fresh(origin))
+    this.append([origin])
     this.layout.add(id)
     return id
+  }
+
+  /** Adds the servers of a list that are not here yet, at the end, in linear time; the layout is the caller's (`restore` and `merge` make it anew). */
+  private append(origins: readonly URL[]): Slot[] {
+    const added: Slot[] = []
+    for (const origin of origins) {
+      if (this.byId.has(idFor(origin))) continue
+      const slot = fresh(origin)
+      this.byId.set(slot.id, slot)
+      this.slots.push(slot)
+      added.push(slot)
+    }
+    return added
   }
 
   /** Takes a server out of the list and gives its slot back to be wiped. The neighbour takes over the front. */
@@ -179,6 +192,7 @@ export class Registry {
     const index = this.slots.findIndex((s) => s.id === id)
     if (index < 0) return null
     const [slot] = this.slots.splice(index, 1)
+    this.byId.delete(id)
     this.layout.remove(id)
     this.sort()
     if (this.front === id) this.front = this.slots[Math.min(index, this.slots.length - 1)]?.id ?? null
@@ -259,17 +273,11 @@ export class Registry {
    * front and the pages stay as they are.
    */
   merge(stored: Stored, now = nowSeconds()): Slot[] {
-    const added: Slot[] = []
-    for (const origin of stored.servers) {
-      try {
-        const id = this.add(origin)
-        const slot = this.slot(id)
-        if (slot) added.push(slot)
-      } catch { /* known, or no room */ }
-    }
+    const added = this.append(stored.servers)
     const here = this.layout
     const inFile = stored.servers.map(idFor)
-    const order = [...inFile, ...this.ids().filter((id) => !inFile.includes(id))].filter((id) => this.contains(id))
+    const named = new Set(inFile)
+    const order = [...inFile, ...this.ids().filter((id) => !named.has(id))]
     const aliases = { ...Object.fromEntries(here.aliases), ...(typeof stored.aliases === 'object' && stored.aliases !== null && !Array.isArray(stored.aliases) ? stored.aliases : {}) }
     this.layout = Layout.load(stored.items ?? structuredClone(here.items), aliases, this.ids(), order)
     this.sort()

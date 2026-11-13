@@ -163,6 +163,10 @@ jobs:
             test -f /etc/apparmor.d/mnema-desktop-dev || { echo '::error::the AppArmor profile is not installed'; exit 1; }
           fi
           xvfb-run -a bash scripts/smoke.sh "/opt/Mnema Desktop DEV/mnema-desktop-dev"
+          # Started with the soft open-file limit a desktop session may give (256),
+          # the program holds 8192: Chromium raises its own, and every server
+          # without a page may keep a socket (up to 64, src/core/feedbudget.ts).
+          bash -c 'ulimit -Sn 256 && SMOKE_FD_MIN=8192 exec xvfb-run -a bash scripts/smoke.sh "/opt/Mnema Desktop DEV/mnema-desktop-dev"'
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: inputs.tag != ''
         with:

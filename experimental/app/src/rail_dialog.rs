@@ -479,13 +479,18 @@ mod tests {
 
     const SWITCH: &str = r##"{"title":"Switch","list":{"label":"Server","choices":[{"id":"a1","text":"One","hint":"one.example"},{"id":"b-2","text":"Two"}]},
         "buttons":[{"id":"cancel","text":"Cancel"}],"cancel":"cancel"}"##;
-    const IMPORT: &str = r##"{"title":"Import","file":{"label":"File","accept":".json","max":1048576},
+    const IMPORT: &str = r##"{"title":"Import","file":{"label":"File","accept":".json","max":8388608},
         "buttons":[{"id":"cancel","text":"Cancel"},{"id":"import","text":"Import","primary":true}],"cancel":"cancel"}"##;
 
     #[test]
     fn a_list_to_pick_from_and_a_file_to_read_are_taken_as_described() {
         assert!(parse(SWITCH).is_ok());
         assert!(parse(IMPORT).is_ok());
+        // The rail's import asks for exactly the host's bound.
+        assert!(
+            include_str!("../rail-ui/rail-commands.js").contains(&format!("max: {MAX_FILE} }}")),
+            "rail-commands.js asks for another bound than {MAX_FILE}"
+        );
         let too_big = format!(
             r#"{{"title":"x","file":{{"label":"f","accept":".json","max":{}}},"buttons":[{{"id":"a","text":"A"}}],"cancel":"a"}}"#,
             MAX_FILE + 1
@@ -526,6 +531,8 @@ mod tests {
         let import = parse(IMPORT).unwrap();
         let file = |v: String| accept(&import, "import", Some(v), None);
         assert_eq!(file("{}".into()).button, "import");
+        // A list well over the old 1 MiB is taken.
+        assert_eq!(file(" ".repeat(3 << 20)).button, "import");
         assert_eq!(file("x".repeat(MAX_FILE + 1)).button, "cancel");
         // Text where the spec asked for none.
         let confirm =

@@ -1,6 +1,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 #[cfg(feature = "web-client")]
+mod fd_limit;
+#[cfg(feature = "web-client")]
 mod instances;
 #[cfg(feature = "web-client")]
 mod local_route;
@@ -63,5 +65,6 @@ mod web_ws;
 
 #[cfg(feature = "web-client")]
 fn main() {
+    fd_limit::raise();
     web_client::run();
 }

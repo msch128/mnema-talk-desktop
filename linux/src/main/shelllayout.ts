@@ -8,6 +8,7 @@ import { buildMenu } from './menu.ts'
 import { pageShown, railShown } from '../core/visibility.ts'
 import { windowTitle } from '../core/title.ts'
 import type { Context } from './context.ts'
+import { Coalesce, PUSH_AFTER_MS } from '../core/coalesce.ts'
 
 export const RAIL_WIDTH = 68
 
@@ -51,8 +52,16 @@ export function railSnapshot(ctx: Context) {
 /** What the rail was last told, so that a report that changes nothing (the page reports on every change) pushes nothing. */
 const pushed = new WeakMap<Context, string>()
 
-/** Shows the rail what it should draw. */
+const pushes = new WeakMap<Context, Coalesce>()
+
+/** Shows the rail what it should draw: shortly, together with the other changes of that moment (`Coalesce`). */
 export function pushRail(ctx: Context): void {
+  let coalesce = pushes.get(ctx)
+  if (!coalesce) { coalesce = new Coalesce(() => pushNow(ctx), PUSH_AFTER_MS); pushes.set(ctx, coalesce) }
+  coalesce.request()
+}
+
+function pushNow(ctx: Context): void {
   const snapshot = railSnapshot(ctx)
   const state = JSON.stringify(snapshot)
   if (pushed.get(ctx) === state) return

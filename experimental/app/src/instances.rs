@@ -47,14 +47,15 @@ const STORE_VERSION: u32 = 1;
 /// The most an imported list may weigh. There is no limit on the number of
 /// servers: this only keeps a damaged or hostile file from being read whole
 /// into memory. At the longest names, folders and mutes a server takes well
-/// under 1 KiB, so this is room for far more than 50 000 of them.
-pub const MAX_IMPORT_BYTES: usize = 64 << 20;
+/// under 100 bytes more than its address, so this is room for 100 000 and
+/// more (the rail's import dialog asks for the same bound).
+pub const MAX_IMPORT_BYTES: usize = 8 << 20;
 /// A mute with no end.
 pub const FOREVER: i64 = -1;
 /// The longest a mute may last: a year and a day.
 pub const MAX_MUTE_SECS: i64 = 366 * 24 * 3600;
 /// The same for the list file of this client.
-const MAX_STORE_BYTES: u64 = 64 << 20;
+const MAX_STORE_BYTES: u64 = 8 << 20;
 
 /// A server the client talks to and the verified bundle its pages run.
 pub struct Session {

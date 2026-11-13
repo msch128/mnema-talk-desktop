@@ -83,16 +83,13 @@ impl Layout {
         known: &[String],
         order: &[String],
     ) -> Layout {
-        let mut placed: Vec<String> = Vec::new();
-        // A set: a hostile list may hold thousands of folders.
+        // Sets: a list may hold any number of servers, a hostile one thousands of folders.
+        let known: std::collections::HashSet<&String> = known.iter().collect();
+        let mut placed: std::collections::HashSet<String> = std::collections::HashSet::new();
         let mut folders: BTreeSet<String> = BTreeSet::new();
         let mut kept: Vec<Item> = Vec::new();
-        let take = |id: &String, placed: &mut Vec<String>| {
-            let fresh = known.contains(id) && !placed.contains(id);
-            if fresh {
-                placed.push(id.clone());
-            }
-            fresh
+        let take = |id: &String, placed: &mut std::collections::HashSet<String>| {
+            known.contains(id) && placed.insert(id.clone())
         };
         for item in items.unwrap_or_default() {
             match item {

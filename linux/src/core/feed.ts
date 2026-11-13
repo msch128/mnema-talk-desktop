@@ -8,6 +8,7 @@
  * the member as away, as the hidden page it replaces did, and it sends
  * nothing else.
  */
+import { type Gate, OPEN_GATE } from './feedbudget.ts'
 import type { Registry } from './instances.ts'
 import { forward, type Instance } from './proxy.ts'
 import { counts } from './sleep.ts'
@@ -86,11 +87,13 @@ export class Feed {
   private readonly instance: Instance
   private readonly report: (read: Read) => void
   private readonly times: FeedTimes
+  private readonly gate: Gate
 
-  constructor(instance: Instance, report: (read: Read) => void, times: FeedTimes = TIMES) {
+  constructor(instance: Instance, report: (read: Read) => void, times: FeedTimes = TIMES, gate: Gate = OPEN_GATE) {
     this.instance = instance
     this.report = report
     this.times = times
+    this.gate = gate
   }
 
   start(): void {
@@ -101,6 +104,7 @@ export class Feed {
     this.stopped = true
     if (this.timer) clearTimeout(this.timer)
     this.sockets.closeAll()
+    this.gate.budget.giveBack(this.gate.id, this.sockets)
   }
 
   get running(): boolean {
@@ -109,10 +113,13 @@ export class Feed {
 
   private listen(): void {
     if (this.stopped) return
+    // No place for a socket (`feedbudget.ts`): the counts are read on the timer.
+    if (!this.gate.budget.take(this.gate.id, this.gate.rank, this.sockets)) return
     try {
       // With the conversation query: direct messages count on the rail too.
       this.socket = this.sockets.connect(this.instance, true, (event) => this.on(event))
     } catch {
+      this.gate.budget.giveBack(this.gate.id, this.sockets)
       this.again(this.times.reopenMs)
     }
   }
@@ -121,7 +128,13 @@ export class Feed {
     if (this.stopped) return false
     if (event.kind === 'open') this.sockets.send(event.id, IDLE)
     else if (event.kind === 'message') { if (changesCounts(event.data)) this.again(this.times.settleMs) }
-    else { this.socket = null; this.again(this.failures > 0 ? backoffMs(this.times, this.failures, Math.random()) : this.times.reopenMs) }
+    else {
+      // A close of an earlier socket says nothing about the one open now.
+      if (event.id !== this.socket) return true
+      this.socket = null
+      this.gate.budget.giveBack(this.gate.id, this.sockets)
+      this.again(this.failures > 0 ? backoffMs(this.times, this.failures, Math.random()) : this.times.reopenMs)
+    }
     return true
   }
 
@@ -147,6 +160,7 @@ export class Feed {
       this.failures++
       this.sockets.closeAll()
       this.socket = null
+      this.gate.budget.giveBack(this.gate.id, this.sockets)
       if (this.timer) clearTimeout(this.timer)
       this.timer = null
       this.again(backoffMs(this.times, this.failures, Math.random()))

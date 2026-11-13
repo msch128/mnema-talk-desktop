@@ -9,6 +9,7 @@ import type { AddressInfo } from 'node:net'
 import { afterEach, test } from 'node:test'
 import { WebSocketServer, type WebSocket } from 'ws'
 import { Jar } from '../src/core/cookies.ts'
+import { Budget, MAX_LIVE } from '../src/core/feedbudget.ts'
 import { Feed, IDLE, type Read, applyRead, backoffMs, changesCounts, forget, mentionRise, mentionText } from '../src/core/feed.ts'
 import { Limits } from '../src/core/proxy.ts'
 import { Turns } from '../src/core/tickets.ts'
@@ -225,4 +226,36 @@ test('an ending feed forgets only itself', () => {
   assert.equal(feeds.get('a'), newer, 'the newer feed stays')
   forget(feeds, 'a', newer)
   assert.equal(feeds.has('a'), false)
+})
+
+test('at most the cap of feeds keep a socket, and the server used longest ago gives way', () => {
+  const budget = new Budget(2)
+  const sockets = Array.from({ length: 4 }, () => ({ closed: 0, closeAll() { this.closed++ } }))
+  assert.ok(budget.take('a', 1, sockets[0]!))
+  assert.ok(budget.take('b', 2, sockets[1]!))
+  assert.ok(budget.take('a', 1, sockets[0]!), 'a place it holds stays its')
+  // Full: c was in use later than a, so a gives way and its socket closes.
+  assert.ok(budget.take('c', 3, sockets[2]!))
+  assert.deepEqual(budget.holders(), ['b', 'c'])
+  assert.equal(sockets[0]!.closed, 1)
+  // d was in use longer ago than all of them: it reads on its timer.
+  assert.equal(budget.take('d', 0, sockets[3]!), false)
+  // A socket that closed gives its place back, an old one of the same server does not.
+  budget.giveBack('b', sockets[0]!)
+  assert.deepEqual(budget.holders(), ['b', 'c'])
+  budget.giveBack('b', sockets[1]!)
+  assert.ok(budget.take('d', 0, sockets[3]!))
+  assert.equal(MAX_LIVE, 64)
+})
+
+test('a feed without a place for a socket reads on its timer and opens none', async () => {
+  const server = await fakeServer(() => [{ unread_count: 1, mention_count: 0, notify_level: 'all' }])
+  const reports: Read[] = []
+  const feed = new Feed(server.instance, (r) => reports.push(r), { ...QUICK, everyMs: 150 }, { id: 'x', rank: 9, budget: new Budget(0) })
+  started.push(feed)
+  feed.start()
+  for (let i = 0; i < 100 && reports.length < 3; i++) await sleep(20)
+  feed.stop()
+  assert.ok(reports.length >= 3, `${reports.length} reads`)
+  assert.equal(server.sockets.length, 0)
 })

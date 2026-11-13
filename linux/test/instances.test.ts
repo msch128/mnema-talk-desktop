@@ -403,6 +403,20 @@ test('the number keys follow the shared vectors, and the ninth menu entry names 
   assert.equal(menuEntryText(9, null), 'Last server')
 })
 
+test('an import of 20 000 servers is taken in linear time', () => {
+  const started = performance.now()
+  const parsed = storedFrom({ version: 1, servers: Array.from({ length: 20_000 }, (_, n) => `https://s${n}.example/`), active: null })
+  assert.ok(parsed)
+  const r = registry('a.example', 's7.example')
+  assert.equal(r.merge(parsed).length, 19_999, 's7 was there already')
+  assert.equal(r.length, 20_001)
+  const restored = Registry.restore(storedFrom(JSON.parse(storedText(r.stored())))!)
+  assert.equal(restored.length, 20_001)
+  assert.equal(restored.rail(true).instances.length, 20_001)
+  // Quadratic work would take minutes here.
+  assert.ok(performance.now() - started < 5000, `${performance.now() - started} ms`)
+})
+
 test('a list of many servers with long names, folders and mutes fits an import and reads back whole', () => {
   // The file bound is no limit on servers: 20 000 at the longest names fit.
   const many = 20_000

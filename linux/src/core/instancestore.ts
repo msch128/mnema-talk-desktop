@@ -10,15 +10,14 @@ import { parseAddress } from './client.ts'
 const STORE_VERSION = 1
 /**
  * What the list file may weigh. There is no limit on the number of servers:
- * this only keeps a damaged file from being read whole into memory. At the
- * longest names, folders and mutes a server takes well under 1 KiB, so this is
- * room for far more than 50 000 of them. The same bound as the Tauri host.
+ * this only keeps a damaged file from being read whole into memory; 8 MiB is
+ * room for 100 000 servers and more. The same bound as the Tauri host.
  */
-const MAX_STORE_BYTES = 64 << 20
+const MAX_STORE_BYTES = 8 << 20
 /** A mute may last a year and a day at most; -1 is for ever. */
 export const MAX_MUTE_SECONDS = 366 * 24 * 3600
-/** What an imported list may weigh: the same bound as the list file. */
-export const MAX_IMPORT_BYTES = 64 << 20
+/** What an imported list may weigh: the same bound as the list file, and the one the rail's import dialog asks for. */
+export const MAX_IMPORT_BYTES = 8 << 20
 
 /** Where Ctrl+`number` goes among `count` servers: 1 to 8 the server at that place, 9 the last one (as browsers do with tabs). */
 export function shortcutPlace(number: number, count: number): number | null {

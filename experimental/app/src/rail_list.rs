@@ -199,6 +199,29 @@ mod tests {
     }
 
     #[test]
+    fn an_import_of_20_000_servers_is_taken_in_linear_time() {
+        use crate::instances::Stored;
+        let many = serde_json::json!({
+            "version": 1,
+            "servers": (0..20_000).map(|n| format!("https://s{n}.example/")).collect::<Vec<_>>(),
+            "active": null
+        });
+        let started = std::time::Instant::now();
+        let parsed = Stored::parse(many.to_string().as_bytes()).unwrap();
+        let mut registry = listed(&["https://a.example/", "https://s7.example/"]);
+        let added = registry.merge(&parsed, 0);
+        assert_eq!(added.len(), 19_999, "s7 was there already");
+        assert_eq!(registry.len(), 20_001);
+        let restored = Registry::restore(&registry.stored());
+        assert_eq!(restored.len(), 20_001);
+        let rail = restored.rail(true);
+        assert_eq!(rail.instances.len(), 20_001);
+        // A debug build; quadratic work would take minutes here.
+        let took = started.elapsed();
+        assert!(took < std::time::Duration::from_secs(5), "{took:?}");
+    }
+
+    #[test]
     fn a_list_of_many_servers_with_long_names_folders_and_mutes_fits_the_store_and_an_import() {
         use crate::instances::Stored;
         use crate::rail_layout::{Item, MAX_NAME};

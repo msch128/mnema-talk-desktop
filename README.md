@@ -54,7 +54,8 @@ There is no external security audit.
   a partial file is never left behind.
 - **One client, any number of servers.** A rail on the left lists your servers
   with an unread dot and a mention count each. Add as many as you like: there
-  is no limit on the number. The rail scrolls when they do not fit and keeps
+  is no server limit; the list file can be up to 8 MiB (room for 100 000
+  servers and more), and an import of thousands is taken at once. The rail scrolls when they do not fit and keeps
   the server in front in view.
   Switch with Ctrl+1 to Ctrl+8 for the first eight and Ctrl+9 for the last (Cmd
   on macOS), as browsers do with tabs, or with Ctrl+K; drag or Alt+arrow to reorder, and remove one
@@ -92,7 +93,11 @@ There is no external security audit.
   again; an unreachable server is asked again later and later, up to five
   minutes); it
   listens on a socket of its own that tells the server you are away there,
-  exactly as the hidden page did, and sends nothing else. When its mentions
+  exactly as the hidden page did, and sends nothing else. The 64 servers used
+  most recently keep such a socket; the others are read every minute instead,
+  so that a long list costs neither open files nor a socket on every server
+  (on macOS the client also raises its open-file limit from the 256 an app
+  gets). The first counts after a server starts announce nothing. When its mentions
   rise, one quiet notification says "N new mentions on <server>" (no sound,
   none for a muted server, only where the system already lets the app notify). Both values are
   settings of this device: the + button's menu has **Unload idle servers**

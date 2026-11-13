@@ -8,6 +8,7 @@
  */
 import { Notification } from 'electron'
 import { Feed, applyRead, forget, mentionText } from '../core/feed.ts'
+import { gateFor } from '../core/feedbudget.ts'
 import { type PageState, pagesToUnload, takeForUnload } from '../core/sleep.ts'
 import type { Context } from './context.ts'
 import { countsChanged, layout } from './shelllayout.ts'
@@ -52,7 +53,7 @@ export function withoutPage(ctx: Context, id: string): void {
     if (applied.kind !== 'shown') return
     countsChanged(ctx)
     if (applied.rise !== null) quietToast(applied.name, mentionText(applied.rise, applied.name))
-  })
+  }, undefined, gateFor(id))
   s.feeds.set(id, feed)
   feed.start()
 }

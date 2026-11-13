@@ -9,7 +9,6 @@
 //! after it opens it says the member is idle (`presence_idle`), so it shows
 //! the member as away, exactly as the hidden page it replaces did, and it
 //! never sends typing, reads or anything else.
-use crate::instances::{Phase, Registry};
 use crate::web_client::Trusted;
 use crate::web_ws::{Sockets, WsEvent};
 use std::{
@@ -20,8 +19,14 @@ use std::{
 use tauri::Manager;
 use tokio::sync::{Notify, mpsc};
 
+mod budget;
 mod live;
+mod slot;
+use budget::Gate;
 use live::Live;
+use slot::report;
+#[cfg(test)]
+use slot::{Applied, apply, mention_rise, mention_text};
 
 /// The quiet time after a change before the counts are read again.
 const SETTLE: Duration = Duration::from_secs(2);
@@ -91,7 +96,10 @@ pub fn start(app: &tauri::AppHandle, id: &str) {
     }
     let app = app.clone();
     let id = id.to_owned();
-    tauri::async_runtime::spawn(async move { run(&app, &id, &session, &sockets, &stop).await });
+    let gate = budget::gate(&id);
+    tauri::async_runtime::spawn(
+        async move { run(&app, &id, &session, &sockets, &stop, &gate).await },
+    );
 }
 
 /// Notes a new feed of `id`; `false` when it already has one.
@@ -167,8 +175,9 @@ async fn run(
     session: &Arc<crate::instances::Session>,
     sockets: &Arc<Sockets>,
     stop: &Arc<Notify>,
+    gate: &Gate,
 ) {
-    pump(&session.instance, sockets, stop, TIMES, |read| {
+    pump(&session.instance, sockets, stop, gate, TIMES, |read| {
         running(id) && report(app, id, read)
     })
     .await;
@@ -199,6 +208,19 @@ pub(crate) async fn pump(
     instance: &Arc<crate::web_proxy::Instance>,
     sockets: &Arc<Sockets>,
     stop: &Notify,
+    gate: &Gate,
+    times: Times,
+    report: impl FnMut(Read) -> bool,
+) {
+    pump_until_over(instance, sockets, stop, gate, times, report).await;
+    gate.give_back(sockets);
+}
+
+async fn pump_until_over(
+    instance: &Arc<crate::web_proxy::Instance>,
+    sockets: &Arc<Sockets>,
+    stop: &Notify,
+    gate: &Gate,
     times: Times,
     mut report: impl FnMut(Read) -> bool,
 ) {
@@ -207,6 +229,8 @@ pub(crate) async fn pump(
     let (poke, mut pokes) = mpsc::channel::<bool>(16);
     let live = Arc::new(Live::default());
     let mut failures: u32 = 0;
+    // No place for a socket (`budget`): the counts are read on the timer.
+    let mut polling = false;
     loop {
         let read = read_counts(instance).await;
         let (signed_out, unreachable) = (read == Read::SignedOut, read == Read::Unreachable);
@@ -216,12 +240,16 @@ pub(crate) async fn pump(
         // The socket opens only once the session has answered: a server that
         // is signed out or down is never sent a socket.
         if !live.is_open() && !unreachable {
-            listen(instance, sockets, poke.clone(), &live);
+            polling = !gate.take(sockets);
+            if !polling {
+                listen(instance, sockets, poke.clone(), &live, gate);
+            }
         }
         let rest = if unreachable {
             failures += 1;
             live.forget();
             sockets.close_all();
+            gate.give_back(sockets);
             backoff(times, failures, uuid::Uuid::new_v4().as_u64_pair().0)
         } else {
             failures = 0;
@@ -229,7 +257,7 @@ pub(crate) async fn pump(
                 return;
             }
             // A change settles first; a closed socket opens again after a while.
-            if live.is_open() {
+            if live.is_open() || polling {
                 times.settle
             } else {
                 times.reopen
@@ -268,10 +296,11 @@ fn listen(
     sockets: &Arc<Sockets>,
     poke: mpsc::Sender<bool>,
     live: &Arc<Live>,
+    gate: &Gate,
 ) {
     let speaker = Arc::clone(sockets);
     let generation = live.begin();
-    let ended = Arc::clone(live);
+    let (ended, place) = (Arc::clone(live), gate.clone());
     // With the conversation query: direct messages count on the rail too.
     let opened = crate::web_ws::open(sockets, Arc::clone(instance), true, move |event| {
         match event {
@@ -284,14 +313,16 @@ fn listen(
                 }
             }
             WsEvent::Close { .. } => {
-                ended.end(generation);
+                if ended.end(generation) {
+                    place.give_back(&speaker);
+                }
                 let _ = poke.try_send(false);
             }
         }
         true
     });
-    if opened.is_err() {
-        live.end(generation);
+    if opened.is_err() && live.end(generation) {
+        gate.give_back(sockets);
     }
 }
 
@@ -328,77 +359,10 @@ async fn read_counts(instance: &crate::web_proxy::Instance) -> Read {
     Read::Counts(unread, mentions)
 }
 
-/// How many new mentions a quiet toast announces: one toast for each rise of
-/// the count, none for a muted server.
-pub fn mention_rise(before: u32, after: u32, muted: bool) -> Option<u32> {
-    (!muted && after > before).then(|| after - before)
-}
-
-/// What the quiet toast says.
-pub fn mention_text(count: u32, server: &str) -> String {
-    let noun = if count == 1 { "mention" } else { "mentions" };
-    format!("{count} new {noun} on {server}")
-}
-
-/// Puts the two numbers on the rail, and says a rise of the mentions in a
-/// quiet toast (the server's mute and the system's setting apply). A
-/// signed-out session clears them. Gives whether the server is still there
-/// to report for.
-fn report(app: &tauri::AppHandle, id: &str, read: Read) -> bool {
-    let trusted = app.state::<Trusted>();
-    let applied = match trusted.registry.lock() {
-        Ok(mut registry) => apply(&mut registry, id, read, crate::web_proxy::now()),
-        Err(_) => return false,
-    };
-    let Applied::Shown(rise) = applied else {
-        return applied == Applied::Kept;
-    };
-    crate::web_shell::counts_changed(app);
-    if let Some((count, name)) = rise {
-        crate::web_notify::quiet_toast(app, &name, &mention_text(count, &name));
-    }
-    true
-}
-
-/// What one read did to the server's slot.
-#[derive(Debug, PartialEq, Eq)]
-pub(crate) enum Applied {
-    /// The server is gone: the feed ends.
-    Gone,
-    /// Nothing changed on the rail (no answer, or the server is not running).
-    Kept,
-    /// The counts are on the rail, with a rise of the mentions to announce
-    /// (how many, and the server's name).
-    Shown(Option<(u32, String)>),
-}
-
-/// Puts what was read on the slot of `id`; a signed-out session clears its
-/// counts.
-pub(crate) fn apply(registry: &mut Registry, id: &str, read: Read, now: i64) -> Applied {
-    let (unread, mentions) = match read {
-        Read::Counts(unread, mentions) => (unread, mentions),
-        Read::SignedOut => (0, 0),
-        Read::Unreachable => return Applied::Kept,
-    };
-    let Some(slot) = registry.slot(id) else {
-        return Applied::Gone;
-    };
-    if !matches!(slot.phase, Phase::Ready(_)) {
-        return Applied::Kept;
-    }
-    // The first numbers since the server started (or since a restart) are
-    // what is there already, not news: they announce nothing.
-    let (before, name, first) = (slot.mentions, slot.name(), !slot.reported);
-    let muted = registry.is_muted(id, now) || first;
-    registry.report(id, unread, mentions);
-    Applied::Shown(
-        mention_rise(before, mentions.min(crate::instances::MAX_COUNT), muted).map(|n| (n, name)),
-    )
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::instances::{Phase, Registry};
 
     #[test]
     fn a_rise_of_the_mentions_is_one_quiet_toast_and_a_muted_server_none() {
@@ -610,7 +574,17 @@ mod tests {
     }
 
     fn feed_with(server: &Fake, times: Times) -> Running {
+        feed_gated(server, times, 64)
+    }
+
+    /// The feed, with a budget of `places` sockets of its own.
+    fn feed_gated(server: &Fake, times: Times, places: usize) -> Running {
         let instance = instance_of(server);
+        let gate = Gate::new(
+            "feed-test",
+            1,
+            &Arc::new(Mutex::new(budget::Budget::new(places))),
+        );
         let sockets = Arc::new(Sockets::default());
         let stop = Arc::new(Notify::new());
         let reports = Arc::new(Mutex::new(Vec::<Read>::new()));
@@ -620,7 +594,7 @@ mod tests {
             Arc::clone(&stop),
         );
         let task = tokio::spawn(async move {
-            pump(&instance, &s, &st, times, move |read| {
+            pump(&instance, &s, &st, &gate, times, move |read| {
                 got.lock().unwrap().push(read);
                 true
             })
@@ -773,7 +747,8 @@ mod tests {
         );
         let (seen, st) = (Arc::clone(&at), Arc::clone(&stop));
         let task = tokio::spawn(async move {
-            pump(&instance, &sockets, &st, times, move |_| {
+            let gate = Gate::new("down", 1, &Arc::new(Mutex::new(budget::Budget::new(64))));
+            pump(&instance, &sockets, &st, &gate, times, move |_| {
                 seen.lock().unwrap().push(std::time::Instant::now());
                 true
             })
@@ -876,6 +851,20 @@ mod tests {
             server.upgrades.lock().unwrap().len(),
             2,
             "the socket is opened again after the next read"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_feed_without_a_place_for_a_socket_reads_on_its_timer() {
+        let server = fake().await;
+        let every = Duration::from_millis(150);
+        let (reports, _sockets, stop, _task) = feed_gated(&server, Times { every, ..QUICK }, 0);
+        until(|| reports.lock().unwrap().len() >= 3).await;
+        stop.notify_one();
+        assert!(reports.lock().unwrap().len() >= 3, "it reads every `every`");
+        assert!(
+            server.upgrades.lock().unwrap().is_empty(),
+            "and opens no socket"
         );
     }
 }

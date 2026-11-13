@@ -21,13 +21,16 @@ impl Live {
         })
     }
 
-    /// The socket of `generation` closed.
-    pub(super) fn end(&self, generation: u64) {
-        if let Ok(mut g) = self.0.lock()
-            && g.0 == generation
-        {
+    /// The socket of `generation` closed: `true` when it was the current one.
+    pub(super) fn end(&self, generation: u64) -> bool {
+        let Ok(mut g) = self.0.lock() else {
+            return false;
+        };
+        let current = g.0 == generation && g.1;
+        if current {
             g.1 = false;
         }
+        current
     }
 
     /// The loop closes the socket itself.
@@ -48,19 +51,19 @@ mod tests {
         assert!(!live.is_open(), "none at the start");
         let first = live.begin();
         assert!(live.is_open());
-        live.end(first);
+        assert!(live.end(first));
         assert!(!live.is_open());
         let second = live.begin();
         // A late close of the earlier socket says nothing about this one.
-        live.end(first);
+        assert!(!live.end(first));
         assert!(live.is_open());
         live.forget();
         assert!(!live.is_open());
         // Nor does the close of a socket the loop itself gave up on.
         let third = live.begin();
-        live.end(second);
+        assert!(!live.end(second));
         assert!(live.is_open());
-        live.end(third);
+        assert!(live.end(third));
         assert!(!live.is_open());
     }
 }

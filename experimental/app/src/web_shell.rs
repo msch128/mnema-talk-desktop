@@ -13,6 +13,7 @@ mod icons;
 mod layout;
 mod menu;
 mod pages;
+mod pushes;
 mod rail;
 mod retry;
 mod room;

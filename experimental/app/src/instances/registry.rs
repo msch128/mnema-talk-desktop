@@ -1,13 +1,18 @@
 //! The list of servers: which are there, in what order, which is in front.
 use super::{AddError, MAX_COUNT, Phase, Session, Slot, Stored, id_for};
 use crate::rail_layout::Layout;
-use std::{collections::BTreeMap, sync::Arc};
+use std::{
+    collections::{BTreeMap, HashSet},
+    sync::Arc,
+};
 use url::Url;
 
 #[derive(Default)]
 pub struct Registry {
     /// In the order the rail shows them (folders opened up).
     pub(super) slots: Vec<Slot>,
+    /// The ids of `slots`, so that a list of any length is checked in constant time.
+    ids: HashSet<String>,
     pub(super) layout: Layout,
     /// Servers whose notifications are off, by id: until when (epoch seconds),
     /// or `FOREVER`. A mute that is over is still here until it is looked at.
@@ -24,9 +29,7 @@ impl Registry {
     /// a server is in front while there is none to show.
     pub fn restore(stored: &Stored) -> Registry {
         let mut registry = Registry::default();
-        for origin in &stored.servers {
-            let _ = registry.add(origin.clone());
-        }
+        registry.append(&stored.servers);
         let order = registry.ids();
         registry.layout =
             Layout::load(stored.items.clone(), stored.aliases.clone(), &order, &order);
@@ -63,7 +66,7 @@ impl Registry {
     }
 
     pub fn contains(&self, id: &str) -> bool {
-        self.slots.iter().any(|s| s.id == id)
+        self.ids.contains(id)
     }
 
     pub fn ids(&self) -> Vec<String> {
@@ -110,9 +113,25 @@ impl Registry {
         if self.contains(&id) {
             return Err(AddError::Known(id));
         }
+        self.ids.insert(id.clone());
         self.slots.push(Slot::new(origin));
         self.layout.add(&id);
         Ok(id)
+    }
+
+    /// Adds the servers of a list that are not here yet, at the end, and gives
+    /// their ids, in linear time. The layout is the caller's: it is made anew
+    /// from the whole list afterwards (`restore`, `merge`).
+    fn append(&mut self, origins: &[Url]) -> Vec<String> {
+        let mut added = Vec::new();
+        for origin in origins {
+            let id = id_for(origin);
+            if self.ids.insert(id.clone()) {
+                self.slots.push(Slot::new(origin.clone()));
+                added.push(id);
+            }
+        }
+        added
     }
 
     /// The slots follow the rail: Ctrl+1 is the first server shown.
@@ -145,19 +164,9 @@ impl Registry {
     /// Gives the ids of the servers that were added.
     pub fn merge(&mut self, imported: &Stored, now: i64) -> Vec<String> {
         let before = self.ids();
-        let mut added = Vec::new();
-        for origin in &imported.servers {
-            if let Ok(id) = self.add(origin.clone()) {
-                added.push(id);
-            }
-        }
-        let mut order: Vec<String> = imported
-            .servers
-            .iter()
-            .map(id_for)
-            .filter(|id| self.contains(id))
-            .collect();
-        let named: std::collections::HashSet<String> = order.iter().cloned().collect();
+        let added = self.append(&imported.servers);
+        let mut order: Vec<String> = imported.servers.iter().map(id_for).collect();
+        let named: HashSet<String> = order.iter().cloned().collect();
         order.extend(before.into_iter().filter(|id| !named.contains(id)));
         let known = self.ids();
         let mut aliases = self.layout.aliases.clone();
@@ -185,6 +194,7 @@ impl Registry {
     pub fn remove(&mut self, id: &str) -> Option<Slot> {
         let index = self.slots.iter().position(|s| s.id == id)?;
         let slot = self.slots.remove(index);
+        self.ids.remove(id);
         self.layout.remove(id);
         self.muted.remove(id);
         if self.active.as_deref() == Some(id) {
