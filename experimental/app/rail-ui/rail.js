@@ -16,6 +16,19 @@
 $('add').addEventListener('click', () => {
   call(state.adding && state.instances.length > 0 ? 'rail_cancel_add' : 'rail_add');
 });
+// A drag near the top or bottom edge of the list scrolls it, faster the
+// closer it gets: WebKit (the macOS host) does not scroll by itself while a
+// drag is under way, Chromium does and this only adds to it.
+const EDGE_BAND = 32;
+$('scroll').addEventListener('dragover', (event) => {
+  if (!drag) return;
+  const scroll = $('scroll');
+  const box = scroll.getBoundingClientRect();
+  const above = event.clientY - box.top;
+  const below = box.bottom - event.clientY;
+  const depth = above < EDGE_BAND ? above - EDGE_BAND : below < EDGE_BAND ? EDGE_BAND - below : 0;
+  if (depth !== 0) scroll.scrollTop += Math.round(depth / 2) || Math.sign(depth);
+});
 // What is dropped below the last item goes to the end of the rail.
 $('rail').addEventListener('dragover', (event) => {
   if (!drag || event.target.closest('button, .box')) return;
