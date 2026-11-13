@@ -172,6 +172,30 @@ fn unload(app: &tauri::AppHandle, id: &str) {
     layout(app);
 }
 
+/// Whether the page of a server is busy: an unsent draft, an upload under
+/// way or a Talk it is in. A busy page is never closed for being hidden
+/// (`rail_sleep`); a page that never says so is not either.
+#[tauri::command]
+pub fn desktop_report_busy(
+    webview: tauri::Webview,
+    draft: bool,
+    upload: bool,
+    talk: bool,
+) -> Result<(), String> {
+    let session = crate::web_client::instance_page(&webview)?;
+    let app = webview.app_handle();
+    let trusted = app.state::<Trusted>();
+    if let Some(slot) = trusted
+        .registry
+        .lock()
+        .map_err(|_| "busy")?
+        .slot_mut(&session.id)
+    {
+        slot.busy = Some(draft || upload || talk);
+    }
+    Ok(())
+}
+
 /// Looks at the hidden pages every half minute for as long as the app runs.
 pub fn watch(app: &tauri::AppHandle) {
     let app = app.clone();

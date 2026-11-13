@@ -80,7 +80,7 @@ fn invoke_handler() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'stat
         crate::web_notify::desktop_notify_request_permission,
         crate::web_notify::desktop_set_badge,
         crate::web_notify::desktop_report_unread,
-        crate::web_notify::desktop_report_busy
+        crate::web_shell::desktop_report_busy
     ]
 }
 
