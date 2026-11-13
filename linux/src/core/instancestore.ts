@@ -37,6 +37,8 @@ export interface Stored {
   aliases?: unknown
   /** Server id to the time (epoch seconds, -1 for ever) its notifications are off until. */
   muted?: unknown
+  /** When hidden pages close (`boundedSleep` makes sense of it); never part of an export. */
+  sleep?: unknown
   /** False when the file was there but could not be read in full (unreadable, too large, unknown version, an address that did not hold up): the list may be shorter than what the person had. */
   complete?: boolean
 }
@@ -67,7 +69,7 @@ export function loadStored(file: string | null): Stored {
 /** The list in a JSON value; null when it is not a list of this version at all. Addresses are checked exactly like those typed in by hand. */
 export function storedFrom(raw: unknown): Stored | null {
   if (typeof raw !== 'object' || raw === null) return null
-  const { version, servers, active, items, aliases, muted } = raw as Record<string, unknown>
+  const { version, servers, active, items, aliases, muted, sleep } = raw as Record<string, unknown>
   if (version !== STORE_VERSION || !Array.isArray(servers)) return null
   const list: URL[] = []
   let complete = true
@@ -82,10 +84,10 @@ export function storedFrom(raw: unknown): Stored | null {
   if (typeof active === 'string') {
     try { front = list.find((u) => u.href === parseAddress(active).href) ?? null } catch { front = null }
   }
-  return complete ? { servers: list, active: front, items, aliases, muted } : { ...partial(list, front), items, aliases, muted }
+  return complete ? { servers: list, active: front, items, aliases, muted, sleep } : { ...partial(list, front), items, aliases, muted, sleep }
 }
 
-/** The list as it is written to disk, and as it is exported: addresses, names, layout and mutes, nothing else. */
+/** The list as it is written to disk (with the settings of this device) and as it is exported (without them): addresses, names, layout and mutes, nothing else. */
 export function storedText(stored: Stored): string {
   return JSON.stringify({
     version: STORE_VERSION,
@@ -94,6 +96,7 @@ export function storedText(stored: Stored): string {
     ...(stored.items !== undefined ? { items: stored.items } : {}),
     ...(stored.aliases !== undefined ? { aliases: stored.aliases } : {}),
     ...(stored.muted !== undefined ? { muted: stored.muted } : {}),
+    ...(stored.sleep !== undefined ? { sleep: stored.sleep } : {}),
   })
 }
 

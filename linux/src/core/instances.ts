@@ -12,6 +12,7 @@ import { type Edit, Layout } from './layout.ts'
 import { MAX_BADGE, badgeCount } from './notify.ts'
 import { isLowerHex } from './encoding.ts'
 import { MAX_INSTANCES, MAX_MUTE_SECONDS, type Stored, liveMutes, shortcutPlace } from './instancestore.ts'
+import { type Sleep, boundedSleep, defaultSleep, storedSleep } from './sleep.ts'
 import { type RailState, hue, initial } from './railstate.ts'
 import type { Instance } from './proxy.ts'
 import type { Sockets } from './sockets.ts'
@@ -66,6 +67,8 @@ export interface Slot {
   mutedUntil: number | null
   /** The page asked for notifications: its callback channel and the next message index it expects. */
   clicks: { channel: number, index: number } | null
+  /** What the page last said: busy (a draft, an upload, a Talk) or idle; null until it says (an older bundle never does, and its page is never closed for being hidden). */
+  busy: boolean | null
 }
 
 export class AddError extends Error {
@@ -99,7 +102,7 @@ function nowSeconds(): number {
 }
 
 function fresh(origin: URL): Slot {
-  return { id: idFor(origin), origin, phase: { kind: 'starting' }, unread: 0, mentions: 0, reported: false, generation: randomBytes(16).toString('hex'), icon: null, mutedUntil: null, clicks: null }
+  return { id: idFor(origin), origin, phase: { kind: 'starting' }, unread: 0, mentions: 0, reported: false, generation: randomBytes(16).toString('hex'), icon: null, mutedUntil: null, clicks: null, busy: null }
 }
 
 export class Registry {
@@ -109,6 +112,8 @@ export class Registry {
   private addingNow = false
   /** Whether the list this one was restored from was read in full (see `Stored.complete`). */
   private loadedInFull = true
+  /** When hidden pages close. */
+  sleep: Sleep = defaultSleep()
 
   static restore(stored: Stored): Registry {
     const registry = new Registry()
@@ -122,6 +127,7 @@ export class Registry {
     const wanted = stored.active ? idFor(stored.active) : null
     registry.front = wanted !== null && registry.contains(wanted) ? wanted : (registry.slots[0]?.id ?? null)
     registry.addingNow = registry.front === null
+    registry.sleep = boundedSleep(stored.sleep)
     return registry
   }
 
@@ -309,6 +315,7 @@ export class Registry {
     slot.mentions = 0
     slot.reported = false
     slot.clicks = null
+    slot.busy = null
     slot.generation = randomBytes(16).toString('hex')
   }
 
@@ -354,7 +361,14 @@ export class Registry {
     const front = this.front ? this.slot(this.front) : undefined
     const now = nowSeconds()
     const muted = Object.fromEntries(this.slots.flatMap((s) => { const until = this.mutedAt(s, now); return until === null ? [] : [[s.id, until]] }))
-    return { servers: this.slots.map((s) => s.origin), active: front?.origin ?? null, items: structuredClone(this.layout.items), aliases: Object.fromEntries(this.layout.aliases), muted }
+    return { servers: this.slots.map((s) => s.origin), active: front?.origin ?? null, items: structuredClone(this.layout.items), aliases: Object.fromEntries(this.layout.aliases), muted, sleep: storedSleep(this.sleep) }
+  }
+
+  /** The list as it is exported: the settings of this device stay here. */
+  exported(): Stored {
+    const list = this.stored()
+    delete list.sleep
+    return list
   }
 }
 

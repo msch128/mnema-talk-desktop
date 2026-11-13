@@ -10,6 +10,7 @@ import { orphanPartitions, wipeWithRetry } from '../core/wipe.ts'
 import { LEGACY_PARTITION, serverPartition, type Context } from './context.ts'
 import { toastsClosed } from './notify.ts'
 import { changed, countsChanged, focusFront } from './shelllayout.ts'
+import { stopFeed } from './sleep.ts'
 
 function partitionDir(ctx: Context, partition: string): string {
   return join(ctx.trusted.dataDirectory() ?? app.getPath('userData'), 'Partitions', partition.replace(/^persist:/, ''))
@@ -35,6 +36,7 @@ export async function removeServer(ctx: Context, id: string): Promise<void> {
   retries.cancel(id)
   const slot = trusted.registry.remove(id)
   if (!slot) return
+  stopFeed(ctx, id)
   if (slot.phase.kind === 'ready') {
     slot.phase.session.sockets.closeAll()
     slot.phase.session.instance.jar.forget()

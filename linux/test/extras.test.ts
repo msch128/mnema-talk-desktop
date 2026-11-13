@@ -173,7 +173,7 @@ test('a list or file dialog that is not what the rail may ask is refused', () =>
 
 // ------------------------------------------------------- export and import
 
-const exported = (r: Registry): string => storedText(r.stored())
+const exported = (r: Registry): string => storedText(r.exported())
 
 test('the exported list holds addresses, names, layout and mutes and nothing else', () => {
   const r = registry('a.example', 'b.example')

@@ -12,6 +12,13 @@ export function wholeNumber(args: Args, name: string): number {
   return value
 }
 
+/** A true or false; anything else is refused. */
+export function flag(args: Args, name: string): boolean {
+  const value = args[name]
+  if (typeof value !== 'boolean') throw new Error('invalid arguments')
+  return value
+}
+
 /** What a page learns of a failed command: plain text only, no stack and no path, and bounded. */
 export function failure(error: unknown): { ok: false, error: string } {
   return { ok: false, error: (error instanceof Error ? error.message : 'The command failed.').slice(0, 300) }

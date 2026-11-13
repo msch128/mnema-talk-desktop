@@ -15,6 +15,8 @@ pub struct Registry {
     pub(super) active: Option<String>,
     /// The page for adding a server is in front.
     pub(super) adding: bool,
+    /// When hidden pages are closed.
+    pub(super) sleep: crate::rail_sleep::Sleep,
 }
 
 impl Registry {
@@ -37,7 +39,13 @@ impl Registry {
             .filter(|id| registry.contains(id))
             .or_else(|| registry.slots.first().map(|s| s.id.clone()));
         registry.adding = registry.active.is_none();
+        registry.sleep = stored.sleep.unwrap_or_default().bounded();
         registry
+    }
+
+    /// When hidden pages are closed.
+    pub fn sleep(&self) -> crate::rail_sleep::Sleep {
+        self.sleep
     }
 
     pub fn len(&self) -> usize {

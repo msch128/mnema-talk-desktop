@@ -79,8 +79,20 @@ There is no external security audit.
   14 and newer, a session partition on Linux) and its own connection. Removing a
   server wipes its stored session and its local data from this device. The
   taskbar or dock badge is the sum of the mentions; a toast names its server
-  and brings it to the front when used. Servers in the background keep running
-  (hidden, not stopped), so their counts and calls stay live. Overlay and
+  and brings it to the front when used. A server's page costs about 110 to
+  260 MB, so pages are made only when needed and closed when idle: at start
+  only the server in front loads, an imported list adds servers to the rail
+  and opens nothing, and a page hidden for more than 10 minutes is closed
+  while more than 4 run, unless it holds an unsent draft, an upload or a Talk
+  (it says so itself; a page from an older web app never does and is never
+  closed). Opening the server loads its page again. Until then the client
+  keeps its counts on the rail and the badge itself, from the server's own
+  unread summary, read again whenever the server says something changed; it
+  listens on a socket of its own that tells the server you are away there,
+  exactly as the hidden page did, and sends nothing else. Both values are
+  settings of this device in the list file (`"sleep": {"after_secs": 600,
+  "keep": 4}`; `"after_secs": null` never closes a page; 60 seconds to a day,
+  1 to 200 pages), never part of an exported list. Overlay and
   shortcuts of the gaming integration belong to the server that owns the Talk
   you are in. **Updating from the single-server client (1.1 release note):** that client kept every server in one shared storage and did not record which one it showed, so the storage belongs to no one server. On the first start of this version it is wiped, once, and no server inherits it: you sign in again, and the end-to-end media gets a new device key (messages live on the server and are unaffected). The host's own pages use a separate storage. On macOS before 14 the data stores cannot be separated, so the
   client runs one server there. Servers on different versions work side by side:

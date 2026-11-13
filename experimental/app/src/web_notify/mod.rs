@@ -307,6 +307,30 @@ pub fn desktop_report_unread(webview: Webview, unread: u32, mentions: u32) -> Re
     Ok(())
 }
 
+/// Whether the page of a server is busy: an unsent draft, an upload under
+/// way or a Talk it is in. A busy page is never closed for being hidden
+/// (`rail_sleep`); a page that never says so is not either.
+#[tauri::command]
+pub fn desktop_report_busy(
+    webview: Webview,
+    draft: bool,
+    upload: bool,
+    talk: bool,
+) -> Result<(), String> {
+    let session = server_page(&webview)?;
+    let app = webview.app_handle();
+    let trusted = app.state::<super::web_client::Trusted>();
+    if let Some(slot) = trusted
+        .registry
+        .lock()
+        .map_err(|_| "busy")?
+        .slot_mut(&session.id)
+    {
+        slot.busy = Some(draft || upload || talk);
+    }
+    Ok(())
+}
+
 /// The plain badge of a bundle from before `desktop_report_unread`: its
 /// mentions, for its server only.
 #[tauri::command]

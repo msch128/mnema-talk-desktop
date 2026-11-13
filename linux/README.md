@@ -238,8 +238,17 @@ How the servers are kept apart:
   partition (storage, cache and directory), its sockets, its toasts and its
   attachment window. A directory the engine still holds is removed again later,
   and leftovers are swept at the next start.
-* **Background servers** are hidden, not stopped: their sockets and counters stay
-  alive.
+* **Background servers** are hidden; a page is made only when its server is
+  first opened and closed again after hiding for a while
+  (`src/main/sleep.ts`, rules in `src/core/sleep.ts`, the same as the Tauri
+  host's and shared in `test-vectors/rail-layout.json`: closed after 10
+  minutes hidden while more than 4 run, never when the page says it holds a
+  draft, an upload or a Talk, never when it has not said; settings `sleep` in
+  the list file). A server without a page has its counts from the host
+  (`src/core/feed.ts`: `GET /api/read-state`, read again on the socket's
+  message, read and channel events, at most every 2 seconds and at least
+  every minute; the socket says the member is idle and nothing else). At most
+  4 servers connect at once.
 * **Update from the single-server client.** Its browser storage held every
   server it showed and recorded none, so it belongs to no one server: it is
   wiped once at the first start of this version and never handed on. Every server

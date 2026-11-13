@@ -94,7 +94,7 @@ mod tests {
         let now = crate::web_proxy::now();
         assert!(registry.mute(&ids[0], now + 3600, now));
         assert!(registry.edit(|l| l.rename(&ids[1], "Home")));
-        let bytes = registry.stored().to_bytes().unwrap();
+        let bytes = registry.exported().to_bytes().unwrap();
         let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
         let keys: Vec<&str> = json
             .as_object()
@@ -126,7 +126,7 @@ mod tests {
         assert!(from.edit(|l| l.rename(&ids[0], "Lantern")));
         assert!(from.edit(|l| l.group(&ids[1], &ids[0], "f-0123abcd")));
         assert!(from.edit(|l| l.folder_edit("f-0123abcd", "Work", Some("#2da771"))));
-        let bytes = from.stored().to_bytes().unwrap();
+        let bytes = from.exported().to_bytes().unwrap();
 
         let imported = Stored::parse(&bytes).expect("a list written by this program");
         let mut into = Registry::restore(&Stored::empty());
@@ -247,5 +247,54 @@ mod tests {
         );
         let parsed = Stored::parse(&bytes).expect("the list reads back");
         assert_eq!(parsed.servers.len(), MAX_INSTANCES);
+    }
+
+    #[test]
+    fn the_sleep_settings_are_kept_in_the_list_file_but_never_exported() {
+        use crate::rail_sleep::Sleep;
+        let mut stored = Stored::empty();
+        stored.servers = vec![url("https://a.example/")];
+        stored.sleep = Some(Sleep {
+            after_secs: Some(1800),
+            keep: 2,
+        });
+        let registry = Registry::restore(&stored);
+        assert_eq!(
+            registry.sleep(),
+            Sleep {
+                after_secs: Some(1800),
+                keep: 2
+            }
+        );
+        let file: serde_json::Value =
+            serde_json::from_slice(&registry.stored().to_bytes().unwrap()).unwrap();
+        assert_eq!(file["sleep"]["after_secs"], 1800);
+        let export: serde_json::Value =
+            serde_json::from_slice(&registry.exported().to_bytes().unwrap()).unwrap();
+        assert!(export.get("sleep").is_none());
+        // Settings that do not hold up are the defaults, or held to their bounds; the list still reads.
+        for (raw, want) in [
+            (r#""junk""#, Sleep::default()),
+            (
+                r#"{"after_secs":5,"keep":0}"#,
+                Sleep {
+                    after_secs: Some(60),
+                    keep: 1,
+                },
+            ),
+            (
+                r#"{"after_secs":null,"keep":3}"#,
+                Sleep {
+                    after_secs: None,
+                    keep: 3,
+                },
+            ),
+        ] {
+            let text = format!(
+                r#"{{"version":1,"servers":["https://a.example/"],"active":null,"sleep":{raw}}}"#
+            );
+            let parsed = Stored::parse(text.as_bytes()).expect("the list reads");
+            assert_eq!(Registry::restore(&parsed).sleep(), want, "{raw}");
+        }
     }
 }

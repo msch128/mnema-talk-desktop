@@ -196,7 +196,7 @@ fn export_list(app: &tauri::AppHandle) -> Result<String, String> {
         .registry
         .lock()
         .map_err(|_| "busy")?
-        .stored()
+        .exported()
         .to_bytes()
         .map_err(|_| "The list could not be written.")?;
     let dir = app

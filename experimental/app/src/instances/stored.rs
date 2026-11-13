@@ -2,6 +2,7 @@
 use super::mutes::live;
 use super::{MAX_IMPORT_BYTES, MAX_INSTANCES, MAX_STORE_BYTES, Registry, STORE_VERSION};
 use crate::rail_layout::Item;
+use crate::rail_sleep::Sleep;
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, path::Path};
 use url::Url;
@@ -18,6 +19,8 @@ pub struct Stored {
     pub aliases: BTreeMap<String, String>,
     /// Servers whose notifications are off, by id: until when (epoch seconds) or -1.
     pub muted: BTreeMap<String, i64>,
+    /// When hidden pages are closed (`rail_sleep`); none in a list from before.
+    pub sleep: Option<Sleep>,
     /// A list file exists but could not be used (unreadable, damaged, too
     /// large or written by another version). The list is then empty, but that
     /// is not the person's choice: nothing may be cleaned up on its strength.
@@ -37,6 +40,9 @@ struct StoredFile {
     aliases: BTreeMap<String, String>,
     #[serde(default)]
     muted: BTreeMap<String, i64>,
+    /// Read leniently: settings that do not hold up are the defaults.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    sleep: Option<serde_json::Value>,
 }
 
 impl Stored {
@@ -48,6 +54,7 @@ impl Stored {
             items: None,
             aliases: BTreeMap::new(),
             muted: BTreeMap::new(),
+            sleep: None,
             unreadable: false,
         }
     }
@@ -115,6 +122,10 @@ impl Stored {
             items,
             aliases: stored.aliases,
             muted: stored.muted,
+            sleep: stored
+                .sleep
+                .and_then(|v| serde_json::from_value::<Sleep>(v).ok())
+                .map(Sleep::bounded),
             unreadable: false,
         }
     }
@@ -145,6 +156,7 @@ impl Stored {
             }),
             aliases: self.aliases.clone(),
             muted: self.muted.clone(),
+            sleep: self.sleep.and_then(|s| serde_json::to_value(s).ok()),
         };
         Ok(serde_json::to_vec(&stored)?)
     }
@@ -202,6 +214,16 @@ impl Registry {
                 .filter(|(_, until)| live(**until, crate::web_proxy::now()))
                 .map(|(id, until)| (id.clone(), *until))
                 .collect(),
+            sleep: Some(self.sleep),
+        }
+    }
+
+    /// The list as it is exported: addresses, names, layout and mutes. The
+    /// settings of this device (when hidden pages close) stay here.
+    pub fn exported(&self) -> Stored {
+        Stored {
+            sleep: None,
+            ..self.stored()
         }
     }
 }

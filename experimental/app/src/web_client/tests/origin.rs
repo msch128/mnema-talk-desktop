@@ -4,7 +4,10 @@ use crate::web_client::commands::own_blob;
 
 #[test]
 fn only_the_instance_window_announces_notifications() {
-    assert_eq!(capabilities("instance"), ["notify", "unread", "ws_query"]);
+    assert_eq!(
+        capabilities("instance"),
+        ["notify", "unread", "ws_query", "busy"]
+    );
     for role in ["selector", "surface", "probe", ""] {
         assert!(capabilities(role).is_empty(), "{role}");
     }

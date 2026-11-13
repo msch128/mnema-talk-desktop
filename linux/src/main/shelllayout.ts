@@ -11,6 +11,12 @@ import type { Context } from './context.ts'
 
 export const RAIL_WIDTH = 68
 
+/** What runs before each placement (the shell makes the page of the server in front there). */
+const afterLayoutHooks: ((ctx: Context) => void)[] = []
+export function onLayout(hook: (ctx: Context) => void): void {
+  afterLayoutHooks.push(hook)
+}
+
 function frontKey(ctx: Context): string | null {
   const registry = ctx.trusted.registry
   const active = registry.active()
@@ -19,6 +25,7 @@ function frontKey(ctx: Context): string | null {
 
 /** Puts the rail on the left, the page in front next to it and hides the others (all of them while the window is minimised). Hidden pages keep running, throttled: the engine stops painting them and slows their timers. */
 export function layout(ctx: Context): void {
+  for (const hook of afterLayoutHooks) hook(ctx)
   const { window, rail, selector, pages } = ctx.shell
   if (!window || window.isDestroyed()) return
   const { width, height } = window.getContentBounds()

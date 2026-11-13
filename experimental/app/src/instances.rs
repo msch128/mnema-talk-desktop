@@ -129,6 +129,10 @@ pub struct Slot {
     pub clicks: Option<tauri::ipc::Channel<crate::web_notify::Click>>,
     /// Names the community icon the server set, as cached on this device.
     pub icon: Option<String>,
+    /// What the page last said about itself: busy (an unsent draft, an
+    /// upload, a Talk) or idle; `None` until it says (an older bundle never
+    /// does, and its page is never closed for being hidden).
+    pub busy: Option<bool>,
 }
 
 impl Slot {
@@ -144,6 +148,7 @@ impl Slot {
             generation: uuid::Uuid::new_v4().simple().to_string(),
             clicks: None,
             icon: None,
+            busy: None,
         }
     }
 
@@ -170,6 +175,7 @@ impl Slot {
         self.mentions = 0;
         self.reported = false;
         self.clicks = None;
+        self.busy = None;
         self.generation = uuid::Uuid::new_v4().simple().to_string();
     }
 
