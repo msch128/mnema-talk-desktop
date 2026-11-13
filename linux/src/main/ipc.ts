@@ -19,6 +19,7 @@ import { pickerChoose, pickerSources } from './permissions.ts'
 import { notify, notifyOpen, notifyPermission } from './notify.ts'
 import { addServer } from './shell.ts'
 import { countsChanged } from './shelllayout.ts'
+import { updateNow } from './updater.ts'
 
 /** The page this call comes from, with the server it belongs to (decided by the host when it made the page). */
 interface Caller { role: Role, contents: WebContents, server: string | null }
@@ -90,7 +91,10 @@ function updateAction(ctx: Context, args: Args): unknown {
   const external = updater.snapshot().external
   switch (text(args, 'action')) {
     case 'check': void updater.check(true); break
-    case 'now': if (external) void shell.openExternal(RELEASES_PAGE); else void updater.install('now'); break
+    case 'now': updateNow(ctx, false); break
+    // The answers to the question about a running Talk.
+    case 'now_anyway': updateNow(ctx, true); break
+    case 'after_call': if (!external) void updater.install('after_call'); break
     case 'later': if (external) void shell.openExternal(RELEASES_PAGE); else void updater.install('later'); break
     case 'download_page': void shell.openExternal(RELEASES_PAGE); break
     // The footer link: the page of the offered version, else of the installed one; the address is built here.

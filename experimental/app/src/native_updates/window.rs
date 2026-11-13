@@ -3,6 +3,8 @@
 use super::check::check;
 use super::install::{install, skip};
 use super::logic::release_page;
+use super::menu::MENU_NOW;
+use super::now::request_now;
 use super::state::{Mode, NativeUpdates, Phase, Snapshot};
 use tauri::{AppHandle, Manager, Runtime, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 use url::Url;
@@ -44,8 +46,12 @@ pub fn open_window<R: Runtime>(app: &AppHandle<R>, focus: bool) -> tauri::Result
     Ok(())
 }
 
-/// Menu entry: show the window and look again.
-pub fn menu_clicked<R: Runtime>(app: &AppHandle<R>) {
+/// Menu entry: "Update now", or "Check for updates" (show the window and look again).
+pub fn menu_clicked<R: Runtime>(app: &AppHandle<R>, id: &str) {
+    if id == MENU_NOW {
+        request_now(app, false);
+        return;
+    }
     let _ = open_window(app, true);
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
@@ -120,19 +126,9 @@ pub fn native_update_action(
     let app = window.app_handle().clone();
     let portable = state.source.portable;
     match action.as_str() {
-        // The portable copy cannot be replaced by an installer.
-        "now" | "later" if portable => {
-            return Err("A portable copy does not install updates.".into());
-        }
-        "download_page" => {
-            let page = portable
-                .then(|| state.snapshot().version)
-                .flatten()
-                .and_then(|v| release_page(&v));
-            if let Some(url) = page {
-                // The confirmation dialog waits for an answer.
-                std::thread::spawn(move || crate::web_client::open_external(&url));
-            }
+        // The portable copy replaces its files only while it runs.
+        "later" if portable => {
+            return Err("A portable copy installs updates only while it runs.".into());
         }
         // The link of the footer: the page of the offered version, else of the
         // installed one. The address is built here from the fixed prefix.
@@ -147,7 +143,15 @@ pub fn native_update_action(
             tauri::async_runtime::spawn(async move { check(&app, true).await });
         }
         "now" => {
-            tauri::async_runtime::spawn(async move { install(&app, Mode::Now).await });
+            request_now(&app, false);
+        }
+        // The answer to the question about a running Talk.
+        "now_anyway" => {
+            request_now(&app, true);
+        }
+        "after_call" => {
+            state.with(|i| i.snapshot.confirm_call = false);
+            tauri::async_runtime::spawn(async move { install(&app, Mode::AfterCall).await });
         }
         "later" => {
             tauri::async_runtime::spawn(async move { install(&app, Mode::Later).await });

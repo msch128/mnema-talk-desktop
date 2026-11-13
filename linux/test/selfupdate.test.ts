@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, test } from 'node:test'
 import { CHECK_INTERVAL_SECS } from '../src/core/store.ts'
-import { SelfUpdater, type Snapshot, type UpdaterEnv, checkDue, downloadUrlOk, isSkipped, menuText, offerable, parseFeed, platformKey, replaceAppImage, trimNotes } from '../src/core/selfupdate.ts'
+import { SelfUpdater, type Snapshot, type UpdaterEnv, checkDue, downloadUrlOk, isSkipped, menuView, offerable, parseFeed, platformKey, replaceAppImage, trimNotes } from '../src/core/selfupdate.ts'
 import type { Statement } from '../src/core/trust.ts'
 import { minisignKey, minisignSignature } from './helpers/fixtures.ts'
 import { serve, type TestServer } from './helpers/server.ts'
@@ -115,8 +115,15 @@ test('pure rules: versions, skips, intervals, urls, platforms and notes', () => 
   assert.equal(trimNotes('a\u0000b\nc\u0007'), 'ab\nc')
   assert.equal(trimNotes('   '), null)
   assert.equal(trimNotes('x'.repeat(5000))?.length, 2000)
-  assert.equal(menuText('available'), 'Update •')
-  assert.equal(menuText('idle'), 'Updates')
+})
+
+test('the menu offers Update now only while a version waits, in both languages', () => {
+  const snap = (phase: Snapshot['phase'], version: string | null): Snapshot => ({ current: '1.3.5', phase, version, notes: null, received: 0, total: null, mode: null, error: null, external: false, confirm_call: false, skipped: false })
+  assert.deepEqual(menuView(snap('idle', null), false), { title: 'Updates', now: 'Update now', nowEnabled: false, check: 'Check for updates…', version: 'Mnema Desktop 1.3.5' })
+  for (const phase of ['available', 'ready', 'waiting', 'failed'] as const) assert.equal(menuView(snap(phase, '1.3.6'), false).title, 'Update available •', phase)
+  assert.equal(menuView(snap('failed', null), false).nowEnabled, false)
+  for (const phase of ['checking', 'downloading', 'installing', 'up_to_date'] as const) assert.equal(menuView(snap(phase, '1.3.6'), false).nowEnabled, false, phase)
+  assert.deepEqual(menuView(snap('available', '1.3.6'), true), { title: 'Update verfügbar •', now: 'Jetzt aktualisieren', nowEnabled: true, check: 'Nach Updates suchen …', version: 'Mnema Desktop 1.3.5' })
 })
 
 test('the feed of the Tauri clients carries one entry per platform; this client reads its own', () => {

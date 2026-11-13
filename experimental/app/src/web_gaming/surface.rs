@@ -16,11 +16,11 @@ pub fn menu_items(
     app: &tauri::AppHandle,
 ) -> tauri::Result<(
     tauri::menu::MenuItem<tauri::Wry>,
-    tauri::menu::MenuItem<tauri::Wry>,
+    tauri::menu::Submenu<tauri::Wry>,
 )> {
     let item =
         tauri::menu::MenuItem::with_id(app, "gaming-settings", "Gaming", true, None::<&str>)?;
-    Ok((item, crate::native_updates::menu_item(app)?))
+    Ok((item, crate::native_updates::menu(app)?))
 }
 pub fn open_settings(app: &tauri::AppHandle) -> tauri::Result<()> {
     let window = surface(app, "gaming-settings", true)?;

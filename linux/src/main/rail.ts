@@ -15,6 +15,19 @@ import { showDialog, showMenu } from './railui.ts'
 import { railEdit, reconnect } from './shell.ts'
 import { activate, cancelAdding, railSnapshot, startAdding } from './shelllayout.ts'
 import { removeServer } from './shellwipe.ts'
+import { setMenuGerman, updateNow } from './updater.ts'
+import { openUpdater } from './windows.ts'
+
+/** The update pill: its state (the rail also says its language), and "Update now" or the update window. */
+function updateCommand(ctx: Context, command: string, args: Args): unknown {
+  if (command === 'rail_update_state') {
+    if (typeof args.german !== 'boolean') throw new Error('invalid arguments')
+    setMenuGerman(ctx, args.german)
+  } else if (args.action === 'now') updateNow(ctx, false)
+  else if (args.action === 'open') openUpdater(ctx, true)
+  else throw new Error('invalid arguments')
+  return ctx.updater?.snapshot() ?? null
+}
 
 function fromRail(ctx: Context, event: IpcMainInvokeEvent): boolean {
   const rail = ctx.shell.rail
@@ -56,6 +69,8 @@ async function run(ctx: Context, command: string, args: Args): Promise<unknown> 
     }
     case 'rail_remove': await removeServer(ctx, serverId(args)); return null
     case 'rail_reconnect': await reconnect(ctx, serverId(args)); return null
+    case 'rail_update_state':
+    case 'rail_update_action': return updateCommand(ctx, command, args)
     default: throw new Error('Unknown command.')
   }
 }

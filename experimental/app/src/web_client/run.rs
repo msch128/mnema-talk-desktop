@@ -74,6 +74,8 @@ fn invoke_handler() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'stat
         crate::web_gaming::desktop_gaming_remove_game,
         crate::native_updates::native_update_state,
         crate::native_updates::native_update_action,
+        crate::native_updates::rail_update_state,
+        crate::native_updates::rail_update_action,
         crate::web_notify::desktop_notify_open,
         crate::web_notify::desktop_notify,
         crate::web_notify::desktop_notify_permission,
@@ -88,8 +90,8 @@ fn on_menu(app: &tauri::AppHandle, event: tauri::menu::MenuEvent) {
     let id = event.id().as_ref();
     if id == "gaming-settings" {
         let _ = crate::web_gaming::open_settings(app);
-    } else if id == crate::native_updates::MENU_ID {
-        crate::native_updates::menu_clicked(app);
+    } else if crate::native_updates::is_menu_id(id) {
+        crate::native_updates::menu_clicked(app, id);
     } else {
         crate::web_shell::menu_clicked(app, id);
     }

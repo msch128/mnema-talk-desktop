@@ -388,8 +388,16 @@ mod tests {
         assert!(rail.get("windows").is_none());
         let permissions = permissions(rail);
         assert!(permissions.iter().all(|p| p.starts_with("allow-rail-")));
-        assert_eq!(permissions.len(), 12);
-        for command in ["edit", "menu", "dialog", "icon"] {
+        assert_eq!(permissions.len(), 14);
+        // The update pill: its state, and "Update now" or the update window.
+        for command in [
+            "edit",
+            "menu",
+            "dialog",
+            "icon",
+            "update-state",
+            "update-action",
+        ] {
             assert!(permissions.contains(&format!("allow-rail-{command}").as_str()));
         }
         assert!(!permissions.contains(&"allow-rail-move"));

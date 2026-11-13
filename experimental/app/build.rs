@@ -45,6 +45,8 @@ const COMMANDS: &[&str] = &[
     "desktop_gaming_remove_game",
     "native_update_state",
     "native_update_action",
+    "rail_update_state",
+    "rail_update_action",
     "desktop_ws_open",
     "desktop_download",
     "desktop_ws_send",

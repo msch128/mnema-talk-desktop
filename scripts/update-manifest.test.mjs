@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { LINUX_PLATFORMS, buildManifest, parseArgs } from './update-manifest.mjs';
+import { LINUX_PLATFORMS, PORTABLE_PLATFORM, buildManifest, parseArgs } from './update-manifest.mjs';
 
 const signature = Buffer.from('untrusted comment: signature from tauri secret key\n'.repeat(3)).toString('base64');
 const ok = { version: '0.2.0', repo: 'msch128/mnema-talk-desktop', installerName: 'Mnema-Desktop_0.2.0_x64-setup.exe', signature: `${signature}\n`, notes: ' Fixes ', date: new Date('2026-10-17T12:00:00Z') };
@@ -93,4 +93,26 @@ test('argument parser pairs each flag with its own value and rejects a missing o
   assert.throws(() => parseArgs(['--mac', '--mac-sig', 'f.sig']), /--mac needs a value/);
   assert.throws(() => parseArgs(['--out', 'a.json', '--notes']), /--notes needs a value/);
   assert.throws(() => parseArgs(['stray', 'x']), /Unexpected argument/);
+});
+
+test('names the signed portable ZIP under its own key, apart from the installer', () => {
+  const zipSignature = Buffer.from('untrusted comment: zip signature from tauri secret key\n'.repeat(3)).toString('base64');
+  const m = buildManifest({ ...ok, portable: { name: 'Mnema-Desktop-DEV-v0.2.0-windows-x64-portable.zip', signature: `${zipSignature}\n` } });
+  assert.equal(PORTABLE_PLATFORM, 'windows-x86_64-portable');
+  assert.deepEqual(Object.keys(m.platforms), ['windows-x86_64', 'windows-x86_64-portable']);
+  assert.equal(m.platforms[PORTABLE_PLATFORM].url, 'https://github.com/msch128/mnema-talk-desktop/releases/download/v0.2.0/Mnema-Desktop-DEV-v0.2.0-windows-x64-portable.zip');
+  assert.equal(m.platforms[PORTABLE_PLATFORM].signature, zipSignature);
+  assert.equal(m.platforms['windows-x86_64'].signature, signature);
+  for (const name of ['../x.zip', 'x.exe', 'a b.zip']) assert.throws(() => buildManifest({ ...ok, portable: { name, signature: zipSignature } }), Error, name);
+  assert.throws(() => buildManifest({ ...ok, portable: { name: 'x.zip', signature: 'short' } }), Error);
+});
+
+test('adding the portable ZIP leaves every entry older clients read exactly as it was', () => {
+  const s = (t) => Buffer.from(`untrusted comment: ${t} signature from tauri secret key\n`.repeat(3)).toString('base64');
+  const linux = LINUX_PLATFORMS.map((platform) => ({ platform, name: `pkg-${platform}${platform.endsWith('-deb') ? '.deb' : '.AppImage'}`, signature: s(platform) }));
+  const base = { ...ok, mac: { name: 'a.app.tar.gz', signature: s('mac') }, linux };
+  const before = buildManifest(base).platforms;
+  const after = buildManifest({ ...base, portable: { name: 'p.zip', signature: s('zip') } }).platforms;
+  for (const [key, entry] of Object.entries(before)) assert.deepEqual(after[key], entry, key);
+  assert.deepEqual(Object.keys(after).filter((k) => !(k in before)), [PORTABLE_PLATFORM]);
 });

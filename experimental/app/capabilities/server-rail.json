@@ -16,6 +16,8 @@
     "allow-rail-remove",
     "allow-rail-reconnect",
     "allow-rail-notify-get",
-    "allow-rail-notify-set"
+    "allow-rail-notify-set",
+    "allow-rail-update-state",
+    "allow-rail-update-action"
   ]
 }

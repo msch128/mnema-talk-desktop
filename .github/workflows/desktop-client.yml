@@ -229,7 +229,7 @@ jobs:
           cargo build --locked --release --manifest-path experimental/app/Cargo.toml --features shell,web-client,custom-protocol
           if ($LASTEXITCODE -ne 0) { throw 'Shared Windows executable build failed' }
           if (!(Test-Path 'experimental/app/target/release/mnema-native-client-preview.exe')) { throw 'Shared executable missing' }
-          'Unsigned web-client host linked from experimental/app with the embedded signed web bundle. The next step checks the WebView2 origin and the media-permission decision with a synthetic capture device. It does not click a prompt and does not qualify a physical device, sealed media, multi-device E2EE, real games, fullscreen overlays or distribution licenses. The installer of a release updates itself; this portable executable does not.' | Out-File -Append $env:GITHUB_STEP_SUMMARY
+          'Unsigned web-client host linked from experimental/app with the embedded signed web bundle. The next step checks the WebView2 origin and the media-permission decision with a synthetic capture device. It does not click a prompt and does not qualify a physical device, sealed media, multi-device E2EE, real games, fullscreen overlays or distribution licenses. The installer and the portable ZIP of a release update themselves; this bare executable does not.' | Out-File -Append $env:GITHUB_STEP_SUMMARY
       - name: Prepare the unsigned portable Windows artifact
         if: inputs.acceptance_release == ''
         shell: pwsh
@@ -347,7 +347,7 @@ jobs:
           gaming surfaces are refused. The check uses a synthetic capture
           device and does not click the prompt. A human prompt, a physical
           device, sealed media, multi-device E2EE, restored history and real
-          games are not qualified. This portable ZIP does not update itself; the installer of a release does.
+          games are not qualified. The portable ZIP of a release updates itself from the signed portable ZIP of the next one.
 
           Check BUILD.json for the source revision and executable SHA-256.
           Source and dependency notices accompany this build. The existing prebuilt
@@ -358,8 +358,9 @@ jobs:
       # and start the program. It is packed here the way desktop-release.yml packs
       # it (the marker beside the executable), and it must run from the unpacked
       # folder without an installer and leave nothing in the profile's program
-      # folder. That the marker keeps the updater from installing is covered by
-      # the native_updates tests.
+      # folder. That the marker makes the updater replace the copy's own files
+      # instead of running the installer is covered by the native_updates tests
+      # and the windows-update job.
       - name: The portable ZIP runs from its own folder and installs nothing
         if: inputs.acceptance_release == ''
         shell: pwsh
@@ -666,6 +667,246 @@ jobs:
           $ErrorActionPreference = 'Stop'
           & ./scripts/test-windows-gaming-hang.ps1 -Exe (Join-Path $env:CARGO_TARGET_DIR 'release/mnema-native-client-preview.exe')
           if ($LASTEXITCODE -ne $null -and $LASTEXITCODE -ne 0) { throw 'The gaming responsiveness check failed' }
+
+  # The whole self-update on a real Windows desktop, for the installer and for
+  # the portable ZIP. Two builds with the test-only `update-selftest` feature
+  # (never in a shipped build): an old and a new version whose updater config
+  # names a throwaway key made in this job (never a release key) and a feed on
+  # this machine. The new installer and the new portable ZIP are signed with
+  # that key, the version bound into the signature, as a release is.
+  # scripts/update-selftest.mjs serves them and starts the old program, which
+  # finds the update at start, asks first during a simulated Talk, downloads and
+  # verifies it, waits for the Talk to end, installs it and restarts; the new
+  # version then reports its version and that it kept the data folder.
+  windows-update:
+    if: inputs.acceptance_release == ''
+    runs-on: windows-2025
+    timeout-minutes: 75
+    env:
+      RUST_VERSION: 1.99.1
+      CARGO_TARGET_DIR: ${{ github.workspace }}/experimental/app/target
+      FEATURES: shell,web-client,custom-protocol,update-selftest
+      FEED_PORT: '47613'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.ref || github.sha }}
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - name: Select pinned Rust toolchain
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          rustup toolchain install $env:RUST_VERSION --profile minimal
+          if ($LASTEXITCODE -ne 0) { throw 'Rust installation failed' }
+          rustup default $env:RUST_VERSION
+          if ($LASTEXITCODE -ne 0) { throw 'Rust selection failed' }
+      # Restored on pull requests, saved only on main.
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: experimental/app -> target
+          key: ${{ hashFiles('**/Cargo.lock') }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Install the pinned Tauri CLI
+        working-directory: ui
+        shell: pwsh
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          if ($LASTEXITCODE -ne 0) { throw 'CLI install failed' }
+          node ../scripts/ensure-npm-optional.mjs .
+          if ($LASTEXITCODE -ne 0) { throw 'Tauri CLI platform package missing' }
+      - name: Make a throwaway updater key and the configs of the two versions
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $dir = Join-Path $env:RUNNER_TEMP 'update'
+          New-Item -ItemType Directory -Path $dir -Force | Out-Null
+          $password = node -e "console.log(require('crypto').randomBytes(16).toString('hex'))"
+          Write-Host "::add-mask::$password"
+          $key = Join-Path $dir 'test.key'
+          node ui/node_modules/@tauri-apps/cli/tauri.js signer generate --ci -w $key -p $password | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw 'Key generation failed' }
+          $secret = (Get-Content -Raw $key).Trim()
+          Write-Host "::add-mask::$secret"
+          Add-Content -Path $env:GITHUB_ENV -Value "TEST_KEY=$secret"
+          Add-Content -Path $env:GITHUB_ENV -Value "TEST_KEY_PASSWORD=$password"
+          node scripts/update-selftest.mjs config --pubkey-file "$key.pub" --port $env:FEED_PORT --version 1.0.0 --signed false --out (Join-Path $dir 'old.json')
+          node scripts/update-selftest.mjs config --pubkey-file "$key.pub" --port $env:FEED_PORT --version 1.0.1 --signed true --out (Join-Path $dir 'new.json')
+      - name: Build the old version (1.0.0)
+        shell: pwsh
+        working-directory: experimental/app
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $dir = Join-Path $env:RUNNER_TEMP 'update'
+          node ../../ui/node_modules/@tauri-apps/cli/tauri.js build --ci --bundles nsis --features $env:FEATURES --config (Join-Path $dir 'old.json')
+          if ($LASTEXITCODE -ne 0) { throw 'Old build failed' }
+          $setup = Get-ChildItem (Join-Path $env:CARGO_TARGET_DIR 'release/bundle/nsis') -Filter '*_1.0.0_*-setup.exe' | Select-Object -First 1
+          if (!$setup) { throw 'Old installer missing' }
+          Copy-Item $setup.FullName (Join-Path $dir 'old-setup.exe')
+          $portable = Join-Path $dir 'old-portable'
+          New-Item -ItemType Directory -Path $portable -Force | Out-Null
+          Copy-Item (Join-Path $env:CARGO_TARGET_DIR 'release/mnema-native-client-preview.exe') (Join-Path $portable 'Mnema Desktop.exe')
+          [System.IO.File]::WriteAllText((Join-Path $portable 'mnema-portable.marker'), "portable`n")
+      - name: Build and sign the new version (1.0.1), installer and portable ZIP
+        shell: pwsh
+        working-directory: experimental/app
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ env.TEST_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ env.TEST_KEY_PASSWORD }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $dir = Join-Path $env:RUNNER_TEMP 'update'
+          node ../../ui/node_modules/@tauri-apps/cli/tauri.js build --ci --bundles nsis --features $env:FEATURES --config (Join-Path $dir 'new.json')
+          if ($LASTEXITCODE -ne 0) { throw 'New build failed' }
+          $setup = Get-ChildItem (Join-Path $env:CARGO_TARGET_DIR 'release/bundle/nsis') -Filter '*_1.0.1_*-setup.exe' | Select-Object -First 1
+          if (!$setup -or !(Test-Path "$($setup.FullName).sig")) { throw 'Signed new installer missing' }
+          $new = Join-Path $dir 'new'
+          New-Item -ItemType Directory -Path $new -Force | Out-Null
+          Copy-Item $setup.FullName (Join-Path $new 'new-setup.exe')
+          Copy-Item "$($setup.FullName).sig" (Join-Path $new 'new-setup.exe.sig')
+          # The portable ZIP as the release workflow packs and signs it.
+          $pack = Join-Path $dir 'new-portable'
+          New-Item -ItemType Directory -Path $pack -Force | Out-Null
+          Copy-Item (Join-Path $env:CARGO_TARGET_DIR 'release/mnema-native-client-preview.exe') (Join-Path $pack 'Mnema Desktop.exe')
+          Copy-Item '../../LICENSE' $pack
+          [System.IO.File]::WriteAllText((Join-Path $pack 'mnema-portable.marker'), "portable`n")
+          $zip = Join-Path $new 'new-portable.zip'
+          $names = @(Get-ChildItem $pack -Name)
+          & tar.exe -a -c -f $zip -C $pack @names
+          if ($LASTEXITCODE -ne 0) { throw 'The portable ZIP could not be packed' }
+          node ../../ui/node_modules/@tauri-apps/cli/tauri.js signer sign --app-version 1.0.1 $zip
+          if ($LASTEXITCODE -ne 0 -or !(Test-Path "$zip.sig")) { throw 'The portable ZIP was not signed' }
+      - name: The installed old version updates itself to the new one and restarts
+        shell: pwsh
+        timeout-minutes: 20
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $dir = Join-Path $env:RUNNER_TEMP 'update'
+          $child = Start-Process -FilePath (Join-Path $dir 'old-setup.exe') -ArgumentList '/S' -PassThru
+          if (!$child.WaitForExit(120000)) { throw 'The old installer did not finish' }
+          if ($child.ExitCode -ne 0) { throw "Old installer exit code $($child.ExitCode)" }
+          $exe = Get-ChildItem $env:LOCALAPPDATA -Include 'mnema-native-client-preview.exe','Mnema Desktop.exe' -Recurse -Depth 3 -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (!$exe) { throw 'The installed old version was not found' }
+          try {
+            node scripts/update-selftest.mjs --port $env:FEED_PORT --version 1.0.1 --old 1.0.0 --entry "windows-x86_64=$(Join-Path $dir 'new/new-setup.exe')" --record (Join-Path $dir 'installer.log') --run $exe.FullName
+            if ($LASTEXITCODE -ne 0) { throw 'The installer update failed' }
+            $installed = (Get-Item $exe.FullName).VersionInfo.ProductVersion
+            if ($installed -ne '1.0.1') { throw "The installed program is $installed, not 1.0.1" }
+          } finally {
+            & taskkill.exe /F /IM (Split-Path $exe.FullName -Leaf) 2>$null | Out-Null
+            # Nothing left to stop is not a failure of the step.
+            $global:LASTEXITCODE = 0
+          }
+      - name: The portable old version replaces itself with the new one and restarts
+        shell: pwsh
+        timeout-minutes: 20
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $dir = Join-Path $env:RUNNER_TEMP 'update'
+          $folder = Join-Path $dir 'old-portable'
+          $exe = Join-Path $folder 'Mnema Desktop.exe'
+          try {
+            node scripts/update-selftest.mjs --port $env:FEED_PORT --version 1.0.1 --old 1.0.0 --entry "windows-x86_64-portable=$(Join-Path $dir 'new/new-portable.zip')" --record (Join-Path $dir 'portable.log') --run $exe
+            if ($LASTEXITCODE -ne 0) { throw 'The portable update failed' }
+            $want = (Get-FileHash (Join-Path $dir 'new-portable/Mnema Desktop.exe')).Hash
+            if ((Get-FileHash $exe).Hash -ne $want) { throw 'The portable folder does not hold the new program' }
+            if (!(Test-Path (Join-Path $folder 'LICENSE'))) { throw 'The other files of the new ZIP were not put in place' }
+            if (Test-Path "$exe.old") { throw 'The replaced program was left behind' }
+            if (!(Test-Path (Join-Path $folder 'mnema-data/data'))) { throw 'The data folder of the portable copy is gone' }
+          } finally {
+            & taskkill.exe /F /IM 'Mnema Desktop.exe' 2>$null | Out-Null
+            $global:LASTEXITCODE = 0
+          }
+
+  # The same on macOS: the old app replaces itself from the signed app archive
+  # of the new version (the Tauri updater) and restarts through the system.
+  macos-update:
+    if: inputs.acceptance_release == ''
+    runs-on: macos-15
+    timeout-minutes: 75
+    env:
+      RUST_VERSION: 1.99.1
+      CARGO_TARGET_DIR: ${{ github.workspace }}/experimental/app/target
+      FEATURES: shell,web-client,custom-protocol,update-selftest
+      FEED_PORT: '47613'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.ref || github.sha }}
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - name: Select pinned Rust toolchain
+        run: |
+          rustup toolchain install "$RUST_VERSION" --profile minimal
+          rustup default "$RUST_VERSION"
+      # Restored on pull requests, saved only on main.
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: experimental/app -> target
+          key: ${{ hashFiles('**/Cargo.lock') }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Install the pinned Tauri CLI
+        working-directory: ui
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          node ../scripts/ensure-npm-optional.mjs .
+      - name: Make a throwaway updater key and the configs of the two versions
+        run: |
+          set -euo pipefail
+          dir="$RUNNER_TEMP/update"
+          mkdir -p "$dir"
+          password="$(node -e "console.log(require('crypto').randomBytes(16).toString('hex'))")"
+          echo "::add-mask::$password"
+          node ui/node_modules/@tauri-apps/cli/tauri.js signer generate --ci -w "$dir/test.key" -p "$password" >/dev/null
+          secret="$(cat "$dir/test.key")"
+          echo "::add-mask::$secret"
+          { echo "TEST_KEY=$secret"; echo "TEST_KEY_PASSWORD=$password"; } >> "$GITHUB_ENV"
+          node scripts/update-selftest.mjs config --pubkey-file "$dir/test.key.pub" --port "$FEED_PORT" --version 1.0.0 --signed false --out "$dir/old.json"
+          node scripts/update-selftest.mjs config --pubkey-file "$dir/test.key.pub" --port "$FEED_PORT" --version 1.0.1 --signed true --out "$dir/new.json"
+      - name: Build the old version (1.0.0)
+        working-directory: experimental/app
+        run: |
+          set -euo pipefail
+          dir="$RUNNER_TEMP/update"
+          node ../../ui/node_modules/@tauri-apps/cli/tauri.js build --ci --bundles app --features "$FEATURES" --config "$dir/old.json"
+          mkdir -p "$dir/old"
+          ditto "$CARGO_TARGET_DIR/release/bundle/macos/Mnema Desktop.app" "$dir/old/Mnema Desktop.app"
+      - name: Build and sign the new version (1.0.1)
+        working-directory: experimental/app
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ env.TEST_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ env.TEST_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          dir="$RUNNER_TEMP/update"
+          node ../../ui/node_modules/@tauri-apps/cli/tauri.js build --ci --bundles app --features "$FEATURES" --config "$dir/new.json"
+          archive="$CARGO_TARGET_DIR/release/bundle/macos/Mnema Desktop.app.tar.gz"
+          [ -f "$archive" ] && [ -f "$archive.sig" ] || { echo '::error::the signed app archive is missing'; exit 1; }
+          mkdir -p "$dir/new"
+          cp "$archive" "$dir/new/new.app.tar.gz"
+          cp "$archive.sig" "$dir/new/new.app.tar.gz.sig"
+      - name: The old app updates itself to the new one and restarts
+        timeout-minutes: 20
+        run: |
+          set -euo pipefail
+          dir="$RUNNER_TEMP/update"
+          app="$dir/old/Mnema Desktop.app"
+          status=0
+          node scripts/update-selftest.mjs --port "$FEED_PORT" --version 1.0.1 --old 1.0.0 \
+            --entry "darwin-aarch64=$dir/new/new.app.tar.gz" --record "$dir/macos.log" \
+            --run "$app/Contents/MacOS/mnema-native-client-preview" || status=$?
+          pkill -f "Mnema Desktop.app/Contents/MacOS" || true
+          [ "$status" = 0 ] || exit "$status"
+          version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")"
+          [ "$version" = 1.0.1 ] || { echo "::error::the app in place is $version, not 1.0.1"; exit 1; }
 
   # Several servers side by side on a real Windows desktop: a build with the
   # test-only `multi-selftest` feature (never in a shipped build) adds two

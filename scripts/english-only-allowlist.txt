@@ -7,6 +7,10 @@ path: experimental/app/rail-ui/rail-text.js | de/en locale table of the server r
 path: linux/assets/update-ui/update.js | de/en locale table of the update page
 path: experimental/app/update-ui/update.js | de/en locale table of the update page
 path: linux/assets/picker-ui/picker.js | de/en locale table of the screen picker page
+path: experimental/app/rail-ui/rail-update.js | de/en locale table of the rail's update pill
+path: linux/assets/rail-ui/rail-update.js | de/en locale table of the rail's update pill
+path: experimental/app/src/native_updates/menu_text.rs | de/en locale table of the update menu entries
+path: linux/src/core/menutext.ts | de/en locale table of the update menu entries
 
 # Third-party and legal text.
 path: experimental/licenses/** | third-party license data (author names)
@@ -22,3 +26,6 @@ path: scripts/english-only-allowlist.txt | quotes the names it allows
 path: experimental/app/page-tests/src/nativeUpdatePage.test.ts | asserts German UI output
 path: experimental/app/page-tests/src/railPage.test.ts | asserts German UI output
 path: experimental/app/page-tests/src/railFolders.test.ts | asserts German UI output
+path: experimental/app/page-tests/src/railUpdate.test.ts | asserts German UI output
+path: experimental/app/src/native_updates/tests/package_and_portable.rs | asserts German UI output (the update menu)
+path: linux/test/selfupdate.test.ts | asserts German UI output (the update menu)

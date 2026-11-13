@@ -3,6 +3,7 @@
 use super::START_TIMEOUT;
 use super::check::{check, classify, fetch};
 use super::logic::{disabled, offerable, over_cap, verify_package};
+use super::now::{apply_now, wait_for_call_end};
 use super::state::{Failure, Mode, NativeUpdates, Pending, Phase, Source};
 use super::window::open_window;
 use crate::web_bundle::write_atomic;
@@ -29,11 +30,13 @@ async fn refresh_trust<R: Runtime>(app: &AppHandle<R>, source: &Source) {
     }
 }
 
-/// Download, verify and either install at once (`Mode::Now`) or keep the
-/// verified installer for the next start (`Mode::Later`).
+/// Download, verify and either install at once (`Mode::Now`), once the Talk
+/// has ended (`Mode::AfterCall`) or keep the verified installer for the next
+/// start (`Mode::Later`, not for the portable copy, which replaces its files
+/// only while it runs).
 pub async fn install<R: Runtime>(app: &AppHandle<R>, mode: Mode) {
     let state = app.state::<NativeUpdates>();
-    if state.source.portable {
+    if state.source.portable && mode == Mode::Later {
         return;
     }
     // After a restart a held installer has no manifest entry in memory yet.
@@ -67,15 +70,8 @@ pub async fn install<R: Runtime>(app: &AppHandle<R>, mode: Mode) {
     };
     match mode {
         Mode::Later => keep_for_next_start(&state, &update, &bytes),
-        Mode::Now => {
-            state.with(|i| i.snapshot.phase = Phase::Installing);
-            match update.install(&bytes) {
-                // Windows: the installer runs and this process has exited.
-                // Elsewhere the new version replaced the old one on disk.
-                Ok(()) => app.restart(),
-                Err(_) => fail(&state, Failure::Install),
-            }
-        }
+        Mode::AfterCall => wait_for_call_end(app, &update, bytes).await,
+        Mode::Now => apply_now(app, &update, &bytes),
     }
 }
 
@@ -93,6 +89,7 @@ fn start_download(state: &NativeUpdates, mode: Mode) -> Option<Update> {
             i.snapshot.received = 0;
             i.snapshot.total = None;
             i.snapshot.error = None;
+            i.snapshot.confirm_call = false;
             i.update.clone()
         })
         .flatten()

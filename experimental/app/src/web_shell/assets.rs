@@ -10,6 +10,8 @@ const SCRIPT_COMMANDS: &str = include_str!("../../rail-ui/rail-commands.js");
 const SCRIPT_MENU: &str = include_str!("../../rail-ui/rail-menu.js");
 const SCRIPT_DRAG: &str = include_str!("../../rail-ui/rail-drag.js");
 const SCRIPT: &str = include_str!("../../rail-ui/rail.js");
+const UPDATE_STYLE: &str = include_str!("../../rail-ui/rail-update.css");
+const UPDATE_SCRIPT: &str = include_str!("../../rail-ui/rail-update.js");
 const DIALOG_INDEX: &str = include_str!("../../rail-ui/dialog.html");
 const DIALOG_SCRIPT: &str = include_str!("../../rail-ui/dialog.js");
 const DIALOG_STYLE: &str = include_str!("../../rail-ui/dialog.css");
@@ -33,6 +35,8 @@ pub fn rail_asset(method: &str, path: &str) -> Resp {
         "/rail-menu.js" => ("text/javascript; charset=utf-8", SCRIPT_MENU),
         "/rail-drag.js" => ("text/javascript; charset=utf-8", SCRIPT_DRAG),
         "/rail.js" => ("text/javascript; charset=utf-8", SCRIPT),
+        "/rail-update.css" => ("text/css; charset=utf-8", UPDATE_STYLE),
+        "/rail-update.js" => ("text/javascript; charset=utf-8", UPDATE_SCRIPT),
         "/dialog.html" => ("text/html; charset=utf-8", DIALOG_INDEX),
         "/dialog.css" => ("text/css; charset=utf-8", DIALOG_STYLE),
         "/dialog.js" => ("text/javascript; charset=utf-8", DIALOG_SCRIPT),
@@ -85,6 +89,8 @@ mod tests {
             "/rail-menu.js",
             "/rail-drag.js",
             "/rail.js",
+            "/rail-update.css",
+            "/rail-update.js",
             "/dialog.html",
             "/dialog.css",
             "/dialog.js",

@@ -4,14 +4,49 @@
  * restart.
  */
 import { app, dialog, shell } from 'electron'
+import { RELEASES_PAGE } from '../core/pinned.ts'
 import { existsSync } from 'node:fs'
 import { findPkexec, installDeb, isDebInstall, runCommand } from '../core/debinstall.ts'
 import { UPDATER_ENDPOINTS, UPDATER_PUBKEY } from '../core/pinned.ts'
-import { SelfUpdater, POLL_MS, menuText, platformKey, replaceAppImage } from '../core/selfupdate.ts'
+import { SelfUpdater, POLL_MS, type Snapshot, menuView, platformKey, replaceAppImage } from '../core/selfupdate.ts'
 import { updatesDisabled } from '../core/updates.ts'
 import type { Context } from './context.ts'
 import { buildMenu } from './menu.ts'
 import { openUpdater } from './windows.ts'
+
+/** The language the rail page reported; the menu entries follow it. */
+let german = false
+
+export function menuGerman(): boolean {
+  return german
+}
+
+export function setMenuGerman(ctx: Context, value: boolean): void {
+  if (german === value) return
+  german = value
+  buildMenu(ctx)
+}
+
+/**
+ * Whether a Talk runs: a server's page plays media (the voices of the others
+ * in the Talk). Alone in a Talk nothing plays, and the update does not wait.
+ */
+function talkWatcher(ctx: Context): () => boolean {
+  const playing = new Set<number>()
+  app.on('web-contents-created', (_event, contents) => {
+    contents.on('media-started-playing', () => { if (ctx.roles.get(contents.id) === 'instance') playing.add(contents.id) })
+    contents.on('media-paused', () => { playing.delete(contents.id) })
+    contents.once('destroyed', () => { playing.delete(contents.id) })
+  })
+  return () => playing.size > 0
+}
+
+/** Every change of the state reaches the rail's update pill. */
+function pushToRail(ctx: Context, snapshot: Snapshot): void {
+  const rail = ctx.shell.rail
+  if (!rail || rail.webContents.isDestroyed()) return
+  void rail.webContents.executeJavaScript(`window.mnemaRail&&window.mnemaRail.update&&window.mnemaRail.update(${JSON.stringify(snapshot)})`).catch(() => undefined)
+}
 
 /** The AppImage this process was started from; set by the AppImage runtime. */
 function appImagePath(): string | null {
@@ -28,6 +63,7 @@ export function createUpdater(ctx: Context, onRestart: () => void): SelfUpdater 
   const image = appImagePath()
   const deb = image === null && debInstalled()
   let shown = ''
+  const inTalk = talkWatcher(ctx)
   return new SelfUpdater({
     current: app.getVersion(),
     dir: app.getPath('userData'),
@@ -71,11 +107,27 @@ export function createUpdater(ctx: Context, onRestart: () => void): SelfUpdater 
     external: image === null && !deb,
     onChange: (snapshot) => {
       // The menu says only whether something waits; progress does not rebuild it.
-      const label = menuText(snapshot.phase)
-      if (label !== shown) { shown = label; buildMenu(ctx) }
+      const view = JSON.stringify(menuView(snapshot, german))
+      if (view !== shown) { shown = view; buildMenu(ctx) }
+      pushToRail(ctx, snapshot)
     },
-    announce: () => { openUpdater(ctx, false) },
+    // A background check opens no window: the rail's pill and the menu show what it found.
+    inTalk,
   })
+}
+
+/**
+ * "Update now" from the rail, the menu or the window. `confirmed` answers the
+ * question about a running Talk. An installation of neither kind only gets the
+ * release page; whatever needs a question or has nothing to install opens the window.
+ */
+export function updateNow(ctx: Context, confirmed: boolean): void {
+  const updater = ctx.updater
+  if (!updater) return
+  if (updater.snapshot().external) { void shell.openExternal(RELEASES_PAGE); return }
+  const choice = updater.requestNow(confirmed)
+  if (choice === 'ask_about_talk' || choice === 'show') openUpdater(ctx, true)
+  if (choice === 'show' && !updater.isBusyOrWaiting()) void updater.check(true)
 }
 
 /** A check at every start, then whenever the interval has passed. */

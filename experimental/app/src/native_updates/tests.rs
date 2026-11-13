@@ -1,5 +1,5 @@
 use super::*;
-use super::{check::*, install::*, logic::*, state::*};
+use super::{check::*, install::*, logic::*, menu::*, now::*, portable::*, state::*};
 use crate::web_bundle::{CHECK_INTERVAL_SECS, Version};
 use base64::Engine as _;
 use std::path::{Path, PathBuf};
@@ -241,6 +241,8 @@ struct Release<'a> {
     signer: &'a Keys,
     /// What the server hands out (differs from `bytes` when tampered).
     served: Option<Vec<u8>>,
+    /// The signed portable ZIP of the same version, under its own feed entry.
+    portable: Option<Vec<u8>>,
 }
 
 fn publish(release: &Release) -> u16 {
@@ -248,16 +250,24 @@ fn publish(release: &Release) -> u16 {
     let probe = TcpListener::bind("127.0.0.1:0").unwrap();
     let port = probe.local_addr().unwrap().port();
     drop(probe);
+    let mut platforms = serde_json::json!({ "windows-x86_64": {
+        "signature": release.signer.sign(&release.bytes, release.signed_version),
+        "url": format!("http://127.0.0.1:{port}/installer.exe"),
+    }});
+    let mut routes = HashMap::new();
+    if let Some(zip) = &release.portable {
+        platforms[PORTABLE_TARGET] = serde_json::json!({
+            "signature": release.signer.sign(zip, release.signed_version),
+            "url": format!("http://127.0.0.1:{port}/portable.zip"),
+        });
+        routes.insert("/portable.zip".to_owned(), zip.clone());
+    }
     let manifest = serde_json::json!({
         "version": release.version,
         "notes": "Test release\nSecond line",
         "pub_date": "2026-10-17T12:00:00Z",
-        "platforms": { "windows-x86_64": {
-            "signature": release.signer.sign(&release.bytes, release.signed_version),
-            "url": format!("http://127.0.0.1:{port}/installer.exe"),
-        }}
+        "platforms": platforms,
     });
-    let mut routes = HashMap::new();
     routes.insert("/latest.json".to_owned(), manifest.to_string().into_bytes());
     routes.insert(
         "/installer.exe".to_owned(),
@@ -343,8 +353,19 @@ fn app_built(
         endpoints: vec![Url::parse(&format!("http://127.0.0.1:{port}/latest.json")).unwrap()],
         pubkey: trusted.pubkey(),
         github_only,
-        target: Some("windows-x86_64".into()),
-        executable_path: Some(dir.join("Mnema Test.app/Contents/MacOS/mnema")),
+        target: Some(
+            if portable {
+                PORTABLE_TARGET
+            } else {
+                "windows-x86_64"
+            }
+            .into(),
+        ),
+        executable_path: Some(if portable {
+            dir.join("app").join(PORTABLE_EXE)
+        } else {
+            dir.join("Mnema Test.app/Contents/MacOS/mnema")
+        }),
         portable,
     };
     let current = app.package_info().version.to_string();
@@ -364,10 +385,42 @@ fn release<'a>(version: &'a str, signer: &'a Keys) -> Release<'a> {
         signed_version: version,
         signer,
         served: None,
+        portable: None,
     }
+}
+
+/// Not the product's name: the Windows CI looks for that one in the profile
+/// (where the temporary folder is) to tell whether a copy was installed.
+const PORTABLE_EXE: &str = "Mnema Portable Test.exe";
+
+/// A ZIP with these files, as the release workflow packs the portable copy.
+fn zip_of(files: &[(&str, &[u8])]) -> Vec<u8> {
+    use std::io::Write as _;
+    let mut out = std::io::Cursor::new(Vec::new());
+    let mut zip = zip::ZipWriter::new(&mut out);
+    let options =
+        zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
+    for (name, body) in files {
+        zip.start_file(*name, options).unwrap();
+        zip.write_all(body).unwrap();
+    }
+    zip.finish().unwrap();
+    out.into_inner()
+}
+
+fn portable_zip(program: &[u8]) -> Vec<u8> {
+    zip_of(&[
+        (PORTABLE_EXE, program),
+        (PORTABLE_MARKER, b"portable\n"),
+        ("LICENSE", b"new licence"),
+        ("licenses/new.txt", b"added"),
+    ])
 }
 
 // ---------------------------------------------------------- end to end
 
+mod call;
+mod feed_compat;
 mod flow;
 mod package_and_portable;
+mod portable_zip;

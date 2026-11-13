@@ -212,15 +212,27 @@ fn a_menu_text_is_only_set_when_it_changes() {
     let state = handle.state::<NativeUpdates>();
     let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let counted = calls.clone();
-    state.menu.lock().unwrap().items.push(Arc::new(move |_| {
-        counted.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-    }));
+    state
+        .menu
+        .lock()
+        .unwrap()
+        .items
+        .push(Arc::new(move |_: &MenuView| {
+            counted.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        }));
     for _ in 0..5 {
         state.with(|i| i.snapshot.received += 1);
     }
     assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 1);
-    state.with(|i| i.snapshot.phase = Phase::Failed);
+    state.with(|i| {
+        i.snapshot.phase = Phase::Available;
+        i.snapshot.version = Some("0.2.0".into());
+    });
     assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 2);
+    state.set_german(true);
+    assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 3);
+    state.set_german(true);
+    assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 3);
 }
 
 #[test]

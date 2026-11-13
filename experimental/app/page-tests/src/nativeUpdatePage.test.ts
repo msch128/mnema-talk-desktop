@@ -19,6 +19,7 @@ interface Snapshot {
   total: number | null
   mode: string | null
   error: string | null
+  confirm_call?: boolean
 }
 
 const base: Snapshot = { current: '0.1.0', phase: 'idle', version: null, notes: null, received: 0, total: null, mode: null, error: null }
@@ -166,15 +167,18 @@ describe('update page', () => {
     ['up to date', { phase: 'up_to_date', notes: 'n' }, { detail: 'No newer version is available.', buttons: ['Check again', 'Close'], skip: false, notes: false, bar: false, err: false }],
     ['available', { phase: 'available', version: '2', notes: 'n' }, { detail: 'Version 2 is available. The update is signed and verified before it is installed.', buttons: ['Update now', 'On next start'], skip: true, notes: true, bar: false, err: false }],
     ['available, package managed', { phase: 'available', version: '2', external: true }, { detail: 'Version 2 is available. This installation is managed by your package manager: download the new package from the release page.', buttons: ['Open release page', 'Close'], skip: true, notes: false, bar: false, err: false }],
-    ['available, portable', { phase: 'available', version: '2', portable: true, external: true }, { detail: 'Version 2 is available. This portable copy does not update itself: download the new portable ZIP from the release page.', buttons: ['Open release page', 'Close'], skip: true, notes: false, bar: false, err: false }],
+    ['available, portable', { phase: 'available', version: '2', portable: true }, { detail: 'Version 2 is available. The update is signed and verified before it is installed.', buttons: ['Update now', 'Close'], skip: true, notes: false, bar: false, err: false }],
+    ['asked during a Talk', { phase: 'available', version: '2', notes: 'n', confirm_call: true }, { detail: 'Updating restarts Mnema Desktop, which interrupts your Talk for a moment. Install version 2 after the call, or now?', buttons: ['After the call', 'Update now', 'Close'], skip: true, notes: false, bar: false, err: false }],
+    ['downloading for after the call', { phase: 'downloading', version: '2', mode: 'after_call' }, { detail: 'Downloading version 2. It installs as soon as your Talk ends.', buttons: [], skip: false, notes: false, bar: true, err: false }],
+    ['waiting for the end of the Talk', { phase: 'waiting', version: '2', mode: 'after_call', notes: 'n' }, { detail: 'Version 2 is downloaded and verified. It installs as soon as your Talk ends.', buttons: ['Update now', 'Close'], skip: false, notes: false, bar: false, err: false }],
     ['downloading now', { phase: 'downloading', version: '2', mode: 'now', received: 1, total: 4 }, { detail: 'Downloading version 2. The app restarts afterwards.', buttons: [], skip: false, notes: false, bar: true, err: false }],
     ['downloading later', { phase: 'downloading', version: '2', mode: 'later' }, { detail: 'Downloading version 2 in the background. You can keep working.', buttons: [], skip: false, notes: false, bar: true, err: false }],
     ['ready', { phase: 'ready', version: '2', notes: 'n' }, { detail: 'Version 2 is downloaded and installs the next time Mnema Desktop starts.', buttons: ['Install now', 'Close'], skip: false, notes: true, bar: false, err: false }],
     ['installing', { phase: 'installing' }, { detail: 'The app closes shortly and restarts.', buttons: [], skip: false, notes: false, bar: true, err: false }],
-    ['failed with a version', { phase: 'failed', version: '2', error: 'untrusted', notes: 'n' }, { detail: 'The current trust statement could not be fetched. Check your connection and try again.', buttons: ['Retry', 'Close'], skip: true, notes: false, bar: false, err: true }],
-    ['failed on a managed install', { phase: 'failed', version: '2', external: true, mode: 'now' }, { detail: 'Something went wrong while updating.', buttons: ['Retry', 'Close'], skip: true, notes: false, bar: false, err: true }],
-    ['failed on a portable copy', { phase: 'failed', version: '2', portable: true, error: 'install' }, { detail: 'Installation failed. The installed version is unchanged.', buttons: ['Retry', 'Close'], skip: true, notes: false, bar: false, err: true }],
-    ['failed without a version', { phase: 'failed', error: 'offline' }, { detail: 'The update server cannot be reached. Check your connection.', buttons: ['Retry', 'Close'], skip: false, notes: false, bar: false, err: true }]
+    ['failed with a version', { phase: 'failed', version: '2', error: 'untrusted', notes: 'n' }, { detail: 'The current trust statement could not be fetched, so nothing new is installed. Check your connection, then choose Retry.', buttons: ['Retry', 'Close'], skip: true, notes: false, bar: false, err: true }],
+    ['failed on a managed install', { phase: 'failed', version: '2', external: true, mode: 'now' }, { detail: 'Something went wrong while updating. The installed version is unchanged. Choose Retry.', buttons: ['Retry', 'Close'], skip: true, notes: false, bar: false, err: true }],
+    ['failed on a portable copy', { phase: 'failed', version: '2', portable: true, error: 'install' }, { detail: 'Installation failed. The installed version is unchanged. Choose Retry, or download the new version from the release page.', buttons: ['Retry', 'Close'], skip: true, notes: false, bar: false, err: true }],
+    ['failed without a version', { phase: 'failed', error: 'offline' }, { detail: 'The update server cannot be reached. Check your internet connection, then choose Retry.', buttons: ['Retry', 'Close'], skip: false, notes: false, bar: false, err: true }]
   ]
 
   it.each(views)('shows the %s state', async (_name, snapshot, want) => {
@@ -195,9 +199,12 @@ describe('update page', () => {
       return invoke.mock.calls.filter((c) => c[0] === 'native_update_action').map((c) => c[1])
     }
     expect(await first({ phase: 'available', version: '2', external: true })).toEqual([{ action: 'download_page' }])
-    expect(await first({ phase: 'available', version: '2', portable: true })).toEqual([{ action: 'download_page' }])
+    expect(await first({ phase: 'available', version: '2', portable: true })).toEqual([{ action: 'now' }])
     expect(await first({ phase: 'failed', version: '2', external: true, mode: 'later' })).toEqual([{ action: 'check' }])
-    expect(await first({ phase: 'failed', version: '2', portable: true })).toEqual([{ action: 'check' }])
+    expect(await first({ phase: 'failed', version: '2', portable: true })).toEqual([{ action: 'now' }])
+    expect(await first({ phase: 'failed', version: '2', mode: 'after_call' })).toEqual([{ action: 'after_call' }])
+    expect(await first({ phase: 'available', version: '2', confirm_call: true })).toEqual([{ action: 'after_call' }])
+    expect(await first({ phase: 'waiting', version: '2' })).toEqual([{ action: 'now' }])
     expect(await first({ phase: 'ready', version: '2' })).toEqual([{ action: 'now' }])
   })
 
@@ -228,7 +235,7 @@ describe('update page', () => {
     await vi.advanceTimersByTimeAsync(0)
     expect(writeText).toHaveBeenCalledOnce()
     const copied = (writeText.mock.calls[0] as unknown as [string])[0]
-    expect(copied).toContain('The update signature does not match. It was not installed.')
+    expect(copied).toContain('The update signature does not match, so nothing was installed.')
     expect(copied).toContain('error=verify')
     expect(copied).toContain('installed=v0.1.0')
     expect(copied).toContain('version=2')
@@ -248,6 +255,39 @@ describe('update page', () => {
     await vi.advanceTimersByTimeAsync(0)
     expect(exec).toHaveBeenCalledWith('copy')
     expect(text('copy')).toBe('Copied')
+  })
+
+  it('asks during a Talk whether to update after the call, in both languages', async () => {
+    await open({ phase: 'available', version: '2', confirm_call: true })
+    expect(text('title')).toBe('You are in a Talk')
+    invoke.mockClear()
+    const [after, now] = [...document.querySelectorAll<HTMLButtonElement>('#actions button')]
+    after!.click()
+    now!.click()
+    expect(invoke.mock.calls.filter((c) => c[0] === 'native_update_action').map((c) => c[1])).toEqual([{ action: 'after_call' }, { action: 'now_anyway' }])
+    await open({ phase: 'available', version: '2', confirm_call: true }, 'de-DE')
+    expect(text('title')).toBe('Du bist in einem Talk')
+    expect(buttons()).toEqual(['Nach dem Talk', 'Jetzt aktualisieren', 'Schließen'])
+    await open({ phase: 'waiting', version: '2' }, 'de-DE')
+    expect(text('title')).toBe('Update nach dem Talk')
+  })
+
+  it('says what to do when the portable folder cannot be written', async () => {
+    await open({ phase: 'failed', version: '2', error: 'folder', mode: 'now', portable: true })
+    expect(text('detail')).toBe('Mnema Desktop cannot write to its own folder, so it cannot replace itself. Move the Mnema Desktop folder somewhere you can write to (such as Documents), then choose Retry.')
+    expect(buttons()).toEqual(['Retry', 'Close'])
+    await open({ phase: 'failed', version: '2', error: 'folder', portable: true }, 'de-DE')
+    expect(text('detail')).toContain('eigenen Ordner')
+    expect(buttons()).toEqual(['Erneut versuchen', 'Schließen'])
+  })
+
+  it('ends every failure with what to do next', async () => {
+    for (const lang of ['en-US', 'de-DE']) {
+      for (const error of ['offline', 'verify', 'untrusted', 'install', 'folder', 'unknown']) {
+        await open({ phase: 'failed', version: '2', error }, lang)
+        expect(text('detail')).toMatch(lang === 'en-US' ? /Retry/ : /Erneut versuchen/)
+      }
+    }
   })
 
   it('ships no inline script or handler, and loads nothing remote', () => {
