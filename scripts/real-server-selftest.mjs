@@ -21,7 +21,7 @@
 //
 // The host appends `ok`/`fail` lines to a record (src/selftest_real.rs); it asks
 // for the restart with a `restart` line, and this script answers in a control file.
-import { spawn } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
 import { appendFileSync, closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
@@ -138,6 +138,32 @@ const waitHealthy = async (what) => {
   throw new Error(`${what}: the server did not become healthy`)
 }
 
+// What the host's processes hold in memory, for the record (`measure <label>`
+// lines of the host; the answer is `measured <label>` in the control file).
+// macOS: resident size of the host and of every WebKit process (only this
+// host runs WebKit on the runner). Windows: private bytes and working set of
+// the host and of every WebView2 process.
+const memory = () => {
+  try {
+    if (process.platform === 'darwin') {
+      const rows = execFileSync('ps', ['-axo', 'rss=,comm='], { encoding: 'utf8' }).split('\n').map((l) => l.trim()).filter(Boolean)
+      const ours = rows.map((l) => { const [rss, ...name] = l.split(/\s+/); return { kb: Number(rss), name: name.join(' ') } })
+        .filter((r) => r.name.includes('mnema-native-client-preview') || r.name.includes('com.apple.WebKit'))
+      const mb = (filter) => Math.round(ours.filter(filter).reduce((n, r) => n + r.kb, 0) / 1024)
+      return `rss_mb total=${mb(() => true)} host=${mb((r) => r.name.includes('mnema'))} webcontent=${mb((r) => r.name.includes('WebContent'))} processes=${ours.length}`
+    }
+    if (process.platform === 'win32') {
+      const ps = "$p = Get-Process -Name msedgewebview2,mnema-native-client-preview -ErrorAction SilentlyContinue; '{0} {1} {2}' -f [math]::Round(($p | Measure-Object PrivateMemorySize64 -Sum).Sum/1MB), [math]::Round(($p | Measure-Object WorkingSet64 -Sum).Sum/1MB), $p.Count"
+      const [priv, ws, count] = execFileSync('powershell', ['-NoProfile', '-Command', ps], { encoding: 'utf8' }).trim().split(/\s+/)
+      return `private_mb=${priv} working_set_mb=${ws} processes=${count}`
+    }
+  } catch (error) {
+    return `unavailable (${error?.message ?? error})`
+  }
+  return 'unavailable on this system'
+}
+const measured = new Set()
+
 let host = null
 const stop = () => { for (const child of [host, server, weed]) if (child && child.exitCode === null) child.kill() }
 process.on('exit', stop)
@@ -176,6 +202,11 @@ try {
       restarted = true
       await stopServer()
       appendFileSync(control, 'stopped\n')
+    }
+    for (const line of seen.filter((l) => l.startsWith('measure ') && !measured.has(l))) {
+      measured.add(line)
+      console.log(`memory ${line.slice(8)}: ${memory()}`)
+      appendFileSync(control, `measured ${line.slice(8)}\n`)
     }
     if (seen.includes('down-checked') && !answered) {
       answered = true
