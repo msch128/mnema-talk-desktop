@@ -499,11 +499,27 @@ Google Play services died inside the emulator ("depends on provider
 com.google.android.gms ... in dying proc"), and a re-run passed. A
 `default` system image without Play services is the next thing to try there.
 
-Not done in the spike, in the order of phase 1: signing in end to end against
-a real server (the body bridge is written for `fetch` but has not carried a
-login yet, and the upload with progress uses `XMLHttpRequest`, which it does
-not cover); the live socket against a real server; the session in the
-Keystore and the Keychain (the jar rests in a private file today); the app
-icon and name (the Tauri defaults); the safe-area colour below the page on
-iOS (the area under the page is white); a real server instead of the stand-in
-in CI.
+**Not proven yet** (phase 1 work, in this order):
+
+1. **Signing in end to end.** The Android body bridge (`mobile_api`,
+   `page-shim/ipc-bodies.js`) is written for `fetch`, but no POST has gone
+   through it: the self-test sends only GET requests.
+2. **Uploads.** The upload with progress uses `XMLHttpRequest`
+   (`shared/lib/xhrUpload.ts`), which the bridge does not cover yet.
+3. **The live socket** (`desktop_ws_*` through `web_ws`) against a real
+   server; the stand-in only answers GET.
+4. **The session in the Keystore and the Keychain.** The cookie jar rests in a
+   private 0600 file in the app's data directory today.
+5. **The app icon and name.** Both are still the Tauri defaults
+   ("Mnema Talk Preview", `com.mnema.talk.preview`).
+6. **The white area on iOS** below the page (the safe-area background).
+7. **A real server in CI** instead of the stand-in (`scripts/fake-instance.mjs`),
+   as the desktop jobs already run one.
+8. **A steadier emulator**: a `default` system image without Google Play
+   services, after one run in which Play services died and took the app with
+   it.
+
+Open owner decisions that the later phases wait for are in
+[Signing and what the owner must decide](#signing-and-what-the-owner-must-decide):
+above all the push relay (iOS push and FCM) and the Apple and Google
+developer accounts.
