@@ -12,9 +12,15 @@
 //!    through the proxy and got an answer from the server.
 //!
 //! Each step is a line of `selftest.jsonl` in the app's data directory and on
-//! stderr.
+//! stderr, with the milliseconds since the app started. Every load of the
+//! identity script is recorded too (`identity`, with the role), so a
+//! screenshot can be matched to the role the page ran in.
 use crate::web_proxy::Resp;
-use std::{io::Write, sync::Mutex, time::Duration};
+use std::{
+    io::Write,
+    sync::{Mutex, OnceLock},
+    time::{Duration, Instant},
+};
 use tauri::Manager;
 
 const SERVER: &str = match option_env!("MNEMA_SELFTEST_SERVER") {
@@ -37,8 +43,11 @@ static PROGRESS: Mutex<Progress> = Mutex::new(Progress {
     proxied: false,
 });
 
+static STARTED: OnceLock<Instant> = OnceLock::new();
+
 fn record(app: &tauri::AppHandle, step: &str, detail: &str) {
-    let line = serde_json::json!({ "step": step, "detail": detail }).to_string();
+    let ms = STARTED.get_or_init(Instant::now).elapsed().as_millis();
+    let line = serde_json::json!({ "step": step, "detail": detail, "ms": ms }).to_string();
     eprintln!("mnema-selftest {line}");
     let Ok(dir) = app.path().app_local_data_dir() else {
         return;
@@ -55,6 +64,7 @@ fn record(app: &tauri::AppHandle, step: &str, detail: &str) {
 
 pub fn start(app: &tauri::AppHandle) {
     let app = app.clone();
+    STARTED.get_or_init(Instant::now);
     tauri::async_runtime::spawn(async move {
         record(&app, "started", SERVER);
         record(&app, "tls", &tls_probe().await);
@@ -109,4 +119,9 @@ pub fn proxied(app: &tauri::AppHandle, method: &str, path: &str, status: u16) {
     if first {
         record(app, "proxied", &format!("{method} {path} {status}"));
     }
+}
+
+/// The page loaded the identity script for a role.
+pub fn identity(app: &tauri::AppHandle, role: &str) {
+    record(app, "identity", role);
 }

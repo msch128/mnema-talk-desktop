@@ -45,6 +45,15 @@ async fn handle(app: &tauri::AppHandle, request: tauri::http::Request<Vec<u8>>) 
     let path = request.uri().path().to_owned();
     let active = host.active();
     if path == IDENTITY_PATH {
+        #[cfg(feature = "mobile-selftest")]
+        crate::selftest::identity(
+            app,
+            if active.is_some() {
+                "instance"
+            } else {
+                "selector"
+            },
+        );
         return identity(active.as_ref().map(|a| &a.held), &host);
     }
     if path == "/api" || path.starts_with("/api/") {

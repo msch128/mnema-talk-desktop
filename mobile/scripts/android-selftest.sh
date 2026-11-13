@@ -23,7 +23,10 @@ adb logcat > "$out/logcat.txt" 2>&1 &
 logcat=$!
 adb shell am start -W -n "$package/.MainActivity"
 
-read_log="adb shell run-as $package sh -c 'cat \$(find . -name selftest.jsonl 2>/dev/null | head -n 1)'"
+# adb joins its arguments into one line for the device's shell, so nothing
+# here may need that shell to expand: find runs inside run-as, in the app's
+# data directory, and the device shell only unquotes the \;.
+read_log="adb shell run-as $package find . -name selftest.jsonl -exec cat {} '\\;'"
 shoot="adb exec-out screencap -p >"
 bash mobile/scripts/selftest-wait.sh "$out" "$read_log" "$shoot"
 status=$?
