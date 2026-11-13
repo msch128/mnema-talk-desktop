@@ -17,21 +17,32 @@ pub struct ServerMenu {
 
 impl ServerMenu {
     pub(super) fn update(&self, state: &RailState) {
+        let count = state.instances.len();
         for (index, item) in self.items.iter().enumerate() {
-            let server = state.instances.get(index);
+            let number = index + 1;
+            let server = crate::instances::shortcut_place(number, count)
+                .and_then(|place| state.instances.get(place));
             let _ = item.set_enabled(server.is_some());
-            let _ = item.set_text(match server {
-                Some(server) => format!("{} \u{2014} {}", index + 1, server.name),
-                None => format!("Server {}", index + 1),
-            });
+            let _ = item.set_text(entry_text(number, server.map(|s| s.name.as_str())));
         }
     }
 }
 
-/// Ctrl+1 to Ctrl+9 (Cmd on macOS) reach the servers; Ctrl+Shift+N adds one.
+/// The text of the menu entry for Ctrl+`number`: the 9 says it is the last.
+fn entry_text(number: usize, name: Option<&str>) -> String {
+    match (number, name) {
+        (9, Some(name)) => format!("9 \u{2014} {name} (last)"),
+        (9, None) => "Last server".into(),
+        (_, Some(name)) => format!("{number} \u{2014} {name}"),
+        (_, None) => format!("Server {number}"),
+    }
+}
+
+/// Ctrl+1 to Ctrl+8 (Cmd on macOS) reach the first eight servers and Ctrl+9
+/// the last; Ctrl+Shift+N adds one.
 pub fn servers_menu(app: &tauri::AppHandle) -> tauri::Result<Submenu<tauri::Wry>> {
     let mut items = Vec::new();
-    for number in 1..=crate::instances::MAX_INSTANCES {
+    for number in 1..=9 {
         items.push(MenuItem::with_id(
             app,
             format!("server-{number}"),
@@ -123,6 +134,19 @@ pub(super) fn menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
 
 #[cfg(test)]
 mod tests {
+    use super::entry_text;
+
+    #[test]
+    fn the_ninth_entry_names_the_last_server() {
+        assert_eq!(entry_text(1, Some("a.example")), "1 \u{2014} a.example");
+        assert_eq!(entry_text(8, None), "Server 8");
+        assert_eq!(
+            entry_text(9, Some("z.example")),
+            "9 \u{2014} z.example (last)"
+        );
+        assert_eq!(entry_text(9, None), "Last server");
+    }
+
     #[test]
     fn the_quick_switcher_is_a_menu_entry_with_its_own_key_that_asks_the_rail() {
         let source = include_str!("menu.rs");

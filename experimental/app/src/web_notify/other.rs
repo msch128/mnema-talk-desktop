@@ -23,4 +23,6 @@ pub async fn show(
 
 pub fn host_toast(_app: &tauri::AppHandle, _title: &str, _body: &str) {}
 
+pub fn quiet_toast(_app: &tauri::AppHandle, _title: &str, _body: &str) {}
+
 pub fn clear(_app: &tauri::AppHandle, _session: &str, _others_remain: bool) {}

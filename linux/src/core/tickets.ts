@@ -17,3 +17,25 @@ export class Tickets {
     return this.latest.get(key) === ticket
   }
 }
+
+/** Lets at most `limit` tasks run at once; the others wait their turn, first come, first served. */
+export class Turns {
+  private running = 0
+  private readonly waiting: (() => void)[] = []
+  private readonly limit: number
+
+  constructor(limit: number) {
+    this.limit = limit
+  }
+
+  async run<T>(task: () => Promise<T>): Promise<T> {
+    if (this.running >= this.limit) await new Promise<void>((resolve) => this.waiting.push(resolve))
+    this.running++
+    try {
+      return await task()
+    } finally {
+      this.running--
+      this.waiting.shift()?.()
+    }
+  }
+}

@@ -27,6 +27,8 @@ const T = de
       importTitle: 'Serverliste importieren', importNote: 'Wähle eine exportierte Datei. Neue Server werden hinzugefügt, Namen und Ordner übernommen.', importFile: 'Datei (.json)',
       imported: (n) => (n === 1 ? '1 Server hinzugefügt' : `${n} Server hinzugefügt`), importFailed: 'Die Liste konnte nicht importiert werden', exportFailed: 'Die Liste konnte nicht exportiert werden',
       colors: ['Keine', 'Grün', 'Blau', 'Violett', 'Rosa', 'Orange', 'Gelb', 'Türkis', 'Rot', 'Grau'],
+      unload: 'Inaktive Server entladen', unloadChoices: ['Aus', 'Nach 10 Minuten', 'Nach 1 Stunde'],
+      unloadSet: (how) => `Inaktive Server entladen: ${how}`,
     }
   : {
       list: 'Servers', add: 'Add server', addClose: 'Back', addDisabled: 'No further server can be added.',
@@ -53,5 +55,7 @@ const T = de
       importTitle: 'Import server list', importNote: 'Choose an exported file. New servers are added; names and folders are taken over.', importFile: 'File (.json)',
       imported: (n) => (n === 1 ? '1 server added' : `${n} servers added`), importFailed: 'The list could not be imported', exportFailed: 'The list could not be exported',
       colors: ['None', 'Green', 'Blue', 'Violet', 'Pink', 'Orange', 'Yellow', 'Teal', 'Red', 'Grey'],
+      unload: 'Unload idle servers', unloadChoices: ['Off', 'After 10 minutes', 'After 1 hour'],
+      unloadSet: (how) => `Unload idle servers: ${how}`,
     };
 const PALETTE = ['', '#2da771', '#3b82f6', '#a855f7', '#ec4899', '#f97316', '#eab308', '#14b8a6', '#ef4444', '#94a3b8'];

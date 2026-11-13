@@ -114,6 +114,15 @@ pub fn host_toast(app: &tauri::AppHandle, title: &str, body: &str) {
     let _ = Toast::new(id).title(title).text1(body).show();
 }
 
+/// A toast without sound, unless the person turned this app's toasts off.
+pub fn quiet_toast(app: &tauri::AppHandle, title: &str, body: &str) {
+    let id = APP_ID.get_or_init(|| app.config().identifier.clone());
+    if setting(id) == Permission::Denied {
+        return;
+    }
+    let _ = Toast::new(id).title(title).text1(body).sound(None).show();
+}
+
 /// Removes this app's toasts from the notification centre. WinRT history is
 /// cleared per app, not per toast, so it is only emptied once no other server
 /// is left that could own one.

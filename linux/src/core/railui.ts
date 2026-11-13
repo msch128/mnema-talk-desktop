@@ -47,6 +47,7 @@ export type HostEdit =
   | { op: 'mark_read', id: string }
   | { op: 'export' }
   | { op: 'import', text: string }
+  | { op: 'unload_after', until: number }
 export type RailEdit = Edit | HostEdit
 
 function placeEdit(args: Args): Edit {
@@ -98,6 +99,12 @@ export function parseEdit(args: Args): RailEdit {
     case 'mark_read': return { op, id: server(args, 'id') }
     case 'export': return { op }
     case 'import': return { op, text: string(args, 'text', MAX_IMPORT_BYTES) }
+    // `until`: the seconds hidden after which a page is closed, -1 for never.
+    case 'unload_after': {
+      const until = args['until']
+      if (until !== -1 && until !== 600 && until !== 3600) throw new Error('invalid arguments')
+      return { op, until }
+    }
     default: throw new Error('Unknown change.')
   }
 }

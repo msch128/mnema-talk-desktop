@@ -31,6 +31,10 @@ pub(super) fn registry_ids(app: &tauri::AppHandle) -> Vec<String> {
         .unwrap_or_default()
 }
 
+/// How many servers are checked and connected at once (at launch, after an
+/// import): the rest wait their turn.
+static STARTS: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(4);
+
 /// Starts a server in the background.
 pub(super) fn spawn_start(app: &tauri::AppHandle, id: String) {
     let app = app.clone();
@@ -82,6 +86,8 @@ pub(super) async fn start_attempt(app: &tauri::AppHandle, id: &str, attempt: u32
     };
     push_rail(app);
     let outcome = if room_for(position) {
+        // A few at a time: a list of many servers does not ask them all at once.
+        let _turn = STARTS.acquire().await;
         connect(app, &trusted, id, &origin).await
     } else {
         Err(NEEDS_NEWER_MACOS.to_owned())
@@ -114,7 +120,13 @@ pub(super) async fn start_attempt(app: &tauri::AppHandle, id: &str, attempt: u32
             None
         }
     };
-    if let Some(session) = ready
+    // A page only for the server in front (or one that has a page already,
+    // which reloads below): every other server's counts come from the host.
+    let page_now =
+        super::sleep::wants_page(app, id) || app.get_webview(&instance_label(id)).is_some();
+    if ready.is_some() && !page_now {
+        super::sleep::without_page(app, id);
+    } else if let Some(session) = ready
         && let Err(why) = open_page(app, id, &session, None).await
         && let Ok(mut registry) = trusted.registry.lock()
         && let Some(slot) = registry.slot_mut(id)
@@ -212,7 +224,6 @@ pub async fn add_server(
             // An overlapping call for the same address got in first and owns
             // the slot; this session is the spare.
             Err(AddError::Known(_)) => false,
-            Err(full) => return Err(full.to_string()),
         }
     };
     if !won {
@@ -225,13 +236,14 @@ pub async fn add_server(
         remove_server(&app, &id).await;
         return Err(crate::web_client::WITHDRAWN.into());
     }
-    let existed = app.get_webview(&instance_label(&id)).is_some();
-    if let Err(why) = open_page(&app, &id, &session, invite.as_deref()).await {
-        remove_server(&app, &id).await;
-        return Err(why);
-    }
-    if existed {
-        offer_invite(&app, &id, invite.as_deref());
+    // A page made meanwhile by another path did not get the invite.
+    match open_page(&app, &id, &session, invite.as_deref()).await {
+        Ok(true) => {}
+        Ok(false) => offer_invite(&app, &id, invite.as_deref()),
+        Err(why) => {
+            remove_server(&app, &id).await;
+            return Err(why);
+        }
     }
     refresh_icon(&app, &id, &origin_listed, icon);
     changed(&app);
@@ -261,9 +273,6 @@ pub(super) fn offer_invite(app: &tauri::AppHandle, id: &str, code: Option<&str>)
 
 fn check_room(state: &Trusted) -> Result<(), String> {
     let registry = state.registry.lock().map_err(|_| "busy")?;
-    if registry.len() >= crate::instances::MAX_INSTANCES {
-        return Err(AddError::Full.to_string());
-    }
     if !room_for(registry.len()) {
         return Err(NEEDS_NEWER_MACOS.into());
     }
@@ -289,6 +298,7 @@ pub(crate) async fn remove_server(app: &tauri::AppHandle, id: &str) {
         }
         _ => forget_stored_session(&trusted, &slot.origin, id),
     }
+    crate::web_feed::stop(id);
     crate::web_gaming::forget(app, id);
     crate::web_notify::closed(app, id, &slot.generation);
     if let Some(page) = app.get_webview(&instance_label(id)) {

@@ -44,12 +44,12 @@ test('toasts are rate limited', () => {
 
 test('the notification commands are allowed in the instance window only, and the capability is announced there only', () => {
   const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
-  for (const command of ['desktop_notify_open', 'desktop_notify', 'desktop_notify_permission', 'desktop_notify_request_permission', 'desktop_set_badge', 'desktop_report_unread']) {
+  for (const command of ['desktop_notify_open', 'desktop_notify', 'desktop_notify_permission', 'desktop_notify_request_permission', 'desktop_set_badge', 'desktop_report_unread', 'desktop_report_busy']) {
     const at = ipc.indexOf(`case '${command}':`)
     assert.ok(at > 0, command)
     assert.match(ipc.slice(at, at + 140), /only\('instance'\)/, command)
   }
-  assert.match(ipc, /capabilities: from\.role === 'instance' \? \['notify', 'unread', 'ws_query'\] : \[\]/)
+  assert.match(ipc, /capabilities: from\.role === 'instance' \? \['notify', 'unread', 'ws_query', 'busy'\] : \[\]/)
 })
 
 test('a toast names its server once there are several, and a server that floods does not hold up another', () => {

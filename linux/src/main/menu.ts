@@ -1,17 +1,20 @@
 import { Menu, app } from 'electron'
 import { menuText } from '../core/selfupdate.ts'
 import { serverMenuAction } from '../core/notify.ts'
+import { menuEntryText, shortcutPlace } from '../core/instances.ts'
 import type { Context } from './context.ts'
 import { quickSwitch } from './shell.ts'
 import { activateNth, startAdding } from './shelllayout.ts'
 import { openUpdater } from './windows.ts'
 
-/** Ctrl+1 to Ctrl+9 reach the servers, named as the rail names them; Ctrl+Shift+N adds one. */
+/** Ctrl+1 to Ctrl+8 reach the first eight servers and Ctrl+9 the last, named as the rail names them; Ctrl+Shift+N adds one. */
 function serversMenu(ctx: Context): Electron.MenuItemConstructorOptions {
   const slots = ctx.trusted.registry.ids().map((id) => ctx.trusted.registry.slot(id))
   const items: Electron.MenuItemConstructorOptions[] = Array.from({ length: 9 }, (_, index) => {
-    const slot = slots[index]
-    return { id: `server-${index + 1}`, label: slot ? `${index + 1} \u2014 ${ctx.trusted.registry.displayName(slot)}` : `Server ${index + 1}`, accelerator: `CmdOrCtrl+${index + 1}`, enabled: slot !== undefined, click: () => serverMenuClicked(ctx, `server-${index + 1}`) }
+    const number = index + 1
+    const place = shortcutPlace(number, slots.length)
+    const slot = place === null ? undefined : slots[place]
+    return { id: `server-${number}`, label: menuEntryText(number, slot ? ctx.trusted.registry.displayName(slot) : null), accelerator: `CmdOrCtrl+${number}`, enabled: slot !== undefined, click: () => serverMenuClicked(ctx, `server-${number}`) }
   })
   items.push({ type: 'separator' }, { id: 'server-add', label: 'Add server\u2026', accelerator: 'CmdOrCtrl+Shift+N', click: () => serverMenuClicked(ctx, 'server-add') }, { id: 'server-switch', label: 'Quick switcher\u2026', accelerator: 'CmdOrCtrl+K', click: () => serverMenuClicked(ctx, 'server-switch') })
   return { label: 'Servers', submenu: items }

@@ -125,6 +125,7 @@ pub fn create(app: &tauri::AppHandle) -> tauri::Result<()> {
     }
     layout(app);
     push_rail(app);
+    super::sleep::watch(app);
     #[cfg(feature = "multi-selftest")]
     crate::selftest_multi::start(app);
     #[cfg(feature = "real-selftest")]

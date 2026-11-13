@@ -30,6 +30,8 @@ export interface RailState {
   instances: RailInstance[]
   /** The structure of the rail: servers on their own and folders. */
   items: Item[]
+  /** After how many seconds hidden a page is closed; null: never. */
+  unload_after: number | null
 }
 
 export function initial(name: string): string {

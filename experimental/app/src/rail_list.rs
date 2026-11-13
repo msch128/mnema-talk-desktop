@@ -94,7 +94,7 @@ mod tests {
         let now = crate::web_proxy::now();
         assert!(registry.mute(&ids[0], now + 3600, now));
         assert!(registry.edit(|l| l.rename(&ids[1], "Home")));
-        let bytes = registry.stored().to_bytes().unwrap();
+        let bytes = registry.exported().to_bytes().unwrap();
         let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
         let keys: Vec<&str> = json
             .as_object()
@@ -126,7 +126,7 @@ mod tests {
         assert!(from.edit(|l| l.rename(&ids[0], "Lantern")));
         assert!(from.edit(|l| l.group(&ids[1], &ids[0], "f-0123abcd")));
         assert!(from.edit(|l| l.folder_edit("f-0123abcd", "Work", Some("#2da771"))));
-        let bytes = from.stored().to_bytes().unwrap();
+        let bytes = from.exported().to_bytes().unwrap();
 
         let imported = Stored::parse(&bytes).expect("a list written by this program");
         let mut into = Registry::restore(&Stored::empty());
@@ -162,7 +162,7 @@ mod tests {
     }
 
     #[test]
-    fn a_hostile_list_is_cleaned_or_refused_and_never_starts_more_than_nine() {
+    fn a_hostile_list_is_cleaned_or_refused_and_never_starts_more_than_the_bound() {
         // Not a list, wrong version, too large.
         assert!(Stored::parse(b"[]").is_none());
         assert!(Stored::parse(br#"{"version":2,"servers":[],"active":null}"#).is_none());
@@ -184,23 +184,156 @@ mod tests {
         let mut registry = Registry::restore(&Stored::empty());
         registry.merge(&parsed, crate::web_proxy::now());
         assert_eq!(registry.len(), 1);
-        // Ten servers: nine are taken.
-        let ten = serde_json::json!({
-            "version": 1,
-            "servers": (0..10).map(|n| format!("https://s{n}.example/")).collect::<Vec<_>>(),
-            "active": null
-        });
-        let parsed = Stored::parse(ten.to_string().as_bytes()).unwrap();
-        assert_eq!(parsed.servers.len(), crate::instances::MAX_INSTANCES);
-        // And into a list that already has some, never past the limit.
-        let mut full = listed(&["https://a.example/", "https://b.example/"]);
+        // However many: every one is taken, also into a list that has some.
         let many = serde_json::json!({
             "version": 1,
-            "servers": (0..9).map(|n| format!("https://s{n}.example/")).collect::<Vec<_>>(),
+            "servers": (0..600).map(|n| format!("https://s{n}.example/")).collect::<Vec<_>>(),
             "active": null
         });
-        let added = full.merge(&Stored::parse(many.to_string().as_bytes()).unwrap(), 0);
-        assert_eq!(full.len(), crate::instances::MAX_INSTANCES);
-        assert_eq!(added.len(), crate::instances::MAX_INSTANCES - 2);
+        let parsed = Stored::parse(many.to_string().as_bytes()).unwrap();
+        assert_eq!(parsed.servers.len(), 600);
+        let mut full = listed(&["https://a.example/", "https://b.example/"]);
+        let added = full.merge(&parsed, 0);
+        assert_eq!(full.len(), 602);
+        assert_eq!(added.len(), 600);
+    }
+
+    #[test]
+    fn an_import_of_20_000_servers_is_taken_in_linear_time() {
+        use crate::instances::Stored;
+        let many = serde_json::json!({
+            "version": 1,
+            "servers": (0..20_000).map(|n| format!("https://s{n}.example/")).collect::<Vec<_>>(),
+            "active": null
+        });
+        let started = std::time::Instant::now();
+        let parsed = Stored::parse(many.to_string().as_bytes()).unwrap();
+        let mut registry = listed(&["https://a.example/", "https://s7.example/"]);
+        let added = registry.merge(&parsed, 0);
+        assert_eq!(added.len(), 19_999, "s7 was there already");
+        assert_eq!(registry.len(), 20_001);
+        let restored = Registry::restore(&registry.stored());
+        assert_eq!(restored.len(), 20_001);
+        let rail = restored.rail(true);
+        assert_eq!(rail.instances.len(), 20_001);
+        // A debug build; quadratic work would take minutes here.
+        let took = started.elapsed();
+        assert!(took < std::time::Duration::from_secs(5), "{took:?}");
+    }
+
+    #[test]
+    fn a_list_of_many_servers_with_long_names_folders_and_mutes_fits_the_store_and_an_import() {
+        use crate::instances::Stored;
+        use crate::rail_layout::{Item, MAX_NAME};
+        // The file bound is no limit on servers: 20 000 at the longest names fit.
+        const MANY: usize = 20_000;
+        let servers: Vec<url::Url> = (0..MANY)
+            .map(|n| {
+                url::Url::parse(&format!(
+                    "https://community-number-{n:05}.a-rather-long-domain-name.example:8443/"
+                ))
+                .unwrap()
+            })
+            .collect();
+        let ids: Vec<String> = servers.iter().map(crate::instances::id_for).collect();
+        let mut stored = Stored::empty();
+        stored.servers = servers;
+        stored.aliases = ids
+            .iter()
+            .map(|id| (id.clone(), "n".repeat(MAX_NAME)))
+            .collect();
+        stored.muted = ids
+            .iter()
+            .map(|id| (id.clone(), crate::instances::FOREVER))
+            .collect();
+        stored.items = Some(
+            ids.chunks(4)
+                .enumerate()
+                .map(|(n, chunk)| Item::Folder {
+                    id: format!("f{n:022}"),
+                    name: "f".repeat(MAX_NAME),
+                    color: Some("#2DA771".into()),
+                    collapsed: true,
+                    servers: chunk.to_vec(),
+                })
+                .collect(),
+        );
+        let bytes = stored.to_bytes().unwrap();
+        assert!(
+            bytes.len() <= crate::instances::MAX_IMPORT_BYTES,
+            "{} bytes",
+            bytes.len()
+        );
+        let parsed = Stored::parse(&bytes).expect("the list reads back");
+        assert_eq!(parsed.servers.len(), MANY);
+    }
+
+    #[test]
+    fn the_sleep_settings_are_kept_in_the_list_file_but_never_exported() {
+        use crate::rail_sleep::Sleep;
+        let mut stored = Stored::empty();
+        stored.servers = vec![url("https://a.example/")];
+        stored.sleep = Some(Sleep {
+            after_secs: Some(3600),
+            keep: 2,
+        });
+        let registry = Registry::restore(&stored);
+        assert_eq!(
+            registry.sleep(),
+            Sleep {
+                after_secs: Some(3600),
+                keep: 2
+            }
+        );
+        let file: serde_json::Value =
+            serde_json::from_slice(&registry.stored().to_bytes().unwrap()).unwrap();
+        assert_eq!(file["sleep"]["after_secs"], 3600);
+        let export: serde_json::Value =
+            serde_json::from_slice(&registry.exported().to_bytes().unwrap()).unwrap();
+        assert!(export.get("sleep").is_none());
+        // Settings that do not hold up are the defaults, or held to their bounds (the nearest
+        // choice of the menu); the list still reads.
+        for (raw, want) in [
+            (r#""junk""#, Sleep::default()),
+            (
+                r#"{"after_secs":5,"keep":0}"#,
+                Sleep {
+                    after_secs: Some(600),
+                    keep: 1,
+                },
+            ),
+            (
+                r#"{"after_secs":null,"keep":3}"#,
+                Sleep {
+                    after_secs: None,
+                    keep: 3,
+                },
+            ),
+        ] {
+            let text = format!(
+                r#"{{"version":1,"servers":["https://a.example/"],"active":null,"sleep":{raw}}}"#
+            );
+            let parsed = Stored::parse(text.as_bytes()).expect("the list reads");
+            assert_eq!(Registry::restore(&parsed).sleep(), want, "{raw}");
+        }
+    }
+
+    #[test]
+    fn unload_idle_servers_offers_off_ten_minutes_and_an_hour_and_keeps_the_number() {
+        let mut registry = listed(&["https://a.example/"]);
+        let keep = registry.sleep().keep;
+        assert_eq!(registry.rail(true).unload_after, Some(600));
+        assert!(registry.set_unload_after(Some(3600)));
+        assert_eq!(registry.rail(true).unload_after, Some(3600));
+        assert!(registry.set_unload_after(None));
+        assert_eq!(registry.rail(true).unload_after, None);
+        for other in [Some(0), Some(60), Some(601), Some(86_400)] {
+            assert!(!registry.set_unload_after(other), "{other:?}");
+        }
+        assert_eq!(registry.sleep().keep, keep);
+        // The choice is kept with the list.
+        let restored =
+            Registry::restore(&Stored::parse(&registry.stored().to_bytes().unwrap()).unwrap());
+        assert_eq!(restored.sleep().after_secs, None);
     }
 }

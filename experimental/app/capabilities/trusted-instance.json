@@ -14,6 +14,7 @@
     "allow-desktop-notify-permission",
     "allow-desktop-notify-request-permission",
     "allow-desktop-set-badge",
-    "allow-desktop-report-unread"
+    "allow-desktop-report-unread",
+    "allow-desktop-report-busy"
   ]
 }
