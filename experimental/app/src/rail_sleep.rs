@@ -16,18 +16,21 @@ pub const DEFAULT_KEEP_LOADED: usize = 4;
 /// The settings' bounds: one minute to a day, and up to the bound of servers.
 pub const UNLOAD_AFTER_RANGE: std::ops::RangeInclusive<u64> = 60..=86_400;
 
-/// The rail's two numbers for a server from its `GET /api/read-state`, as the
-/// web app's `aggregateActivity` makes them: mentions over every channel (a
-/// mention counts in a muted one too), and the channels with unread messages
-/// that are not muted. Anything but a positive whole number counts as zero.
-pub fn counts(states: &serde_json::Value) -> (u32, u32) {
+/// The rail's two numbers for a server from its `GET /api/read-state`
+/// (`states`) and `GET /api/dms` (`dms`, its conversations), as the web app's
+/// `aggregateActivity` makes them over both: mentions over every channel and
+/// conversation (a mention counts in a muted one too), and those with unread
+/// messages that are not muted (a conversation's `inherit` is not muted).
+/// Anything but a positive whole number counts as zero.
+pub fn counts(states: &serde_json::Value, dms: &serde_json::Value) -> (u32, u32) {
     let number = |v: Option<&serde_json::Value>| {
         v.and_then(serde_json::Value::as_u64)
             .map_or(0, |n| u32::try_from(n).unwrap_or(u32::MAX))
     };
     let mut unread: u32 = 0;
     let mut mentions: u32 = 0;
-    for state in states.as_array().into_iter().flatten() {
+    let lists = [states, dms];
+    for state in lists.iter().filter_map(|l| l.as_array()).flatten() {
         if !state.is_object() {
             continue;
         }
@@ -84,6 +87,13 @@ pub struct PageState {
     pub busy: Option<bool>,
 }
 
+/// Whether a page may be closed at all, whatever its age: not the server in
+/// front, and only once it said it is idle. Asked again under the lock right
+/// before a page is closed.
+pub fn closable(in_front: bool, busy: Option<bool>) -> bool {
+    !in_front && busy == Some(false)
+}
+
 /// The pages to close now, oldest hidden first, while more than `keep` run.
 /// Never the server in front, never one hidden for less than `after_secs`,
 /// never one whose page has not said it is idle.
@@ -95,7 +105,7 @@ pub fn pages_to_unload(sleep: Sleep, now: i64, servers: &[PageState]) -> Vec<Str
     let mut running = servers.iter().filter(|s| s.page).count();
     let mut candidates: Vec<(i64, &str)> = servers
         .iter()
-        .filter(|s| s.page && !s.active && s.busy == Some(false))
+        .filter(|s| s.page && closable(s.active, s.busy))
         .filter_map(|s| {
             let since = s.hidden_since?;
             (now.saturating_sub(since) >= after).then_some((since, s.id.as_str()))
@@ -126,15 +136,21 @@ mod tests {
     fn counts_follow_the_shared_vectors() {
         let v = vectors();
         let cases = v["counts"].as_array().unwrap();
-        assert!(cases.len() >= 5);
+        assert!(cases.len() >= 9);
+        assert!(
+            cases
+                .iter()
+                .any(|c| c["dms"].as_array().is_some_and(|d| !d.is_empty()))
+        );
         for case in cases {
             let want = (
                 case["unread"].as_u64().unwrap() as u32,
                 case["mentions"].as_u64().unwrap() as u32,
             );
-            assert_eq!(counts(&case["states"]), want, "{case}");
+            assert_eq!(counts(&case["states"], &case["dms"]), want, "{case}");
         }
-        assert_eq!(counts(&serde_json::json!({"not": "a list"})), (0, 0));
+        let junk = serde_json::json!({"not": "a list"});
+        assert_eq!(counts(&junk, &junk), (0, 0));
     }
 
     #[test]
@@ -171,6 +187,14 @@ mod tests {
                 "{case}"
             );
         }
+    }
+
+    #[test]
+    fn a_page_is_closable_only_hidden_and_idle() {
+        assert!(closable(false, Some(false)));
+        assert!(!closable(true, Some(false)), "the server in front");
+        assert!(!closable(false, Some(true)), "a draft, an upload or a Talk");
+        assert!(!closable(false, None), "a page that never said");
     }
 
     #[test]

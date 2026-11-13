@@ -245,8 +245,11 @@ How the servers are kept apart:
   minutes hidden while more than 4 run, never when the page says it holds a
   draft, an upload or a Talk, never when it has not said; settings `sleep` in
   the list file). A server without a page has its counts from the host
-  (`src/core/feed.ts`: `GET /api/read-state`, read again on the socket's
-  message, read and channel events, at most every 2 seconds and at least
+  (`src/core/feed.ts`: `GET /api/read-state` and `GET /api/dms`, read again on
+  the socket's message, read, channel and conversation events; a 401 or 403
+  clears them and ends the feed until the page is opened again; an
+  unreachable server is asked again after 30 s, doubling up to 5 minutes, with
+  jitter; at most every 2 seconds and at least
   every minute; the socket says the member is idle and nothing else; a rise of
   its mentions is one silent "N new mentions on <server>" notification, none
   for a muted server). At most 4 servers connect at once.

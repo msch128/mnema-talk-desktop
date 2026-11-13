@@ -1,6 +1,6 @@
 {
  "format": 1,
- "note": "The layout of the server rail: folders, order and local names. Read by the Rust host and the TypeScript client. start is the stored items (null: none stored) and start_aliases the stored names; every case is loaded (normalised), then its ops run in order (ok false: refused and nothing changes), then items, flat (the order of the servers on the rail) and aliases are compared. Folders made by group and new_folder get the id in the op's folder field (the host picks a random one). shortcuts: the place (0-based, null: none) Ctrl+number reaches among count servers; 1 to 8 the server at that place, 9 the last one, as browsers do with tabs. counts: what the host shows for a server whose page is not loaded, from GET /api/read-state as the web app's aggregateActivity reads it: mentions summed over all entries (a mention counts even when muted), unread the entries with unread_count above zero whose notify_level is not mute; anything that is not a positive whole number counts as zero. unload: which hidden pages to close (oldest hidden first) while more than keep pages run: never the server in front, never one hidden for less than after_secs, never one whose page has not said it is idle (busy null: no signal; true: a draft, an upload or a Talk); after_secs null: never.",
+ "note": "The layout of the server rail: folders, order and local names. Read by the Rust host and the TypeScript client. start is the stored items (null: none stored) and start_aliases the stored names; every case is loaded (normalised), then its ops run in order (ok false: refused and nothing changes), then items, flat (the order of the servers on the rail) and aliases are compared. Folders made by group and new_folder get the id in the op's folder field (the host picks a random one). shortcuts: the place (0-based, null: none) Ctrl+number reaches among count servers; 1 to 8 the server at that place, 9 the last one, as browsers do with tabs. counts: what the host shows for a server whose page is not loaded, from GET /api/read-state (states) and GET /api/dms (dms, conversations; notify_level inherit counts as all) as the web app's readStates and aggregateActivity read them: mentions summed over all entries (a mention counts even when muted), unread the entries with unread_count above zero whose notify_level is not mute; anything that is not a positive whole number counts as zero. unload: which hidden pages to close (oldest hidden first) while more than keep pages run: never the server in front, never one hidden for less than after_secs, never one whose page has not said it is idle (busy null: no signal; true: a draft, an upload or a Talk); after_secs null: never.",
  "cases": [
   {
    "name": "a list without a layout becomes the stored order, no folders",
@@ -3643,6 +3643,7 @@
  "counts": [
   {
    "states": [],
+   "dms": [],
    "unread": 0,
    "mentions": 0
   },
@@ -3655,6 +3656,7 @@
      "notify_level": "all"
     }
    ],
+   "dms": [],
    "unread": 1,
    "mentions": 0
   },
@@ -3667,6 +3669,7 @@
      "notify_level": "mute"
     }
    ],
+   "dms": [],
    "unread": 0,
    "mentions": 2
   },
@@ -3690,6 +3693,7 @@
      "mention_count": 4
     }
    ],
+   "dms": [],
    "unread": 2,
    "mentions": 5
   },
@@ -3709,8 +3713,83 @@
     "junk",
     null
    ],
+   "dms": [],
    "unread": 0,
    "mentions": 0
+  },
+  {
+   "states": [
+    {
+     "channel_id": "a",
+     "unread_count": 2,
+     "mention_count": 0,
+     "notify_level": "all"
+    }
+   ],
+   "dms": [
+    {
+     "id": "d1",
+     "unread_count": 1,
+     "mention_count": 1,
+     "notify_level": "inherit"
+    }
+   ],
+   "unread": 2,
+   "mentions": 1
+  },
+  {
+   "states": [],
+   "dms": [
+    {
+     "id": "d1",
+     "unread_count": 4,
+     "mention_count": 2,
+     "notify_level": "mute"
+    },
+    {
+     "id": "d2",
+     "unread_count": 1,
+     "mention_count": 0,
+     "notify_level": "mentions"
+    }
+   ],
+   "unread": 1,
+   "mentions": 2
+  },
+  {
+   "states": [
+    {
+     "channel_id": "a",
+     "unread_count": 0,
+     "mention_count": 0,
+     "notify_level": "all"
+    }
+   ],
+   "dms": [
+    {
+     "id": "d1",
+     "unread_count": 0,
+     "mention_count": 0,
+     "notify_level": "all"
+    }
+   ],
+   "unread": 0,
+   "mentions": 0
+  },
+  {
+   "states": [
+    {
+     "channel_id": "a",
+     "unread_count": 1,
+     "mention_count": 3,
+     "notify_level": "all"
+    }
+   ],
+   "dms": {
+    "not": "a list"
+   },
+   "unread": 1,
+   "mentions": 3
   }
  ],
  "unload": [

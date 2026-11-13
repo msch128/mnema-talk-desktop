@@ -24,8 +24,10 @@ use tokio::sync::{Notify, mpsc};
 const SETTLE: Duration = Duration::from_secs(2);
 /// The counts are read at least this often.
 const EVERY: Duration = Duration::from_secs(60);
-/// A dropped socket is opened again after this long.
+/// A dropped socket is opened again after this long; an unreachable server
+/// is asked again after twice as long each time, up to `REOPEN_MAX`.
 const REOPEN: Duration = Duration::from_secs(30);
+const REOPEN_MAX: Duration = Duration::from_secs(300);
 
 /// The events after which the counts may have changed.
 pub fn changes_counts(frame: &str) -> bool {
@@ -43,6 +45,10 @@ pub fn changes_counts(frame: &str) -> bool {
                 | "permissions_changed"
                 | "roles_changed"
                 | "member_roles_changed"
+                | "dm_created"
+                | "dm_member_added"
+                | "dm_member_removed"
+                | "dm_prefs_updated"
         )
     )
 }
@@ -113,13 +119,40 @@ pub(crate) struct Times {
     pub settle: Duration,
     pub every: Duration,
     pub reopen: Duration,
+    pub reopen_max: Duration,
 }
 
 const TIMES: Times = Times {
     settle: SETTLE,
     every: EVERY,
     reopen: REOPEN,
+    reopen_max: REOPEN_MAX,
 };
+
+/// What one read of a server gave.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum Read {
+    /// The rail's two numbers.
+    Counts(u32, u32),
+    /// The session is gone (401, 403): nothing more to read until the page
+    /// signs in again.
+    SignedOut,
+    /// No answer, or not one that could be read: try again later.
+    Unreachable,
+}
+
+/// The wait before the `failures`th retry of an unreachable server: doubling
+/// from `times.reopen` up to `times.reopen_max`, with up to a fifth of jitter
+/// (from `seed`) so that many servers do not ask at the same moment.
+pub(crate) fn backoff(times: Times, failures: u32, seed: u64) -> Duration {
+    let base = times
+        .reopen
+        .saturating_mul(1u32 << failures.saturating_sub(1).min(16))
+        .min(times.reopen_max);
+    let fifth = base.as_millis() as u64 / 5;
+    let jitter = if fifth == 0 { 0 } else { seed % fifth };
+    base.saturating_sub(Duration::from_millis(jitter))
+}
 
 async fn run(
     app: &tauri::AppHandle,
@@ -128,43 +161,58 @@ async fn run(
     sockets: &Arc<Sockets>,
     stop: &Notify,
 ) {
-    pump(
-        &session.instance,
-        sockets,
-        stop,
-        TIMES,
-        |unread, mentions| running(id) && report(app, id, unread, mentions),
-    )
+    pump(&session.instance, sockets, stop, TIMES, |read| {
+        running(id) && report(app, id, read)
+    })
     .await;
+    // Signed out (or removed): the feed is over until a page opens again.
+    stop_quietly(id);
 }
 
-/// The feed's loop, free of the app: reads the counts and hands them to
-/// `report` (which says whether to go on), again after a change and at least
-/// every `times.every`, until `stop`.
+/// Forgets the feed of `id` without waking its loop (it is ending anyway).
+fn stop_quietly(id: &str) {
+    if let Some(Some(feed)) = feeds(|map| map.remove(id)) {
+        feed.sockets.close_all();
+    }
+}
+
+/// The feed's loop, free of the app: reads the counts and hands what it read
+/// to `report` (which says whether to go on), again after a change and at
+/// least every `times.every`, until `stop` or a signed-out session. An
+/// unreachable server is asked again later and later (`backoff`).
 pub(crate) async fn pump(
     instance: &Arc<crate::web_proxy::Instance>,
     sockets: &Arc<Sockets>,
     stop: &Notify,
     times: Times,
-    mut report: impl FnMut(u32, u32) -> bool,
+    mut report: impl FnMut(Read) -> bool,
 ) {
     let (poke, mut pokes) = mpsc::channel::<bool>(16);
     let mut open = false;
+    let mut failures: u32 = 0;
     loop {
         if !open {
             open = listen(instance, sockets, poke.clone()).is_ok();
         }
-        if let Some((unread, mentions)) = read_counts(instance).await
-            && !report(unread, mentions)
-        {
+        let read = read_counts(instance).await;
+        let (signed_out, unreachable) = (read == Read::SignedOut, read == Read::Unreachable);
+        if !report(read) || signed_out {
             return;
         }
-        let Some(changed) = next(stop, &mut pokes, times.every).await else {
-            return;
+        let rest = if unreachable {
+            failures += 1;
+            open = false;
+            sockets.close_all();
+            backoff(times, failures, uuid::Uuid::new_v4().as_u64_pair().0)
+        } else {
+            failures = 0;
+            let Some(changed) = next(stop, &mut pokes, times.every).await else {
+                return;
+            };
+            // A change settles first; a closed socket opens again after a while.
+            open &= changed;
+            if changed { times.settle } else { times.reopen }
         };
-        // A change settles first; a closed socket opens again after a while.
-        let rest = if changed { times.settle } else { times.reopen };
-        open &= changed;
         if !pause(stop, rest).await {
             return;
         }
@@ -198,7 +246,8 @@ fn listen(
     poke: mpsc::Sender<bool>,
 ) -> Result<u64, String> {
     let speaker = Arc::clone(sockets);
-    crate::web_ws::open(sockets, Arc::clone(instance), false, move |event| {
+    // With the conversation query: direct messages count on the rail too.
+    crate::web_ws::open(sockets, Arc::clone(instance), true, move |event| {
         match event {
             WsEvent::Open { id } => {
                 let _ = speaker.send(id, IDLE.to_owned());
@@ -216,14 +265,37 @@ fn listen(
     })
 }
 
-/// The server's read state as the rail's two numbers.
-async fn read_counts(instance: &crate::web_proxy::Instance) -> Option<(u32, u32)> {
-    let resp = crate::web_proxy::forward(instance, "GET", "/api/read-state", &[], Vec::new()).await;
-    if resp.status != 200 {
-        return None;
+/// One answer as JSON: `Err` with what the status means for the feed.
+async fn get_json(
+    instance: &crate::web_proxy::Instance,
+    path: &str,
+) -> Result<Option<serde_json::Value>, Read> {
+    let resp = crate::web_proxy::forward(instance, "GET", path, &[], Vec::new()).await;
+    match resp.status {
+        200 => serde_json::from_slice(&resp.body)
+            .map(Some)
+            .map_err(|_| Read::Unreachable),
+        401 | 403 => Err(Read::SignedOut),
+        // A server without direct messages has no list of them.
+        404 => Ok(None),
+        _ => Err(Read::Unreachable),
     }
-    let states = serde_json::from_slice::<serde_json::Value>(&resp.body).ok()?;
-    Some(crate::rail_sleep::counts(&states))
+}
+
+/// The server's read state and conversations as the rail's two numbers, as
+/// the page counts them (`rail_sleep::counts`).
+async fn read_counts(instance: &crate::web_proxy::Instance) -> Read {
+    let states = match get_json(instance, "/api/read-state").await {
+        Ok(Some(states)) => states,
+        Ok(None) => return Read::Unreachable,
+        Err(read) => return read,
+    };
+    let dms = match get_json(instance, "/api/dms").await {
+        Ok(dms) => dms.unwrap_or_else(|| serde_json::json!([])),
+        Err(read) => return read,
+    };
+    let (unread, mentions) = crate::rail_sleep::counts(&states, &dms);
+    Read::Counts(unread, mentions)
 }
 
 /// How many new mentions a quiet toast announces: one toast for each rise of
@@ -239,9 +311,15 @@ pub fn mention_text(count: u32, server: &str) -> String {
 }
 
 /// Puts the two numbers on the rail, and says a rise of the mentions in a
-/// quiet toast (the server's mute and the system's setting apply). Gives
-/// whether the server is still there to report for.
-fn report(app: &tauri::AppHandle, id: &str, unread: u32, mentions: u32) -> bool {
+/// quiet toast (the server's mute and the system's setting apply). A
+/// signed-out session clears them. Gives whether the server is still there
+/// to report for.
+fn report(app: &tauri::AppHandle, id: &str, read: Read) -> bool {
+    let (unread, mentions) = match read {
+        Read::Counts(unread, mentions) => (unread, mentions),
+        Read::SignedOut => (0, 0),
+        Read::Unreachable => return true,
+    };
     let trusted = app.state::<Trusted>();
     let rise = {
         let Ok(mut registry) = trusted.registry.lock() else {
@@ -327,6 +405,10 @@ mod tests {
     struct Fake {
         origin: url::Url,
         mentions: Arc<std::sync::atomic::AtomicU32>,
+        /// Mentions in the one conversation `GET /api/dms` lists.
+        dm_mentions: Arc<std::sync::atomic::AtomicU32>,
+        /// What every answer but the socket says: 200, or 401 for a signed-out session.
+        status: Arc<std::sync::atomic::AtomicU32>,
         reads: Arc<std::sync::atomic::AtomicU32>,
         said: Arc<Mutex<Vec<String>>>,
         push: mpsc::UnboundedSender<String>,
@@ -340,11 +422,14 @@ mod tests {
         let origin =
             url::Url::parse(&format!("http://{}", listener.local_addr().unwrap())).unwrap();
         let mentions = Arc::new(std::sync::atomic::AtomicU32::new(1));
+        let dm_mentions = Arc::new(std::sync::atomic::AtomicU32::new(0));
+        let status = Arc::new(std::sync::atomic::AtomicU32::new(200));
         let reads = Arc::new(std::sync::atomic::AtomicU32::new(0));
         let said = Arc::new(Mutex::new(Vec::new()));
         let (push, pushed) = mpsc::unbounded_channel::<String>();
         let pushed = Arc::new(tokio::sync::Mutex::new(pushed));
         let (m, r, w) = (Arc::clone(&mentions), Arc::clone(&reads), Arc::clone(&said));
+        let (dm, code) = (Arc::clone(&dm_mentions), Arc::clone(&status));
         tokio::spawn(async move {
             while let Ok((mut stream, _)) = listener.accept().await {
                 let mut head = [0u8; 64];
@@ -374,14 +459,23 @@ mod tests {
                     });
                 } else {
                     let mut buf = vec![0u8; 4096];
-                    let _ = stream.read(&mut buf).await;
-                    r.fetch_add(1, Ordering::SeqCst);
-                    let body = format!(
-                        r#"[{{"unread_count":3,"mention_count":{},"notify_level":"all"}},{{"unread_count":9,"mention_count":0,"notify_level":"mute"}}]"#,
-                        m.load(Ordering::SeqCst)
-                    );
+                    let n = stream.read(&mut buf).await.unwrap_or(0);
+                    let asked = String::from_utf8_lossy(&buf[..n]).into_owned();
+                    let body = if asked.starts_with("GET /api/dms") {
+                        format!(
+                            r#"[{{"id":"d1","unread_count":1,"mention_count":{},"notify_level":"inherit"}}]"#,
+                            dm.load(Ordering::SeqCst)
+                        )
+                    } else {
+                        r.fetch_add(1, Ordering::SeqCst);
+                        format!(
+                            r#"[{{"unread_count":3,"mention_count":{},"notify_level":"all"}},{{"unread_count":9,"mention_count":0,"notify_level":"mute"}}]"#,
+                            m.load(Ordering::SeqCst)
+                        )
+                    };
+                    let status = code.load(Ordering::SeqCst);
                     let reply = format!(
-                        "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                        "HTTP/1.1 {status} X\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
                         body.len()
                     );
                     let _ = stream.write_all(reply.as_bytes()).await;
@@ -391,6 +485,8 @@ mod tests {
         Fake {
             origin,
             mentions,
+            dm_mentions,
+            status,
             reads,
             said,
             push,
@@ -406,42 +502,60 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn the_feed_reads_the_counts_again_after_a_change_and_its_socket_only_says_idle() {
-        use std::sync::atomic::Ordering;
-        let server = fake().await;
-        let instance = Arc::new(crate::web_proxy::Instance {
+    fn instance_of(server: &Fake) -> Arc<crate::web_proxy::Instance> {
+        Arc::new(crate::web_proxy::Instance {
             origin: server.origin.clone(),
             client: crate::web_proxy::client().unwrap(),
             jar: crate::web_proxy::Jar::new(None, 0),
             limits: crate::web_proxy::Limits::default(),
-        });
+        })
+    }
+
+    const QUICK: Times = Times {
+        settle: Duration::from_millis(30),
+        every: Duration::from_secs(60),
+        reopen: Duration::from_secs(60),
+        reopen_max: Duration::from_secs(60),
+    };
+
+    /// What a feed under test reported, its sockets, its stop and its task.
+    type Running = (
+        Arc<Mutex<Vec<Read>>>,
+        Arc<Sockets>,
+        Arc<Notify>,
+        tokio::task::JoinHandle<()>,
+    );
+
+    /// Runs the feed against `server` and collects what it reports.
+    fn feed(server: &Fake) -> Running {
+        let instance = instance_of(server);
         let sockets = Arc::new(Sockets::default());
         let stop = Arc::new(Notify::new());
-        let reports = Arc::new(Mutex::new(Vec::<(u32, u32)>::new()));
-        let times = Times {
-            settle: Duration::from_millis(30),
-            every: Duration::from_secs(60),
-            reopen: Duration::from_secs(60),
-        };
-        let (got, (s, st)) = (
+        let reports = Arc::new(Mutex::new(Vec::<Read>::new()));
+        let (got, s, st) = (
             Arc::clone(&reports),
-            (Arc::clone(&sockets), Arc::clone(&stop)),
+            Arc::clone(&sockets),
+            Arc::clone(&stop),
         );
         let task = tokio::spawn(async move {
-            pump(&instance, &s, &st, times, move |u, m| {
-                got.lock().unwrap().push((u, m));
+            pump(&instance, &s, &st, QUICK, move |read| {
+                got.lock().unwrap().push(read);
                 true
             })
             .await;
         });
+        (reports, sockets, stop, task)
+    }
+
+    #[tokio::test]
+    async fn the_feed_reads_the_counts_again_after_a_change_and_its_socket_only_says_idle() {
+        use std::sync::atomic::Ordering;
+        let server = fake().await;
+        let (reports, sockets, stop, task) = feed(&server);
         until(|| !reports.lock().unwrap().is_empty() && !server.said.lock().unwrap().is_empty())
             .await;
-        assert_eq!(
-            reports.lock().unwrap()[0],
-            (1, 1),
-            "the muted channel adds no unread"
-        );
+        // The muted channel adds no unread; the conversation adds one.
+        assert_eq!(reports.lock().unwrap()[0], Read::Counts(2, 1));
         assert_eq!(*server.said.lock().unwrap(), [IDLE]);
         server.mentions.store(4, Ordering::SeqCst);
         for kind in ["presence_update", "message_create", "message_create"] {
@@ -451,12 +565,20 @@ mod tests {
                 .unwrap();
         }
         until(|| reports.lock().unwrap().len() >= 2).await;
-        assert_eq!(reports.lock().unwrap()[1], (1, 4));
+        assert_eq!(reports.lock().unwrap()[1], Read::Counts(2, 4));
         assert_eq!(
             server.reads.load(Ordering::SeqCst),
             2,
             "two changes in a row are one read"
         );
+        // A mention in a direct message counts too, after its event.
+        server.dm_mentions.store(2, Ordering::SeqCst);
+        server
+            .push
+            .send(r#"{"type":"dm_prefs_updated","payload":{}}"#.to_owned())
+            .unwrap();
+        until(|| reports.lock().unwrap().len() >= 3).await;
+        assert_eq!(reports.lock().unwrap()[2], Read::Counts(2, 6));
         stop.notify_one();
         tokio::time::timeout(Duration::from_secs(5), task)
             .await
@@ -470,7 +592,7 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(100)).await;
         assert_eq!(
             reports.lock().unwrap().len(),
-            2,
+            3,
             "a stopped feed reports nothing"
         );
         assert_eq!(
@@ -478,5 +600,31 @@ mod tests {
             [IDLE],
             "the host sends nothing but idle"
         );
+    }
+
+    #[tokio::test]
+    async fn a_signed_out_session_ends_the_feed_once() {
+        use std::sync::atomic::Ordering;
+        let server = fake().await;
+        server.status.store(401, Ordering::SeqCst);
+        let (reports, _sockets, _stop, task) = feed(&server);
+        tokio::time::timeout(Duration::from_secs(5), task)
+            .await
+            .expect("the feed ends by itself")
+            .unwrap();
+        assert_eq!(*reports.lock().unwrap(), [Read::SignedOut]);
+    }
+
+    #[test]
+    fn an_unreachable_server_is_asked_later_and_later_with_jitter_up_to_a_bound() {
+        let at = |failures, seed| backoff(TIMES, failures, seed).as_secs();
+        assert_eq!(at(1, 0), 30);
+        assert_eq!(at(2, 0), 60);
+        assert_eq!(at(3, 0), 120);
+        assert_eq!(at(5, 0), 300);
+        assert_eq!(at(40, 0), 300);
+        // Up to a fifth earlier, never later.
+        assert!((24..=30).contains(&at(1, 5_999)));
+        assert!((240..=300).contains(&backoff(TIMES, 9, u64::MAX).as_secs()));
     }
 }

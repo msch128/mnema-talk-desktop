@@ -87,7 +87,10 @@ There is no external security audit.
   (it says so itself; a page from an older web app never does and is never
   closed). Opening the server loads its page again. Until then the client
   keeps its counts on the rail and the badge itself, from the server's own
-  unread summary, read again whenever the server says something changed; it
+  unread summary and direct messages, read again whenever the server says
+  something changed (a signed-out session clears them until the page is opened
+  again; an unreachable server is asked again later and later, up to five
+  minutes); it
   listens on a socket of its own that tells the server you are away there,
   exactly as the hidden page did, and sends nothing else. When its mentions
   rise, one quiet notification says "N new mentions on <server>" (no sound,

@@ -9,7 +9,7 @@ import type { AddressInfo } from 'node:net'
 import { afterEach, test } from 'node:test'
 import { WebSocketServer, type WebSocket } from 'ws'
 import { Jar } from '../src/core/cookies.ts'
-import { Feed, IDLE, changesCounts, mentionRise, mentionText } from '../src/core/feed.ts'
+import { Feed, IDLE, type Read, backoffMs, changesCounts, mentionRise, mentionText } from '../src/core/feed.ts'
 import { Limits } from '../src/core/proxy.ts'
 import { Turns } from '../src/core/tickets.ts'
 import { flag } from '../src/core/ipcargs.ts'
@@ -25,17 +25,17 @@ afterEach(async () => {
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
-async function fakeServer(states: () => unknown) {
+async function fakeServer(states: () => unknown, dms: () => unknown = () => [], status: () => number = () => 200) {
   const sockets: WebSocket[] = []
   const said: string[] = []
   let reads = 0
   const server = createServer((req, res) => {
-    if (req.url === '/api/read-state') {
-      reads++
-      const body = JSON.stringify(states())
-      res.writeHead(200, { 'content-type': 'application/json', 'content-length': String(Buffer.byteLength(body)) })
-      res.end(body)
-    } else { res.writeHead(404); res.end() }
+    const answer = req.url === '/api/read-state' ? states : req.url === '/api/dms' ? dms : null
+    if (answer === null) { res.writeHead(404); res.end(); return }
+    if (req.url === '/api/read-state') reads++
+    const body = JSON.stringify(answer())
+    res.writeHead(status(), { 'content-type': 'application/json', 'content-length': String(Buffer.byteLength(body)) })
+    res.end(body)
   })
   const wss = new WebSocketServer({ server })
   open.push({ server, wss })
@@ -47,27 +47,54 @@ async function fakeServer(states: () => unknown) {
   return { instance: { origin, jar, limits: new Limits(), now: () => Math.floor(Date.now() / 1000) }, sockets, said, reads: () => reads }
 }
 
-test('the feed reads the counts, again after a change, and its socket says only that the member is idle', async () => {
+const QUICK = { settleMs: 30, everyMs: 60_000, reopenMs: 60_000, reopenMaxMs: 60_000 }
+
+test('the feed reads the counts with the conversations, again after a change, and its socket says only that the member is idle', async () => {
   let mentions = 1
-  const server = await fakeServer(() => [{ unread_count: 3, mention_count: mentions, notify_level: 'all' }, { unread_count: 9, mention_count: 0, notify_level: 'mute' }])
-  const reports: { unread: number, mentions: number }[] = []
-  const feed = new Feed(server.instance, (c) => reports.push(c), { settleMs: 30, everyMs: 60_000, reopenMs: 60_000 })
+  let dmMentions = 0
+  const server = await fakeServer(() => [{ unread_count: 3, mention_count: mentions, notify_level: 'all' }, { unread_count: 9, mention_count: 0, notify_level: 'mute' }], () => [{ id: 'd1', unread_count: 1, mention_count: dmMentions, notify_level: 'inherit' }])
+  const reports: Read[] = []
+  const feed = new Feed(server.instance, (r) => reports.push(r), QUICK)
   feed.start()
   for (let i = 0; i < 100 && (reports.length < 1 || server.sockets.length < 1 || server.said.length < 1); i++) await sleep(20)
-  assert.deepEqual(reports[0], { unread: 1, mentions: 1 })
+  // The muted channel adds no unread; the conversation adds one.
+  assert.deepEqual(reports[0], { kind: 'counts', unread: 2, mentions: 1 })
   assert.deepEqual(server.said, [IDLE])
   mentions = 4
   server.sockets[0]!.send(JSON.stringify({ type: 'presence_update', payload: {} }))
   server.sockets[0]!.send(JSON.stringify({ type: 'message_create', payload: {} }))
   server.sockets[0]!.send(JSON.stringify({ type: 'message_create', payload: {} }))
   for (let i = 0; i < 100 && reports.length < 2; i++) await sleep(20)
-  assert.deepEqual(reports.at(-1), { unread: 1, mentions: 4 })
+  assert.deepEqual(reports.at(-1), { kind: 'counts', unread: 2, mentions: 4 })
   assert.equal(server.reads(), 2, 'two changes in a row are one read')
+  // A mention in a direct message counts too, after its event.
+  dmMentions = 2
+  server.sockets[0]!.send(JSON.stringify({ type: 'dm_prefs_updated', payload: {} }))
+  for (let i = 0; i < 100 && reports.length < 3; i++) await sleep(20)
+  assert.deepEqual(reports.at(-1), { kind: 'counts', unread: 2, mentions: 6 })
   feed.stop()
   server.sockets[0]?.send(JSON.stringify({ type: 'message_create', payload: {} }))
   await sleep(100)
-  assert.equal(reports.length, 2, 'a stopped feed reports nothing')
+  assert.equal(reports.length, 3, 'a stopped feed reports nothing')
   assert.deepEqual(server.said, [IDLE], 'the host never sends typing, reads or anything else')
+})
+
+test('a signed-out session ends the feed once, and the counts are cleared', async () => {
+  const server = await fakeServer(() => [], () => [], () => 401)
+  const reports: Read[] = []
+  const feed = new Feed(server.instance, (r) => reports.push(r), QUICK)
+  feed.start()
+  for (let i = 0; i < 100 && reports.length < 1; i++) await sleep(20)
+  await sleep(100)
+  assert.deepEqual(reports, [{ kind: 'signed_out' }])
+  assert.equal(feed.running, false)
+})
+
+test('an unreachable server is asked later and later, with jitter, up to a bound', () => {
+  const times = { settleMs: 2000, everyMs: 60_000, reopenMs: 30_000, reopenMaxMs: 300_000 }
+  assert.deepEqual([1, 2, 3, 5, 40].map((n) => backoffMs(times, n, 0)), [30_000, 60_000, 120_000, 300_000, 300_000])
+  const jittered = backoffMs(times, 1, 0.99)
+  assert.ok(jittered >= 24_000 && jittered <= 30_000, String(jittered))
 })
 
 test('only what can change the counts wakes the feed', () => {

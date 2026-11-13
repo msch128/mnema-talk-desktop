@@ -255,19 +255,25 @@ mod tests {
     }
 
     #[test]
-    fn a_list_with_thousands_of_folders_loads_in_linear_time_and_keeps_one_of_each() {
+    fn a_list_with_tens_of_thousands_of_folders_loads_in_linear_time_and_keeps_one_of_each() {
+        // 60 000 different folder ids: a list compared against every folder
+        // kept so far (quadratic) needs far longer than the bound below.
         let known: Vec<String> = (0..200).map(|n| format!("{n:016x}")).collect();
-        let mut items: Vec<Item> = (0..20_000)
+        let mut items: Vec<Item> = (0..60_000)
             .map(|n| Item::Folder {
-                id: format!("f{}", n % 15_000),
+                id: format!("f{n}"),
                 name: String::new(),
                 color: None,
                 collapsed: false,
                 servers: vec![known[n % 200].clone()],
             })
             .collect();
-        items.push(Item::Server {
-            id: known[0].clone(),
+        items.push(Item::Folder {
+            id: "f1".into(),
+            name: String::new(),
+            color: None,
+            collapsed: false,
+            servers: vec![known[1].clone()],
         });
         let started = std::time::Instant::now();
         let layout = Layout::load(Some(items), BTreeMap::new(), &known, &known);

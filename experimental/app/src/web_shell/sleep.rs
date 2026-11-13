@@ -150,8 +150,11 @@ fn unload(app: &tauri::AppHandle, id: &str) {
         let Ok(mut registry) = trusted.registry.lock() else {
             return;
         };
+        // Checked again under the lock: the page may have become busy, or
+        // its server the one in front, since the rules were asked.
+        let in_front = !registry.adding() && registry.active() == Some(id);
         match registry.slot_mut(id) {
-            Some(slot) => {
+            Some(slot) if crate::rail_sleep::closable(in_front, slot.busy) => {
                 let Phase::Ready(session) = &slot.phase else {
                     return;
                 };
@@ -160,7 +163,7 @@ fn unload(app: &tauri::AppHandle, id: &str) {
                 slot.busy = None;
                 session
             }
-            None => return,
+            _ => return,
         }
     };
     without_page(app, id);

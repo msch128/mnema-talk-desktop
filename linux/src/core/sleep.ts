@@ -15,16 +15,18 @@ const AFTER_MAX = 86_400
 const whole = (v: unknown): number => (typeof v === 'number' && Number.isSafeInteger(v) && v > 0 ? v : 0)
 
 /**
- * The rail's two numbers for a server from its `GET /api/read-state`, as the
- * web app's `aggregateActivity` makes them: mentions over every channel (a
- * mention counts in a muted one too), and the channels with unread messages
- * that are not muted. Anything but a positive whole number counts as zero.
+ * The rail's two numbers for a server from its `GET /api/read-state`
+ * (`states`) and `GET /api/dms` (`dms`, its conversations), as the web app's
+ * `aggregateActivity` makes them over both: mentions over every channel and
+ * conversation (a mention counts in a muted one too), and those with unread
+ * messages that are not muted (a conversation's `inherit` is not muted).
+ * Anything but a positive whole number counts as zero.
  */
-export function counts(states: unknown): { unread: number, mentions: number } {
+export function counts(states: unknown, dms: unknown = []): { unread: number, mentions: number } {
   let unread = 0
   let mentions = 0
-  if (!Array.isArray(states)) return { unread, mentions }
-  for (const state of states as unknown[]) {
+  const all = [states, dms].flatMap((list) => (Array.isArray(list) ? (list as unknown[]) : []))
+  for (const state of all) {
     if (typeof state !== 'object' || state === null || Array.isArray(state)) continue
     const s = state as Record<string, unknown>
     mentions += whole(s.mention_count)
@@ -51,6 +53,9 @@ export function boundedSleep(raw: unknown): Sleep {
   return { afterSecs: after, keep: kept }
 }
 
+/** Whether a page may be closed at all, whatever its age: not the server in front, and only once it said it is idle. Asked again right before a page is closed. */
+export const closable = (inFront: boolean, busy: boolean | null): boolean => !inFront && busy === false
+
 /** One server as the rule sees it. `busy`: true a draft, an upload or a Talk; false idle; null the page never said. */
 export interface PageState { id: string, active: boolean, page: boolean, hiddenSince: number | null, busy: boolean | null }
 
@@ -64,7 +69,7 @@ export function pagesToUnload(sleep: Sleep, now: number, servers: readonly PageS
   const after = sleep.afterSecs
   let running = servers.filter((s) => s.page).length
   const candidates = servers
-    .filter((s) => s.page && !s.active && s.busy === false && s.hiddenSince !== null && now - s.hiddenSince >= after)
+    .filter((s) => s.page && closable(s.active, s.busy) && s.hiddenSince !== null && now - s.hiddenSince >= after)
     .sort((a, b) => (a.hiddenSince as number) - (b.hiddenSince as number) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
   const out: string[] = []
   for (const s of candidates) {
