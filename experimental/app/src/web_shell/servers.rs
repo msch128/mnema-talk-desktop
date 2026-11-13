@@ -237,13 +237,14 @@ pub async fn add_server(
         remove_server(&app, &id).await;
         return Err(crate::web_client::WITHDRAWN.into());
     }
-    let existed = app.get_webview(&instance_label(&id)).is_some();
-    if let Err(why) = open_page(&app, &id, &session, invite.as_deref()).await {
-        remove_server(&app, &id).await;
-        return Err(why);
-    }
-    if existed {
-        offer_invite(&app, &id, invite.as_deref());
+    // A page made meanwhile by another path did not get the invite.
+    match open_page(&app, &id, &session, invite.as_deref()).await {
+        Ok(true) => {}
+        Ok(false) => offer_invite(&app, &id, invite.as_deref()),
+        Err(why) => {
+            remove_server(&app, &id).await;
+            return Err(why);
+        }
     }
     refresh_icon(&app, &id, &origin_listed, icon);
     changed(&app);
