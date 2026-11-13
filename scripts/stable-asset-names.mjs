@@ -18,13 +18,13 @@ export function stableAssets(version) {
   const v = version.replaceAll('.', '\\.');
   const p = (source) => new RegExp(`^${source}$`);
   return [
-    ['mnema-desktop-windows-x64-setup.exe', p(`Mnema-Desktop-DEV_${v}_x64-setup\\.exe`)],
-    ['mnema-desktop-windows-x64-portable.zip', p(`Mnema-Desktop-DEV-v${v}-windows-x64-portable\\.zip`)],
-    ['mnema-desktop-macos-arm64.dmg', p(`Mnema-Desktop-DEV_${v}_aarch64\\.dmg`)],
-    ['mnema-desktop-linux-x64.deb', p(`Mnema-Desktop-DEV_${v}_(amd64|x86_64|x64)\\.deb`)],
-    ['mnema-desktop-linux-arm64.deb', p(`Mnema-Desktop-DEV_${v}_(arm64|aarch64)\\.deb`)],
-    ['mnema-desktop-linux-x64.AppImage', p(`Mnema-Desktop-DEV_${v}_x86_64\\.AppImage`)],
-    ['mnema-desktop-linux-arm64.AppImage', p(`Mnema-Desktop-DEV_${v}_arm64\\.AppImage`)]
+    ['mnema-desktop-windows-x64-setup.exe', p(`Mnema-Desktop_${v}_x64-setup\\.exe`)],
+    ['mnema-desktop-windows-x64-portable.zip', p(`Mnema-Desktop-v${v}-windows-x64-portable\\.zip`)],
+    ['mnema-desktop-macos-arm64.dmg', p(`Mnema-Desktop_${v}_aarch64\\.dmg`)],
+    ['mnema-desktop-linux-x64.deb', p(`Mnema-Desktop_${v}_(amd64|x86_64|x64)\\.deb`)],
+    ['mnema-desktop-linux-arm64.deb', p(`Mnema-Desktop_${v}_(arm64|aarch64)\\.deb`)],
+    ['mnema-desktop-linux-x64.AppImage', p(`Mnema-Desktop_${v}_x86_64\\.AppImage`)],
+    ['mnema-desktop-linux-arm64.AppImage', p(`Mnema-Desktop_${v}_arm64\\.AppImage`)]
   ].map(([name, source]) => ({ name, source }));
 }
 

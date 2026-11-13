@@ -1,5 +1,5 @@
 /** The title of the host's windows and dialogs. */
-export const TITLE = 'Mnema Desktop DEV'
+export const TITLE = 'Mnema Desktop'
 
 /** The window's title: the front server's name before the product, or the product alone while none is in front. */
 export function windowTitle(state: { active: string | null, instances: readonly { id: string, name: string }[] }): string {

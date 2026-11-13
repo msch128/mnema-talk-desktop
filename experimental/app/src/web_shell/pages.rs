@@ -224,7 +224,7 @@ fn new_window(
     let builder = WebviewWindowBuilder::new(app, &label, WebviewUrl::CustomProtocol(url))
         .use_https_scheme(true)
         .window_features(features)
-        .title("Mnema Desktop DEV \u{2014} Attachment")
+        .title("Mnema Desktop \u{2014} Attachment")
         .on_navigation(app_api)
         .on_new_window(|_, _| Deny)
         .on_permission_request(crate::web_client::allow_permission);

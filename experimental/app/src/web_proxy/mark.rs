@@ -94,8 +94,8 @@ mod tests {
     fn the_marks_say_internet_download_and_who() {
         assert!(ZONE_IDENTIFIER.contains("ZoneId=3"));
         assert_eq!(
-            quarantine_value(0x6550_0000, "Mnema Desktop DEV"),
-            "0081;65500000;Mnema Desktop DEV;"
+            quarantine_value(0x6550_0000, "Mnema Desktop"),
+            "0081;65500000;Mnema Desktop;"
         );
         assert_eq!(quarantine_value(1, "a;b\nc"), "0081;00000001;abc;");
     }

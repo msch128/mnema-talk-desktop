@@ -184,7 +184,7 @@ mod tests {
 
     #[test]
     fn a_portable_copy_keeps_its_files_beside_the_executable() {
-        let exe = Path::new(r"D:\Apps\Mnema\Mnema Desktop DEV.exe");
+        let exe = Path::new(r"D:\Apps\Mnema\Mnema Desktop.exe");
         assert_eq!(
             portable_root_for(exe, None),
             Some(exe.parent().unwrap().join("mnema-data"))

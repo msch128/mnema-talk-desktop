@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { LINUX_PLATFORMS, buildManifest, parseArgs } from './update-manifest.mjs';
 
 const signature = Buffer.from('untrusted comment: signature from tauri secret key\n'.repeat(3)).toString('base64');
-const ok = { version: '0.2.0', repo: 'msch128/mnema-talk-desktop', installerName: 'Mnema-Desktop-DEV_0.2.0_x64-setup.exe', signature: `${signature}\n`, notes: ' Fixes ', date: new Date('2026-10-17T12:00:00Z') };
+const ok = { version: '0.2.0', repo: 'msch128/mnema-talk-desktop', installerName: 'Mnema-Desktop_0.2.0_x64-setup.exe', signature: `${signature}\n`, notes: ' Fixes ', date: new Date('2026-10-17T12:00:00Z') };
 
 test('names the installer asset of the same release over https', () => {
   const m = buildManifest(ok);
@@ -11,7 +11,7 @@ test('names the installer asset of the same release over https', () => {
   assert.equal(m.notes, 'Fixes');
   assert.equal(m.pub_date, '2026-10-17T12:00:00.000Z');
   assert.deepEqual(Object.keys(m.platforms), ['windows-x86_64']);
-  assert.equal(m.platforms['windows-x86_64'].url, 'https://github.com/msch128/mnema-talk-desktop/releases/download/v0.2.0/Mnema-Desktop-DEV_0.2.0_x64-setup.exe');
+  assert.equal(m.platforms['windows-x86_64'].url, 'https://github.com/msch128/mnema-talk-desktop/releases/download/v0.2.0/Mnema-Desktop_0.2.0_x64-setup.exe');
   assert.equal(m.platforms['windows-x86_64'].signature, signature);
 });
 
@@ -29,10 +29,10 @@ test('caps the release notes', () => {
 
 test('serves Apple silicon from one signed archive next to Windows', () => {
   const macSignature = Buffer.from('untrusted comment: mac signature from tauri secret key\n'.repeat(3)).toString('base64');
-  const m = buildManifest({ ...ok, mac: { name: 'Mnema-Desktop-DEV_0.2.0_aarch64.app.tar.gz', signature: `${macSignature}\n` } });
+  const m = buildManifest({ ...ok, mac: { name: 'Mnema-Desktop_0.2.0_aarch64.app.tar.gz', signature: `${macSignature}\n` } });
   assert.deepEqual(Object.keys(m.platforms), ['windows-x86_64', 'darwin-aarch64']);
   for (const platform of ['darwin-aarch64']) {
-    assert.equal(m.platforms[platform].url, 'https://github.com/msch128/mnema-talk-desktop/releases/download/v0.2.0/Mnema-Desktop-DEV_0.2.0_aarch64.app.tar.gz');
+    assert.equal(m.platforms[platform].url, 'https://github.com/msch128/mnema-talk-desktop/releases/download/v0.2.0/Mnema-Desktop_0.2.0_aarch64.app.tar.gz');
     assert.equal(m.platforms[platform].signature, macSignature);
   }
   assert.equal(m.platforms['windows-x86_64'].signature, signature);
@@ -43,18 +43,18 @@ test('serves Apple silicon from one signed archive next to Windows', () => {
 test('adds the Linux AppImages next to the Tauri platforms without touching their entries', () => {
   const macSignature = Buffer.from('untrusted comment: mac signature from tauri secret key\n'.repeat(3)).toString('base64');
   const linuxSignature = Buffer.from('untrusted comment: linux signature from tauri secret key\n'.repeat(3)).toString('base64');
-  const base = buildManifest({ ...ok, mac: { name: 'Mnema-Desktop-DEV_0.2.0_aarch64.app.tar.gz', signature: macSignature } });
+  const base = buildManifest({ ...ok, mac: { name: 'Mnema-Desktop_0.2.0_aarch64.app.tar.gz', signature: macSignature } });
   const m = buildManifest({
     ...ok,
-    mac: { name: 'Mnema-Desktop-DEV_0.2.0_aarch64.app.tar.gz', signature: macSignature },
+    mac: { name: 'Mnema-Desktop_0.2.0_aarch64.app.tar.gz', signature: macSignature },
     linux: [
-      { platform: 'linux-x86_64', name: 'Mnema-Desktop-DEV_0.2.0_x86_64.AppImage', signature: `${linuxSignature}\n` },
-      { platform: 'linux-aarch64', name: 'Mnema-Desktop-DEV_0.2.0_arm64.AppImage', signature: linuxSignature }
+      { platform: 'linux-x86_64', name: 'Mnema-Desktop_0.2.0_x86_64.AppImage', signature: `${linuxSignature}\n` },
+      { platform: 'linux-aarch64', name: 'Mnema-Desktop_0.2.0_arm64.AppImage', signature: linuxSignature }
     ]
   });
   assert.deepEqual(LINUX_PLATFORMS, ['linux-x86_64', 'linux-aarch64', 'linux-x86_64-deb', 'linux-aarch64-deb']);
   assert.deepEqual(Object.keys(m.platforms), ['windows-x86_64', 'darwin-aarch64', 'linux-x86_64', 'linux-aarch64']);
-  assert.equal(m.platforms['linux-x86_64'].url, 'https://github.com/msch128/mnema-talk-desktop/releases/download/v0.2.0/Mnema-Desktop-DEV_0.2.0_x86_64.AppImage');
+  assert.equal(m.platforms['linux-x86_64'].url, 'https://github.com/msch128/mnema-talk-desktop/releases/download/v0.2.0/Mnema-Desktop_0.2.0_x86_64.AppImage');
   assert.equal(m.platforms['linux-x86_64'].signature, linuxSignature);
   // What the Windows and macOS updaters read is byte for byte what it was.
   for (const platform of ['windows-x86_64', 'darwin-aarch64']) assert.deepEqual(m.platforms[platform], base.platforms[platform]);

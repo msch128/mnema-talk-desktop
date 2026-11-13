@@ -125,13 +125,13 @@ versioned one next to it and listed in the release's `SHA256SUMS`):
 
 The updater feed and its signatures name only the versioned files.
 
-Download `Mnema-Desktop-DEV_<version>_x64-setup.exe` from the
+Download `Mnema-Desktop_<version>_x64-setup.exe` from the
 [latest release](https://github.com/msch128/mnema-talk-desktop/releases/latest)
 and run it once. It installs for the current user only (no administrator
 prompt) and updates itself from then on. SmartScreen warns because the installer
 has no Authenticode certificate; the self-update does not depend on one (see
 below). The portable ZIP of each release does not update itself; it tells you when a newer version exists and opens the release page. It keeps its settings, server list and browser data in a `mnema-data` folder beside the program (or in the absolute folder named by `MNEMA_DESKTOP_DATA_DIR`). The first start copies the client's own files that an earlier portable version kept in `%LOCALAPPDATA%\com.mnema.desktop.shareddev` and `%APPDATA%\com.mnema.desktop.shareddev` (not the browser engine's data, so you sign in to your servers again); it does that once, and it does not delete them: remove those two folders by hand when you no longer need them. Deleting `mnema-data` resets the portable copy. Saved passwords live in the Windows credential store, as for any Windows program. To build from
-source, see [experimental/README.md](experimental/README.md#mnema-desktop-dev):
+source, see [experimental/README.md](experimental/README.md#mnema-desktop):
 Rust and Node, with mnema-talk checked out next to this repository. The older
 Windows DEV ZIP attached to
 [mnema-talk releases through v0.7.3](https://github.com/msch128/mnema-talk/releases)
@@ -139,7 +139,7 @@ still loads the server's JavaScript and predates the signed bundle.
 
 ### macOS
 
-Download `Mnema-Desktop-DEV_<version>_aarch64.dmg` from the
+Download `Mnema-Desktop_<version>_aarch64.dmg` from the
 [latest release](https://github.com/msch128/mnema-talk-desktop/releases/latest)
 (Apple silicon, M1 or newer, macOS 12 or newer), open it and drag the
 app to Applications. It updates itself from then on.
@@ -149,18 +149,18 @@ account behind it, so Gatekeeper refuses it on the first start ("cannot be
 opened because Apple cannot check it for malicious software"). Pick one:
 
 * **macOS 15 and newer:** try to open the app once, then open *System Settings
-  → Privacy & Security*, scroll to the message about Mnema Desktop DEV and
+  → Privacy & Security*, scroll to the message about Mnema Desktop and
   choose **Open Anyway**.
 * **macOS 14 and older:** right-click the app and choose **Open**, then **Open**
   again.
-* **Terminal:** `xattr -dr com.apple.quarantine "/Applications/Mnema Desktop DEV.app"`
+* **Terminal:** `xattr -dr com.apple.quarantine "/Applications/Mnema Desktop.app"`
 
 This is needed once: the self-update downloads inside the app and does not
 mark the new version as quarantined, so later versions start without it. The
 update is still verified by the pinned minisign key (see below); Gatekeeper
 plays no part in that. The first time you speak, share the camera or share the
 screen macOS asks for the microphone, camera or screen recording permission
-(*System Settings → Privacy & Security* lists them for Mnema Desktop DEV).
+(*System Settings → Privacy & Security* lists them for Mnema Desktop).
 Because every version is a new ad-hoc signature, macOS may also ask once after
 an update whether the app may use its keychain entry; if you decline, you sign
 in again. There is no gaming overlay on macOS.
@@ -170,12 +170,12 @@ in again. There is no gaming overlay on macOS.
 Download from the [latest release](https://github.com/msch128/mnema-talk-desktop/releases/latest)
 the file for your machine, x86_64 (also called amd64) or arm64:
 
-* **AppImage**, `Mnema-Desktop-DEV_<version>_x86_64.AppImage` or `..._arm64.AppImage`:
+* **AppImage**, `Mnema-Desktop_<version>_x86_64.AppImage` or `..._arm64.AppImage`:
   make it executable (`chmod +x`) and run it. It needs no installation and no
   FUSE, and it updates itself (see [Updates](#updates)).
-* **.deb**, `Mnema-Desktop-DEV_<version>_amd64.deb` or `..._arm64.deb`, for
-  Debian and Ubuntu: `sudo apt install ./Mnema-Desktop-DEV_<version>_amd64.deb`.
-  It installs to `/opt/Mnema Desktop DEV` with a menu entry and an AppArmor
+* **.deb**, `Mnema-Desktop_<version>_amd64.deb` or `..._arm64.deb`, for
+  Debian and Ubuntu: `sudo apt install ./Mnema-Desktop_<version>_amd64.deb`.
+  It installs to `/opt/Mnema Desktop` with a menu entry and an AppArmor
   profile, and updates itself through the package manager: the client verifies
   the signed package, then asks for your password (polkit) to install it.
 
@@ -244,6 +244,27 @@ Two things update, both from GitHub, both verified before use:
   window links to the release page. A failed attempt shows what went wrong,
   lets you copy the error, and can be retried. `MNEMA_DESKTOP_NO_UPDATE_CHECK=1`
   turns both checks off.
+
+### From "Mnema Desktop DEV"
+
+Up to 1.3.5 the app was called **Mnema Desktop DEV**. From 1.4.0 it is
+**Mnema Desktop**, and an installed copy updates in place. Your servers,
+sessions and settings stay: they are kept under the app's identifier
+(`com.mnema.desktop.shareddev`), which did not change.
+
+* **Windows:** the update removes the old copy with its own uninstaller and
+  installs the new one in `%LOCALAPPDATA%\Mnema Desktop` (a folder you chose
+  yourself stays). The entry under *Installed apps* and the Start menu and
+  desktop shortcuts take the new name. A shortcut pinned to the taskbar points
+  at the old program and has to be pinned again. CI checks this on every change
+  (`windows-update-from-dev`, `scripts/test-windows-rename-update.ps1`).
+* **macOS:** the update replaces the app where it is, so it keeps the name
+  `Mnema Desktop DEV.app` in Applications; a new download is called
+  `Mnema Desktop.app`. The app itself shows the new name.
+* **Linux:** the `.deb` keeps its package name `mnema-desktop-dev` and its
+  command, so it upgrades in place and moves from `/opt/Mnema Desktop DEV` to
+  `/opt/Mnema Desktop`. An AppImage is replaced where it lies and keeps its
+  file name. CI checks both (`scripts/upgrade-from-dev.sh`).
 
 An update is installed only if its minisign signature verifies against the
 public key pinned in `experimental/app/tauri.conf.json`, the version the

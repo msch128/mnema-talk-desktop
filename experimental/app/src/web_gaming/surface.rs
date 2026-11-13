@@ -42,9 +42,9 @@ pub(super) fn surface(
     )
     .use_https_scheme(true)
     .title(if interactive {
-        "Mnema Gaming DEV"
+        "Mnema Gaming"
     } else {
-        "Mnema Sidepeek DEV"
+        "Mnema Sidepeek"
     })
     .initialization_script(crate::web_client::identity_script(app, "surface", None))
     .initialization_script(format!(
