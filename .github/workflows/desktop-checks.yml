@@ -160,6 +160,15 @@ jobs:
           set -euo pipefail
           npm ci --prefix experimental/app/page-tests --ignore-scripts --no-audit --no-fund
           npm test --prefix experimental/app/page-tests
+      # Layout, clipping and scrolling of the rail in the engines the hosts use:
+      # WebKit (WKWebView on macOS) and Chromium (WebView2, Electron).
+      - name: The rail page in WebKit and Chromium
+        shell: bash
+        working-directory: experimental/app/page-tests
+        run: |
+          set -euo pipefail
+          npx playwright install chromium webkit
+          npm run test:browser
       # Scoped to the Windows and macOS targets (deny.toml).
       - name: Rust advisory scan (pinned tool, Windows and macOS graph)
         shell: bash

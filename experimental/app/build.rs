@@ -55,6 +55,7 @@ const COMMANDS: &[&str] = &[
     "desktop_notify_request_permission",
     "desktop_set_badge",
     "desktop_report_unread",
+    "desktop_report_busy",
     "rail_state",
     "rail_activate",
     "rail_add",

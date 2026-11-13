@@ -196,8 +196,11 @@ client and only together with `MNEMA_DESKTOP_ALLOW_REMOTE_DEBUGGING=1`.
 
 One window: the server rail of the host on the left (the same page as in the
 Tauri host), and next to it the page of one server or the page for adding one.
-Each page is a `WebContentsView`. Up to nine servers, switched with Ctrl+1 to
-Ctrl+9 or the rail, added with Ctrl+Shift+N, reordered by dragging or Alt+arrow
+Each page is a `WebContentsView`. Any number of servers (there is no server
+limit; the list file can be up to 8 MiB),
+switched with Ctrl+1 to Ctrl+8 (the
+first eight), Ctrl+9 (the last) or the rail, which scrolls when they do not fit,
+added with Ctrl+Shift+N, reordered by dragging or Alt+arrow
 and removed from the rail's menu. Servers can be grouped in folders (name,
 colour, open or closed, kept across restarts) and renamed for this device; the
 menu is the system's own popup (`Menu.popup`) and the questions (rename, folder,
@@ -236,8 +239,21 @@ How the servers are kept apart:
   partition (storage, cache and directory), its sockets, its toasts and its
   attachment window. A directory the engine still holds is removed again later,
   and leftovers are swept at the next start.
-* **Background servers** are hidden, not stopped: their sockets and counters stay
-  alive.
+* **Background servers** are hidden; a page is made only when its server is
+  first opened and closed again after hiding for a while
+  (`src/main/sleep.ts`, rules in `src/core/sleep.ts`, the same as the Tauri
+  host's and shared in `test-vectors/rail-layout.json`: closed after 10
+  minutes hidden while more than 4 run, never when the page says it holds a
+  draft, an upload or a Talk, never when it has not said; settings `sleep` in
+  the list file). A server without a page has its counts from the host
+  (`src/core/feed.ts`: `GET /api/read-state` and `GET /api/dms`, read again on
+  the socket's message, read, channel and conversation events; a 401 or 403
+  clears them and ends the feed until the page is opened again; an
+  unreachable server is asked again after 30 s, doubling up to 5 minutes, with
+  jitter; at most every 2 seconds and at least
+  every minute; the socket says the member is idle and nothing else; a rise of
+  its mentions is one silent "N new mentions on <server>" notification, none
+  for a muted server). At most 4 servers connect at once.
 * **Update from the single-server client.** Its browser storage held every
   server it showed and recorded none, so it belongs to no one server: it is
   wiped once at the first start of this version and never handed on. Every server
@@ -291,7 +307,7 @@ The two-server end-to-end run (`test/e2e/multi.e2e.ts`) signs in to two stand-in
 instances and checks storage, cookies, sockets, counters, switching, reordering and
 removal against the real app.
 
-**Not checked** (no such machine or device in CI): the Ctrl+1 to Ctrl+9 menu accelerators on a real desktop (the action behind them is unit-tested), a real Wayland session and
+**Not checked** (no such machine or device in CI): the Ctrl+1 to Ctrl+9 menu accelerators (1 to 8 the first eight, 9 the last) on a real desktop (the action behind them is unit-tested), a real Wayland session and
 the PipeWire/portal screen picker, X11 screen sharing with real windows,
 microphone and camera hardware, VA-API encoding, libsecret with a running
 keyring (the fallback file was exercised), a private CA, a self-update against

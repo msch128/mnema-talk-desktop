@@ -20,6 +20,8 @@ mod mutes;
 mod rail;
 mod registry;
 mod stored;
+#[cfg(test)]
+pub(crate) mod testing;
 
 #[cfg(test)]
 pub use rail::RailInstance;
@@ -27,20 +29,33 @@ pub use rail::RailState;
 pub use registry::Registry;
 pub use stored::Stored;
 
-/// Ctrl+1 to Ctrl+9 reach the servers, so there are at most nine.
-pub const MAX_INSTANCES: usize = 9;
+/// Where Ctrl+`number` goes among `count` servers: 1 to 8 the server at that
+/// place, 9 the last one (as browsers do with tabs).
+pub fn shortcut_place(number: usize, count: usize) -> Option<usize> {
+    match number {
+        1..=8 if number <= count => Some(number - 1),
+        9 => count.checked_sub(1),
+        _ => None,
+    }
+}
+
 /// What the badge and the rail show at most.
 pub const MAX_COUNT: u32 = 999;
 const INSTANCE_PREFIX: &str = "i-";
 const ATTACHMENT_PREFIX: &str = "a-";
 const STORE_VERSION: u32 = 1;
-/// The most an imported list may hold.
-pub const MAX_IMPORT_BYTES: usize = 65536;
+/// The most an imported list may weigh. There is no limit on the number of
+/// servers: this only keeps a damaged or hostile file from being read whole
+/// into memory. At the longest names, folders and mutes a server takes well
+/// under 100 bytes more than its address, so this is room for 100 000 and
+/// more (the rail's import dialog asks for the same bound).
+pub const MAX_IMPORT_BYTES: usize = 8 << 20;
 /// A mute with no end.
 pub const FOREVER: i64 = -1;
 /// The longest a mute may last: a year and a day.
 pub const MAX_MUTE_SECS: i64 = 366 * 24 * 3600;
-const MAX_STORE_BYTES: u64 = 16 * 1024;
+/// The same for the list file of this client.
+const MAX_STORE_BYTES: u64 = 8 << 20;
 
 /// A server the client talks to and the verified bundle its pages run.
 pub struct Session {
@@ -115,6 +130,10 @@ pub struct Slot {
     pub clicks: Option<tauri::ipc::Channel<crate::web_notify::Click>>,
     /// Names the community icon the server set, as cached on this device.
     pub icon: Option<String>,
+    /// What the page last said about itself: busy (an unsent draft, an
+    /// upload, a Talk) or idle; `None` until it says (an older bundle never
+    /// does, and its page is never closed for being hidden).
+    pub busy: Option<bool>,
 }
 
 impl Slot {
@@ -130,6 +149,7 @@ impl Slot {
             generation: uuid::Uuid::new_v4().simple().to_string(),
             clicks: None,
             icon: None,
+            busy: None,
         }
     }
 
@@ -156,6 +176,7 @@ impl Slot {
         self.mentions = 0;
         self.reported = false;
         self.clicks = None;
+        self.busy = None;
         self.generation = uuid::Uuid::new_v4().simple().to_string();
     }
 
@@ -183,14 +204,12 @@ impl Slot {
 pub enum AddError {
     /// Already on the list, under this id.
     Known(String),
-    Full,
 }
 
 impl std::fmt::Display for AddError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             AddError::Known(_) => f.write_str("This server is already in the list."),
-            AddError::Full => write!(f, "At most {MAX_INSTANCES} servers fit in one window."),
         }
     }
 }
@@ -284,24 +303,52 @@ mod tests {
     }
 
     #[test]
-    fn the_same_server_cannot_be_added_twice_and_nine_is_the_most() {
+    fn the_same_server_cannot_be_added_twice_and_there_is_no_limit_on_how_many() {
         let mut registry = registry(&["a.example"]);
         assert_eq!(
             registry.add(url("https://a.example/")),
             Err(AddError::Known(id("a.example")))
         );
-        for n in 1..MAX_INSTANCES {
+        let started = std::time::Instant::now();
+        for n in 1..500 {
             registry
                 .add(url(&format!("https://s{n}.example/")))
                 .unwrap();
         }
-        assert_eq!(registry.len(), MAX_INSTANCES);
+        assert_eq!(registry.len(), 500);
+        assert!(registry.add(url("https://more.example/")).is_ok());
+        registry.start_adding();
+        let rail = registry.rail(true);
+        assert!(rail.can_add);
+        assert_eq!(rail.instances.len(), 501);
+        // Ctrl+9 still reaches the last one.
         assert_eq!(
-            registry.add(url("https://more.example/")),
-            Err(AddError::Full)
+            registry.activate_nth(9).as_deref(),
+            Some(id("more.example").as_str())
         );
-        assert!(!registry.start_adding());
-        assert!(!registry.rail(true).can_add);
+        // A list this long stays quick to keep (the lock it is under is also taken by the window).
+        let restored =
+            Registry::restore(&Stored::parse(&registry.stored().to_bytes().unwrap()).unwrap());
+        assert_eq!(restored.len(), 501);
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(2),
+            "{:?}",
+            started.elapsed()
+        );
+    }
+
+    #[test]
+    fn the_number_keys_follow_the_shared_vectors() {
+        let file: serde_json::Value =
+            serde_json::from_str(include_str!("../../../test-vectors/rail-layout.json")).unwrap();
+        let cases = file["shortcuts"].as_array().unwrap();
+        assert!(!cases.is_empty());
+        for case in cases {
+            let number = case["number"].as_u64().unwrap() as usize;
+            let count = case["count"].as_u64().unwrap() as usize;
+            let place = case["place"].as_u64().map(|p| p as usize);
+            assert_eq!(shortcut_place(number, count), place, "{case}");
+        }
     }
 
     #[test]
@@ -310,8 +357,10 @@ mod tests {
         assert!(registry.activate(&id("b.example")));
         assert_eq!(registry.active(), Some(id("b.example").as_str()));
         assert_eq!(registry.activate_nth(3), Some(id("c.example")));
+        // Ctrl+9 is the last server, however many there are.
+        assert_eq!(registry.activate_nth(9), Some(id("c.example")));
         assert_eq!(registry.activate_nth(1), Some(id("a.example")));
-        for number in [0, 4, 9] {
+        for number in [0, 4, 8, 10] {
             assert_eq!(registry.activate_nth(number), None, "{number}");
         }
         assert_eq!(
@@ -326,7 +375,7 @@ mod tests {
     fn the_page_for_adding_a_server_comes_and_goes_without_losing_the_front() {
         let mut registry = registry(&["a.example"]);
         registry.activate(&id("a.example"));
-        assert!(registry.start_adding());
+        registry.start_adding();
         assert!(registry.adding());
         assert_eq!(registry.active(), Some(id("a.example").as_str()));
         registry.stop_adding();
@@ -334,7 +383,7 @@ mod tests {
         // With nothing to show it stays.
         let mut empty = Registry::default();
         empty.stop_adding();
-        assert!(empty.start_adding());
+        empty.start_adding();
         assert!(empty.rail(true).adding);
     }
 
@@ -856,7 +905,7 @@ mod tests {
         ]
         .map(String::from)
         .into();
-        servers.extend((0..20).map(|n| format!("https://s{n}.example/")));
+        servers.extend((0..510).map(|n| format!("https://s{n}.example/")));
         write(
             &serde_json::json!({
                 "version": 1,
@@ -866,7 +915,7 @@ mod tests {
             .to_string(),
         );
         let stored = Stored::load(Some(&file));
-        assert_eq!(stored.servers.len(), MAX_INSTANCES);
+        assert_eq!(stored.servers.len(), 512, "every server, however many");
         assert_eq!(stored.servers[0], url("https://plain.example/"));
         assert_eq!(stored.servers[1], url("https://a.example/"));
         assert_eq!(

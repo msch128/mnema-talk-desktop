@@ -2,6 +2,7 @@
 //! counters, and bringing a server forward.
 use super::layout::{focus_front, layout};
 use super::menu::ServerMenu;
+use super::pushes::{PUSH_AFTER, PUSHES};
 use super::room::room_for;
 use super::{PRODUCT, RAIL, SHELL, TITLE};
 use crate::instances::RailState;
@@ -19,6 +20,7 @@ pub(super) fn rail_snapshot(app: &tauri::AppHandle) -> RailState {
             can_add: false,
             instances: Vec::new(),
             items: Vec::new(),
+            unload_after: None,
         },
     }
 }
@@ -37,16 +39,36 @@ fn window_title(state: &RailState) -> String {
 }
 
 /// Shows the rail what it should draw, titles the window after the server in
-/// front and renames the menu entries to match.
+/// front and renames the menu entries to match: shortly, together with the
+/// other changes of that moment (`pushes`).
 pub fn push_rail(app: &tauri::AppHandle) {
+    let schedule = PUSHES.lock().is_ok_and(|mut p| p.request());
+    if !schedule {
+        return;
+    }
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(PUSH_AFTER).await;
+        push_now(&app);
+    });
+}
+
+fn push_now(app: &tauri::AppHandle) {
+    if let Ok(mut pushes) = PUSHES.lock() {
+        pushes.begin();
+    }
     let state = rail_snapshot(app);
     // The window is titled with the server in front, by the name it gives itself.
     if let Some(window) = app.get_window(SHELL) {
         let _ = window.set_title(&window_title(&state));
     }
-    if let Ok(json) = serde_json::to_string(&state)
-        && let Some(rail) = app.get_webview(RAIL)
-    {
+    let Ok(json) = serde_json::to_string(&state) else {
+        return;
+    };
+    let Some(json) = PUSHES.lock().ok().and_then(|mut p| p.fresh(json)) else {
+        return;
+    };
+    if let Some(rail) = app.get_webview(RAIL) {
         let _ = rail.eval(format!("window.mnemaRail&&window.mnemaRail.set({json})"));
     }
     if let Some(items) = app.try_state::<ServerMenu>() {
@@ -122,6 +144,7 @@ mod tests {
             can_add: true,
             instances: vec![instance("a", "Lantern Fox"), instance("b", "b.example")],
             items: Vec::new(),
+            unload_after: None,
         };
         assert_eq!(window_title(&state), TITLE);
         state.active = Some("b".into());

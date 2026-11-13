@@ -1,6 +1,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 #[cfg(feature = "web-client")]
+mod fd_limit;
+#[cfg(feature = "web-client")]
 mod instances;
 #[cfg(feature = "web-client")]
 mod local_route;
@@ -18,6 +20,8 @@ mod rail_list;
 mod rail_menu;
 #[cfg(feature = "web-client")]
 mod rail_notify;
+#[cfg(feature = "web-client")]
+mod rail_sleep;
 #[cfg(feature = "multi-selftest")]
 mod selftest_multi;
 #[cfg(any(feature = "multi-selftest", feature = "real-selftest"))]
@@ -34,6 +38,8 @@ mod web_bundle;
 mod web_client;
 #[cfg(feature = "web-client")]
 mod web_download;
+#[cfg(feature = "web-client")]
+mod web_feed;
 #[cfg(feature = "web-client")]
 mod web_gaming;
 #[cfg(feature = "web-client")]
@@ -59,5 +65,6 @@ mod web_ws;
 
 #[cfg(feature = "web-client")]
 fn main() {
+    fd_limit::raise();
     web_client::run();
 }

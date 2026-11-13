@@ -10,7 +10,6 @@ import { RendererRecovery } from '../core/recovery.ts'
 import { TITLE } from '../core/title.ts'
 import { APP_URL, appApi, bundled, dialogUi, parseUrl, pickerUi, updateUi } from '../core/origin.ts'
 import { externalAllowed, externalPrompt } from '../core/client.ts'
-import { MAX_INSTANCES } from '../core/instances.ts'
 import { inviteChoice } from '../core/invite.ts'
 import { PARTITIONS, attachmentPartition, type Context, type Role } from './context.ts'
 
@@ -52,7 +51,8 @@ export async function openExternal(parent: BaseWindow | undefined, url: URL, ctx
  */
 async function offerServer(ctx: Context, parent: BaseWindow | undefined, url: URL): Promise<boolean> {
   const registry = ctx.trusted.registry
-  const choice = inviteChoice(url, (id) => registry.contains(id), registry.length < MAX_INSTANCES)
+  // Any number of servers fit, and each keeps its storage apart: there is always room.
+  const choice = inviteChoice(url, (id) => registry.contains(id), true)
   if (choice === 'external') return false
   const { addServer } = await import('./shell.ts')
   if (choice === 'add') {

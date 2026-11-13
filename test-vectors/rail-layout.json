@@ -1,6 +1,6 @@
 {
  "format": 1,
- "note": "The layout of the server rail: folders, order and local names. Read by the Rust host and the TypeScript client. start is the stored items (null: none stored) and start_aliases the stored names; every case is loaded (normalised), then its ops run in order (ok false: refused and nothing changes), then items, flat (the order of the servers on the rail) and aliases are compared. Folders made by group and new_folder get the id in the op's folder field (the host picks a random one).",
+ "note": "The layout of the server rail: folders, order and local names. Read by the Rust host and the TypeScript client. start is the stored items (null: none stored) and start_aliases the stored names; every case is loaded (normalised), then its ops run in order (ok false: refused and nothing changes), then items, flat (the order of the servers on the rail) and aliases are compared. Folders made by group and new_folder get the id in the op's folder field (the host picks a random one). shortcuts: the place (0-based, null: none) Ctrl+number reaches among count servers; 1 to 8 the server at that place, 9 the last one, as browsers do with tabs. counts: what the host shows for a server whose page is not loaded, from GET /api/read-state (states) and GET /api/dms (dms, conversations; notify_level inherit counts as all) as the web app's readStates and aggregateActivity read them: mentions summed over all entries (a mention counts even when muted), unread the entries with unread_count above zero whose notify_level is not mute; anything that is not a positive whole number counts as zero. unload: which hidden pages to close (oldest hidden first) while more than keep pages run: never the server in front, never one hidden for less than after_secs, never one whose page has not said it is idle (busy null: no signal; true: a draft, an upload or a Talk); after_secs null: never.",
  "cases": [
   {
    "name": "a list without a layout becomes the stored order, no folders",
@@ -3426,6 +3426,576 @@
     "d"
    ],
    "aliases": {}
+  }
+ ],
+ "shortcuts": [
+  {
+   "number": 0,
+   "count": 0,
+   "place": null
+  },
+  {
+   "number": 1,
+   "count": 0,
+   "place": null
+  },
+  {
+   "number": 2,
+   "count": 0,
+   "place": null
+  },
+  {
+   "number": 8,
+   "count": 0,
+   "place": null
+  },
+  {
+   "number": 9,
+   "count": 0,
+   "place": null
+  },
+  {
+   "number": 10,
+   "count": 0,
+   "place": null
+  },
+  {
+   "number": 0,
+   "count": 1,
+   "place": null
+  },
+  {
+   "number": 1,
+   "count": 1,
+   "place": 0
+  },
+  {
+   "number": 2,
+   "count": 1,
+   "place": null
+  },
+  {
+   "number": 8,
+   "count": 1,
+   "place": null
+  },
+  {
+   "number": 9,
+   "count": 1,
+   "place": 0
+  },
+  {
+   "number": 10,
+   "count": 1,
+   "place": null
+  },
+  {
+   "number": 0,
+   "count": 3,
+   "place": null
+  },
+  {
+   "number": 1,
+   "count": 3,
+   "place": 0
+  },
+  {
+   "number": 2,
+   "count": 3,
+   "place": 1
+  },
+  {
+   "number": 8,
+   "count": 3,
+   "place": null
+  },
+  {
+   "number": 9,
+   "count": 3,
+   "place": 2
+  },
+  {
+   "number": 10,
+   "count": 3,
+   "place": null
+  },
+  {
+   "number": 0,
+   "count": 8,
+   "place": null
+  },
+  {
+   "number": 1,
+   "count": 8,
+   "place": 0
+  },
+  {
+   "number": 2,
+   "count": 8,
+   "place": 1
+  },
+  {
+   "number": 8,
+   "count": 8,
+   "place": 7
+  },
+  {
+   "number": 9,
+   "count": 8,
+   "place": 7
+  },
+  {
+   "number": 10,
+   "count": 8,
+   "place": null
+  },
+  {
+   "number": 0,
+   "count": 9,
+   "place": null
+  },
+  {
+   "number": 1,
+   "count": 9,
+   "place": 0
+  },
+  {
+   "number": 2,
+   "count": 9,
+   "place": 1
+  },
+  {
+   "number": 8,
+   "count": 9,
+   "place": 7
+  },
+  {
+   "number": 9,
+   "count": 9,
+   "place": 8
+  },
+  {
+   "number": 10,
+   "count": 9,
+   "place": null
+  },
+  {
+   "number": 0,
+   "count": 10,
+   "place": null
+  },
+  {
+   "number": 1,
+   "count": 10,
+   "place": 0
+  },
+  {
+   "number": 2,
+   "count": 10,
+   "place": 1
+  },
+  {
+   "number": 8,
+   "count": 10,
+   "place": 7
+  },
+  {
+   "number": 9,
+   "count": 10,
+   "place": 9
+  },
+  {
+   "number": 10,
+   "count": 10,
+   "place": null
+  },
+  {
+   "number": 0,
+   "count": 200,
+   "place": null
+  },
+  {
+   "number": 1,
+   "count": 200,
+   "place": 0
+  },
+  {
+   "number": 2,
+   "count": 200,
+   "place": 1
+  },
+  {
+   "number": 8,
+   "count": 200,
+   "place": 7
+  },
+  {
+   "number": 9,
+   "count": 200,
+   "place": 199
+  },
+  {
+   "number": 10,
+   "count": 200,
+   "place": null
+  }
+ ],
+ "counts": [
+  {
+   "states": [],
+   "dms": [],
+   "unread": 0,
+   "mentions": 0
+  },
+  {
+   "states": [
+    {
+     "channel_id": "a",
+     "unread_count": 3,
+     "mention_count": 0,
+     "notify_level": "all"
+    }
+   ],
+   "dms": [],
+   "unread": 1,
+   "mentions": 0
+  },
+  {
+   "states": [
+    {
+     "channel_id": "a",
+     "unread_count": 3,
+     "mention_count": 2,
+     "notify_level": "mute"
+    }
+   ],
+   "dms": [],
+   "unread": 0,
+   "mentions": 2
+  },
+  {
+   "states": [
+    {
+     "channel_id": "a",
+     "unread_count": 0,
+     "mention_count": 0,
+     "notify_level": "all"
+    },
+    {
+     "channel_id": "b",
+     "unread_count": 5,
+     "mention_count": 1,
+     "notify_level": "mentions"
+    },
+    {
+     "channel_id": "c",
+     "unread_count": 1,
+     "mention_count": 4
+    }
+   ],
+   "dms": [],
+   "unread": 2,
+   "mentions": 5
+  },
+  {
+   "states": [
+    {
+     "channel_id": "a",
+     "unread_count": -2,
+     "mention_count": -1,
+     "notify_level": "all"
+    },
+    {
+     "channel_id": "b",
+     "unread_count": "7",
+     "mention_count": null
+    },
+    "junk",
+    null
+   ],
+   "dms": [],
+   "unread": 0,
+   "mentions": 0
+  },
+  {
+   "states": [
+    {
+     "channel_id": "a",
+     "unread_count": 2,
+     "mention_count": 0,
+     "notify_level": "all"
+    }
+   ],
+   "dms": [
+    {
+     "id": "d1",
+     "unread_count": 1,
+     "mention_count": 1,
+     "notify_level": "inherit"
+    }
+   ],
+   "unread": 2,
+   "mentions": 1
+  },
+  {
+   "states": [],
+   "dms": [
+    {
+     "id": "d1",
+     "unread_count": 4,
+     "mention_count": 2,
+     "notify_level": "mute"
+    },
+    {
+     "id": "d2",
+     "unread_count": 1,
+     "mention_count": 0,
+     "notify_level": "mentions"
+    }
+   ],
+   "unread": 1,
+   "mentions": 2
+  },
+  {
+   "states": [
+    {
+     "channel_id": "a",
+     "unread_count": 0,
+     "mention_count": 0,
+     "notify_level": "all"
+    }
+   ],
+   "dms": [
+    {
+     "id": "d1",
+     "unread_count": 0,
+     "mention_count": 0,
+     "notify_level": "all"
+    }
+   ],
+   "unread": 0,
+   "mentions": 0
+  },
+  {
+   "states": [
+    {
+     "channel_id": "a",
+     "unread_count": 1,
+     "mention_count": 3,
+     "notify_level": "all"
+    }
+   ],
+   "dms": {
+    "not": "a list"
+   },
+   "unread": 1,
+   "mentions": 3
+  }
+ ],
+ "unload": [
+  {
+   "after_secs": 600,
+   "keep": 4,
+   "now": 10000,
+   "servers": [
+    {
+     "id": "a",
+     "active": true,
+     "page": true,
+     "hidden_since": null,
+     "busy": false
+    },
+    {
+     "id": "b",
+     "active": false,
+     "page": true,
+     "hidden_since": 1000,
+     "busy": false
+    },
+    {
+     "id": "c",
+     "active": false,
+     "page": true,
+     "hidden_since": 2000,
+     "busy": false
+    },
+    {
+     "id": "d",
+     "active": false,
+     "page": true,
+     "hidden_since": 3000,
+     "busy": false
+    },
+    {
+     "id": "e",
+     "active": false,
+     "page": true,
+     "hidden_since": 9500,
+     "busy": false
+    }
+   ],
+   "unload": [
+    "b"
+   ]
+  },
+  {
+   "after_secs": 600,
+   "keep": 4,
+   "now": 10000,
+   "servers": [
+    {
+     "id": "a",
+     "active": true,
+     "page": true,
+     "hidden_since": null,
+     "busy": false
+    },
+    {
+     "id": "b",
+     "active": false,
+     "page": true,
+     "hidden_since": 1000,
+     "busy": false
+    },
+    {
+     "id": "c",
+     "active": false,
+     "page": true,
+     "hidden_since": 2000,
+     "busy": false
+    },
+    {
+     "id": "d",
+     "active": false,
+     "page": true,
+     "hidden_since": 3000,
+     "busy": false
+    },
+    {
+     "id": "e",
+     "active": false,
+     "page": true,
+     "hidden_since": 4000,
+     "busy": false
+    },
+    {
+     "id": "f",
+     "active": false,
+     "page": true,
+     "hidden_since": 5000,
+     "busy": false
+    },
+    {
+     "id": "g",
+     "active": false,
+     "page": true,
+     "hidden_since": 9900,
+     "busy": false
+    }
+   ],
+   "unload": [
+    "b",
+    "c",
+    "d"
+   ]
+  },
+  {
+   "after_secs": 600,
+   "keep": 1,
+   "now": 10000,
+   "servers": [
+    {
+     "id": "a",
+     "active": true,
+     "page": true,
+     "hidden_since": null,
+     "busy": false
+    },
+    {
+     "id": "b",
+     "active": false,
+     "page": true,
+     "hidden_since": 1000,
+     "busy": true
+    },
+    {
+     "id": "c",
+     "active": false,
+     "page": true,
+     "hidden_since": 2000,
+     "busy": null
+    },
+    {
+     "id": "d",
+     "active": false,
+     "page": true,
+     "hidden_since": 3000,
+     "busy": false
+    },
+    {
+     "id": "e",
+     "active": false,
+     "page": false,
+     "hidden_since": null,
+     "busy": false
+    }
+   ],
+   "unload": [
+    "d"
+   ]
+  },
+  {
+   "after_secs": null,
+   "keep": 0,
+   "now": 10000,
+   "servers": [
+    {
+     "id": "a",
+     "active": true,
+     "page": true,
+     "hidden_since": null,
+     "busy": false
+    },
+    {
+     "id": "b",
+     "active": false,
+     "page": true,
+     "hidden_since": 1,
+     "busy": false
+    }
+   ],
+   "unload": []
+  },
+  {
+   "after_secs": 600,
+   "keep": 0,
+   "now": 10000,
+   "servers": [
+    {
+     "id": "a",
+     "active": true,
+     "page": true,
+     "hidden_since": null,
+     "busy": false
+    },
+    {
+     "id": "b",
+     "active": false,
+     "page": true,
+     "hidden_since": 9401,
+     "busy": false
+    },
+    {
+     "id": "c",
+     "active": false,
+     "page": true,
+     "hidden_since": 9400,
+     "busy": false
+    }
+   ],
+   "unload": [
+    "c"
+   ]
   }
  ]
 }

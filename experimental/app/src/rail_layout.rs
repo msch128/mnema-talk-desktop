@@ -11,7 +11,7 @@ mod request;
 pub use request::{Edit, apply, new_folder_id};
 
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// Longest name of a folder or of a server, in characters.
 pub const MAX_NAME: usize = 40;
@@ -83,15 +83,13 @@ impl Layout {
         known: &[String],
         order: &[String],
     ) -> Layout {
-        let mut placed: Vec<String> = Vec::new();
-        let mut folders: Vec<String> = Vec::new();
+        // Sets: a list may hold any number of servers, a hostile one thousands of folders.
+        let known: std::collections::HashSet<&String> = known.iter().collect();
+        let mut placed: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut folders: BTreeSet<String> = BTreeSet::new();
         let mut kept: Vec<Item> = Vec::new();
-        let take = |id: &String, placed: &mut Vec<String>| {
-            let fresh = known.contains(id) && !placed.contains(id);
-            if fresh {
-                placed.push(id.clone());
-            }
-            fresh
+        let take = |id: &String, placed: &mut std::collections::HashSet<String>| {
+            known.contains(id) && placed.insert(id.clone())
         };
         for item in items.unwrap_or_default() {
             match item {
@@ -107,10 +105,9 @@ impl Layout {
                     collapsed,
                     servers,
                 } => {
-                    if !loadable_folder_id(&id) || folders.contains(&id) {
+                    if !loadable_folder_id(&id) || !folders.insert(id.clone()) {
                         continue;
                     }
-                    folders.push(id.clone());
                     let servers: Vec<String> = servers
                         .into_iter()
                         .filter(|s| take(s, &mut placed))
@@ -252,6 +249,43 @@ mod tests {
         };
         set(&mut edit);
         apply(layout, &edit, || F.to_owned())
+    }
+
+    #[test]
+    fn a_list_with_tens_of_thousands_of_folders_loads_in_linear_time_and_keeps_one_of_each() {
+        // 60 000 different folder ids: a list compared against every folder
+        // kept so far (quadratic) needs far longer than the bound below.
+        let known: Vec<String> = (0..200).map(|n| format!("{n:016x}")).collect();
+        let mut items: Vec<Item> = (0..60_000)
+            .map(|n| Item::Folder {
+                id: format!("f{n}"),
+                name: String::new(),
+                color: None,
+                collapsed: false,
+                servers: vec![known[n % 200].clone()],
+            })
+            .collect();
+        items.push(Item::Folder {
+            id: "f1".into(),
+            name: String::new(),
+            color: None,
+            collapsed: false,
+            servers: vec![known[1].clone()],
+        });
+        let started = std::time::Instant::now();
+        let layout = Layout::load(Some(items), BTreeMap::new(), &known, &known);
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(2),
+            "{:?}",
+            started.elapsed()
+        );
+        assert_eq!(layout.flat().len(), 200);
+        let mut seen = BTreeSet::new();
+        for item in &layout.items {
+            if let Item::Folder { id, .. } = item {
+                assert!(seen.insert(id.clone()), "{id} twice");
+            }
+        }
     }
 
     #[test]

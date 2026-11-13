@@ -66,10 +66,12 @@ pub(super) fn bundled(url: &Url) -> bool {
 /// detects these instead of bumping `web_client_api`; older bundles ignore it.
 /// `notify`: toasts and the badge. `unread`: the page reports unread channels
 /// and mentions for the server rail. `ws_query`: the socket may ask for
-/// conversation events (`/api/ws?dm=1`).
+/// conversation events (`/api/ws?dm=1`). `busy`: the page reports whether it
+/// holds a draft, an upload or a Talk (`desktop_report_busy`), so a hidden
+/// page that does not may be closed.
 fn capabilities(role: &str) -> &'static [&'static str] {
     if role == "instance" {
-        &["notify", "unread", "ws_query"]
+        &["notify", "unread", "ws_query", "busy"]
     } else {
         &[]
     }

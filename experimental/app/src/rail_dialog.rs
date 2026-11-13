@@ -61,8 +61,8 @@ struct File {
     max: usize,
 }
 
-/// The most a chosen file may hold.
-const MAX_FILE: usize = 65536;
+/// The most a chosen file may hold: an exported list of servers.
+const MAX_FILE: usize = crate::instances::MAX_IMPORT_BYTES;
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
 #[serde(deny_unknown_fields)]
@@ -479,13 +479,22 @@ mod tests {
 
     const SWITCH: &str = r##"{"title":"Switch","list":{"label":"Server","choices":[{"id":"a1","text":"One","hint":"one.example"},{"id":"b-2","text":"Two"}]},
         "buttons":[{"id":"cancel","text":"Cancel"}],"cancel":"cancel"}"##;
-    const IMPORT: &str = r##"{"title":"Import","file":{"label":"File","accept":".json","max":65536},
+    const IMPORT: &str = r##"{"title":"Import","file":{"label":"File","accept":".json","max":8388608},
         "buttons":[{"id":"cancel","text":"Cancel"},{"id":"import","text":"Import","primary":true}],"cancel":"cancel"}"##;
 
     #[test]
     fn a_list_to_pick_from_and_a_file_to_read_are_taken_as_described() {
         assert!(parse(SWITCH).is_ok());
         assert!(parse(IMPORT).is_ok());
+        // The rail's import asks for exactly the host's bound.
+        assert!(
+            include_str!("../rail-ui/rail-commands.js").contains(&format!("max: {MAX_FILE} }}")),
+            "rail-commands.js asks for another bound than {MAX_FILE}"
+        );
+        let too_big = format!(
+            r#"{{"title":"x","file":{{"label":"f","accept":".json","max":{}}},"buttons":[{{"id":"a","text":"A"}}],"cancel":"a"}}"#,
+            MAX_FILE + 1
+        );
         for bad in [
             // Only one of input, list and file.
             r#"{"title":"x","input":{"label":"l","value":"","max":5},"file":{"label":"f","accept":".json","max":5},"buttons":[{"id":"a","text":"A"}],"cancel":"a"}"#,
@@ -495,9 +504,9 @@ mod tests {
             r#"{"title":"x","list":{"label":"l","choices":[{"id":"A","text":"A"}]},"buttons":[{"id":"a","text":"A"}],"cancel":"a"}"#,
             r#"{"title":"x","list":{"label":"l","choices":[{"id":"a","text":"A"},{"id":"a","text":"B"}]},"buttons":[{"id":"a","text":"A"}],"cancel":"a"}"#,
             r#"{"title":"x","list":{"label":"l","choices":[{"id":"a","text":""}]},"buttons":[{"id":"a","text":"A"}],"cancel":"a"}"#,
-            // A file is a .json of at most 64 KiB.
+            // A file is a .json of at most MAX_IMPORT_BYTES.
             r#"{"title":"x","file":{"label":"f","accept":".exe","max":5},"buttons":[{"id":"a","text":"A"}],"cancel":"a"}"#,
-            r#"{"title":"x","file":{"label":"f","accept":".json","max":65537},"buttons":[{"id":"a","text":"A"}],"cancel":"a"}"#,
+            too_big.as_str(),
         ] {
             assert!(parse(bad).is_err(), "{bad}");
         }
@@ -522,7 +531,9 @@ mod tests {
         let import = parse(IMPORT).unwrap();
         let file = |v: String| accept(&import, "import", Some(v), None);
         assert_eq!(file("{}".into()).button, "import");
-        assert_eq!(file("x".repeat(65537)).button, "cancel");
+        // A list well over the old 1 MiB is taken.
+        assert_eq!(file(" ".repeat(3 << 20)).button, "import");
+        assert_eq!(file("x".repeat(MAX_FILE + 1)).button, "cancel");
         // Text where the spec asked for none.
         let confirm =
             parse(r#"{"title":"x","buttons":[{"id":"a","text":"A"}],"cancel":"a"}"#).unwrap();

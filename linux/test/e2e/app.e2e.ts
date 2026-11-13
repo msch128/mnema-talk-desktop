@@ -154,7 +154,7 @@ test('the conversation question is relayed to the server and nothing else of the
   assert.equal(sockets.at(-1)?.url, '/api/ws?dm=1')
   await instance.evaluate(`window.__TAURI_INTERNALS__.invoke('desktop_ws_close', { id: ${id} })`)
   const identity = await instance.evaluate<string[]>('[...window.__MNEMA_TRUSTED_APP__.capabilities]')
-  assert.deepEqual(identity, ['notify', 'unread', 'ws_query'])
+  assert.deepEqual(identity, ['notify', 'unread', 'ws_query', 'busy'])
 })
 
 test('the rail is a page of the host that no server page can reach or imitate', async () => {
