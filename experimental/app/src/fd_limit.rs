@@ -8,10 +8,12 @@
 
 /// The soft limit asked for: macOS's `OPEN_MAX`, the most `setrlimit` takes
 /// there for this resource.
+#[cfg(any(target_os = "macos", test))]
 pub const WANTED: u64 = 10_240;
 
 /// The soft limit to set: `WANTED`, never above the hard limit and never
 /// below what it is now.
+#[cfg(any(target_os = "macos", test))]
 pub fn wanted(soft: u64, hard: u64) -> u64 {
     soft.max(WANTED.min(hard))
 }

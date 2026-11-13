@@ -95,9 +95,10 @@ There is no external security audit.
   listens on a socket of its own that tells the server you are away there,
   exactly as the hidden page did, and sends nothing else. The 64 servers used
   most recently keep such a socket; the others are read every minute instead,
-  so that a long list costs neither open files nor a socket on every server
-  (on macOS the client also raises its open-file limit from the 256 an app
-  gets). The first counts after a server starts announce nothing. When its mentions
+  without a socket. Your presence on those servers is then not kept up: they
+  show you as offline rather than away until you open them again. A long list
+  costs neither open files nor a socket on every server (on macOS the client
+  also raises its open-file limit from the 256 an app gets). The first counts after a server starts announce nothing. When its mentions
   rise, one quiet notification says "N new mentions on <server>" (no sound,
   none for a muted server, only where the system already lets the app notify). Both values are
   settings of this device: the + button's menu has **Unload idle servers**
