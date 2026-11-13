@@ -18,7 +18,16 @@ export const LATEST_RELEASE_URL = 'https://api.github.com/repos/msch128/mnema-ta
 
 /** minisign public key of the updater, in the text form of `tauri.conf.json`. */
 export const UPDATER_PUBKEY = 'dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDg3MUUyOTlDQUVCRjZCMkYKUldRdmE3K3VuQ2tlaDdOajlZaG9vbENvRFBXQmtQd1pKUjZmK1hwRW8rSCt4b04rZzhwWVY3SkEK' // gitleaks:allow (a public key, the text of tauri.conf.json)
-export const UPDATER_ENDPOINTS: readonly string[] = ['https://github.com/msch128/mnema-talk-desktop/releases/latest/download/latest.json']
+/**
+ * The update feed, tried in order: the repository's new home in the mnema-xyz
+ * organization first, then the old msch128 path (it redirects after the move
+ * and is the only one that answers before it). Keep both for as long as
+ * clients of this version may be around; the feed is minisign-verified either way.
+ */
+export const UPDATER_ENDPOINTS: readonly string[] = [
+  'https://github.com/mnema-xyz/mnema-talk-desktop/releases/latest/download/latest.json',
+  'https://github.com/msch128/mnema-talk-desktop/releases/latest/download/latest.json'
+]
 /** The release page that deb installs point their users to. */
 export const RELEASES_PAGE = 'https://github.com/msch128/mnema-talk-desktop/releases/latest'
 const RELEASE_TAG_PAGE = 'https://github.com/msch128/mnema-talk-desktop/releases/tag/v'

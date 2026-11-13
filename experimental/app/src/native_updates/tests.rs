@@ -120,15 +120,30 @@ fn the_pinned_key_and_endpoint_in_the_config_are_usable() {
         .decode(updater["pubkey"].as_str().unwrap())
         .unwrap();
     assert!(minisign_verify::PublicKey::decode(std::str::from_utf8(&key).unwrap()).is_ok());
-    let endpoints = updater["endpoints"].as_array().unwrap();
-    assert_eq!(endpoints.len(), 1);
-    let url = Url::parse(endpoints[0].as_str().unwrap()).unwrap();
-    assert_eq!(url.scheme(), "https");
-    assert_eq!(url.host_str(), Some("github.com"));
-    assert!(
-        url.path()
-            .ends_with("/releases/latest/download/latest.json")
+    // The new home of the repository first, the old path (which redirects
+    // after the move, and is the only one before it) as the fallback.
+    let endpoints: Vec<&str> = updater["endpoints"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| e.as_str().unwrap())
+        .collect();
+    assert_eq!(
+        endpoints,
+        [
+            "https://github.com/mnema-xyz/mnema-talk-desktop/releases/latest/download/latest.json",
+            "https://github.com/msch128/mnema-talk-desktop/releases/latest/download/latest.json",
+        ]
     );
+    for endpoint in endpoints {
+        let url = Url::parse(endpoint).unwrap();
+        assert_eq!(url.scheme(), "https");
+        assert_eq!(url.host_str(), Some("github.com"));
+        assert!(
+            url.path()
+                .ends_with("/releases/latest/download/latest.json")
+        );
+    }
     assert_eq!(updater["requireSignedVersion"], true);
     assert!(updater.get("dangerousInsecureTransportProtocol").is_none());
     assert!(updater.get("allowDowngrades").is_none());
