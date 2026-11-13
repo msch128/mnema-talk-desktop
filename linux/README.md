@@ -110,6 +110,8 @@ src/core        no Electron: runs in plain Node, where the tests run
   store.ts        verified bundles, cache, floor, high-water marks, selection  (web_bundle.rs, Store)
   trust.ts        trust statement, TrustState, updater key choice  (web_trust.rs)
   proxy.ts        serve the bundle, forward /api/, limits, response filter  (web_proxy.rs)
+  download.ts     a download link of /api/ taken over by the host: streamed to disk, never held in memory
+  downloadname.ts the saved file's name from Content-Disposition, the download attribute, the address
   cookies.ts      the jar, vault or 0600 file  (web_proxy.rs, web_vault.rs)
   sockets.ts      /api/ws relay  (web_ws.rs)
   updates.ts      newer bundles and the trust statement from GitHub  (web_updates.rs)
@@ -144,6 +146,51 @@ so has every server and its attachment window, so what a page can fetch does not
 depend on a label it could claim. The server sessions are persistent: the app
 keeps the state of its end-to-end encryption in the browser storage of that
 partition, as on the other platforms.
+
+## Downloads
+
+The proxy holds a whole answer in memory (one without a length up to 32 MiB), so
+a download through it is not a way to save an export of up to 64 MiB, and
+Chromium tells the person nothing when such a download fails. The host
+therefore takes over the downloads of the app's own API. The preload (instance
+pages only) catches a plain primary-button click on an `a[download]` whose
+address is on the app origin under `/api/` and sends `desktop_download` with the
+path and the suggested name; blobs, other addresses and clicks with a modifier
+key are left to the page. The main process (`src/main/download.ts`) answers only
+the instance page of a server, requests the path of **that** server with its
+session (the proxy's request rules: its cookie, the instance's origin, only
+`/api/`). It first asks where to save the file (a save dialog in the Downloads
+folder) and makes the folder and the temporary file; only then is the server
+asked, so a cancelled dialog or a folder that cannot be written leaves a data
+export unspent on the server (it spends one once it sent the last byte). The
+body is streamed into the temporary file next to the target, which is renamed
+once the whole body has arrived; it is bounded by the server's own ceiling
+(2048 MiB plus 1 MiB) and by an idle timeout per piece, and a failure removes
+the partial file; a server that sends no answer within the idle time ends the
+download. Partial files an earlier run left behind (only the client's own
+names, `.` + 32 hex digits + `.mnema-download`, untouched for six hours) are
+removed at the next download into that folder. The proposed name follows the `download`
+attribute and the last path segment (the dialog comes before the server's
+`Content-Disposition`; the Tauri host, which has no dialog, reads `filename*`
+and `filename` first), cut down to one plain name that is safe on
+every system: the part after the last `/` or `\`, control characters and
+`< > : " | ? *` replaced by `_`, spaces and dots stripped from both ends (no
+hidden file), "download" when nothing is left, at most 200 bytes with a short
+extension kept, and a Windows device name (`CON`, `NUL`, `COM1`, ...) prefixed
+with `_`. The proposed path must lie directly in the folder. What the person
+picks in the save dialog is theirs. The cases are shared with the Rust host in
+[`../test-vectors/proxy.json`](../test-vectors/proxy.json) (`download_names`).
+
+A download ends in one of two ways: the file manager shows the file (and a
+notice names it), or an error dialog says what failed and what to do next
+(nothing left to download for a 404, the server's own message, cleaned and
+capped, or the HTTP status, an interrupted transfer, a disk problem in plain
+words). The sentences are the Tauri host's (`download_errors` in
+`test-vectors/proxy.json`); a second download of the same server while one
+runs is refused with one of them. Downloads Chromium starts itself (a blob) get the
+same feedback when they end. The end-to-end run sets `MNEMA_DESKTOP_DOWNLOAD_DIR`
+to save into a folder without a dialog; it is honoured only by an unpackaged
+client and only together with `MNEMA_DESKTOP_ALLOW_REMOTE_DEBUGGING=1`.
 
 ## Several servers side by side
 
@@ -219,6 +266,7 @@ Without `bundle/builtin.zip` the client still starts and has to download a bundl
 | `MNEMA_DESKTOP_DATA_DIR` | another data directory (tests use a temporary one) |
 | `MNEMA_DESKTOP_NO_VAULT=1` | session in the private file, not the secret service |
 | `MNEMA_DEBUG_PROTOCOL=1` | log what the client serves |
+| `MNEMA_DESKTOP_DOWNLOAD_DIR` | end-to-end only: save downloads here without a dialog (unpackaged client with `MNEMA_DESKTOP_ALLOW_REMOTE_DEBUGGING=1` only) |
 | `MNEMA_DESKTOP_ALLOW_NO_SANDBOX=1` | start although the sandbox is off |
 | `MNEMA_DESKTOP_ALLOW_REMOTE_DEBUGGING=1` | let a packaged client open a debugging port (the end-to-end run needs it) |
 | `MNEMA_DESKTOP_DEVTOOLS=1` | developer tools in an unpackaged run |

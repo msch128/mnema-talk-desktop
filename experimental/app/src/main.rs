@@ -33,6 +33,8 @@ mod web_bundle;
 #[cfg(feature = "web-client")]
 mod web_client;
 #[cfg(feature = "web-client")]
+mod web_download;
+#[cfg(feature = "web-client")]
 mod web_gaming;
 #[cfg(feature = "web-client")]
 mod web_json;

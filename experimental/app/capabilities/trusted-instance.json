@@ -1,6 +1,6 @@
 {
   "identifier": "trusted-instance",
-  "description": "The page of a server reaches that server's WebSocket through the host and shows OS notifications. Matched by webview label, so each server's page (i-<id>) has it and nothing else does.",
+  "description": "The page of a server reaches that server's WebSocket through the host, has the host save its downloads and shows OS notifications. Matched by webview label, so each server's page (i-<id>) has it and nothing else does.",
   "webviews": [
     "i-*"
   ],
@@ -8,6 +8,7 @@
     "allow-desktop-ws-open",
     "allow-desktop-ws-send",
     "allow-desktop-ws-close",
+    "allow-desktop-download",
     "allow-desktop-notify-open",
     "allow-desktop-notify",
     "allow-desktop-notify-permission",

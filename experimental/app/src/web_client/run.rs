@@ -51,6 +51,7 @@ fn invoke_handler() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'stat
         commands::desktop_ws_open,
         commands::desktop_ws_send,
         commands::desktop_ws_close,
+        crate::web_download::desktop_download,
         crate::web_shell::rail_state,
         crate::web_shell::rail_activate,
         crate::web_shell::rail_add,

@@ -80,3 +80,33 @@ const identity: unknown = ipcRenderer.sendSync('mnema:identity')
 if (identity !== null && typeof identity === 'object') {
   contextBridge.exposeInMainWorld('__MNEMA_TRUSTED_APP__', identity)
 }
+
+/**
+ * A click on a download link of the app's own API (`<a download href="/api/...">`)
+ * is taken over by the host: it fetches the file with the server's session, asks
+ * where to put it and says how it went. Anything else (a blob, another address,
+ * a click with a modifier key) is left to the page.
+ */
+function downloadLink(event: MouseEvent): { path: string, name: string } | null {
+  if (event.defaultPrevented || event.button !== 0 || event.ctrlKey || event.shiftKey || event.altKey || event.metaKey) return null
+  const target = event.target as Element | null
+  const anchor = typeof target?.closest === 'function' ? (target.closest('a[download]') as HTMLAnchorElement | null) : null
+  if (!anchor || typeof anchor.href !== 'string') return null
+  let url: URL
+  try {
+    url = new URL(anchor.href, location.href)
+  } catch {
+    return null
+  }
+  if (url.protocol !== location.protocol || url.host !== location.host || !url.pathname.startsWith('/api/')) return null
+  return { path: url.pathname + url.search, name: anchor.getAttribute('download') ?? '' }
+}
+
+if (identity !== null && typeof identity === 'object' && Reflect.get(identity, 'role') === 'instance') {
+  document.addEventListener('click', (event) => {
+    const link = downloadLink(event)
+    if (!link) return
+    event.preventDefault()
+    invoke('desktop_download', link).catch(() => undefined)
+  }, true)
+}

@@ -7,9 +7,11 @@
 //! `_CONTROL` a file the script appends to (`scripts/real-server-selftest.mjs`
 //! starts the server, restarts it on request and reads the record). The host
 //! adds the server, loads a bundle for it, signs in, opens the WebSocket, sends
-//! a message and sees it arrive, then follows the server through a restart.
+//! a message and sees it arrive, saves the data export through the page's
+//! download link, then follows the server through a restart.
 //! The line format (`ok <name>`, `fail <name>: <why>`, `total <checks run>`,
 //! `done`, and the requests `restart` and `down-checked`) is the contract with that script.
+mod export;
 mod page;
 mod restart;
 
@@ -79,6 +81,7 @@ async fn drive(app: &tauri::AppHandle, account: &Account) {
         return;
     };
     target.chat("first").await;
+    target.export().await;
     restart::through(&target).await;
     target.chat("second").await;
     target.history_and_sign_out().await;

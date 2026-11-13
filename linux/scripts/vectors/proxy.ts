@@ -3,6 +3,7 @@ import { Jar } from '../../src/core/cookies.ts'
 import { Limits, clampRange, inlineSafe, mimeFor, serveBundle, target } from '../../src/core/proxy.ts'
 import { bundle, spec, trusted } from '../../test/helpers/fixtures.ts'
 import { b64, keysOf, type Json } from './common.ts'
+import { downloadErrors, downloadNames } from './download.ts'
 
 export function proxyVectors(): Json {
   const types = ['application/json', 'text/plain; charset=utf-8', 'image/png', 'IMAGE/JPEG', 'image/webp', 'image/avif', 'image/x-icon', 'audio/ogg', 'video/mp4', 'application/vnd.api+json', 'application/octet-stream',
@@ -76,5 +77,5 @@ export function proxyVectors(): Json {
     }
   })
 
-  return { inline_safe: types, targets, caps: capSteps, ranges, mimes, serve: { trusted: keysOf(7), zip: b64(zip), cases: serveCases }, jars }
+  return { inline_safe: types, targets, caps: capSteps, ranges, mimes, serve: { trusted: keysOf(7), zip: b64(zip), cases: serveCases }, jars, download_names: downloadNames(), download_errors: downloadErrors() }
 }

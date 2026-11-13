@@ -10,6 +10,7 @@ import { session } from 'electron'
 import { closeWhenStarted } from '../core/downloads.ts'
 import { APP_SCHEME } from '../core/origin.ts'
 import { attachmentPartition, serverPartition, type Context, type Role } from './context.ts'
+import { reportWhenDone } from './download.ts'
 import { secureSession } from './permissions.ts'
 import { type RequestHandler, appHandler } from './protocol.ts'
 
@@ -25,6 +26,8 @@ export function prepare(ctx: Context, partition: string, role: Role, handler: Re
 /** The partition of a server's page, made ready. */
 export function prepareServer(ctx: Context, id: string): string {
   const partition = serverPartition(id)
+  // A download Chromium starts itself (a blob, say) still ends with the folder or an error, never silently.
+  if (!ctx.prepared.has(partition)) session.fromPartition(partition).on('will-download', (_event, item) => reportWhenDone(item))
   prepare(ctx, partition, 'instance', appHandler('instance', ctx.trusted, ctx.debug, id))
   return partition
 }
@@ -34,6 +37,7 @@ export function prepareAttachment(ctx: Context, id: string): string {
   if (!ctx.prepared.has(partition)) {
     // A download answer leaves the window empty: close it once the download is under way.
     session.fromPartition(partition).on('will-download', (_event, item) => {
+      reportWhenDone(item)
       closeWhenStarted(item, () => {
         const win = ctx.shell.attachments.get(id)
         if (win && !win.isDestroyed()) win.close()

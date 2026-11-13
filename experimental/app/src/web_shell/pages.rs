@@ -71,6 +71,9 @@ fn page_builder(
             serde_json::to_string(app_url().as_str()).map_err(|_| "Gaming setup failed.")?,
             serde_json::to_string(&gaming_token).map_err(|_| "Gaming setup failed.")?
         ))
+        // The host saves the download links of the app's own API itself
+        // (see the script): the webview would do it silently or not at all.
+        .initialization_script(crate::web_download::SCRIPT)
         // Routes of the app, and the API paths that downloads and attachment
         // links navigate to. The proxy answers the latter.
         .on_navigation(crate::web_client::navigation_allowed)
@@ -93,7 +96,8 @@ fn page_builder(
         builder
     };
     // WKWebView saves nothing unless the app takes the download; WebView2
-    // has a download UI of its own.
+    // has a download UI of its own. Download links of the app's own API never
+    // get here: the page hands them to the host (`web_download`).
     #[cfg(target_os = "macos")]
     let builder = {
         let downloads = app.clone();
@@ -104,29 +108,48 @@ fn page_builder(
 
 /// Takes a download of the app's own API, or of a file the page made itself
 /// (a `blob:` of the app origin), into the Downloads folder, under a name that
-/// cannot leave it and does not overwrite anything. The window an attachment
-/// link opened has nothing to show once the file is saved and closes.
+/// cannot leave it and does not overwrite anything, and shows the saved file
+/// (or says that nothing was saved). The window an attachment link opened has
+/// nothing to show once the download ended and closes.
 #[cfg(target_os = "macos")]
 fn save_download(
     app: &tauri::AppHandle,
     label: &str,
     event: tauri::webview::DownloadEvent<'_>,
 ) -> bool {
+    use crate::web_proxy::{directly_in, free_name};
     use tauri::webview::DownloadEvent::{Finished, Requested};
     match event {
         Requested { url, destination } => {
             let own = |u: &Url| app_api(u) || crate::web_client::own_blob(u);
-            let Some(dir) = app.path().download_dir().ok().filter(|_| own(&url)) else {
+            if !own(&url) {
+                return false;
+            }
+            let Some(dir) = app
+                .path()
+                .download_dir()
+                .ok()
+                .filter(|dir| std::fs::create_dir_all(dir).is_ok())
+            else {
+                crate::web_download::no_folder(&url);
                 return false;
             };
             let suggested = destination
                 .file_name()
                 .map(|n| n.to_string_lossy().into_owned())
                 .unwrap_or_default();
-            *destination = download_target(&dir, &suggested, |p| p.exists());
+            // A dangling link counts as taken: WebKit must not write through it.
+            let target = free_name(&dir, &suggested, |p| p.symlink_metadata().is_ok());
+            if !directly_in(&dir, &target) {
+                crate::web_download::no_folder(&url);
+                return false;
+            }
+            *destination = target;
+            crate::web_download::started(&url, Some(destination));
             true
         }
-        Finished { .. } => {
+        Finished { url, path, success } => {
+            crate::web_download::finished(app, &url, path.as_deref(), success);
             if crate::instances::id_of_attachment_label(label).is_some()
                 && let Some(window) = app.get_webview_window(label)
             {
@@ -136,40 +159,6 @@ fn save_download(
         }
         _ => false,
     }
-}
-
-/// Where a download goes in `dir`: the suggested name reduced to a plain file
-/// name, with " (2)", " (3)" and so on before the extension while `taken`.
-#[cfg(any(target_os = "macos", test))]
-fn download_target(
-    dir: &std::path::Path,
-    suggested: &str,
-    taken: impl Fn(&std::path::Path) -> bool,
-) -> std::path::PathBuf {
-    let name: String = suggested
-        .rsplit(['/', '\\'])
-        .next()
-        .unwrap_or_default()
-        .chars()
-        .filter(|c| !c.is_control())
-        .collect();
-    let name = name.trim().trim_start_matches('.');
-    let name = if name.is_empty() { "download" } else { name };
-    let path = std::path::Path::new(name);
-    let stem = path
-        .file_stem()
-        .map_or_else(|| name.to_owned(), |s| s.to_string_lossy().into_owned());
-    let extension = path
-        .extension()
-        .map(|e| format!(".{}", e.to_string_lossy()))
-        .unwrap_or_default();
-    let mut target = dir.join(name);
-    let mut n = 2;
-    while taken(&target) {
-        target = dir.join(format!("{stem} ({n}){extension}"));
-        n += 1;
-    }
-    target
 }
 
 /// A link of a server's page that leaves the app. An invite to a server that
@@ -249,29 +238,5 @@ fn new_window(
     match child {
         Ok(window) => Create { window },
         Err(_) => Deny,
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_download_keeps_to_the_folder_and_to_free_names() {
-        let dir = std::path::Path::new("/dl");
-        let free = |_: &std::path::Path| false;
-        assert_eq!(download_target(dir, "a.zip", free), dir.join("a.zip"));
-        assert_eq!(
-            download_target(dir, "../../etc/x.bin", free),
-            dir.join("x.bin")
-        );
-        assert_eq!(download_target(dir, "..\\y.txt", free), dir.join("y.txt"));
-        assert_eq!(download_target(dir, ".hidden", free), dir.join("hidden"));
-        assert_eq!(download_target(dir, "", free), dir.join("download"));
-        let taken = [dir.join("a.zip"), dir.join("a (2).zip")];
-        assert_eq!(
-            download_target(dir, "a.zip", |p| taken.iter().any(|t| t == p)),
-            dir.join("a (3).zip")
-        );
     }
 }

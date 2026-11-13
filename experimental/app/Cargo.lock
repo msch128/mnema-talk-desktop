@@ -2181,6 +2181,7 @@ dependencies = [
  "hex",
  "keyring",
  "keyring-core",
+ "libc",
  "minisign",
  "minisign-verify",
  "objc2",

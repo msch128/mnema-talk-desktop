@@ -10,7 +10,9 @@
  *   node scripts/real-server-selftest.mjs --run <server> xvfb-run -a node --test linux/test/e2e/real/server.e2e.ts
  */
 import assert from 'node:assert/strict'
-import { appendFileSync, existsSync, readFileSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { after, before, test } from 'node:test'
 import type { Page } from '../cdp.ts'
 import { type Running, launch } from '../launch.ts'
@@ -25,6 +27,8 @@ const skip = address === '' || record === '' || control === ''
 let app: Running
 let instance: Page
 let channel = ''
+/** Where the host saves a download in this run (the save dialog is skipped; see `testFolder` in src/main/download.ts). */
+const downloads = mkdtempSync(join(tmpdir(), 'mnema-e2e-downloads-'))
 const sent: string[] = []
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
@@ -65,11 +69,12 @@ async function chat(name: string): Promise<void> {
 
 before(async () => {
   if (skip) return
-  app = await launch()
+  app = await launch({ MNEMA_DESKTOP_DOWNLOAD_DIR: downloads })
 })
 
 after(async () => {
   await app?.stop()
+  rmSync(downloads, { recursive: true, force: true })
 })
 
 test('the server is added by its typed address and the bundle runs as an instance', { skip }, async () => {
@@ -107,6 +112,43 @@ test('the server restarts: the socket ends, requests fail meanwhile, the session
   await waitFor(() => controlHas('started'), 'the server starts again', 180_000)
   await waitFor(async () => (await api('GET', '/api/channels').catch(() => ({ status: 0 }))).status === 200, 'the session works again')
   await chat('second')
+})
+
+/** A real mouse click on the middle of the element, as a person would make it. */
+async function clickOn(id: string): Promise<void> {
+  const box = await instance.evaluate<{ x: number, y: number }>(`(() => { const r = document.getElementById(${JSON.stringify(id)}).getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 } })()`)
+  for (const type of ['mousePressed', 'mouseReleased']) await instance.send('Input.dispatchMouseEvent', { type, x: box.x, y: box.y, button: 'left', clickCount: 1 })
+}
+
+test('the GDPR export is requested, saved by the host from a download link, and then reads as downloaded', { skip }, async () => {
+  const requested = await api('POST', '/api/users/me/export', { current_password: password })
+  assert.ok(requested.status >= 200 && requested.status < 300, `status ${requested.status}`)
+  const state = async () => (await api<{ state?: string }>('GET', '/api/users/me/export')).json?.state
+  await waitFor(async () => (await state()) === 'ready', 'the export is ready', 120_000)
+  // The link the web app renders: an anchor with `download` to the API, in the app's own origin.
+  await instance.evaluate(`(() => {
+    const a = document.createElement('a')
+    a.id = 'export-link'
+    a.href = '/api/users/me/export/download'
+    a.setAttribute('download', 'mnema-talk-export.zip')
+    a.textContent = 'Download my data'
+    a.style.cssText = 'position:fixed;left:8px;top:8px;z-index:2147483647;padding:12px;background:#fff;color:#000'
+    document.body.append(a)
+  })()`)
+  await clickOn('export-link')
+  await waitFor(() => readdirSync(downloads).some((name) => !name.startsWith('.')), 'the file is saved', 120_000)
+  const [saved] = readdirSync(downloads).filter((name) => !name.startsWith('.'))
+  // The name the web app gives the link is the one proposed (the dialog comes before the server's own).
+  assert.equal(saved, 'mnema-talk-export.zip')
+  const bytes = readFileSync(join(downloads, saved as string))
+  assert.equal(bytes.subarray(0, 2).toString('latin1'), 'PK', 'a ZIP archive')
+  assert.deepEqual(readdirSync(downloads).filter((name) => name.startsWith('.')), [], 'no temporary file is left')
+  // The server records the download and keeps the file for the hour after it.
+  const recorded = async () => {
+    const json = (await api<{ state?: string, downloaded_at?: string }>('GET', '/api/users/me/export')).json
+    return json?.state === 'ready' && typeof json.downloaded_at === 'string'
+  }
+  await waitFor(recorded, 'the server records the download')
 })
 
 test('earlier messages are still stored and sign-out works', { skip }, async () => {
