@@ -40,7 +40,7 @@ serde = { version = "=1.0.229", features = ["derive"] }
 serde_json = "=1.0.154"
 uuid = { version = "=1.29.0", features = ["v4"] }
 url = "=2.5.8"
-tokio = { version = "=1.54.1", features = ["sync", "time", "rt", "macros"] }
+tokio = { version = "=1.54.1", features = ["sync", "time", "rt", "macros", "fs", "io-util"] }
 # `unstable`: several webviews in one window (the server rail beside the pages).
 tauri = { version = "=2.12.5", optional = true, features = ["unstable"] }
 # Signed native self-update. The same rustls stack and platform verifier as the rest of the host (its default provider is installed in web_tls.rs); no system proxy.

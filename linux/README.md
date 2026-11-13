@@ -159,14 +159,18 @@ path and the suggested name; blobs, other addresses and clicks with a modifier
 key are left to the page. The main process (`src/main/download.ts`) answers only
 the instance page of a server, requests the path of **that** server with its
 session (the proxy's request rules: its cookie, the instance's origin, only
-`/api/`), asks where to save the file (a save dialog in the Downloads folder;
-cancelling cancels the request quietly), streams the body into a temporary file
-next to the target and renames it once the whole body has arrived. The body is
-bounded by the server's own ceiling (2048 MiB plus 1 MiB) and by an idle timeout
-per piece; a failure removes the partial file. The body is read only once the
-person has chosen a place, so a cancelled dialog leaves an export unspent on the
-server. The proposed name follows `filename*`, `filename`, the `download`
-attribute and the last path segment, cut down to one plain name that is safe on
+`/api/`). It first asks where to save the file (a save dialog in the Downloads
+folder) and makes the folder and the temporary file; only then is the server
+asked, so a cancelled dialog or a folder that cannot be written leaves a data
+export unspent on the server (it spends one once it sent the last byte). The
+body is streamed into the temporary file next to the target, which is renamed
+once the whole body has arrived; it is bounded by the server's own ceiling
+(2048 MiB plus 1 MiB) and by an idle timeout per piece, and a failure removes
+the partial file. Partial files an earlier run left behind are removed at the
+next download into that folder. The proposed name follows the `download`
+attribute and the last path segment (the dialog comes before the server's
+`Content-Disposition`; the Tauri host, which has no dialog, reads `filename*`
+and `filename` first), cut down to one plain name that is safe on
 every system: the part after the last `/` or `\`, control characters and
 `< > : " | ? *` replaced by `_`, spaces and dots stripped from both ends (no
 hidden file), "download" when nothing is left, at most 200 bytes with a short
@@ -176,12 +180,15 @@ picks in the save dialog is theirs. The cases are shared with the Rust host in
 [`../test-vectors/proxy.json`](../test-vectors/proxy.json) (`download_names`).
 
 A download ends in one of two ways: the file manager shows the file (and a
-notice names it), or an error dialog says what failed (nothing left to download
-for a 404, the server's own message or the HTTP status, an interrupted
-transfer, a disk problem). Downloads Chromium starts itself (a blob) get the
+notice names it), or an error dialog says what failed and what to do next
+(nothing left to download for a 404, the server's own message, cleaned and
+capped, or the HTTP status, an interrupted transfer, a disk problem in plain
+words). The sentences are the Tauri host's (`download_errors` in
+`test-vectors/proxy.json`); a second download of the same server while one
+runs is refused with one of them. Downloads Chromium starts itself (a blob) get the
 same feedback when they end. The end-to-end run sets `MNEMA_DESKTOP_DOWNLOAD_DIR`
-to save into a folder without a dialog; it is honoured only together with
-`MNEMA_DESKTOP_ALLOW_REMOTE_DEBUGGING=1`.
+to save into a folder without a dialog; it is honoured only by an unpackaged
+client and only together with `MNEMA_DESKTOP_ALLOW_REMOTE_DEBUGGING=1`.
 
 ## Several servers side by side
 
@@ -257,7 +264,7 @@ Without `bundle/builtin.zip` the client still starts and has to download a bundl
 | `MNEMA_DESKTOP_DATA_DIR` | another data directory (tests use a temporary one) |
 | `MNEMA_DESKTOP_NO_VAULT=1` | session in the private file, not the secret service |
 | `MNEMA_DEBUG_PROTOCOL=1` | log what the client serves |
-| `MNEMA_DESKTOP_DOWNLOAD_DIR` | end-to-end only: save downloads here without a dialog (needs `MNEMA_DESKTOP_ALLOW_REMOTE_DEBUGGING=1`) |
+| `MNEMA_DESKTOP_DOWNLOAD_DIR` | end-to-end only: save downloads here without a dialog (unpackaged client with `MNEMA_DESKTOP_ALLOW_REMOTE_DEBUGGING=1` only) |
 | `MNEMA_DESKTOP_ALLOW_NO_SANDBOX=1` | start although the sandbox is off |
 | `MNEMA_DESKTOP_ALLOW_REMOTE_DEBUGGING=1` | let a packaged client open a debugging port (the end-to-end run needs it) |
 | `MNEMA_DESKTOP_DEVTOOLS=1` | developer tools in an unpackaged run |

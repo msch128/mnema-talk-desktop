@@ -64,7 +64,7 @@ function lastSegment(path: string): string {
 /** Characters no file name may hold on Windows (and that make a colon a drive or a stream). */
 const RESERVED = new Set(['<', '>', ':', '"', '|', '?', '*'])
 /** Names Windows gives to devices, with or without an extension. */
-const DEVICE = /^(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])$/i
+const DEVICE = /^(?:CON|PRN|AUX|NUL|CONIN\$|CONOUT\$|COM[1-9]|LPT[1-9])$/i
 /** Longest name proposed, in UTF-8 bytes; an extension of up to 16 bytes is kept. */
 export const MAX_NAME_BYTES = 200
 const MAX_EXTENSION_BYTES = 16

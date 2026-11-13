@@ -16,7 +16,10 @@ mod tests;
 
 pub use bundle::serve_bundle;
 pub use client::{client, client_builder};
-pub use download::{Failure, download_to};
+#[cfg(test)]
+pub use download::clean_message;
+pub use download::{Disk, Failure, download_to};
+#[cfg(target_os = "macos")]
 pub use filename::{directly_in, free_name};
 pub use forward::{Instance, forward};
 pub use jar::Jar;

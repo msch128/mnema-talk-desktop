@@ -10,15 +10,22 @@ use std::path::{Component, Path, PathBuf};
 /// cannot leave the folder. The cases are shared with the Linux client
 /// (`download_names` in `test-vectors/proxy.json`).
 pub fn file_name(disposition: Option<&str>, attribute: &str, path: &str) -> String {
-    let from_header = disposition.and_then(|d| {
-        parameter(d, "filename*")
-            .and_then(|v| extended(&v))
-            .or_else(|| parameter(d, "filename"))
-    });
-    let raw = from_header
-        .filter(|n| !n.trim().is_empty())
-        .or_else(|| (!attribute.trim().is_empty()).then(|| attribute.to_owned()))
-        .unwrap_or_else(|| last_segment(path));
+    let star = disposition
+        .and_then(|d| parameter(d, "filename*"))
+        .and_then(|v| extended(&v));
+    let plain = disposition.and_then(|d| parameter(d, "filename"));
+    // The first candidate that is not blank: a blank `filename*` falls back
+    // to `filename`, and so on.
+    let raw = [
+        star,
+        plain,
+        Some(attribute.to_owned()),
+        Some(last_segment(path)),
+    ]
+    .into_iter()
+    .flatten()
+    .find(|n| !n.trim().is_empty())
+    .unwrap_or_default();
     plain_name(&raw)
 }
 
@@ -124,8 +131,8 @@ fn capped(name: &str) -> String {
     )
 }
 
-/// A Windows device name (CON, PRN, AUX, NUL, COM1-9, LPT1-9), whatever the
-/// case, with or without an extension.
+/// A Windows device name (CON, PRN, AUX, NUL, CONIN$, CONOUT$, COM1-9,
+/// LPT1-9), whatever the case, with or without an extension.
 fn is_device(name: &str) -> bool {
     let stem = name
         .split('.')
@@ -133,10 +140,12 @@ fn is_device(name: &str) -> bool {
         .unwrap_or_default()
         .trim_end_matches(' ');
     let upper = stem.to_ascii_uppercase();
-    matches!(upper.as_str(), "CON" | "PRN" | "AUX" | "NUL")
-        || ((upper.starts_with("COM") || upper.starts_with("LPT"))
-            && upper.len() == 4
-            && matches!(upper.as_bytes()[3], b'1'..=b'9'))
+    matches!(
+        upper.as_str(),
+        "CON" | "PRN" | "AUX" | "NUL" | "CONIN$" | "CONOUT$"
+    ) || ((upper.starts_with("COM") || upper.starts_with("LPT"))
+        && upper.len() == 4
+        && matches!(upper.as_bytes()[3], b'1'..=b'9'))
 }
 
 /// A plain file name, the same on every system: what follows the last `/` or
@@ -183,10 +192,13 @@ pub fn directly_in(dir: &Path, path: &Path) -> bool {
         && path.parent() == Some(dir)
 }
 
-/// Where a file named `name` goes in `dir`: that name reduced to a plain file
-/// name, with " (2)", " (3)" and so on before the extension while `taken`.
-pub fn free_name(dir: &Path, name: &str, taken: impl Fn(&Path) -> bool) -> PathBuf {
+/// The `n`th name to try for `name` in `dir`: the plain name itself, then
+/// " (2)", " (3)" and so on before the extension.
+pub fn nth_name(dir: &Path, name: &str, n: u32) -> PathBuf {
     let name = plain_name(name);
+    if n <= 1 {
+        return dir.join(name);
+    }
     let path = Path::new(&name);
     let stem = path
         .file_stem()
@@ -195,11 +207,14 @@ pub fn free_name(dir: &Path, name: &str, taken: impl Fn(&Path) -> bool) -> PathB
         .extension()
         .map(|e| format!(".{}", e.to_string_lossy()))
         .unwrap_or_default();
-    let mut target = dir.join(&name);
-    let mut n = 2;
-    while taken(&target) {
-        target = dir.join(format!("{stem} ({n}){extension}"));
-        n += 1;
-    }
-    target
+    dir.join(format!("{stem} ({n}){extension}"))
+}
+
+/// The first of those names in `dir` that is not `taken`.
+#[cfg(any(target_os = "macos", test))]
+pub fn free_name(dir: &Path, name: &str, taken: impl Fn(&Path) -> bool) -> PathBuf {
+    (1..)
+        .map(|n| nth_name(dir, name, n))
+        .find(|p| !taken(p))
+        .expect("an endless range")
 }

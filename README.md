@@ -47,8 +47,10 @@ There is no external security audit.
 - **Downloads you can find.** A file a server's page offers for download (your
   data export, an attachment from the media viewer) is fetched by the client
   itself and streamed to disk, whatever its size: on Windows and macOS into the
-  Downloads folder, shown selected in Explorer or Finder; on Linux where the
-  save dialog says. A download that saved nothing says why in an error dialog;
+  Downloads folder, never over an existing file, marked as downloaded from the
+  internet (as a browser marks it) and shown selected in Explorer or Finder; on
+  Linux where the save dialog says. One download per server runs at a time. A
+  download that saved nothing says why and what to do next in an error dialog;
   a partial file is never left behind.
 - **Several servers side by side (1.1).** A rail on the left lists your servers
   with an unread dot and a mention count each. Add as many as nine, switch with

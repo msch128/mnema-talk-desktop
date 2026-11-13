@@ -1,13 +1,14 @@
 import assert from 'node:assert/strict'
 import { randomBytes } from 'node:crypto'
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
 import { stripTypeScriptTypes } from 'node:module'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import { afterEach, test } from 'node:test'
 import { runInNewContext } from 'node:vm'
 import { Jar } from '../src/core/cookies.ts'
-import { INTERRUPTED, NOTHING_TO_DOWNLOAD, TOO_LARGE, downloadRequest, openDownload, refusalMessage } from '../src/core/download.ts'
+import { PARTIAL_SUFFIX, downloadInto, downloadRequest, removeStalePartials, saveDownload } from '../src/core/download.ts'
+import { REASONS, SENTENCES, cleanMessage, refusalMessage } from '../src/core/downloadtext.ts'
 import { MAX_NAME_BYTES, downloadName, inFolder } from '../src/core/downloadname.ts'
 import { Limits, type Instance } from '../src/core/proxy.ts'
 import { reply, serve, type TestServer } from './helpers/server.ts'
@@ -48,7 +49,7 @@ test('every proposed name is one plain component: no separator, reserved charact
     assert.doesNotMatch(name, /[/\\<>:"|?*]/, name)
     assert.ok([...name].every((c) => { const code = c.codePointAt(0) as number; return code >= 0x20 && (code < 0x7f || code > 0x9f) }), name)
     assert.doesNotMatch(name, /^[ .]|[ .]$/, name)
-    assert.doesNotMatch(name, /^(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9]) *(?:\.|$)/i, name)
+    assert.doesNotMatch(name, /^(?:CON|PRN|AUX|NUL|CONIN\$|CONOUT\$|COM[1-9]|LPT[1-9]) *(?:\.|$)/i, name)
     assert.equal(dirname(inFolder('/dl', name)), resolve('/dl'), name)
   }
 })
@@ -135,15 +136,15 @@ const answer = (status: number, headers: Record<string, string>, ...pieces: Buff
   res.end()
 }
 
+const EXPORT = '/api/users/me/export/download'
+const visible = (dir: string) => readdirSync(dir).filter((name) => !name.endsWith(PARTIAL_SUFFIX))
+
 test('a complete body becomes the file, byte for byte, and no temporary file is left', async () => {
   const body = randomBytes(3 << 20)
   const { instance, server } = await instanceFor(answer(200, { 'content-disposition': 'attachment; filename="mnema-talk-export.zip"' }, body.subarray(0, 1 << 20), body.subarray(1 << 20)))
-  const opened = await openDownload(instance, '/api/users/me/export/download', '')
-  assert.ok('pending' in opened)
-  assert.equal(opened.pending.name, 'mnema-talk-export.zip')
   const dir = folder()
-  const dest = join(dir, opened.pending.name)
-  assert.deepEqual(await opened.pending.save(dest), { ok: true, bytes: body.length })
+  const dest = join(dir, 'mnema-talk-export.zip')
+  assert.deepEqual(await downloadInto(instance, EXPORT, dest), { ok: true, bytes: body.length })
   assert.ok(readFileSync(dest).equals(body))
   assert.deepEqual(readdirSync(dir), ['mnema-talk-export.zip'])
   // The request is the proxy's: the session cookie and the instance's own origin.
@@ -151,19 +152,51 @@ test('a complete body becomes the file, byte for byte, and no temporary file is 
   assert.equal(server.requests[0]?.headers.origin, server.origin.origin)
 })
 
-test('a connection cut in the middle of the body leaves nothing and says so', async () => {
-  const cut = (headers: Record<string, string>): Parameters<typeof serve>[0] => (_request, res) => {
+test('the place is chosen before the server is asked: a cancelled dialog leaves the export unspent', async () => {
+  let spent = false
+  const { instance, server } = await instanceFor((_request, res) => {
+    res.writeHead(200, { 'content-disposition': 'attachment; filename="mnema-talk-export.zip"' })
+    res.end(Buffer.from('PK small export'), () => { spent = true })
+  })
+  const proposed: string[] = []
+  const cancelled = await saveDownload(instance, { path: EXPORT, name: 'mnema-talk-export.zip' }, (name) => { proposed.push(name); return Promise.resolve(null) })
+  assert.deepEqual(cancelled, { cancelled: true })
+  assert.deepEqual(proposed, ['mnema-talk-export.zip'])
+  assert.equal(server.requests.length, 0)
+  assert.equal(spent, false)
+  const dir = folder()
+  const chosen = join(dir, 'mine.zip')
+  const done = await saveDownload(instance, { path: EXPORT, name: '' }, () => Promise.resolve(chosen))
+  assert.deepEqual(done, { ok: true, bytes: 15, dest: chosen })
+  assert.equal(readFileSync(chosen, 'utf8'), 'PK small export')
+})
+
+test('a folder that cannot be written asks the server for nothing and says why in plain words', async () => {
+  const { instance, server } = await instanceFor(reply(200, {}, Buffer.alloc(100)))
+  const dir = folder()
+  writeFileSync(join(dir, 'blocker'), 'a file where the folder should be')
+  const result = await downloadInto(instance, EXPORT, join(dir, 'blocker', 'Downloads', 'x.zip'))
+  assert.deepEqual(result, { ok: false, error: 'The file could not be saved: the folder does not exist. Check the folder, then try again.' })
+  assert.equal(server.requests.length, 0)
+})
+
+test('a folder that does not exist yet is made and gets the file', async () => {
+  const { instance } = await instanceFor(reply(200, {}, 'PK'))
+  const dest = join(folder(), 'new', 'Downloads', 'x.zip')
+  assert.deepEqual(await downloadInto(instance, EXPORT, dest), { ok: true, bytes: 2 })
+  assert.equal(readFileSync(dest, 'utf8'), 'PK')
+})
+
+test('a connection cut in the middle of the body, or one shorter than its length, leaves nothing and says so', async () => {
+  const cut = (headers: Record<string, string>, end: boolean): Parameters<typeof serve>[0] => (_request, res) => {
     res.writeHead(200, headers)
     res.write(Buffer.alloc(100, 1))
-    setTimeout(() => res.destroy(), 30)
+    setTimeout(() => (end ? res.end() : res.destroy()), 30)
   }
-  for (const headers of [{ 'content-length': '5000' }, {}] as Record<string, string>[]) {
-    const { instance } = await instanceFor(cut(headers))
-    const opened = await openDownload(instance, '/api/x', 'x.bin')
-    assert.ok('pending' in opened)
+  for (const [headers, end] of [[{ 'content-length': '5000' }, false], [{}, false]] as [Record<string, string>, boolean][]) {
+    const { instance } = await instanceFor(cut(headers, end))
     const dir = folder()
-    const result = await opened.pending.save(join(dir, 'x.bin'))
-    assert.deepEqual(result, { ok: false, error: INTERRUPTED })
+    assert.deepEqual(await downloadInto(instance, '/api/x', join(dir, 'x.bin')), { ok: false, error: SENTENCES.cut })
     assert.deepEqual(readdirSync(dir), [])
   }
 })
@@ -173,64 +206,66 @@ test('a body that stalls is dropped after the idle time', async () => {
     res.writeHead(200, {})
     res.write(Buffer.alloc(10))
   })
-  const opened = await openDownload(instance, '/api/x', 'x.bin', { cap: 1 << 20, idleMs: 150 })
-  assert.ok('pending' in opened)
   const dir = folder()
-  assert.deepEqual(await opened.pending.save(join(dir, 'x.bin')), { ok: false, error: INTERRUPTED })
+  assert.deepEqual(await downloadInto(instance, '/api/x', join(dir, 'x.bin'), { cap: 1 << 20, idleMs: 150 }), { ok: false, error: SENTENCES.cut })
   assert.deepEqual(readdirSync(dir), [])
 })
 
-test('a refusal writes nothing and names the reason: 404 is a spent file, else the server\'s message or the status', async () => {
-  const dir = folder()
+test('a refusal writes nothing and names the reason and what to do: 404 is a spent file, else the server\'s message or the status', async () => {
   const json = { 'content-type': 'application/json' }
   const cases: [number, string, string][] = [
-    [404, '{"error":{"code":"NOT_FOUND","message":"export not found"}}', NOTHING_TO_DOWNLOAD],
-    [409, '{"error":{"code":"CONFLICT","message":"the export is not ready yet"}}', 'the export is not ready yet'],
-    [403, '{"message":"forbidden here"}', 'forbidden here'],
-    [500, 'not json', 'The download failed (HTTP 500).'],
-    [401, '{"error":{"code":"UNAUTHORIZED"}}', 'The download failed (HTTP 401).'],
+    [404, '{"error":{"code":"NOT_FOUND","message":"export not found"}}', SENTENCES.gone],
+    [409, '{"error":{"code":"CONFLICT","message":"the export is not ready yet."}}', 'The server refused the download: the export is not ready yet. Try again later.'],
+    [403, '{"message":"forbidden\\u0007 here"}', 'The server refused the download: forbidden here. Try again later.'],
+    [500, 'not json', 'The download failed (HTTP 500). Try again later.'],
+    [401, '{"error":{"code":"UNAUTHORIZED"}}', 'The download failed (HTTP 401). Try again later.'],
   ]
   for (const [status, body, expected] of cases) {
     const { instance } = await instanceFor(reply(status, json, body))
-    const opened = await openDownload(instance, '/api/users/me/export/download', 'x.zip')
-    assert.deepEqual(opened, { error: expected }, String(status))
+    const dir = folder()
+    assert.deepEqual(await downloadInto(instance, EXPORT, join(dir, 'x.zip')), { ok: false, error: expected }, String(status))
+    assert.deepEqual(readdirSync(dir), [])
   }
-  assert.deepEqual(readdirSync(dir), [])
-  assert.equal(refusalMessage(404, null), NOTHING_TO_DOWNLOAD)
-  assert.equal(refusalMessage(502, null), 'The download failed (HTTP 502).')
+  assert.ok(SENTENCES.gone.includes('request a new one'))
+  assert.equal(refusalMessage(502, null), 'The download failed (HTTP 502). Try again later.')
 })
 
 test('a body above the cap is refused, announced or not, and leaves nothing', async () => {
-  const dir = folder()
   const announced = await instanceFor(reply(200, {}, Buffer.alloc(100)))
-  assert.deepEqual(await openDownload(announced.instance, '/api/x', '', { cap: 10, idleMs: 5000 }), { error: TOO_LARGE })
-  const streamed = await instanceFor(answer(200, {}, Buffer.alloc(8), Buffer.alloc(8), Buffer.alloc(8)))
-  const opened = await openDownload(streamed.instance, '/api/x', '', { cap: 20, idleMs: 5000 })
-  assert.ok('pending' in opened)
-  assert.deepEqual(await opened.pending.save(join(dir, 'x.bin')), { ok: false, error: TOO_LARGE })
-  assert.deepEqual(readdirSync(dir), [])
-})
-
-test('a disk problem is reported with its reason and leaves nothing', async () => {
-  const { instance } = await instanceFor(reply(200, {}, Buffer.alloc(100)))
-  const opened = await openDownload(instance, '/api/x', 'x.bin')
-  assert.ok('pending' in opened)
   const dir = folder()
-  const result = await opened.pending.save(join(dir, 'missing', 'x.bin'))
-  assert.deepEqual(result, { ok: false, error: 'The file could not be saved: the folder does not exist.' })
+  assert.deepEqual(await downloadInto(announced.instance, '/api/x', join(dir, 'x.bin'), { cap: 10, idleMs: 5000 }), { ok: false, error: SENTENCES.too_large })
+  const streamed = await instanceFor(answer(200, {}, Buffer.alloc(8), Buffer.alloc(8), Buffer.alloc(8)))
+  assert.deepEqual(await downloadInto(streamed.instance, '/api/x', join(dir, 'x.bin'), { cap: 20, idleMs: 5000 }), { ok: false, error: SENTENCES.too_large })
   assert.deepEqual(readdirSync(dir), [])
 })
 
-test('an abandoned download writes nothing, and only /api/ of the server can be asked for', async () => {
+test('partial files of an earlier run are removed, fresh ones and other files kept', async () => {
+  const dir = folder()
+  const old = join(dir, `.old${PARTIAL_SUFFIX}`)
+  writeFileSync(old, 'x')
+  writeFileSync(join(dir, `.fresh${PARTIAL_SUFFIX}`), 'x')
+  writeFileSync(join(dir, 'mine.zip'), 'x')
+  const past = new Date(Date.now() - 3_600_000)
+  utimesSync(old, past, past)
+  await removeStalePartials(dir, 240_000)
+  assert.deepEqual(readdirSync(dir).sort(), [`.fresh${PARTIAL_SUFFIX}`, 'mine.zip'])
+  assert.deepEqual(visible(dir), ['mine.zip'])
+})
+
+test('only /api/ of the server can be asked for, and nothing is written for anything else', async () => {
   const { instance, server } = await instanceFor(reply(200, {}, Buffer.alloc(100)))
-  const opened = await openDownload(instance, '/api/x', 'x.bin')
-  assert.ok('pending' in opened)
-  opened.pending.abandon()
-  const before = server.requests.length
+  const dir = folder()
   for (const path of ['/index.html', '/api/../x', '//evil.example/api/x', 'https://evil.example/api/x', '/api/a\\b']) {
-    const refused = await openDownload(instance, path, '')
-    assert.ok('error' in refused, path)
+    assert.deepEqual(await downloadInto(instance, path, join(dir, 'x.bin')), { ok: false, error: SENTENCES.bad_path }, path)
+    assert.deepEqual(await saveDownload(instance, { path, name: '' }, () => Promise.resolve(join(dir, 'x.bin'))), { ok: false, error: SENTENCES.bad_path }, path)
   }
-  assert.equal(server.requests.length, before)
-  assert.equal(existsSync(join(folder(), 'x.bin')), false)
+  assert.equal(server.requests.length, 0)
+  assert.equal(existsSync(join(dir, 'x.bin')), false)
+})
+
+test('the sentences, the reasons and the cleaning of a server message are the shared table', () => {
+  const v = JSON.parse(readFileSync(new URL('../../test-vectors/proxy.json', import.meta.url), 'utf8')) as { download_errors: { sentences: Record<string, string>, reasons: Record<string, string>, messages: { input: string, output: string | null }[] } }
+  assert.deepEqual(v.download_errors.sentences, SENTENCES)
+  assert.deepEqual(v.download_errors.reasons, REASONS)
+  for (const c of v.download_errors.messages) assert.equal(cleanMessage(c.input), c.output, JSON.stringify(c))
 })

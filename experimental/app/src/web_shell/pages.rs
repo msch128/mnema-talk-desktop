@@ -125,21 +125,27 @@ fn save_download(
             if !own(&url) {
                 return false;
             }
-            let Ok(dir) = app.path().download_dir() else {
-                crate::web_client::show_error("There is no Downloads folder to save the file in.");
+            let Some(dir) = app
+                .path()
+                .download_dir()
+                .ok()
+                .filter(|dir| std::fs::create_dir_all(dir).is_ok())
+            else {
+                crate::web_download::no_folder(&url);
                 return false;
             };
             let suggested = destination
                 .file_name()
                 .map(|n| n.to_string_lossy().into_owned())
                 .unwrap_or_default();
-            let target = free_name(&dir, &suggested, |p| p.exists());
+            // A dangling link counts as taken: WebKit must not write through it.
+            let target = free_name(&dir, &suggested, |p| p.symlink_metadata().is_ok());
             if !directly_in(&dir, &target) {
-                crate::web_client::show_error("The download has a name that cannot be saved.");
+                crate::web_download::no_folder(&url);
                 return false;
             }
             *destination = target;
-            crate::web_download::started(&url, destination);
+            crate::web_download::started(&url, Some(destination));
             true
         }
         Finished { url, path, success } => {

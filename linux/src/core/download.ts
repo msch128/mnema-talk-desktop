@@ -6,85 +6,78 @@
  * the answer is requested like the proxy requests it (the session's cookie, the
  * instance's origin, only `/api/` of that server) and streamed to a file next to
  * the target, which is renamed into place only once the whole body has arrived.
- * Nothing is read into memory, and a failed transfer leaves no file behind.
+ *
+ * Everything that can fail on this machine comes first: the target is chosen,
+ * its folder made and the temporary file created before the server is asked,
+ * because the server spends a data export once it sent the last byte.
  */
 import { randomBytes } from 'node:crypto'
 import { createWriteStream } from 'node:fs'
-import { rename, rm } from 'node:fs/promises'
+import { mkdir, open, readdir, rename, rm, stat } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { Transform } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import { downloadName } from './downloadname.ts'
-import { type HttpResponse, headerText, readBody, send } from './http.ts'
+import { SENTENCES, cleanMessage, diskSentence, reasonOf, refusalMessage } from './downloadtext.ts'
+import { type HttpResponse, readBody, send } from './http.ts'
 import { type Instance, requestHeaders, target } from './proxy.ts'
 
 /** The server's own ceiling for a file (`MAX_UPLOAD_SIZE_MB` is at most 2048), with its overhead. */
 export const DOWNLOAD_CAP = (2048 + 1) * 2 ** 20
 /** How long the instance may stay silent while the body is being written. */
 export const IDLE_MS = 60_000
-
-export const NOTHING_TO_DOWNLOAD = 'There is nothing to download: the file was downloaded already or has expired.'
-export const INTERRUPTED = 'The download was interrupted; nothing was saved.'
-export const TOO_LARGE = 'The file is larger than this client accepts; nothing was saved.'
-const UNREACHABLE = 'The server could not be reached.'
-const BAD_ADDRESS = 'This address cannot be downloaded.'
+/** The end of the hidden file a transfer is written to before it gets its name. */
+export const PARTIAL_SUFFIX = '.mnema-download'
 
 export interface DownloadLimits { cap: number, idleMs: number }
 
-/** What a person is told of a refusal: the 404 of a spent file, the server's own message, or the status. */
-export function refusalMessage(status: number, body: Uint8Array | null): string {
-  if (status === 404) return NOTHING_TO_DOWNLOAD
+export type Saved = { ok: true, bytes: number } | { ok: false, error: string }
+
+const fail = (error: string): Saved => ({ ok: false, error })
+
+/** Why a file could not be written, in plain words. */
+function diskError(error: unknown): Saved {
+  return fail(diskSentence(reasonOf((error as { code?: unknown } | null)?.code)))
+}
+
+/** The `message` of the server's error envelope (or a bare `message`), cleaned. */
+function serverMessage(body: Uint8Array | null): string | null {
   try {
     const value: unknown = JSON.parse(Buffer.from(body ?? new Uint8Array()).toString('utf8'))
     const inner = typeof value === 'object' && value !== null && 'error' in value ? (value as { error: unknown }).error : value
     const message = typeof inner === 'object' && inner !== null ? (inner as { message?: unknown }).message : undefined
-    if (typeof message === 'string') {
-      const text = [...message].filter((c) => (c.codePointAt(0) as number) >= 0x20).join('').trim().slice(0, 300)
-      if (text !== '') return text
-    }
-  } catch { /* not JSON */ }
-  return `The download failed (HTTP ${status}).`
+    return typeof message === 'string' ? cleanMessage(message) : null
+  } catch {
+    return null
+  }
 }
 
-/** Why a file could not be written, without any path. */
-const DISK_REASONS: Record<string, string> = {
-  ENOSPC: 'there is no space left on the device',
-  EACCES: 'permission denied',
-  EPERM: 'permission denied',
-  EROFS: 'the folder is read-only',
-  ENAMETOOLONG: 'the name is too long',
-  EISDIR: 'the target is a folder',
-  ENOENT: 'the folder does not exist',
-  EDQUOT: 'the disk quota is exceeded',
+/**
+ * Removes the hidden files of transfers that ended without cleaning up (the
+ * client was closed mid-download). A running transfer writes at least once per
+ * idle limit, so a file untouched for longer is nobody's.
+ */
+export async function removeStalePartials(dir: string, olderThanMs: number): Promise<void> {
+  let names: string[]
+  try {
+    names = await readdir(dir)
+  } catch {
+    return
+  }
+  for (const name of names) {
+    if (!name.startsWith('.') || !name.endsWith(PARTIAL_SUFFIX)) continue
+    const path = join(dir, name)
+    try {
+      if (Date.now() - (await stat(path)).mtimeMs > olderThanMs) await rm(path, { force: true })
+    } catch { /* gone already */ }
+  }
 }
 
+/** Calls that touch the disk; a network error (a read of the socket) is a cut transfer instead. */
 const DISK_CALLS = new Set(['open', 'write', 'rename', 'close', 'fsync', 'mkdir'])
 
-function explain(error: unknown): string {
-  const { code, syscall } = (error ?? {}) as { code?: unknown, syscall?: unknown }
-  if (code === 'DOWNLOAD_TOO_LARGE') return TOO_LARGE
-  if (typeof syscall === 'string' && DISK_CALLS.has(syscall)) {
-    return `The file could not be saved: ${typeof code === 'string' ? (DISK_REASONS[code] ?? code) : 'an unknown error'}.`
-  }
-  return INTERRUPTED
-}
-
-export type Saved = { ok: true, bytes: number } | { ok: false, error: string }
-
-/** An answer that is on its way: the name it gets, and one of two ways to end it. */
-export interface Pending {
-  name: string
-  /** Writes the body to `dest` (through a temporary file next to it). */
-  save(dest: string): Promise<Saved>
-  /** Drops the transfer; nothing is written. */
-  abandon(): void
-}
-
-export type Opened = { pending: Pending } | { error: string }
-
-/** Streams `response` into `dest`. The partial file never outlives a failure. */
-async function save(response: HttpResponse, dest: string, limits: DownloadLimits): Promise<Saved> {
-  const temp = join(dirname(dest), `.mnema-${randomBytes(6).toString('hex')}.part`)
+/** Streams the body into the file at `temp` (made already), each piece within the idle time, the whole within the cap and the declared length. */
+async function write(response: HttpResponse, temp: string, limits: DownloadLimits): Promise<Saved> {
   let bytes = 0
   let idle: NodeJS.Timeout | undefined
   const arm = () => {
@@ -101,14 +94,15 @@ async function save(response: HttpResponse, dest: string, limits: DownloadLimits
   })
   try {
     arm()
-    await pipeline(response.stream, count, createWriteStream(temp, { flags: 'wx' }))
-    if (response.contentLength !== null && bytes !== response.contentLength) throw new Error('short body')
-    await rename(temp, dest)
+    // `flush`: the bytes are on the disk before the file is closed.
+    await pipeline(response.stream, count, createWriteStream(temp, { flags: 'r+', flush: true }))
+    if (response.contentLength !== null && bytes !== response.contentLength) return fail(SENTENCES.cut)
     return { ok: true, bytes }
   } catch (error) {
     response.destroy()
-    await rm(temp, { force: true }).catch(() => undefined)
-    return { ok: false, error: explain(error) }
+    const { code, syscall } = (error ?? {}) as { code?: unknown, syscall?: unknown }
+    if (code === 'DOWNLOAD_TOO_LARGE') return fail(SENTENCES.too_large)
+    return typeof syscall === 'string' && DISK_CALLS.has(syscall) ? diskError(error) : fail(SENTENCES.cut)
   } finally {
     clearTimeout(idle)
   }
@@ -117,14 +111,8 @@ async function save(response: HttpResponse, dest: string, limits: DownloadLimits
 /** The answer to a refusal is small JSON; anything longer is not read. */
 const REFUSAL_BODY = 64 << 10
 
-/**
- * GETs `pathAndQuery` of the instance. A refusal is an error sentence, an answer
- * a `Pending` whose body has not been read: the caller asks where to put it first.
- * `attribute` is the page's `download` attribute, a name to use if the server gives none.
- */
-export async function openDownload(instance: Instance, pathAndQuery: string, attribute: string, limits: DownloadLimits = { cap: DOWNLOAD_CAP, idleMs: IDLE_MS }): Promise<Opened> {
-  const url = target(instance.origin, pathAndQuery)
-  if (!url) return { error: BAD_ADDRESS }
+/** Sends the GET and, for a 200, writes its body into `temp`. */
+async function fetchInto(instance: Instance, url: URL, temp: string, limits: DownloadLimits): Promise<Saved> {
   let response: HttpResponse
   try {
     response = await send({
@@ -137,7 +125,7 @@ export async function openDownload(instance: Instance, pathAndQuery: string, att
       agent: instance.agent,
     })
   } catch {
-    return { error: UNREACHABLE }
+    return fail(SENTENCES.unreachable)
   }
   // Until the body is piped, a connection that breaks must not raise an unhandled error.
   response.stream.on('error', () => undefined)
@@ -145,14 +133,58 @@ export async function openDownload(instance: Instance, pathAndQuery: string, att
   if (response.status !== 200) {
     const body = await readBody(response, REFUSAL_BODY)
     response.destroy()
-    return { error: refusalMessage(response.status, body) }
+    return fail(refusalMessage(response.status, serverMessage(body)))
   }
   if (response.contentLength !== null && response.contentLength > limits.cap) {
     response.destroy()
-    return { error: TOO_LARGE }
+    return fail(SENTENCES.too_large)
   }
-  const name = downloadName(headerText(response.headers['content-disposition']) ?? null, attribute, pathAndQuery)
-  return { pending: { name, save: (dest) => save(response, dest, limits), abandon: () => response.destroy() } }
+  return write(response, temp, limits)
+}
+
+/**
+ * Saves `pathAndQuery` of the instance at `dest` (already chosen: by the
+ * person in the save dialog, or the test folder). The folder is made and the
+ * temporary file created before the request; the file gets its name only when
+ * complete, and a failure leaves nothing behind.
+ */
+export async function downloadInto(instance: Instance, pathAndQuery: string, dest: string, limits: DownloadLimits = { cap: DOWNLOAD_CAP, idleMs: IDLE_MS }): Promise<Saved> {
+  const url = target(instance.origin, pathAndQuery)
+  if (!url) return fail(SENTENCES.bad_path)
+  const dir = dirname(dest)
+  const temp = join(dir, `.${randomBytes(16).toString('hex')}${PARTIAL_SUFFIX}`)
+  try {
+    await mkdir(dir, { recursive: true })
+    await removeStalePartials(dir, limits.idleMs * 2)
+    await (await open(temp, 'wx')).close()
+  } catch (error) {
+    return diskError(error)
+  }
+  let saved = await fetchInto(instance, url, temp, limits)
+  if (saved.ok) {
+    try {
+      // The person chose this path in the save dialog (which asked before replacing a file).
+      await rename(temp, dest)
+    } catch (error) {
+      saved = diskError(error)
+    }
+  }
+  await rm(temp, { force: true }).catch(() => undefined)
+  return saved
+}
+
+/**
+ * A download as the host runs it: the place is chosen first (`choose` gets the
+ * proposed name: the page's `download` attribute or the last segment of the
+ * address, made plain), then the server is asked. A cancelled choice asks the
+ * server for nothing, so a data export is not spent.
+ */
+export async function saveDownload(instance: Instance, request: DownloadRequest, choose: (proposed: string) => Promise<string | null>, limits?: DownloadLimits): Promise<{ ok: true, bytes: number, dest: string } | { ok: false, error: string } | { cancelled: true }> {
+  if (!target(instance.origin, request.path)) return { ok: false, error: SENTENCES.bad_path }
+  const dest = await choose(downloadName(null, request.name, request.path)).catch(() => null)
+  if (dest === null) return { cancelled: true }
+  const saved = await downloadInto(instance, request.path, dest, limits)
+  return saved.ok ? { ...saved, dest } : saved
 }
 
 /** What the page may ask for: a path and query of the server's API and a suggested name, each of sensible length. */

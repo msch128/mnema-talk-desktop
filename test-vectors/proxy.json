@@ -745,6 +745,12 @@
    "name": "download"
   },
   {
+   "disposition": "attachment; filename*=UTF-8''%20; filename=\"real.txt\"",
+   "attribute": "",
+   "path": "/api/media/x",
+   "name": "real.txt"
+  },
+  {
    "disposition": "attachment; filename=\"\"",
    "attribute": "from-attribute.txt",
    "path": "/api/media/x",
@@ -871,6 +877,18 @@
    "name": "_NUL"
   },
   {
+   "disposition": "attachment; filename=\"CONIN$\"",
+   "attribute": "",
+   "path": "/api/media/x",
+   "name": "_CONIN$"
+  },
+  {
+   "disposition": "attachment; filename=\"conout$.log\"",
+   "attribute": "",
+   "path": "/api/media/x",
+   "name": "_conout$.log"
+  },
+  {
    "disposition": "attachment; filename=\"con.zip\"",
    "attribute": "",
    "path": "/api/media/x",
@@ -942,5 +960,75 @@
    "path": "/api/media/x",
    "name": "ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc.dddd"
   }
- ]
+ ],
+ "download_errors": {
+  "sentences": {
+   "bad_path": "This link cannot be downloaded.",
+   "unreachable": "The server could not be reached, so nothing was saved. Check the connection and try again.",
+   "gone": "There is nothing to download: the file was downloaded already, removed or has expired. For your data export, request a new one under Settings.",
+   "refused": "The server refused the download: {message}. Try again later.",
+   "failed": "The download failed (HTTP {status}). Try again later.",
+   "too_large": "The file is larger than this client accepts, so nothing was saved.",
+   "cut": "The download was interrupted, so nothing was saved. Try again.",
+   "disk": "The file could not be saved: {reason}. Check the folder, then try again.",
+   "busy": "Another download is still in progress. Try again when it has finished.",
+   "no_folder": "There is no Downloads folder to save the file in. Create one, then try again.",
+   "webview_failed": "The download failed, so nothing was saved. Try again."
+  },
+  "reasons": {
+   "no_space": "there is no space left on the disk",
+   "denied": "this app may not write to the folder",
+   "read_only": "the disk is read-only",
+   "missing": "the folder does not exist",
+   "name_too_long": "the name is too long for this disk",
+   "quota": "the disk quota is used up",
+   "other": "the disk reported an error"
+  },
+  "messages": [
+   {
+    "input": "there is no export to download",
+    "output": "there is no export to download"
+   },
+   {
+    "input": "the export is not ready yet.",
+    "output": "the export is not ready yet"
+   },
+   {
+    "input": "  spaced out  ",
+    "output": "spaced out"
+   },
+   {
+    "input": "a\u0007bell and a\nnew line\t.",
+    "output": "a bell and a new line"
+   },
+   {
+    "input": "ends with dots...",
+    "output": "ends with dots"
+   },
+   {
+    "input": " . . ",
+    "output": null
+   },
+   {
+    "input": "",
+    "output": null
+   },
+   {
+    "input": "\u0001\u0002",
+    "output": null
+   },
+   {
+    "input": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "output": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+   },
+   {
+    "input": "ééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé. more",
+    "output": "ééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé"
+   },
+   {
+    "input": "emoji 😀 stays",
+    "output": "emoji 😀 stays"
+   }
+  ]
+ }
 }

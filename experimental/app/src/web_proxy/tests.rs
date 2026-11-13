@@ -15,6 +15,7 @@ use url::Url;
 
 mod bundle;
 mod download;
+mod download_disk;
 mod forward;
 mod jar;
 mod rules;

@@ -1,16 +1,49 @@
 //! Downloads of a server's page. A download link of the app's own API is
 //! handed to the host by a page shim (`page-shim/app-downloads.js`): the host
-//! streams the file into the Downloads folder (`web_proxy::download_to`), then
-//! shows it in Finder or Explorer; a download that saved nothing says why in
-//! an error dialog. Downloads the webview still makes itself (a file the page
-//! made, `blob:`; an attachment window on macOS) get the same feedback.
-use crate::web_proxy::{Failure, download_to};
-use std::path::Path;
+//! streams the file into the Downloads folder (`web_proxy::download_to`),
+//! marks it as downloaded from the internet and shows it in Finder or
+//! Explorer; a download that saved nothing says why in an error dialog.
+//! Downloads the webview still makes itself (a file the page made, `blob:`;
+//! an attachment window on macOS) get the same feedback.
+mod mark;
+mod text;
+
+pub use text::sentence;
+
+use crate::web_proxy::download_to;
+use std::{collections::HashSet, path::Path, sync::Mutex};
 use tauri::{Manager, Webview};
 
 /// The initialization script of a server's page that hands its download links
 /// to `desktop_download`. See the file.
 pub const SCRIPT: &str = include_str!("../page-shim/app-downloads.js");
+
+/// The servers (by page) with a download under way.
+static RUNNING: Mutex<Option<HashSet<String>>> = Mutex::new(None);
+
+/// One download of one server at a time: a second click while the first runs
+/// would only race it for the same file (and for a data export, which the
+/// server hands to one download at a time).
+struct Running(String);
+
+impl Running {
+    fn start(server: &str) -> Option<Running> {
+        let mut set = RUNNING.lock().ok()?;
+        set.get_or_insert_with(HashSet::new)
+            .insert(server.to_owned())
+            .then(|| Running(server.to_owned()))
+    }
+}
+
+impl Drop for Running {
+    fn drop(&mut self) {
+        if let Ok(mut set) = RUNNING.lock()
+            && let Some(set) = set.as_mut()
+        {
+            set.remove(&self.0);
+        }
+    }
+}
 
 /// Saves `path` (the instance's `/api/`, as the link of the calling page named
 /// it) into the Downloads folder; `name` is the link's `download` attribute.
@@ -22,70 +55,66 @@ pub async fn desktop_download(
     name: String,
 ) -> Result<String, String> {
     let session = crate::web_client::instance_page(&webview)?;
-    let app = webview.app_handle().clone();
-    let Ok(dir) = app.path().download_dir() else {
-        let text = "There is no Downloads folder to save the file in.";
-        crate::web_client::show_error(text);
-        return Err(text.into());
+    let fail = |text: String| {
+        crate::web_client::show_error(&text);
+        Err(text)
+    };
+    let Some(_running) = Running::start(webview.label()) else {
+        return fail(text::text("busy"));
+    };
+    let Ok(dir) = webview.app_handle().path().download_dir() else {
+        return fail(text::text("no_folder"));
     };
     match download_to(&session.instance, &path, &dir, &name).await {
         Ok(saved) => {
+            mark::mark(&saved);
             reveal(&saved);
             Ok(saved.display().to_string())
         }
-        Err(failure) => {
-            let text = sentence(&failure);
-            crate::web_client::show_error(&text);
-            Err(text)
-        }
-    }
-}
-
-/// What the error dialog says about a download that saved nothing.
-pub fn sentence(failure: &Failure) -> String {
-    match failure {
-        Failure::Path => "This link cannot be downloaded.".into(),
-        Failure::Unreachable => "The server could not be reached; nothing was saved.".into(),
-        Failure::Refused(404, _) => {
-            "There is nothing to download: the file was downloaded already, removed or has expired."
-                .into()
-        }
-        Failure::Refused(_, Some(message)) => {
-            format!("The server refused the download: {message}.")
-        }
-        Failure::Refused(status, None) => format!("The download failed (HTTP {status})."),
-        Failure::TooLarge => "The file is too large for this client; nothing was saved.".into(),
-        Failure::Cut => "The download was interrupted; nothing was saved.".into(),
-        Failure::Disk(reason) => format!("The file could not be saved: {reason}."),
+        Err(failure) => fail(sentence(&failure)),
     }
 }
 
 /// Where the downloads the webview makes itself (macOS) go, by address, from
-/// the moment the host picked the file until the download ended: WKWebView
-/// reports the end without the path.
+/// the moment the host decided until the download ended: WKWebView reports
+/// the end without the path. `None`: the host refused it and already said why.
 #[cfg(target_os = "macos")]
-static UNDER_WAY: std::sync::Mutex<Vec<(String, std::path::PathBuf)>> =
-    std::sync::Mutex::new(Vec::new());
+static UNDER_WAY: Mutex<Vec<(String, Option<std::path::PathBuf>)>> = Mutex::new(Vec::new());
 
-/// A download the webview makes itself will be saved at `path`.
+/// A download the webview makes itself will be saved at `path`, or (`None`)
+/// was refused with an error already shown.
 #[cfg(target_os = "macos")]
-pub fn started(url: &url::Url, path: &Path) {
+pub fn started(url: &url::Url, path: Option<&Path>) {
     if let Ok(mut list) = UNDER_WAY.lock() {
-        list.push((url.to_string(), path.to_path_buf()));
+        list.push((url.to_string(), path.map(Path::to_path_buf)));
     }
 }
 
+/// The error for a download the webview makes itself that has no folder to go
+/// to (shown once: its end then says nothing more).
+#[cfg(target_os = "macos")]
+pub fn no_folder(url: &url::Url) {
+    crate::web_client::show_error(&text::text("no_folder"));
+    started(url, None);
+}
+
 /// The outcome of a download the webview made itself: the saved file is
-/// shown, a failed one is reported.
+/// marked and shown, a failed one is reported (unless the host refused it).
 #[cfg(target_os = "macos")]
 pub fn finished(url: &url::Url, path: Option<&Path>, success: bool) {
     let picked = UNDER_WAY.lock().ok().and_then(|mut list| {
         let at = list.iter().position(|(u, _)| u == url.as_str())?;
         Some(list.remove(at).1)
     });
-    match path.map(Path::to_path_buf).or(picked) {
-        Some(path) if success && path.exists() => reveal(&path),
-        _ => crate::web_client::show_error("The download failed; nothing was saved."),
+    if matches!(picked, Some(None)) {
+        return;
+    }
+    match path.map(Path::to_path_buf).or(picked.flatten()) {
+        Some(path) if success && path.exists() => {
+            mark::mark(&path);
+            reveal(&path);
+        }
+        _ => crate::web_client::show_error(&text::text("webview_failed")),
     }
 }
 
@@ -116,29 +145,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn every_failure_says_that_nothing_was_saved_or_why() {
-        let spent = sentence(&Failure::Refused(
-            404,
-            Some("there is no export to download".into()),
-        ));
-        assert!(spent.contains("downloaded already"), "{spent}");
-        assert_eq!(
-            sentence(&Failure::Refused(
-                403,
-                Some("the download cannot be prefetched".into())
-            )),
-            "The server refused the download: the download cannot be prefetched."
+    fn a_server_runs_one_download_at_a_time() {
+        let first = Running::start("i-test-one").expect("free");
+        assert!(Running::start("i-test-one").is_none(), "a second one waits");
+        let other = Running::start("i-test-two");
+        assert!(other.is_some(), "another server is not held up");
+        drop(first);
+        assert!(
+            Running::start("i-test-one").is_some(),
+            "free again after the first ended"
         );
-        assert_eq!(
-            sentence(&Failure::Refused(500, None)),
-            "The download failed (HTTP 500)."
-        );
-        for failure in [Failure::Unreachable, Failure::TooLarge, Failure::Cut] {
-            assert!(
-                sentence(&failure).contains("nothing was saved"),
-                "{failure:?}"
-            );
-        }
-        assert!(sentence(&Failure::Disk("disk full".into())).contains("disk full"));
     }
 }

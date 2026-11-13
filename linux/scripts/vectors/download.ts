@@ -1,4 +1,5 @@
 import { downloadName } from '../../src/core/downloadname.ts'
+import { REASONS, SENTENCES, cleanMessage } from '../../src/core/downloadtext.ts'
 
 /** The name a download is saved under, from the server's disposition, the page's attribute and the address. */
 export function downloadNames(): { disposition: string | null, attribute: string, path: string, name: string }[] {
@@ -14,6 +15,7 @@ export function downloadNames(): { disposition: string | null, attribute: string
     ['attachment; filename="a\u0007b.txt"', '', '/api/media/x'],
     [null, '', '/api/'],
     // Candidates in order, and the ones that are skipped.
+    ["attachment; filename*=UTF-8''%20; filename=\"real.txt\"", '', '/api/media/x'],
     ['attachment; filename=""', 'from-attribute.txt', '/api/media/x'],
     ['attachment; filename="  "', '', '/api/media/abc/from-path.png?download=1'],
     ["attachment; filename*=ISO-8859-1''caf%E9.txt; filename=\"cafe.txt\"", '', '/api/media/x'],
@@ -36,6 +38,8 @@ export function downloadNames(): { disposition: string | null, attribute: string
     ['attachment; filename="<a>|b?*.txt"', '', '/api/media/x'],
     ["attachment; filename*=UTF-8''a%22b%3Ac%3E.txt; filename=\"plain.txt\"", '', '/api/media/x'],
     ['attachment; filename="NUL"', '', '/api/media/x'],
+    ['attachment; filename="CONIN$"', '', '/api/media/x'],
+    ['attachment; filename="conout$.log"', '', '/api/media/x'],
     ['attachment; filename="con.zip"', '', '/api/media/x'],
     ['attachment; filename="Lpt9.tar.gz"', '', '/api/media/x'],
     ['attachment; filename="COM10.txt"', '', '/api/media/x'],
@@ -50,4 +54,22 @@ export function downloadNames(): { disposition: string | null, attribute: string
     [`attachment; filename="${'c'.repeat(195)}${'.'.repeat(1)}${'d'.repeat(30)}"`, '', '/api/media/x'],
   ]
   return cases.map(([disposition, attribute, path]) => ({ disposition, attribute, path, name: downloadName(disposition, attribute, path) }))
+}
+
+/** The error sentences of a download both hosts show, and how a server's message is cleaned for them. */
+export function downloadErrors(): { sentences: Record<string, string>, reasons: Record<string, string>, messages: { input: string, output: string | null }[] } {
+  const inputs = [
+    'there is no export to download',
+    'the export is not ready yet.',
+    '  spaced out  ',
+    'a\u0007bell and a\nnew line\t.',
+    'ends with dots...',
+    ' . . ',
+    '',
+    '\u0001\u0002',
+    `${'x'.repeat(310)}`,
+    `${'é'.repeat(299)}. more`,
+    'emoji \u{1F600} stays',
+  ]
+  return { sentences: { ...SENTENCES }, reasons: { ...REASONS }, messages: inputs.map((input) => ({ input, output: cleanMessage(input) })) }
 }

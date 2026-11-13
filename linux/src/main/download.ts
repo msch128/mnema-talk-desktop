@@ -1,15 +1,16 @@
 /**
  * Downloads, as the person sees them. A click on a download link of the app's
- * own API reaches the host over IPC (`desktop_download`): the host fetches the
- * file with the server's session, asks where to put it, streams it there and
- * says what happened. A download Chromium starts itself (a blob, say) gets the
+ * own API reaches the host over IPC (`desktop_download`): the host asks where
+ * to put it, then fetches the file with the server's session, streams it there
+ * and says what happened. A download Chromium starts itself (a blob, say) gets the
  * same feedback when it ends. Nothing ends without either the folder opening or
  * an error dialog.
  */
 import { homedir } from 'node:os'
 import { basename, dirname } from 'node:path'
 import { Notification, app, dialog, shell, type DownloadItem } from 'electron'
-import { INTERRUPTED, type DownloadRequest, openDownload } from '../core/download.ts'
+import { type DownloadRequest, saveDownload } from '../core/download.ts'
+import { SENTENCES } from '../core/downloadtext.ts'
 import { inFolder } from '../core/downloadname.ts'
 import { TITLE } from '../core/title.ts'
 import type { Context } from './context.ts'
@@ -22,10 +23,11 @@ const running = new Set<string>()
 
 /**
  * A folder for the end-to-end run: the file goes there without a dialog or a
- * file manager. Honoured only in a run that may be remote-debugged, which the
- * tests turn on and a packaged client refuses otherwise.
+ * file manager. Honoured only by an unpackaged client in a run that may be
+ * remote-debugged, as the tests start it; a packaged client never reads it.
  */
 function testFolder(): string | null {
+  if (app.isPackaged) return null
   const folder = process.env.MNEMA_DESKTOP_DOWNLOAD_DIR ?? ''
   return folder !== '' && process.env.MNEMA_DESKTOP_ALLOW_REMOTE_DEBUGGING === '1' ? folder : null
 }
@@ -59,30 +61,20 @@ async function destination(ctx: Context, name: string): Promise<string | null> {
   return canceled || filePath === '' ? null : filePath
 }
 
-/** Fetches, asks, writes and reports; never throws. */
+/** Asks where, fetches, writes and reports; never throws. */
 export async function download(ctx: Context, session: Session, request: DownloadRequest): Promise<null> {
   if (running.has(session.id)) {
-    await problem('Another download is still in progress. Try again when it has finished.')
+    await problem(SENTENCES.busy)
     return null
   }
   running.add(session.id)
   try {
-    const opened = await openDownload(session.instance, request.path, request.name)
-    if ('error' in opened) {
-      await problem(opened.error)
-      return null
-    }
-    const { pending } = opened
-    const dest = await destination(ctx, pending.name).catch(() => null)
-    if (dest === null) {
-      pending.abandon()
-      return null
-    }
-    const result = await pending.save(dest)
-    if (result.ok) saved(dest)
+    const result = await saveDownload(session.instance, request, (proposed) => destination(ctx, proposed))
+    if ('cancelled' in result) return null
+    if (result.ok) saved(result.dest)
     else await problem(result.error)
   } catch {
-    await problem(INTERRUPTED)
+    await problem(SENTENCES.cut)
   } finally {
     running.delete(session.id)
   }
@@ -93,6 +85,6 @@ export async function download(ctx: Context, session: Session, request: Download
 export function reportWhenDone(item: DownloadItem): void {
   item.once('done', (_event, state) => {
     if (state === 'completed') saved(item.getSavePath())
-    else if (state === 'interrupted') void errorBox(INTERRUPTED)
+    else if (state === 'interrupted') void errorBox(SENTENCES.webview_failed)
   })
 }
