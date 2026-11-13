@@ -109,6 +109,22 @@ added. A certificate the system rejects is rejected here too.
 
 ## Get it
 
+Every release also carries the installers under names without the version, so
+these links always download the newest one (each file is identical to the
+versioned one next to it and listed in the release's `SHA256SUMS`):
+
+| Platform | Direct link |
+| --- | --- |
+| Windows installer (x64) | [mnema-desktop-windows-x64-setup.exe](https://github.com/msch128/mnema-talk-desktop/releases/latest/download/mnema-desktop-windows-x64-setup.exe) |
+| Windows portable ZIP (x64) | [mnema-desktop-windows-x64-portable.zip](https://github.com/msch128/mnema-talk-desktop/releases/latest/download/mnema-desktop-windows-x64-portable.zip) |
+| macOS (Apple silicon) | [mnema-desktop-macos-arm64.dmg](https://github.com/msch128/mnema-talk-desktop/releases/latest/download/mnema-desktop-macos-arm64.dmg) |
+| Linux .deb (x86_64) | [mnema-desktop-linux-x64.deb](https://github.com/msch128/mnema-talk-desktop/releases/latest/download/mnema-desktop-linux-x64.deb) |
+| Linux .deb (arm64) | [mnema-desktop-linux-arm64.deb](https://github.com/msch128/mnema-talk-desktop/releases/latest/download/mnema-desktop-linux-arm64.deb) |
+| Linux AppImage (x86_64) | [mnema-desktop-linux-x64.AppImage](https://github.com/msch128/mnema-talk-desktop/releases/latest/download/mnema-desktop-linux-x64.AppImage) |
+| Linux AppImage (arm64) | [mnema-desktop-linux-arm64.AppImage](https://github.com/msch128/mnema-talk-desktop/releases/latest/download/mnema-desktop-linux-arm64.AppImage) |
+
+The updater feed and its signatures name only the versioned files.
+
 Download `Mnema-Desktop-DEV_<version>_x64-setup.exe` from the
 [latest release](https://github.com/msch128/mnema-talk-desktop/releases/latest)
 and run it once. It installs for the current user only (no administrator
@@ -249,7 +265,9 @@ offline backup.
    environment, smoke-installs it per user on a Windows runner, checks that
    `latest.json` verifies against the pinned key and publishes the installer,
    its `.sig` file, `latest.json`, a portable ZIP, the macOS disk image and
-   updater archive, the Linux AppImages and `.deb` packages, and `SHA256SUMS`.
+   updater archive, the Linux AppImages and `.deb` packages, unversioned copies
+   of those seven installers (`scripts/stable-asset-names.mjs`, for the links
+   under [Get it](#get-it)), and `SHA256SUMS`.
    The release is public only after everything is attached. The Tauri host on
    Linux is not built.
 

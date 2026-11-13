@@ -2,7 +2,9 @@ name: Desktop release
 
 # Tag vX.Y.Z (a commit on main whose app version is X.Y.Z) builds, tests and
 # signs the Windows installer, the macOS app and the Linux packages, and
-# publishes them with the updater feed (latest.json).
+# publishes them with the updater feed (latest.json). The installers are also
+# attached under unversioned names (scripts/stable-asset-names.mjs), so that
+# releases/latest/download/mnema-desktop-* always serves the newest one.
 #
 # Rehearsal: a manual run (workflow_dispatch, input `version`, e.g. 1.2.9) runs
 # the same jobs and steps for vX.Y.Z, then uploads the files the release would
@@ -498,7 +500,13 @@ jobs:
           (cd portable && zip -qr "../release/Mnema-Desktop-DEV-${TAG}-windows-x64-portable.zip" .)
           unzip -Z1 "release/Mnema-Desktop-DEV-${TAG}-windows-x64-portable.zip" | grep -Fx mnema-portable.marker \
             || { echo '::error::the portable ZIP lacks mnema-portable.marker'; exit 1; }
+          # Unversioned, byte-identical copies of the seven installers, for the
+          # stable links releases/latest/download/mnema-desktop-*. Made after the
+          # feed, which keeps naming the versioned files; they get no .sig.
+          node scripts/stable-asset-names.mjs --version "$version" release
           (cd release && sha256sum -- *.exe *.zip *.dmg *.app.tar.gz *.AppImage *.deb > SHA256SUMS)
+          [ "$(grep -c '  mnema-desktop-' release/SHA256SUMS)" = 7 ] \
+            || { echo '::error::SHA256SUMS does not list the seven stable copies'; exit 1; }
           if [ "$EVENT" != push ]; then
             # Rehearsal: keep what a release would carry, publish nothing.
             mkdir rehearsal
