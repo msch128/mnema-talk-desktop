@@ -13,3 +13,8 @@ experimental/app/target/
 /linux/release/
 /linux/bundle/
 /signed-package/
+
+# Mobile spike (mobile/): the staged signed web bundle, generated Tauri schemas, build output
+/mobile/bundle/
+/mobile/gen/schemas/
+/mobile/target/

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-mobile-api"
+description = "Enables the mobile_api command without any pre-configured scope."
+commands.allow = ["mobile_api"]
+
+[[permission]]
+identifier = "deny-mobile-api"
+description = "Denies the mobile_api command without any pre-configured scope."
+commands.deny = ["mobile_api"]

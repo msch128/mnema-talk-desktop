@@ -1,0 +1,67 @@
+[package]
+name = "mnema-mobile"
+version = "0.1.0"
+edition = "2024"
+publish = false
+license = "AGPL-3.0-only"
+description = "Spike: the Android and iOS host on the shared core of experimental/app (doc/mobile.md)"
+
+[lib]
+name = "mnema_mobile_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+# The shared core is tested in experimental/app, where it lives; this crate
+# only builds it for the phone targets.
+test = false
+doctest = false
+
+[features]
+default = []
+# Test-only: the app opens the server named at build time on its own and
+# records how far it got (src/selftest.rs). Never in a shipped build.
+mobile-selftest = []
+
+# The versions of the desktop host (experimental/app/Cargo.toml), so the shared
+# files build against the same crates.
+[dependencies]
+tauri = { version = "=2.12.5" }
+reqwest = { version = "=0.13.5", default-features = false, features = ["rustls-no-provider", "json"] }
+ed25519-dalek = { version = "=3.0.0", default-features = false, features = [] }
+sha2 = "=0.11.1"
+hex = "=0.4.3"
+base64 = "=0.23.1"
+zip = { version = "=9.4.1", default-features = false, features = ["deflate-flate2"] }
+flate2 = { version = "=1.1.11", default-features = false, features = ["rust_backend"] }
+cookie = { version = "=0.18.2", default-features = false }
+tokio-tungstenite = { version = "=0.30.0", default-features = false, features = ["connect", "handshake", "rustls-tls-native-roots"] }
+futures-util = { version = "=0.3.34", default-features = false, features = ["sink", "std"] }
+rustls = { version = "=0.23.46", default-features = false, features = ["ring", "std", "tls12"] }
+rustls-platform-verifier = "=0.7.1"
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.154"
+url = "=2.5.8"
+uuid = "=1.29.0"
+tokio = { version = "=1.54.1", features = ["sync", "time", "rt", "macros"] }
+
+[target.'cfg(target_os = "android")'.dependencies]
+# The Android verifier calls the system trust manager through JNI; the app
+# hands it the JVM and the context that the window system recorded.
+jni = { version = "=0.22.4", default-features = false }
+ndk-context = "=0.1.1"
+
+# Only so the crate also builds on a Mac for a quick check (the shared vault
+# uses the keychain there); the phone targets never compile these.
+[target.'cfg(target_os = "macos")'.dependencies]
+keyring-core = "=1.0.1"
+apple-native-keyring-store = { version = "=1.0.2", default-features = false, features = ["keychain"] }
+
+[build-dependencies]
+tauri-build = { version = "=2.7.4" }
+
+# The shared files name the desktop's test-only features, which never exist here.
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(feature, values("multi-selftest", "real-selftest", "gaming-selftest", "notify-selftest", "webview-probe"))'] }
+
+# The server's limits (function length 80, cognitive complexity 15; clippy.toml); CI denies warnings.
+[lints.clippy]
+too_many_lines = "warn"
+cognitive_complexity = "warn"

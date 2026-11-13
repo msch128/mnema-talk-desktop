@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-desktop-ws-send"
+description = "Enables the desktop_ws_send command without any pre-configured scope."
+commands.allow = ["desktop_ws_send"]
+
+[[permission]]
+identifier = "deny-desktop-ws-send"
+description = "Denies the desktop_ws_send command without any pre-configured scope."
+commands.deny = ["desktop_ws_send"]

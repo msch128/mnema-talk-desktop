@@ -1,0 +1,13 @@
+{
+  "identifier": "mobile",
+  "description": "The one page of the phone app, which runs the verified bundle at the host's own origin. Each command checks the role the host is in: opening a server only while the picker shows, the socket and the body bridge only for the open server.",
+  "webviews": ["main"],
+  "platforms": ["android", "iOS"],
+  "permissions": [
+    "allow-desktop-open-instance",
+    "allow-desktop-ws-open",
+    "allow-desktop-ws-send",
+    "allow-desktop-ws-close",
+    "allow-mobile-api"
+  ]
+}
