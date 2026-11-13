@@ -3,7 +3,7 @@
 //! the file can be written.
 use super::*;
 use crate::web_proxy::download::{
-    Bounds, Disk, Failure, PARTIAL_SUFFIX, download_with, remove_stale_partials,
+    Bounds, Failure, PARTIAL_SUFFIX, download_with, remove_stale_partials,
 };
 
 fn folder() -> PathBuf {
@@ -110,7 +110,7 @@ async fn a_read_only_folder_is_a_disk_failure_in_plain_words_and_asks_for_nothin
     std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o500)).unwrap();
     let got = download_with(&instance_at(origin), EXPORT, &dir, "", &Bounds::default()).await;
     std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700)).unwrap();
-    assert_eq!(got, Err(Failure::Disk(Disk::Denied)));
+    assert_eq!(got, Err(Failure::Disk(crate::web_proxy::Disk::Denied)));
     assert_eq!(*accepted.lock().unwrap(), 0);
 }
 
