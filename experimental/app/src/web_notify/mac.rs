@@ -119,6 +119,35 @@ fn parse_identifier(id: &str) -> Option<(Click, String)> {
 /// The hints are Windows-only (exclusive fullscreen); macOS has nothing to say.
 pub fn host_toast(_app: &tauri::AppHandle, _title: &str, _body: &str) {}
 
+/// A notification without sound, only when the person already allowed this
+/// app's notifications (never a prompt). Its identifier is no page's, so a
+/// click only brings the app to the front.
+pub fn quiet_toast(_app: &tauri::AppHandle, title: &str, body: &str) {
+    let (title, body) = (title.to_owned(), body.to_owned());
+    tauri::async_runtime::spawn(async move {
+        if permission().await == Permission::Granted {
+            add_quiet(&title, &body);
+        }
+    });
+}
+
+fn add_quiet(title: &str, body: &str) {
+    let Some(center) = center() else {
+        return;
+    };
+    let content = UNMutableNotificationContent::new();
+    content.setTitle(&NSString::from_str(title));
+    content.setBody(&NSString::from_str(body));
+    content.setThreadIdentifier(&NSString::from_str("mentions"));
+    let id = format!("host:{}", uuid::Uuid::new_v4().simple());
+    let request = UNNotificationRequest::requestWithIdentifier_content_trigger(
+        &NSString::from_str(&id),
+        &content,
+        None,
+    );
+    center.addNotificationRequest_withCompletionHandler(&request, None);
+}
+
 /// Removes the delivered and waiting toasts of one page run (`session`); the
 /// toasts of the other servers stay.
 pub fn clear(_app: &tauri::AppHandle, session: &str, _others_remain: bool) {

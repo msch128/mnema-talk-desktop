@@ -9,7 +9,7 @@ import type { AddressInfo } from 'node:net'
 import { afterEach, test } from 'node:test'
 import { WebSocketServer, type WebSocket } from 'ws'
 import { Jar } from '../src/core/cookies.ts'
-import { Feed, IDLE, changesCounts } from '../src/core/feed.ts'
+import { Feed, IDLE, changesCounts, mentionRise, mentionText } from '../src/core/feed.ts'
 import { Limits } from '../src/core/proxy.ts'
 import { Turns } from '../src/core/tickets.ts'
 import { flag } from '../src/core/ipcargs.ts'
@@ -100,4 +100,13 @@ test('when hidden pages close is kept in the list file but never exported, and n
   const junk = storedFrom({ version: 1, servers: ['https://a.example/'], active: null, sleep: 'junk' })
   assert.ok(junk)
   assert.deepEqual(Registry.restore(junk).sleep, { afterSecs: 600, keep: 4 })
+})
+
+test('a rise of the mentions is one quiet toast, a muted server gets none', () => {
+  assert.equal(mentionRise(1, 4, false), 3)
+  assert.equal(mentionRise(4, 4, false), null)
+  assert.equal(mentionRise(4, 2, false), null)
+  assert.equal(mentionRise(0, 9, true), null)
+  assert.equal(mentionText(1, 'chat.example'), '1 new mention on chat.example')
+  assert.equal(mentionText(3, 'chat.example'), '3 new mentions on chat.example')
 })

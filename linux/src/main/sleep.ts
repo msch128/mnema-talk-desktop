@@ -6,7 +6,8 @@
  * says it is busy (`desktop_report_busy`). Until a server has a page, or after
  * its page was closed, the host keeps its counts (`core/feed.ts`).
  */
-import { Feed } from '../core/feed.ts'
+import { Notification } from 'electron'
+import { Feed, mentionRise, mentionText } from '../core/feed.ts'
 import { type PageState, pagesToUnload } from '../core/sleep.ts'
 import type { Context } from './context.ts'
 import { countsChanged, layout } from './shelllayout.ts'
@@ -34,13 +35,25 @@ export function wantsPage(ctx: Context, id: string): boolean {
   return front(ctx) === id
 }
 
+/** A quiet notification for a server without a page: no sound; the desktop's notification service decides whether it shows (do not disturb, the app's setting). */
+function quietToast(title: string, body: string): void {
+  if (Notification.isSupported()) new Notification({ title, body, silent: true }).show()
+}
+
 /** Starts keeping the counts of a ready server that has no page. */
 export function withoutPage(ctx: Context, id: string): void {
   const s = of(ctx)
   const session = ctx.trusted.registry.session(id)
   if (!session || s.feeds.has(id)) return
   const feed = new Feed(session.instance, ({ unread, mentions }) => {
-    if (ctx.trusted.registry.session(id) && ctx.trusted.registry.report(id, unread, mentions)) countsChanged(ctx)
+    const registry = ctx.trusted.registry
+    const slot = registry.slot(id)
+    if (!slot || !registry.session(id)) return
+    const before = slot.mentions
+    if (!registry.report(id, unread, mentions)) return
+    countsChanged(ctx)
+    const rise = mentionRise(before, slot.mentions, registry.isMuted(id))
+    if (rise !== null) quietToast(registry.displayName(slot), mentionText(rise, registry.displayName(slot)))
   })
   s.feeds.set(id, feed)
   feed.start()

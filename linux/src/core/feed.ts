@@ -112,3 +112,13 @@ export class Feed {
     if (!this.timer) this.again(this.times.everyMs)
   }
 }
+
+/** How many new mentions a quiet toast announces: one toast for each rise of the count, none for a muted server. The same as the Tauri host. */
+export function mentionRise(before: number, after: number, muted: boolean): number | null {
+  return !muted && after > before ? after - before : null
+}
+
+/** What the quiet toast says. */
+export function mentionText(count: number, server: string): string {
+  return `${count} new ${count === 1 ? 'mention' : 'mentions'} on ${server}`
+}

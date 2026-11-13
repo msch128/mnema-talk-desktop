@@ -101,6 +101,13 @@ pub fn host_toast(app: &tauri::AppHandle, title: &str, body: &str) {
     platform::host_toast(app, &clean(title, MAX_TITLE), &clean(body, MAX_BODY));
 }
 
+/// A quiet toast from the host for a server without a loaded page (new
+/// mentions there): no sound, no click target, never a permission prompt;
+/// shown only where the system already lets this app notify.
+pub fn quiet_toast(app: &tauri::AppHandle, title: &str, body: &str) {
+    platform::quiet_toast(app, &clean(title, MAX_TITLE), &clean(body, MAX_BODY));
+}
+
 /// The server whose page made the call.
 fn server_page(webview: &Webview) -> Result<std::sync::Arc<crate::instances::Session>, String> {
     super::web_client::instance_page(webview)

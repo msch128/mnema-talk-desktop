@@ -89,7 +89,9 @@ There is no external security audit.
   keeps its counts on the rail and the badge itself, from the server's own
   unread summary, read again whenever the server says something changed; it
   listens on a socket of its own that tells the server you are away there,
-  exactly as the hidden page did, and sends nothing else. Both values are
+  exactly as the hidden page did, and sends nothing else. When its mentions
+  rise, one quiet notification says "N new mentions on <server>" (no sound,
+  none for a muted server, only where the system already lets the app notify). Both values are
   settings of this device in the list file (`"sleep": {"after_secs": 600,
   "keep": 4}`; `"after_secs": null` never closes a page; 60 seconds to a day,
   1 to 200 pages), never part of an exported list. Overlay and
