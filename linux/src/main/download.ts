@@ -7,9 +7,10 @@
  * an error dialog.
  */
 import { homedir } from 'node:os'
-import { basename, dirname, join } from 'node:path'
+import { basename, dirname } from 'node:path'
 import { Notification, app, dialog, shell, type DownloadItem } from 'electron'
 import { INTERRUPTED, type DownloadRequest, openDownload } from '../core/download.ts'
+import { inFolder } from '../core/downloadname.ts'
 import { TITLE } from '../core/title.ts'
 import type { Context } from './context.ts'
 import { errorBox } from './errorbox.ts'
@@ -48,12 +49,12 @@ function saved(path: string): void {
   if (Notification.isSupported()) new Notification({ title: TITLE, body: `Saved ${basename(path)} in ${dirname(path)}`, silent: true }).show()
 }
 
-/** Where the file goes: the person's choice, or null for none. */
+/** Where the file goes: the person's choice in the save dialog (theirs, not limited), or null for none. */
 async function destination(ctx: Context, name: string): Promise<string | null> {
   const folder = testFolder()
-  if (folder !== null) return join(folder, name)
+  if (folder !== null) return inFolder(folder, name)
   const parent = ctx.shell.window
-  const options = { title: TITLE, defaultPath: join(downloadsFolder(), name) }
+  const options = { title: TITLE, defaultPath: inFolder(downloadsFolder(), name) }
   const { canceled, filePath } = parent && !parent.isDestroyed() ? await dialog.showSaveDialog(parent, options) : await dialog.showSaveDialog(options)
   return canceled || filePath === '' ? null : filePath
 }

@@ -736,7 +736,7 @@
    "disposition": "attachment; filename=\"a\u0007b.txt\"",
    "attribute": "",
    "path": "/api/media/x",
-   "name": "ab.txt"
+   "name": "a_b.txt"
   },
   {
    "disposition": null,
@@ -821,6 +821,126 @@
    "attribute": "",
    "path": "/api/media/100%.txt",
    "name": "100%.txt"
+  },
+  {
+   "disposition": "attachment; filename=\"..\"",
+   "attribute": "",
+   "path": "/api/media/x",
+   "name": "download"
+  },
+  {
+   "disposition": "attachment; filename=\".\"",
+   "attribute": "",
+   "path": "/api/media/x",
+   "name": "download"
+  },
+  {
+   "disposition": "attachment; filename=\"..\\..\\x\"",
+   "attribute": "",
+   "path": "/api/media/x",
+   "name": "x"
+  },
+  {
+   "disposition": "attachment; filename=\"C:evil.zip\"",
+   "attribute": "",
+   "path": "/api/media/x",
+   "name": "C_evil.zip"
+  },
+  {
+   "disposition": "attachment; filename=\"a.zip:stream\"",
+   "attribute": "",
+   "path": "/api/media/x",
+   "name": "a.zip_stream"
+  },
+  {
+   "disposition": "attachment; filename=\"<a>|b?*.txt\"",
+   "attribute": "",
+   "path": "/api/media/x",
+   "name": "_a__b__.txt"
+  },
+  {
+   "disposition": "attachment; filename*=UTF-8''a%22b%3Ac%3E.txt; filename=\"plain.txt\"",
+   "attribute": "",
+   "path": "/api/media/x",
+   "name": "a_b_c_.txt"
+  },
+  {
+   "disposition": "attachment; filename=\"NUL\"",
+   "attribute": "",
+   "path": "/api/media/x",
+   "name": "_NUL"
+  },
+  {
+   "disposition": "attachment; filename=\"con.zip\"",
+   "attribute": "",
+   "path": "/api/media/x",
+   "name": "_con.zip"
+  },
+  {
+   "disposition": "attachment; filename=\"Lpt9.tar.gz\"",
+   "attribute": "",
+   "path": "/api/media/x",
+   "name": "_Lpt9.tar.gz"
+  },
+  {
+   "disposition": "attachment; filename=\"COM10.txt\"",
+   "attribute": "",
+   "path": "/api/media/x",
+   "name": "COM10.txt"
+  },
+  {
+   "disposition": "attachment; filename=\"aux .txt\"",
+   "attribute": "",
+   "path": "/api/media/x",
+   "name": "_aux .txt"
+  },
+  {
+   "disposition": "attachment; filename=\"name. .\"",
+   "attribute": "",
+   "path": "/api/media/x",
+   "name": "name"
+  },
+  {
+   "disposition": "attachment; filename=\"tab\there\u0001.txt\"",
+   "attribute": "",
+   "path": "/api/media/x",
+   "name": "tab_here_.txt"
+  },
+  {
+   "disposition": "attachment; filename=\"..hidden.txt\"",
+   "attribute": "",
+   "path": "/api/media/x",
+   "name": "hidden.txt"
+  },
+  {
+   "disposition": null,
+   "attribute": ".profile",
+   "path": "/api/media/x",
+   "name": "profile"
+  },
+  {
+   "disposition": "attachment; filename=\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.zip\"",
+   "attribute": "",
+   "path": "/api/media/x",
+   "name": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.zip"
+  },
+  {
+   "disposition": "attachment; filename=\"éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé.pdf\"",
+   "attribute": "",
+   "path": "/api/media/x",
+   "name": "éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé.pdf"
+  },
+  {
+   "disposition": "attachment; filename=\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"",
+   "attribute": "",
+   "path": "/api/media/x",
+   "name": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  },
+  {
+   "disposition": "attachment; filename=\"ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc.dddddddddddddddddddddddddddddd\"",
+   "attribute": "",
+   "path": "/api/media/x",
+   "name": "ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc.dddd"
   }
  ]
 }

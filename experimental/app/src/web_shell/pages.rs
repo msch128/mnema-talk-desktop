@@ -117,7 +117,7 @@ fn save_download(
     label: &str,
     event: tauri::webview::DownloadEvent<'_>,
 ) -> bool {
-    use crate::web_proxy::free_name;
+    use crate::web_proxy::{directly_in, free_name};
     use tauri::webview::DownloadEvent::{Finished, Requested};
     match event {
         Requested { url, destination } => {
@@ -133,7 +133,12 @@ fn save_download(
                 .file_name()
                 .map(|n| n.to_string_lossy().into_owned())
                 .unwrap_or_default();
-            *destination = free_name(&dir, &suggested, |p| p.exists());
+            let target = free_name(&dir, &suggested, |p| p.exists());
+            if !directly_in(&dir, &target) {
+                crate::web_client::show_error("The download has a name that cannot be saved.");
+                return false;
+            }
+            *destination = target;
             crate::web_download::started(&url, destination);
             true
         }

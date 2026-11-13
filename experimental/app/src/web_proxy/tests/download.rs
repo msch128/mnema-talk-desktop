@@ -1,6 +1,7 @@
 //! Downloads streamed to disk: the whole file under its final name, or no file.
 use super::*;
-use crate::web_proxy::download::{Failure, MAX_DOWNLOAD, download_to, file_name, free_name};
+use crate::web_proxy::download::{Failure, MAX_DOWNLOAD, download_to};
+use crate::web_proxy::filename::{MAX_NAME_BYTES, directly_in, file_name, free_name};
 
 /// An empty folder of its own for one test.
 fn folder() -> PathBuf {
@@ -162,4 +163,30 @@ fn a_download_keeps_to_the_folder_and_to_free_names() {
         free_name(dir, "a.zip", |p| taken.iter().any(|t| t == p)),
         dir.join("a (3).zip")
     );
+}
+
+#[test]
+fn a_proposed_name_is_one_plain_component_of_bounded_length() {
+    let v: serde_json::Value =
+        serde_json::from_str(include_str!("../../../../../test-vectors/proxy.json")).unwrap();
+    let dir = std::path::Path::new("/dl");
+    for c in v["download_names"].as_array().unwrap() {
+        let name = c["name"].as_str().unwrap();
+        assert!(name.len() <= MAX_NAME_BYTES, "{name}");
+        assert!(
+            !name.starts_with('.') && !name.ends_with(['.', ' ']),
+            "{name}"
+        );
+        assert!(directly_in(dir, &free_name(dir, name, |_| false)), "{name}");
+    }
+}
+
+#[test]
+fn only_a_file_directly_in_the_folder_counts_as_in_it() {
+    let dir = std::path::Path::new("/dl");
+    assert!(directly_in(dir, &dir.join("a.zip")));
+    assert!(!directly_in(dir, &dir.join("sub").join("a.zip")));
+    assert!(!directly_in(dir, &dir.join("..").join("a.zip")));
+    assert!(!directly_in(dir, std::path::Path::new("/etc/a.zip")));
+    assert!(!directly_in(dir, dir));
 }

@@ -163,11 +163,17 @@ session (the proxy's request rules: its cookie, the instance's origin, only
 cancelling cancels the request quietly), streams the body into a temporary file
 next to the target and renames it once the whole body has arrived. The body is
 bounded by the server's own ceiling (2048 MiB plus 1 MiB) and by an idle timeout
-per piece; a failure removes the partial file. The server drops an export after
-it was sent completely once, so nothing is asked for before the person has
-chosen a place. The name follows `filename*`, `filename`, the `download`
-attribute and the last path segment, cut down to a plain name; the cases are
-shared with the Rust host in [`../test-vectors/proxy.json`](../test-vectors/proxy.json) (`download_names`).
+per piece; a failure removes the partial file. The body is read only once the
+person has chosen a place, so a cancelled dialog leaves an export unspent on the
+server. The proposed name follows `filename*`, `filename`, the `download`
+attribute and the last path segment, cut down to one plain name that is safe on
+every system: the part after the last `/` or `\`, control characters and
+`< > : " | ? *` replaced by `_`, spaces and dots stripped from both ends (no
+hidden file), "download" when nothing is left, at most 200 bytes with a short
+extension kept, and a Windows device name (`CON`, `NUL`, `COM1`, ...) prefixed
+with `_`. The proposed path must lie directly in the folder. What the person
+picks in the save dialog is theirs. The cases are shared with the Rust host in
+[`../test-vectors/proxy.json`](../test-vectors/proxy.json) (`download_names`).
 
 A download ends in one of two ways: the file manager shows the file (and a
 notice names it), or an error dialog says what failed (nothing left to download

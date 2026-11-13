@@ -3,12 +3,12 @@ import { randomBytes } from 'node:crypto'
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
 import { stripTypeScriptTypes } from 'node:module'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { basename, dirname, join, resolve } from 'node:path'
 import { afterEach, test } from 'node:test'
 import { runInNewContext } from 'node:vm'
 import { Jar } from '../src/core/cookies.ts'
 import { INTERRUPTED, NOTHING_TO_DOWNLOAD, TOO_LARGE, downloadRequest, openDownload, refusalMessage } from '../src/core/download.ts'
-import { downloadName } from '../src/core/downloadname.ts'
+import { MAX_NAME_BYTES, downloadName, inFolder } from '../src/core/downloadname.ts'
 import { Limits, type Instance } from '../src/core/proxy.ts'
 import { reply, serve, type TestServer } from './helpers/server.ts'
 
@@ -39,6 +39,27 @@ test('name vectors: the disposition, the attribute and the address, cut down to 
   const v = JSON.parse(readFileSync(new URL('../../test-vectors/proxy.json', import.meta.url), 'utf8')) as { download_names: { disposition: string | null, attribute: string, path: string, name: string }[] }
   assert.ok(v.download_names.length >= 10)
   for (const c of v.download_names) assert.equal(downloadName(c.disposition, c.attribute, c.path), c.name, JSON.stringify(c))
+})
+
+test('every proposed name is one plain component: no separator, reserved character, device, hidden or over-long name', () => {
+  const v = JSON.parse(readFileSync(new URL('../../test-vectors/proxy.json', import.meta.url), 'utf8')) as { download_names: { name: string }[] }
+  for (const { name } of v.download_names) {
+    assert.ok(Buffer.byteLength(name) <= MAX_NAME_BYTES, name)
+    assert.doesNotMatch(name, /[/\\<>:"|?*]/, name)
+    assert.ok([...name].every((c) => { const code = c.codePointAt(0) as number; return code >= 0x20 && (code < 0x7f || code > 0x9f) }), name)
+    assert.doesNotMatch(name, /^[ .]|[ .]$/, name)
+    assert.doesNotMatch(name, /^(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9]) *(?:\.|$)/i, name)
+    assert.equal(dirname(inFolder('/dl', name)), resolve('/dl'), name)
+  }
+})
+
+test('a name that would leave the folder is saved as "download" in it', () => {
+  assert.equal(inFolder('/dl', 'a.zip'), resolve('/dl', 'a.zip'))
+  for (const bad of ['../a.zip', 'sub/a.zip', '..', '.', '', '/etc/passwd']) {
+    const path = inFolder('/dl', bad)
+    assert.equal(dirname(path), resolve('/dl'), bad)
+    assert.equal(basename(path), 'download', bad)
+  }
 })
 
 // -------------------------------------------------------------- the sender
