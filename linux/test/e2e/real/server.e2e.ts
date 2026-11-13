@@ -130,7 +130,7 @@ test('the GDPR export is requested, saved by the host from a download link, and 
     const a = document.createElement('a')
     a.id = 'export-link'
     a.href = '/api/users/me/export/download'
-    a.setAttribute('download', '')
+    a.setAttribute('download', 'mnema-talk-export.zip')
     a.textContent = 'Download my data'
     a.style.cssText = 'position:fixed;left:8px;top:8px;z-index:2147483647;padding:12px;background:#fff;color:#000'
     document.body.append(a)
@@ -138,13 +138,15 @@ test('the GDPR export is requested, saved by the host from a download link, and 
   await clickOn('export-link')
   await waitFor(() => readdirSync(downloads).some((name) => !name.startsWith('.')), 'the file is saved', 120_000)
   const [saved] = readdirSync(downloads).filter((name) => !name.startsWith('.'))
+  // The name the web app gives the link is the one proposed (the dialog comes before the server's own).
+  assert.equal(saved, 'mnema-talk-export.zip')
   const bytes = readFileSync(join(downloads, saved as string))
   assert.equal(bytes.subarray(0, 2).toString('latin1'), 'PK', 'a ZIP archive')
   assert.deepEqual(readdirSync(downloads).filter((name) => name.startsWith('.')), [], 'no temporary file is left')
-  // A server with the hour to download again reads ready with downloaded_at; an older one reads downloaded.
+  // The server records the download and keeps the file for the hour after it.
   const recorded = async () => {
     const json = (await api<{ state?: string, downloaded_at?: string }>('GET', '/api/users/me/export')).json
-    return json?.state === 'downloaded' || (json?.state === 'ready' && typeof json.downloaded_at === 'string')
+    return json?.state === 'ready' && typeof json.downloaded_at === 'string'
   }
   await waitFor(recorded, 'the server records the download')
 })

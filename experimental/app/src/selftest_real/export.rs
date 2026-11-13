@@ -53,7 +53,7 @@ impl Target<'_> {
         let since = SystemTime::now() - std::time::Duration::from_secs(2);
         // The link as the web app renders it, clicked like a person would.
         let clicked = self
-            .page("const a=document.createElement('a');a.href='/api/users/me/export/download';a.setAttribute('download','');a.textContent='Download';document.body.append(a);a.click();a.remove();return 'clicked'")
+            .page("const a=document.createElement('a');a.href='/api/users/me/export/download';a.setAttribute('download','mnema-talk-export.zip');a.textContent='Download';document.body.append(a);a.click();a.remove();return 'clicked'")
             .await;
         check(
             "the download link is clicked",
@@ -77,12 +77,12 @@ impl Target<'_> {
             zip,
             format!("{saved:?} in {}", dir.display()),
         );
-        // A server from before the hour to download again reads "downloaded".
-        // The server writes it down right after the last byte left it.
+        // The server writes it down right after the last byte left it, and the
+        // file stays downloadable for the hour after.
         let mut after = String::new();
         for _ in 0..50 {
             after = self
-                .page("const j=(await api('GET','/api/users/me/export')).j;return j.state==='downloaded'||(j.state==='ready'&&!!j.downloaded_at)")
+                .page("const j=(await api('GET','/api/users/me/export')).j;return j.state==='ready'&&!!j.downloaded_at")
                 .await;
             if after == "true" {
                 break;
