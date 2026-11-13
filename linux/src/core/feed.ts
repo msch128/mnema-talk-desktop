@@ -8,6 +8,7 @@
  * the member as away, as the hidden page it replaces did, and it sends
  * nothing else.
  */
+import type { Registry } from './instances.ts'
 import { forward, type Instance } from './proxy.ts'
 import { counts } from './sleep.ts'
 import { Sockets, type WsEvent } from './sockets.ts'
@@ -166,4 +167,26 @@ export function mentionRise(before: number, after: number, muted: boolean): numb
 /** What the quiet toast says. */
 export function mentionText(count: number, server: string): string {
   return `${count} new ${count === 1 ? 'mention' : 'mentions'} on ${server}`
+}
+
+/** What one read did to the server's slot: the server is gone (the feed ends), nothing on the rail changed (no answer, or the server is not running), or the counts are on the rail, with a rise of the mentions to announce (null: none). */
+export type Applied = { kind: 'gone' } | { kind: 'kept' } | { kind: 'shown', rise: number | null, name: string }
+
+/** Puts what was read on the slot of `id`; a signed-out session clears its counts. The same as the Tauri host's `apply`. */
+export function applyRead(registry: Registry, id: string, read: Read): Applied {
+  if (read.kind === 'unreachable') return { kind: 'kept' }
+  const slot = registry.slot(id)
+  if (!slot) return { kind: 'gone' }
+  if (!registry.session(id)) return { kind: 'kept' }
+  // A session that is gone shows nothing until its page signs in again.
+  const { unread, mentions } = read.kind === 'counts' ? read : { unread: 0, mentions: 0 }
+  const before = slot.mentions
+  registry.report(id, unread, mentions)
+  const name = registry.displayName(slot)
+  return { kind: 'shown', rise: mentionRise(before, slot.mentions, registry.isMuted(id)), name }
+}
+
+/** Forgets the feed of `id` if it is `feed`: a feed that ends never removes a newer one of the same server (its page failed to open meanwhile). */
+export function forget(feeds: Map<string, Feed>, id: string, feed: Feed): void {
+  if (feeds.get(id) === feed) feeds.delete(id)
 }

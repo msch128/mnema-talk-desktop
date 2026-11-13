@@ -255,30 +255,31 @@ mod tests {
         let mut stored = Stored::empty();
         stored.servers = vec![url("https://a.example/")];
         stored.sleep = Some(Sleep {
-            after_secs: Some(1800),
+            after_secs: Some(3600),
             keep: 2,
         });
         let registry = Registry::restore(&stored);
         assert_eq!(
             registry.sleep(),
             Sleep {
-                after_secs: Some(1800),
+                after_secs: Some(3600),
                 keep: 2
             }
         );
         let file: serde_json::Value =
             serde_json::from_slice(&registry.stored().to_bytes().unwrap()).unwrap();
-        assert_eq!(file["sleep"]["after_secs"], 1800);
+        assert_eq!(file["sleep"]["after_secs"], 3600);
         let export: serde_json::Value =
             serde_json::from_slice(&registry.exported().to_bytes().unwrap()).unwrap();
         assert!(export.get("sleep").is_none());
-        // Settings that do not hold up are the defaults, or held to their bounds; the list still reads.
+        // Settings that do not hold up are the defaults, or held to their bounds (the nearest
+        // choice of the menu); the list still reads.
         for (raw, want) in [
             (r#""junk""#, Sleep::default()),
             (
                 r#"{"after_secs":5,"keep":0}"#,
                 Sleep {
-                    after_secs: Some(60),
+                    after_secs: Some(600),
                     keep: 1,
                 },
             ),

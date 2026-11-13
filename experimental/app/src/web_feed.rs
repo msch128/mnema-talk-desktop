@@ -9,7 +9,7 @@
 //! after it opens it says the member is idle (`presence_idle`), so it shows
 //! the member as away, exactly as the hidden page it replaces did, and it
 //! never sends typing, reads or anything else.
-use crate::instances::Phase;
+use crate::instances::{Phase, Registry};
 use crate::web_client::Trusted;
 use crate::web_ws::{Sockets, WsEvent};
 use std::{
@@ -83,26 +83,30 @@ pub fn start(app: &tauri::AppHandle, id: &str) {
     };
     let stop = Arc::new(Notify::new());
     let sockets = Arc::new(Sockets::default());
-    let fresh = feeds(|map| {
+    if !register(id, &stop, &sockets) {
+        return;
+    }
+    let app = app.clone();
+    let id = id.to_owned();
+    tauri::async_runtime::spawn(async move { run(&app, &id, &session, &sockets, &stop).await });
+}
+
+/// Notes a new feed of `id`; `false` when it already has one.
+fn register(id: &str, stop: &Arc<Notify>, sockets: &Arc<Sockets>) -> bool {
+    feeds(|map| {
         if map.contains_key(id) {
             return false;
         }
         map.insert(
             id.to_owned(),
             Feed {
-                stop: Arc::clone(&stop),
-                sockets: Arc::clone(&sockets),
+                stop: Arc::clone(stop),
+                sockets: Arc::clone(sockets),
             },
         );
         true
     })
-    .unwrap_or(false);
-    if !fresh {
-        return;
-    }
-    let app = app.clone();
-    let id = id.to_owned();
-    tauri::async_runtime::spawn(async move { run(&app, &id, &session, &sockets, &stop).await });
+    .unwrap_or(false)
 }
 
 /// Stops keeping the counts of `id` (its page took over, or it went away).
@@ -159,19 +163,27 @@ async fn run(
     id: &str,
     session: &Arc<crate::instances::Session>,
     sockets: &Arc<Sockets>,
-    stop: &Notify,
+    stop: &Arc<Notify>,
 ) {
     pump(&session.instance, sockets, stop, TIMES, |read| {
         running(id) && report(app, id, read)
     })
     .await;
     // Signed out (or removed): the feed is over until a page opens again.
-    stop_quietly(id);
+    stop_quietly(id, stop);
 }
 
-/// Forgets the feed of `id` without waking its loop (it is ending anyway).
-fn stop_quietly(id: &str) {
-    if let Some(Some(feed)) = feeds(|map| map.remove(id)) {
+/// Forgets the feed of `id` that `own` stops, without waking its loop (it is
+/// ending anyway). A newer feed of the same server (its page failed to open
+/// meanwhile) stays.
+fn stop_quietly(id: &str, own: &Arc<Notify>) {
+    let ended = feeds(|map| {
+        map.get(id)
+            .is_some_and(|feed| Arc::ptr_eq(&feed.stop, own))
+            .then(|| map.remove(id))
+            .flatten()
+    });
+    if let Some(Some(feed)) = ended {
         feed.sockets.close_all();
     }
 }
@@ -218,7 +230,10 @@ pub(crate) async fn pump(
         if !pause(stop, rest).await {
             return;
         }
-        while pokes.try_recv().is_ok() {}
+        // A socket that closed meanwhile is opened again on the next good read.
+        while let Ok(alive) = pokes.try_recv() {
+            open &= alive;
+        }
     }
 }
 
@@ -317,32 +332,53 @@ pub fn mention_text(count: u32, server: &str) -> String {
 /// signed-out session clears them. Gives whether the server is still there
 /// to report for.
 fn report(app: &tauri::AppHandle, id: &str, read: Read) -> bool {
-    let (unread, mentions) = match read {
-        Read::Counts(unread, mentions) => (unread, mentions),
-        Read::SignedOut => (0, 0),
-        Read::Unreachable => return true,
-    };
     let trusted = app.state::<Trusted>();
-    let rise = {
-        let Ok(mut registry) = trusted.registry.lock() else {
-            return false;
-        };
-        let Some(slot) = registry.slot(id) else {
-            return false;
-        };
-        if !matches!(slot.phase, Phase::Ready(_)) {
-            return true;
-        }
-        let (before, name) = (slot.mentions, slot.name());
-        let muted = registry.is_muted(id, crate::web_proxy::now());
-        registry.report(id, unread, mentions);
-        mention_rise(before, mentions.min(crate::instances::MAX_COUNT), muted).map(|n| (n, name))
+    let applied = match trusted.registry.lock() {
+        Ok(mut registry) => apply(&mut registry, id, read, crate::web_proxy::now()),
+        Err(_) => return false,
+    };
+    let Applied::Shown(rise) = applied else {
+        return applied == Applied::Kept;
     };
     crate::web_shell::counts_changed(app);
     if let Some((count, name)) = rise {
         crate::web_notify::quiet_toast(app, &name, &mention_text(count, &name));
     }
     true
+}
+
+/// What one read did to the server's slot.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum Applied {
+    /// The server is gone: the feed ends.
+    Gone,
+    /// Nothing changed on the rail (no answer, or the server is not running).
+    Kept,
+    /// The counts are on the rail, with a rise of the mentions to announce
+    /// (how many, and the server's name).
+    Shown(Option<(u32, String)>),
+}
+
+/// Puts what was read on the slot of `id`; a signed-out session clears its
+/// counts.
+pub(crate) fn apply(registry: &mut Registry, id: &str, read: Read, now: i64) -> Applied {
+    let (unread, mentions) = match read {
+        Read::Counts(unread, mentions) => (unread, mentions),
+        Read::SignedOut => (0, 0),
+        Read::Unreachable => return Applied::Kept,
+    };
+    let Some(slot) = registry.slot(id) else {
+        return Applied::Gone;
+    };
+    if !matches!(slot.phase, Phase::Ready(_)) {
+        return Applied::Kept;
+    }
+    let (before, name) = (slot.mentions, slot.name());
+    let muted = registry.is_muted(id, now);
+    registry.report(id, unread, mentions);
+    Applied::Shown(
+        mention_rise(before, mentions.min(crate::instances::MAX_COUNT), muted).map(|n| (n, name)),
+    )
 }
 
 #[cfg(test)]
@@ -412,14 +448,13 @@ mod tests {
         /// What every answer but the socket says: 200, or 401 for a signed-out session.
         status: Arc<std::sync::atomic::AtomicU32>,
         reads: Arc<std::sync::atomic::AtomicU32>,
-        /// How many sockets the host opened.
-        upgrades: Arc<std::sync::atomic::AtomicU32>,
+        /// The path of every socket the host opened.
+        upgrades: Arc<Mutex<Vec<String>>>,
         said: Arc<Mutex<Vec<String>>>,
         push: mpsc::UnboundedSender<String>,
     }
 
     async fn fake() -> Fake {
-        use futures_util::{SinkExt, StreamExt};
         use std::sync::atomic::Ordering;
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -429,7 +464,7 @@ mod tests {
         let dm_mentions = Arc::new(std::sync::atomic::AtomicU32::new(0));
         let status = Arc::new(std::sync::atomic::AtomicU32::new(200));
         let reads = Arc::new(std::sync::atomic::AtomicU32::new(0));
-        let upgrades = Arc::new(std::sync::atomic::AtomicU32::new(0));
+        let upgrades = Arc::new(Mutex::new(Vec::new()));
         let said = Arc::new(Mutex::new(Vec::new()));
         let (push, pushed) = mpsc::unbounded_channel::<String>();
         let pushed = Arc::new(tokio::sync::Mutex::new(pushed));
@@ -443,30 +478,11 @@ mod tests {
             while let Ok((mut stream, _)) = listener.accept().await {
                 let mut head = [0u8; 64];
                 let n = stream.peek(&mut head).await.unwrap_or(0);
-                if String::from_utf8_lossy(&head[..n]).starts_with("GET /api/ws") {
-                    up.fetch_add(1, Ordering::SeqCst);
-                    let (said, pushed) = (Arc::clone(&w), Arc::clone(&pushed));
-                    tokio::spawn(async move {
-                        let ws = tokio_tungstenite::accept_async(stream).await.unwrap();
-                        let (mut tx, mut rx) = ws.split();
-                        tokio::spawn(async move {
-                            while let Some(Ok(message)) = rx.next().await {
-                                if let tokio_tungstenite::tungstenite::Message::Text(t) = message {
-                                    said.lock().unwrap().push(t.as_str().to_owned());
-                                }
-                            }
-                        });
-                        let mut pushed = pushed.lock().await;
-                        while let Some(frame) = pushed.recv().await {
-                            if tx
-                                .send(tokio_tungstenite::tungstenite::Message::text(frame))
-                                .await
-                                .is_err()
-                            {
-                                return;
-                            }
-                        }
-                    });
+                let head = String::from_utf8_lossy(&head[..n]).into_owned();
+                if head.starts_with("GET /api/ws") {
+                    let path = head.split(' ').nth(1).unwrap_or_default().to_owned();
+                    up.lock().unwrap().push(path);
+                    tokio::spawn(socket(stream, Arc::clone(&w), Arc::clone(&pushed)));
                 } else {
                     let mut buf = vec![0u8; 4096];
                     let n = stream.read(&mut buf).await.unwrap_or(0);
@@ -510,6 +526,36 @@ mod tests {
         }
     }
 
+    /// The fake's socket: records what the host says and sends what the test
+    /// pushes; `CLOSE` closes it from the server's side.
+    async fn socket(
+        stream: tokio::net::TcpStream,
+        said: Arc<Mutex<Vec<String>>>,
+        pushed: Arc<tokio::sync::Mutex<mpsc::UnboundedReceiver<String>>>,
+    ) {
+        use futures_util::{SinkExt, StreamExt};
+        use tokio_tungstenite::tungstenite::Message;
+        let ws = tokio_tungstenite::accept_async(stream).await.unwrap();
+        let (mut tx, mut rx) = ws.split();
+        tokio::spawn(async move {
+            while let Some(Ok(message)) = rx.next().await {
+                if let Message::Text(t) = message {
+                    said.lock().unwrap().push(t.as_str().to_owned());
+                }
+            }
+        });
+        let mut pushed = pushed.lock().await;
+        while let Some(frame) = pushed.recv().await {
+            if frame == "CLOSE" {
+                let _ = tx.close().await;
+                return;
+            }
+            if tx.send(Message::text(frame)).await.is_err() {
+                return;
+            }
+        }
+    }
+
     async fn until(mut ready: impl FnMut() -> bool) {
         for _ in 0..200 {
             if ready() {
@@ -545,6 +591,10 @@ mod tests {
 
     /// Runs the feed against `server` and collects what it reports.
     fn feed(server: &Fake) -> Running {
+        feed_with(server, QUICK)
+    }
+
+    fn feed_with(server: &Fake, times: Times) -> Running {
         let instance = instance_of(server);
         let sockets = Arc::new(Sockets::default());
         let stop = Arc::new(Notify::new());
@@ -555,7 +605,7 @@ mod tests {
             Arc::clone(&stop),
         );
         let task = tokio::spawn(async move {
-            pump(&instance, &s, &st, QUICK, move |read| {
+            pump(&instance, &s, &st, times, move |read| {
                 got.lock().unwrap().push(read);
                 true
             })
@@ -574,6 +624,8 @@ mod tests {
         // The muted channel adds no unread; the conversation adds one.
         assert_eq!(reports.lock().unwrap()[0], Read::Counts(2, 1));
         assert_eq!(*server.said.lock().unwrap(), [IDLE]);
+        // With the conversation query: the hub sends conversation events only then.
+        assert_eq!(*server.upgrades.lock().unwrap(), ["/api/ws?dm=1"]);
         server.mentions.store(4, Ordering::SeqCst);
         for kind in ["presence_update", "message_create", "message_create"] {
             server
@@ -632,7 +684,7 @@ mod tests {
         assert_eq!(*reports.lock().unwrap(), [Read::SignedOut]);
         // Time for a socket to arrive, had one been opened.
         tokio::time::sleep(Duration::from_millis(200)).await;
-        assert_eq!(server.upgrades.load(Ordering::SeqCst), 0);
+        assert!(server.upgrades.lock().unwrap().is_empty());
     }
 
     #[tokio::test]
@@ -649,7 +701,7 @@ mod tests {
             .unwrap()
             .unwrap();
         tokio::time::sleep(Duration::from_millis(200)).await;
-        assert_eq!(server.upgrades.load(Ordering::SeqCst), 0);
+        assert!(server.upgrades.lock().unwrap().is_empty());
     }
 
     #[test]
@@ -663,5 +715,110 @@ mod tests {
         // Up to a fifth earlier, never later.
         assert!((24..=30).contains(&at(1, 5_999)));
         assert!((240..=300).contains(&backoff(TIMES, 9, u64::MAX).as_secs()));
+    }
+
+    #[tokio::test]
+    async fn a_socket_closed_while_a_change_settles_is_opened_again() {
+        let server = fake().await;
+        let settle = Duration::from_millis(400);
+        let (reports, _sockets, stop, _task) = feed_with(&server, Times { settle, ..QUICK });
+        until(|| !server.said.lock().unwrap().is_empty()).await;
+        server
+            .push
+            .send(r#"{"type":"message_create","payload":{}}"#.to_owned())
+            .unwrap();
+        // The server closes the socket 100 ms into the pause after the change.
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        server.push.send("CLOSE".to_owned()).unwrap();
+        until(|| server.upgrades.lock().unwrap().len() >= 2).await;
+        stop.notify_one();
+        assert_eq!(
+            server.upgrades.lock().unwrap().len(),
+            2,
+            "the closed socket is opened again after the next read"
+        );
+        assert!(reports.lock().unwrap().len() >= 2);
+    }
+
+    #[tokio::test]
+    async fn the_loop_asks_a_server_that_is_down_later_each_time() {
+        use std::sync::atomic::Ordering;
+        let server = fake().await;
+        server.status.store(502, Ordering::SeqCst);
+        let times = Times {
+            reopen: Duration::from_millis(200),
+            reopen_max: Duration::from_secs(10),
+            ..QUICK
+        };
+        let at = Arc::new(Mutex::new(Vec::<std::time::Instant>::new()));
+        let (instance, sockets, stop) = (
+            instance_of(&server),
+            Arc::new(Sockets::default()),
+            Arc::new(Notify::new()),
+        );
+        let (seen, st) = (Arc::clone(&at), Arc::clone(&stop));
+        let task = tokio::spawn(async move {
+            pump(&instance, &sockets, &st, times, move |_| {
+                seen.lock().unwrap().push(std::time::Instant::now());
+                true
+            })
+            .await;
+        });
+        for _ in 0..100 {
+            if at.lock().unwrap().len() >= 3 {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        stop.notify_one();
+        task.await.unwrap();
+        let at = at.lock().unwrap();
+        assert!(at.len() >= 3, "{} reads", at.len());
+        let (first, second) = (at[1] - at[0], at[2] - at[1]);
+        // 200 ms, then 400 ms, each up to a fifth earlier.
+        assert!(first >= Duration::from_millis(160), "{first:?}");
+        assert!(second >= Duration::from_millis(320), "{second:?}");
+        assert!(second > first, "{first:?} then {second:?}");
+    }
+
+    #[test]
+    fn a_read_puts_the_counts_on_the_slot_and_a_signed_out_session_clears_them() {
+        let mut registry = Registry::default();
+        let (id, _) = crate::instances::testing::ready(&mut registry, "feed.example");
+        let name = registry.slot(&id).unwrap().name();
+        assert_eq!(
+            apply(&mut registry, &id, Read::Counts(3, 2), 0),
+            Applied::Shown(Some((2, name)))
+        );
+        assert_eq!(
+            apply(&mut registry, &id, Read::Unreachable, 0),
+            Applied::Kept
+        );
+        let slot = registry.slot(&id).unwrap();
+        assert_eq!((slot.unread, slot.mentions), (3, 2), "no answer keeps them");
+        assert_eq!(
+            apply(&mut registry, &id, Read::SignedOut, 0),
+            Applied::Shown(None)
+        );
+        let slot = registry.slot(&id).unwrap();
+        assert_eq!((slot.unread, slot.mentions), (0, 0));
+        assert_eq!(
+            apply(&mut registry, "gone", Read::Counts(1, 1), 0),
+            Applied::Gone
+        );
+    }
+
+    #[test]
+    fn an_ending_feed_forgets_only_itself() {
+        let id = "feed-ending-test";
+        let (old, new) = (Arc::new(Notify::new()), Arc::new(Notify::new()));
+        assert!(register(id, &old, &Arc::new(Sockets::default())));
+        // Its page took over, failed to open, and a new feed started.
+        stop(id);
+        assert!(register(id, &new, &Arc::new(Sockets::default())));
+        stop_quietly(id, &old);
+        assert!(running(id), "the newer feed stays");
+        stop_quietly(id, &new);
+        assert!(!running(id));
     }
 }

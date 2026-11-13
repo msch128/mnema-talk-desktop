@@ -13,8 +13,6 @@ use serde::{Deserialize, Serialize};
 pub const DEFAULT_UNLOAD_AFTER_SECS: u64 = 10 * 60;
 /// Pages that keep running whatever their age, the one in front included. A setting.
 pub const DEFAULT_KEEP_LOADED: usize = 4;
-/// The settings' bounds: one minute to a day, and up to the bound of servers.
-pub const UNLOAD_AFTER_RANGE: std::ops::RangeInclusive<u64> = 60..=86_400;
 
 /// The rail's two numbers for a server from its `GET /api/read-state`
 /// (`states`) and `GET /api/dms` (`dms`, its conversations), as the web app's
@@ -61,15 +59,26 @@ impl Default for Sleep {
 }
 
 impl Sleep {
-    /// The settings as stored, held to their bounds; nonsense is the default.
+    /// The settings as stored, held to their bounds: the time is the nearest
+    /// of the menu's choices (`UNLOAD_CHOICES`; Off stays Off), so a value
+    /// written into the list file by hand shows checked in the menu and is
+    /// the one in force; the pages kept are one up to the bound of servers.
     pub fn bounded(self) -> Sleep {
         Sleep {
-            after_secs: self
-                .after_secs
-                .map(|s| s.clamp(*UNLOAD_AFTER_RANGE.start(), *UNLOAD_AFTER_RANGE.end())),
+            after_secs: self.after_secs.map(nearest_choice),
             keep: self.keep.clamp(1, crate::instances::MAX_INSTANCES),
         }
     }
+}
+
+/// The time of the menu's choices nearest to `secs`; the shorter one on a tie.
+fn nearest_choice(secs: u64) -> u64 {
+    UNLOAD_CHOICES
+        .iter()
+        .flatten()
+        .copied()
+        .min_by_key(|choice| choice.abs_diff(secs))
+        .unwrap_or(DEFAULT_UNLOAD_AFTER_SECS)
 }
 
 /// The choices of "Unload idle servers" in the rail's menu, in seconds
@@ -213,7 +222,7 @@ mod tests {
         assert_eq!(
             wild,
             Sleep {
-                after_secs: Some(60),
+                after_secs: Some(600),
                 keep: 1
             }
         );
@@ -222,7 +231,31 @@ mod tests {
             keep: usize::MAX,
         }
         .bounded();
-        assert_eq!(huge.after_secs, Some(86_400));
+        assert_eq!(huge.after_secs, Some(3600));
+        // A time from the list file that the menu does not offer is the nearest it does.
+        let nearest = |secs| {
+            Sleep {
+                after_secs: Some(secs),
+                keep: 4,
+            }
+            .bounded()
+            .after_secs
+        };
+        assert_eq!(nearest(1200), Some(600));
+        assert_eq!(nearest(2100), Some(600));
+        assert_eq!(nearest(2101), Some(3600));
+        assert_eq!(nearest(3600), Some(3600));
+        for choice in UNLOAD_CHOICES {
+            assert_eq!(
+                Sleep {
+                    after_secs: choice,
+                    keep: 4
+                }
+                .bounded()
+                .after_secs,
+                choice
+            );
+        }
         assert_eq!(huge.keep, crate::instances::MAX_INSTANCES);
         assert_eq!(
             Sleep {

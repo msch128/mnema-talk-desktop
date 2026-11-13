@@ -3,14 +3,13 @@
  * pages may be closed. The same rules as the Tauri host (`src/rail_sleep.rs`),
  * tested against `counts` and `unload` in `test-vectors/rail-layout.json`.
  */
+import type { Registry, Session } from './instances.ts'
 import { MAX_INSTANCES } from './instancestore.ts'
 
 /** Hidden for this long (seconds), a page may be closed. A setting. */
 export const DEFAULT_UNLOAD_AFTER_SECS = 10 * 60
 /** Pages that keep running whatever their age, the one in front included. A setting. */
 export const DEFAULT_KEEP_LOADED = 4
-const AFTER_MIN = 60
-const AFTER_MAX = 86_400
 
 const whole = (v: unknown): number => (typeof v === 'number' && Number.isSafeInteger(v) && v > 0 ? v : 0)
 
@@ -43,12 +42,23 @@ export const defaultSleep = (): Sleep => ({ afterSecs: DEFAULT_UNLOAD_AFTER_SECS
 /** The settings as they are written to the list file. */
 export const storedSleep = (sleep: Sleep): { after_secs: number | null, keep: number } => ({ after_secs: sleep.afterSecs, keep: sleep.keep })
 
-/** The settings as stored (`after_secs`, `keep`: the Tauri host's names), held to their bounds; nonsense is the default. */
+/** The time of the menu's choices nearest to `secs`; the shorter one on a tie. */
+function nearestChoice(secs: number): number {
+  let best = DEFAULT_UNLOAD_AFTER_SECS
+  for (const choice of UNLOAD_CHOICES) if (choice !== null && Math.abs(choice - secs) < Math.abs(best - secs)) best = choice
+  return best
+}
+
+/**
+ * The settings as stored (`after_secs`, `keep`: the Tauri host's names), held to their bounds; nonsense is the default.
+ * The time is the nearest of the menu's choices (`UNLOAD_CHOICES`; null, Off, stays), so a value written into the list
+ * file by hand shows checked in the menu and is the one in force.
+ */
 export function boundedSleep(raw: unknown): Sleep {
   const d = defaultSleep()
   if (typeof raw !== 'object' || raw === null) return d
   const { after_secs: afterSecs, keep } = raw as Record<string, unknown>
-  const after = afterSecs === null ? null : Number.isSafeInteger(afterSecs) ? Math.min(Math.max(afterSecs as number, AFTER_MIN), AFTER_MAX) : d.afterSecs
+  const after = afterSecs === null ? null : Number.isSafeInteger(afterSecs) ? nearestChoice(afterSecs as number) : d.afterSecs
   const kept = Number.isSafeInteger(keep) ? Math.min(Math.max(keep as number, 1), MAX_INSTANCES) : d.keep
   return { afterSecs: after, keep: kept }
 }
@@ -81,4 +91,18 @@ export function pagesToUnload(sleep: Sleep, now: number, servers: readonly PageS
     running--
   }
   return out
+}
+
+/**
+ * The session of `id` if its page may be closed now, checked again right before closing: the page may have become
+ * busy, or its server the one in front, since the rules were asked. The next page is a new run, so it has to say
+ * again whether it is busy. The same as the Tauri host's `take_for_unload`.
+ */
+export function takeForUnload(registry: Registry, id: string): Session | null {
+  const inFront = !registry.adding() && registry.active() === id
+  const slot = registry.slot(id)
+  const session = registry.session(id)
+  if (!slot || !session || !closable(inFront, slot.busy)) return null
+  slot.busy = null
+  return session
 }

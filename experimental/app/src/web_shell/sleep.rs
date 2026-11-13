@@ -8,12 +8,12 @@
 //! (`web_feed`).
 use super::layout::layout;
 use super::pages::open_page;
-use crate::instances::{Phase, instance_label};
+use crate::instances::{Phase, Registry, Session, instance_label};
 use crate::rail_sleep::{PageState, pages_to_unload};
 use crate::web_client::Trusted;
 use std::{
     collections::{HashMap, HashSet},
-    sync::Mutex,
+    sync::{Arc, Mutex},
     time::Duration,
 };
 use tauri::Manager;
@@ -150,21 +150,10 @@ fn unload(app: &tauri::AppHandle, id: &str) {
         let Ok(mut registry) = trusted.registry.lock() else {
             return;
         };
-        // Checked again under the lock: the page may have become busy, or
-        // its server the one in front, since the rules were asked.
-        let in_front = !registry.adding() && registry.active() == Some(id);
-        match registry.slot_mut(id) {
-            Some(slot) if crate::rail_sleep::closable(in_front, slot.busy) => {
-                let Phase::Ready(session) = &slot.phase else {
-                    return;
-                };
-                let session = std::sync::Arc::clone(session);
-                // The next page is a new run: it says again whether it is busy.
-                slot.busy = None;
-                session
-            }
-            _ => return,
-        }
+        let Some(session) = take_for_unload(&mut registry, id) else {
+            return;
+        };
+        session
     };
     without_page(app, id);
     if let Some(page) = app.get_webview(&instance_label(id)) {
@@ -173,6 +162,24 @@ fn unload(app: &tauri::AppHandle, id: &str) {
     session.sockets.close_all();
     hidden(|m| m.remove(id));
     layout(app);
+}
+
+/// The session of `id` if its page may be closed now, checked again under the
+/// lock: the page may have become busy, or its server the one in front,
+/// since the rules were asked. The next page is a new run, so it has to say
+/// again whether it is busy.
+fn take_for_unload(registry: &mut Registry, id: &str) -> Option<Arc<Session>> {
+    let in_front = !registry.adding() && registry.active() == Some(id);
+    let slot = registry.slot_mut(id)?;
+    if !crate::rail_sleep::closable(in_front, slot.busy) {
+        return None;
+    }
+    let Phase::Ready(session) = &slot.phase else {
+        return None;
+    };
+    let session = Arc::clone(session);
+    slot.busy = None;
+    Some(session)
 }
 
 /// Whether the page of a server is busy: an unsent draft, an upload under
@@ -208,4 +215,42 @@ pub fn watch(app: &tauri::AppHandle) {
             look(&app);
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::instances::testing::ready;
+
+    #[test]
+    fn a_page_is_taken_for_closing_only_when_hidden_and_idle_at_that_moment() {
+        let mut registry = Registry::default();
+        let (front, _) = ready(&mut registry, "front.example");
+        let (hidden, session) = ready(&mut registry, "hidden.example");
+        assert!(registry.activate(&front));
+        for id in [&front, &hidden] {
+            registry.slot_mut(id).unwrap().busy = Some(false);
+        }
+        assert!(
+            take_for_unload(&mut registry, &front).is_none(),
+            "the server in front"
+        );
+        registry.slot_mut(&hidden).unwrap().busy = Some(true);
+        assert!(
+            take_for_unload(&mut registry, &hidden).is_none(),
+            "it became busy after the rules were asked"
+        );
+        registry.slot_mut(&hidden).unwrap().busy = Some(false);
+        let taken = take_for_unload(&mut registry, &hidden).expect("hidden and idle");
+        assert!(Arc::ptr_eq(&taken, &session));
+        assert_eq!(
+            registry.slot(&hidden).unwrap().busy,
+            None,
+            "the next page says again"
+        );
+        assert!(
+            take_for_unload(&mut registry, "gone").is_none(),
+            "a server no longer listed"
+        );
+    }
 }

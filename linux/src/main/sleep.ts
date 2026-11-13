@@ -7,8 +7,8 @@
  * its page was closed, the host keeps its counts (`core/feed.ts`).
  */
 import { Notification } from 'electron'
-import { Feed, mentionRise, mentionText } from '../core/feed.ts'
-import { type PageState, closable, pagesToUnload } from '../core/sleep.ts'
+import { Feed, applyRead, forget, mentionText } from '../core/feed.ts'
+import { type PageState, pagesToUnload, takeForUnload } from '../core/sleep.ts'
 import type { Context } from './context.ts'
 import { countsChanged, layout } from './shelllayout.ts'
 
@@ -45,18 +45,13 @@ export function withoutPage(ctx: Context, id: string): void {
   const s = of(ctx)
   const session = ctx.trusted.registry.session(id)
   if (!session || s.feeds.has(id)) return
-  const feed = new Feed(session.instance, (read) => {
-    const registry = ctx.trusted.registry
-    const slot = registry.slot(id)
-    if (!slot || !registry.session(id) || read.kind === 'unreachable') return
-    // A session that is gone shows nothing until its page signs in again.
-    const { unread, mentions } = read.kind === 'counts' ? read : { unread: 0, mentions: 0 }
-    if (read.kind === 'signed_out') s.feeds.delete(id)
-    const before = slot.mentions
-    if (!registry.report(id, unread, mentions)) return
+  const feed: Feed = new Feed(session.instance, (read) => {
+    // A signed-out feed ends; it forgets only itself, never a newer feed of the same server.
+    if (read.kind === 'signed_out') forget(s.feeds, id, feed)
+    const applied = applyRead(ctx.trusted.registry, id, read)
+    if (applied.kind !== 'shown') return
     countsChanged(ctx)
-    const rise = mentionRise(before, slot.mentions, registry.isMuted(id))
-    if (rise !== null) quietToast(registry.displayName(slot), mentionText(rise, registry.displayName(slot)))
+    if (applied.rise !== null) quietToast(applied.name, mentionText(applied.rise, applied.name))
   })
   s.feeds.set(id, feed)
   feed.start()
@@ -95,13 +90,9 @@ export function look(ctx: Context): void {
 
 /** Closes the page of `id`: the host's feed starts first, so the member never reads as offline in between, then the page and its sockets go. */
 function unload(ctx: Context, id: string): void {
-  const session = ctx.trusted.registry.session(id)
   const page = ctx.shell.pages.get(id)
-  const slot = ctx.trusted.registry.slot(id)
-  // Checked again right before closing: the page may have become busy, or its server the one in front.
-  if (!session || !page || !slot || !closable(front(ctx) === id, slot.busy)) return
-  // The next page is a new run: it says again whether it is busy.
-  slot.busy = null
+  const session = page ? takeForUnload(ctx.trusted.registry, id) : null
+  if (!page || !session) return
   withoutPage(ctx, id)
   ctx.shell.pages.delete(id)
   ctx.shell.window?.contentView.removeChildView(page)

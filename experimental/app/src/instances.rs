@@ -20,6 +20,8 @@ mod mutes;
 mod rail;
 mod registry;
 mod stored;
+#[cfg(test)]
+pub(crate) mod testing;
 
 #[cfg(test)]
 pub use rail::RailInstance;
