@@ -224,7 +224,6 @@ pub async fn add_server(
             // An overlapping call for the same address got in first and owns
             // the slot; this session is the spare.
             Err(AddError::Known(_)) => false,
-            Err(full) => return Err(full.to_string()),
         }
     };
     if !won {
@@ -274,9 +273,6 @@ pub(super) fn offer_invite(app: &tauri::AppHandle, id: &str, code: Option<&str>)
 
 fn check_room(state: &Trusted) -> Result<(), String> {
     let registry = state.registry.lock().map_err(|_| "busy")?;
-    if registry.len() >= crate::instances::MAX_INSTANCES {
-        return Err(AddError::Full.to_string());
-    }
     if !room_for(registry.len()) {
         return Err(NEEDS_NEWER_MACOS.into());
     }

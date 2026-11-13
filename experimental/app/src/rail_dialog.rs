@@ -486,6 +486,10 @@ mod tests {
     fn a_list_to_pick_from_and_a_file_to_read_are_taken_as_described() {
         assert!(parse(SWITCH).is_ok());
         assert!(parse(IMPORT).is_ok());
+        let too_big = format!(
+            r#"{{"title":"x","file":{{"label":"f","accept":".json","max":{}}},"buttons":[{{"id":"a","text":"A"}}],"cancel":"a"}}"#,
+            MAX_FILE + 1
+        );
         for bad in [
             // Only one of input, list and file.
             r#"{"title":"x","input":{"label":"l","value":"","max":5},"file":{"label":"f","accept":".json","max":5},"buttons":[{"id":"a","text":"A"}],"cancel":"a"}"#,
@@ -495,9 +499,9 @@ mod tests {
             r#"{"title":"x","list":{"label":"l","choices":[{"id":"A","text":"A"}]},"buttons":[{"id":"a","text":"A"}],"cancel":"a"}"#,
             r#"{"title":"x","list":{"label":"l","choices":[{"id":"a","text":"A"},{"id":"a","text":"B"}]},"buttons":[{"id":"a","text":"A"}],"cancel":"a"}"#,
             r#"{"title":"x","list":{"label":"l","choices":[{"id":"a","text":""}]},"buttons":[{"id":"a","text":"A"}],"cancel":"a"}"#,
-            // A file is a .json of at most 64 KiB.
+            // A file is a .json of at most MAX_IMPORT_BYTES.
             r#"{"title":"x","file":{"label":"f","accept":".exe","max":5},"buttons":[{"id":"a","text":"A"}],"cancel":"a"}"#,
-            r#"{"title":"x","file":{"label":"f","accept":".json","max":1048577},"buttons":[{"id":"a","text":"A"}],"cancel":"a"}"#,
+            too_big.as_str(),
         ] {
             assert!(parse(bad).is_err(), "{bad}");
         }

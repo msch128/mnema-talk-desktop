@@ -1,5 +1,5 @@
 //! The list of servers: which are there, in what order, which is in front.
-use super::{AddError, MAX_COUNT, MAX_INSTANCES, Phase, Session, Slot, Stored, id_for};
+use super::{AddError, MAX_COUNT, Phase, Session, Slot, Stored, id_for};
 use crate::rail_layout::Layout;
 use std::{collections::BTreeMap, sync::Arc};
 use url::Url;
@@ -110,9 +110,6 @@ impl Registry {
         if self.contains(&id) {
             return Err(AddError::Known(id));
         }
-        if self.slots.len() >= MAX_INSTANCES {
-            return Err(AddError::Full);
-        }
         self.slots.push(Slot::new(origin));
         self.layout.add(&id);
         Ok(id)
@@ -120,9 +117,14 @@ impl Registry {
 
     /// The slots follow the rail: Ctrl+1 is the first server shown.
     fn sort_slots(&mut self) {
-        let order = self.layout.flat();
-        self.slots
-            .sort_by_key(|s| order.iter().position(|id| *id == s.id));
+        let place: std::collections::HashMap<String, usize> = self
+            .layout
+            .flat()
+            .into_iter()
+            .enumerate()
+            .map(|(n, id)| (id, n))
+            .collect();
+        self.slots.sort_by_key(|s| place.get(&s.id).copied());
     }
 
     /// Changes how the rail is laid out. Whatever the change says, the order of
@@ -137,7 +139,7 @@ impl Registry {
 
     /// Takes the servers, names, layout and mutes of an imported list over
     /// those of this one: servers it names that are not here are added at the
-    /// end (while there is room), names and mutes are set, and the layout of
+    /// end, names and mutes are set, and the layout of
     /// the file is applied to all the servers (those it does not name follow
     /// at the end). The front server and the page for adding stay as they are.
     /// Gives the ids of the servers that were added.
@@ -145,9 +147,6 @@ impl Registry {
         let before = self.ids();
         let mut added = Vec::new();
         for origin in &imported.servers {
-            if self.slots.len() >= MAX_INSTANCES {
-                break;
-            }
             if let Ok(id) = self.add(origin.clone()) {
                 added.push(id);
             }
@@ -158,11 +157,8 @@ impl Registry {
             .map(id_for)
             .filter(|id| self.contains(id))
             .collect();
-        for id in before {
-            if !order.contains(&id) {
-                order.push(id);
-            }
-        }
+        let named: std::collections::HashSet<String> = order.iter().cloned().collect();
+        order.extend(before.into_iter().filter(|id| !named.contains(id)));
         let known = self.ids();
         let mut aliases = self.layout.aliases.clone();
         for (id, name) in &imported.aliases {
@@ -220,12 +216,8 @@ impl Registry {
     }
 
     /// Brings the page for adding a server to the front.
-    pub fn start_adding(&mut self) -> bool {
-        if self.slots.len() >= MAX_INSTANCES {
-            return false;
-        }
+    pub fn start_adding(&mut self) {
         self.adding = true;
-        true
     }
 
     /// Back from the page for adding a server, to the one that was in front.

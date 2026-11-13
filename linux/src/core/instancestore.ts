@@ -7,19 +7,18 @@ import { readFileSync, statSync } from 'node:fs'
 import { writeFileAtomic } from './atomic.ts'
 import { parseAddress } from './client.ts'
 
-/**
- * The most servers one window holds. Not a product limit (one client, any
- * number of servers) but a bound against a hostile list or an import gone
- * wrong; far above any real use. The same bound as the Tauri host.
- */
-export const MAX_INSTANCES = 200
 const STORE_VERSION = 1
-/** Room for MAX_INSTANCES servers with their names, folders and mutes. */
-const MAX_STORE_BYTES = 1 << 20
+/**
+ * What the list file may weigh. There is no limit on the number of servers:
+ * this only keeps a damaged file from being read whole into memory. At the
+ * longest names, folders and mutes a server takes well under 1 KiB, so this is
+ * room for far more than 50 000 of them. The same bound as the Tauri host.
+ */
+const MAX_STORE_BYTES = 64 << 20
 /** A mute may last a year and a day at most; -1 is for ever. */
 export const MAX_MUTE_SECONDS = 366 * 24 * 3600
-/** What an imported list may weigh: room for MAX_INSTANCES servers with their names, folders and mutes. */
-export const MAX_IMPORT_BYTES = 1 << 20
+/** What an imported list may weigh: the same bound as the list file. */
+export const MAX_IMPORT_BYTES = 64 << 20
 
 /** Where Ctrl+`number` goes among `count` servers: 1 to 8 the server at that place, 9 the last one (as browsers do with tabs). */
 export function shortcutPlace(number: number, count: number): number | null {
@@ -73,11 +72,12 @@ export function storedFrom(raw: unknown): Stored | null {
   if (version !== STORE_VERSION || !Array.isArray(servers)) return null
   const list: URL[] = []
   let complete = true
+  const seen = new Set<string>()
   for (const address of servers) {
-    if (typeof address !== 'string' || list.length >= MAX_INSTANCES) { complete = false; continue }
+    if (typeof address !== 'string') { complete = false; continue }
     try {
       const origin = parseAddress(address)
-      if (!list.some((u) => u.href === origin.href)) list.push(origin)
+      if (!seen.has(origin.href)) { seen.add(origin.href); list.push(origin) }
     } catch { complete = false }
   }
   let front: URL | null = null

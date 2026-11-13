@@ -105,7 +105,9 @@ export function activateNth(ctx: Context, number: number): void {
 }
 
 export function startAdding(ctx: Context): void {
-  if (ctx.trusted.registry.startAdding()) { changed(ctx); focusFront(ctx) }
+  ctx.trusted.registry.startAdding()
+  changed(ctx)
+  focusFront(ctx)
 }
 
 export function cancelAdding(ctx: Context): void {

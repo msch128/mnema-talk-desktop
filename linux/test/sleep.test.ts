@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
-import { MAX_INSTANCES, Registry, type Session } from '../src/core/instances.ts'
+import { Registry, type Session } from '../src/core/instances.ts'
 import { UNLOAD_CHOICES, boundedSleep, closable, counts, defaultSleep, pagesToUnload, takeForUnload } from '../src/core/sleep.ts'
 
 interface Vectors {
@@ -39,7 +39,7 @@ test('which hidden pages close follows the shared vectors', () => {
 test('the settings are held to their bounds', () => {
   assert.deepEqual(defaultSleep(), { afterSecs: 600, keep: 4 })
   assert.deepEqual(boundedSleep({ after_secs: 1, keep: 0 }), { afterSecs: 600, keep: 1 })
-  assert.deepEqual(boundedSleep({ after_secs: 10 ** 9, keep: 10 ** 6 }), { afterSecs: 3600, keep: MAX_INSTANCES })
+  assert.deepEqual(boundedSleep({ after_secs: 10 ** 9, keep: 10 ** 6 }), { afterSecs: 3600, keep: 10 ** 6 }, 'no bound on the pages kept')
   // A time from the list file that the menu does not offer is the nearest it does.
   assert.deepEqual([1200, 2100, 2101, 3600].map((s) => boundedSleep({ after_secs: s, keep: 4 }).afterSecs), [600, 600, 3600, 3600])
   for (const choice of UNLOAD_CHOICES) assert.equal(boundedSleep({ after_secs: choice, keep: 4 }).afterSecs, choice)

@@ -15,7 +15,7 @@ import { existsSync } from 'node:fs'
 import { BaseWindow, WebContentsView, app } from 'electron'
 import { inviteCode, parseAddress } from '../core/client.ts'
 import { writeFileAtomic } from '../core/atomic.ts'
-import { AddError, MAX_IMPORT_BYTES, MAX_INSTANCES, type Slot, idFor, storedFrom, storedText } from '../core/instances.ts'
+import { AddError, MAX_IMPORT_BYTES, type Slot, idFor, storedFrom, storedText } from '../core/instances.ts'
 import { type RailEdit, exportTarget } from '../core/railui.ts'
 import { APP_URL } from '../core/origin.ts'
 import { closeSocketsWithDocument } from '../core/pagesockets.ts'
@@ -273,7 +273,6 @@ export async function addServer(ctx: Context, address: string): Promise<void> {
     bringForward(ctx, id)
     return
   }
-  if (registry.length >= MAX_INSTANCES) throw new AddError('full')
   const session = await ctx.trusted.connect(origin)
   try {
     registry.add(origin)

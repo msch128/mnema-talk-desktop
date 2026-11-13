@@ -66,7 +66,7 @@ impl Sleep {
     pub fn bounded(self) -> Sleep {
         Sleep {
             after_secs: self.after_secs.map(nearest_choice),
-            keep: self.keep.clamp(1, crate::instances::MAX_INSTANCES),
+            keep: self.keep.max(1),
         }
     }
 }
@@ -256,7 +256,7 @@ mod tests {
                 choice
             );
         }
-        assert_eq!(huge.keep, crate::instances::MAX_INSTANCES);
+        assert_eq!(huge.keep, usize::MAX, "no bound on the pages kept");
         assert_eq!(
             Sleep {
                 after_secs: None,

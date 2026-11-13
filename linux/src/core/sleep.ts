@@ -4,7 +4,6 @@
  * tested against `counts` and `unload` in `test-vectors/rail-layout.json`.
  */
 import type { Registry, Session } from './instances.ts'
-import { MAX_INSTANCES } from './instancestore.ts'
 
 /** Hidden for this long (seconds), a page may be closed. A setting. */
 export const DEFAULT_UNLOAD_AFTER_SECS = 10 * 60
@@ -59,7 +58,7 @@ export function boundedSleep(raw: unknown): Sleep {
   if (typeof raw !== 'object' || raw === null) return d
   const { after_secs: afterSecs, keep } = raw as Record<string, unknown>
   const after = afterSecs === null ? null : Number.isSafeInteger(afterSecs) ? nearestChoice(afterSecs as number) : d.afterSecs
-  const kept = Number.isSafeInteger(keep) ? Math.min(Math.max(keep as number, 1), MAX_INSTANCES) : d.keep
+  const kept = Number.isSafeInteger(keep) ? Math.max(keep as number, 1) : d.keep
   return { afterSecs: after, keep: kept }
 }
 

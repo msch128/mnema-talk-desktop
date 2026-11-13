@@ -11,7 +11,7 @@ import { createHash, randomBytes } from 'node:crypto'
 import { type Edit, Layout } from './layout.ts'
 import { MAX_BADGE, badgeCount } from './notify.ts'
 import { isLowerHex } from './encoding.ts'
-import { MAX_INSTANCES, MAX_MUTE_SECONDS, type Stored, liveMutes, shortcutPlace } from './instancestore.ts'
+import { MAX_MUTE_SECONDS, type Stored, liveMutes, shortcutPlace } from './instancestore.ts'
 import { type Sleep, UNLOAD_CHOICES, boundedSleep, defaultSleep, storedSleep } from './sleep.ts'
 import { type RailState, hue, initial } from './railstate.ts'
 import type { Instance } from './proxy.ts'
@@ -20,7 +20,7 @@ import type { Held } from './store.ts'
 
 /** What the badge and the rail show at most. */
 export const MAX_COUNT = MAX_BADGE
-export { MAX_IMPORT_BYTES, MAX_INSTANCES, type Stored, emptyStored, loadStored, saveStored, shortcutPlace, storedFrom, storedText } from './instancestore.ts'
+export { MAX_IMPORT_BYTES, type Stored, emptyStored, loadStored, saveStored, shortcutPlace, storedFrom, storedText } from './instancestore.ts'
 export type { RailState } from './railstate.ts'
 
 /** A server the client talks to and the verified bundle its pages run. */
@@ -72,11 +72,11 @@ export interface Slot {
 }
 
 export class AddError extends Error {
-  readonly kind: 'known' | 'full'
+  readonly kind: 'known'
   readonly id: string
 
-  constructor(kind: 'known' | 'full', id = '') {
-    super(kind === 'known' ? 'This server is already in the list.' : `At most ${MAX_INSTANCES} servers fit in one window.`)
+  constructor(kind: 'known', id = '') {
+    super('This server is already in the list.')
     this.kind = kind
     this.id = id
   }
@@ -169,7 +169,6 @@ export class Registry {
   add(origin: URL): string {
     const id = idFor(origin)
     if (this.contains(id)) throw new AddError('known', id)
-    if (this.slots.length >= MAX_INSTANCES) throw new AddError('full')
     this.slots.push(fresh(origin))
     this.layout.add(id)
     return id
@@ -203,10 +202,8 @@ export class Registry {
     return slot.id
   }
 
-  startAdding(): boolean {
-    if (this.slots.length >= MAX_INSTANCES) return false
+  startAdding(): void {
     this.addingNow = true
-    return true
   }
 
   stopAdding(): void {
@@ -215,8 +212,8 @@ export class Registry {
 
   /** The servers stand in the order of the rail, so Ctrl+1 is the one at the top. */
   private sort(): void {
-    const order = this.layout.flat()
-    this.slots.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id))
+    const place = new Map(this.layout.flat().map((id, n) => [id, n]))
+    this.slots.sort((a, b) => (place.get(a.id) ?? -1) - (place.get(b.id) ?? -1))
   }
 
   /** Changes how the servers sit on the rail. `folder` is the id a new folder gets. False: refused, nothing changed. */
@@ -333,7 +330,7 @@ export class Registry {
     return {
       active: this.front,
       adding: this.addingNow,
-      can_add: canAdd && this.slots.length < MAX_INSTANCES,
+      can_add: canAdd,
       items: structuredClone(this.layout.items),
       unload_after: this.sleep.afterSecs,
       instances: this.slots.map((slot) => {

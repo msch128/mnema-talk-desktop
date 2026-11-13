@@ -53,9 +53,9 @@ There is no external security audit.
   download that saved nothing says why and what to do next in an error dialog;
   a partial file is never left behind.
 - **One client, any number of servers.** A rail on the left lists your servers
-  with an unread dot and a mention count each. Add as many as you like (a window
-  holds up to 200, a bound against a broken or hostile list, not a plan); the
-  rail scrolls when they do not fit and keeps the server in front in view.
+  with an unread dot and a mention count each. Add as many as you like: there
+  is no limit on the number. The rail scrolls when they do not fit and keeps
+  the server in front in view.
   Switch with Ctrl+1 to Ctrl+8 for the first eight and Ctrl+9 for the last (Cmd
   on macOS), as browsers do with tabs, or with Ctrl+K; drag or Alt+arrow to reorder, and remove one
   from its menu (right-click or Delete). The same menu sets your notification
@@ -98,7 +98,7 @@ There is no external security audit.
   settings of this device: the + button's menu has **Unload idle servers**
   (Off, after 10 minutes, after 1 hour); in the list file they are
   `"sleep": {"after_secs": 600, "keep": 4}` (`"after_secs": null` never closes
-  a page; another time reads as the nearest of the three, 1 to 200 pages), never part of an exported list. Overlay and
+  a page; another time reads as the nearest of the three; at least one page), never part of an exported list. Overlay and
   shortcuts of the gaming integration belong to the server that owns the Talk
   you are in. **Updating from the single-server client (1.1 release note):** that client kept every server in one shared storage and did not record which one it showed, so the storage belongs to no one server. On the first start of this version it is wiped, once, and no server inherits it: you sign in again, and the end-to-end media gets a new device key (messages live on the server and are unaffected). The host's own pages use a separate storage. On macOS before 14 the data stores cannot be separated, so the
   client runs one server there. Servers on different versions work side by side:

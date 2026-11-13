@@ -1,5 +1,5 @@
 use super::*;
-use crate::instances::{AddError, MAX_INSTANCES};
+use crate::instances::AddError;
 use crate::web_bundle::Refusal;
 use serde_json::Value;
 use std::{
@@ -57,7 +57,6 @@ fn sent_sentences() -> BTreeMap<&'static str, String> {
         ("signerWithdrawn", Refusal::SignerWithdrawn.to_string()),
         ("rolledBack", Refusal::RolledBack.to_string()),
         ("alreadyListed", AddError::Known(String::new()).to_string()),
-        ("maxServers", AddError::Full.to_string()),
         ("withdrawn", WITHDRAWN.to_owned()),
         ("needsMacos", crate::web_shell::NEEDS_NEWER_MACOS.to_owned()),
         ("selectorOnly", SELECTOR_ONLY.to_owned()),
@@ -70,8 +69,7 @@ fn check_sentence(entry: &Value, got: &str, hint: &str) {
     let expected = entry["text"]
         .as_str()
         .unwrap()
-        .replace("{version}", "0.8.9")
-        .replace("{count}", &MAX_INSTANCES.to_string());
+        .replace("{version}", "0.8.9");
     if entry["withHint"] == true {
         assert_eq!(got, format!("{expected} {hint}"), "{id}");
     } else if entry["withDetail"] == true {

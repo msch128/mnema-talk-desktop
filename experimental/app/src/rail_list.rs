@@ -184,34 +184,30 @@ mod tests {
         let mut registry = Registry::restore(&Stored::empty());
         registry.merge(&parsed, crate::web_proxy::now());
         assert_eq!(registry.len(), 1);
-        // One more than the bound: the bound is taken.
-        let ten = serde_json::json!({
-            "version": 1,
-            "servers": (0..=crate::instances::MAX_INSTANCES).map(|n| format!("https://s{n}.example/")).collect::<Vec<_>>(),
-            "active": null
-        });
-        let parsed = Stored::parse(ten.to_string().as_bytes()).unwrap();
-        assert_eq!(parsed.servers.len(), crate::instances::MAX_INSTANCES);
-        // And into a list that already has some, never past the limit.
-        let mut full = listed(&["https://a.example/", "https://b.example/"]);
+        // However many: every one is taken, also into a list that has some.
         let many = serde_json::json!({
             "version": 1,
-            "servers": (0..crate::instances::MAX_INSTANCES).map(|n| format!("https://s{n}.example/")).collect::<Vec<_>>(),
+            "servers": (0..600).map(|n| format!("https://s{n}.example/")).collect::<Vec<_>>(),
             "active": null
         });
-        let added = full.merge(&Stored::parse(many.to_string().as_bytes()).unwrap(), 0);
-        assert_eq!(full.len(), crate::instances::MAX_INSTANCES);
-        assert_eq!(added.len(), crate::instances::MAX_INSTANCES - 2);
+        let parsed = Stored::parse(many.to_string().as_bytes()).unwrap();
+        assert_eq!(parsed.servers.len(), 600);
+        let mut full = listed(&["https://a.example/", "https://b.example/"]);
+        let added = full.merge(&parsed, 0);
+        assert_eq!(full.len(), 602);
+        assert_eq!(added.len(), 600);
     }
 
     #[test]
-    fn a_full_list_with_long_names_folders_and_mutes_fits_the_store_and_an_import() {
-        use crate::instances::{MAX_INSTANCES, Stored};
+    fn a_list_of_many_servers_with_long_names_folders_and_mutes_fits_the_store_and_an_import() {
+        use crate::instances::Stored;
         use crate::rail_layout::{Item, MAX_NAME};
-        let servers: Vec<url::Url> = (0..MAX_INSTANCES)
+        // The file bound is no limit on servers: 20 000 at the longest names fit.
+        const MANY: usize = 20_000;
+        let servers: Vec<url::Url> = (0..MANY)
             .map(|n| {
                 url::Url::parse(&format!(
-                    "https://community-number-{n:03}.a-rather-long-domain-name.example:8443/"
+                    "https://community-number-{n:05}.a-rather-long-domain-name.example:8443/"
                 ))
                 .unwrap()
             })
@@ -246,7 +242,7 @@ mod tests {
             bytes.len()
         );
         let parsed = Stored::parse(&bytes).expect("the list reads back");
-        assert_eq!(parsed.servers.len(), MAX_INSTANCES);
+        assert_eq!(parsed.servers.len(), MANY);
     }
 
     #[test]

@@ -180,10 +180,11 @@ export function applyRead(registry: Registry, id: string, read: Read): Applied {
   if (!registry.session(id)) return { kind: 'kept' }
   // A session that is gone shows nothing until its page signs in again.
   const { unread, mentions } = read.kind === 'counts' ? read : { unread: 0, mentions: 0 }
-  const before = slot.mentions
+  // The first numbers since the server started (or since a restart) are what is there already, not news: they announce nothing.
+  const [before, first] = [slot.mentions, !slot.reported]
   registry.report(id, unread, mentions)
   const name = registry.displayName(slot)
-  return { kind: 'shown', rise: mentionRise(before, slot.mentions, registry.isMuted(id)), name }
+  return { kind: 'shown', rise: mentionRise(before, slot.mentions, registry.isMuted(id) || first), name }
 }
 
 /** Forgets the feed of `id` if it is `feed`: a feed that ends never removes a newer one of the same server (its page failed to open meanwhile). */

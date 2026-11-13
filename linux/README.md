@@ -196,8 +196,8 @@ client and only together with `MNEMA_DESKTOP_ALLOW_REMOTE_DEBUGGING=1`.
 
 One window: the server rail of the host on the left (the same page as in the
 Tauri host), and next to it the page of one server or the page for adding one.
-Each page is a `WebContentsView`. Any number of servers (up to 200 per window,
-a bound against a broken or hostile list), switched with Ctrl+1 to Ctrl+8 (the
+Each page is a `WebContentsView`. Any number of servers (there is no limit),
+switched with Ctrl+1 to Ctrl+8 (the
 first eight), Ctrl+9 (the last) or the rail, which scrolls when they do not fit,
 added with Ctrl+Shift+N, reordered by dragging or Alt+arrow
 and removed from the rail's menu. Servers can be grouped in folders (name,

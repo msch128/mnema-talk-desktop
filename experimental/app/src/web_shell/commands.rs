@@ -59,11 +59,13 @@ pub fn rail_activate(webview: Webview, id: String) -> Result<(), String> {
 }
 
 pub(super) fn start_adding(app: &tauri::AppHandle) {
-    let started = app
-        .state::<Trusted>()
-        .registry
-        .lock()
-        .is_ok_and(|mut r| room_for(r.len()) && r.start_adding());
+    let started = app.state::<Trusted>().registry.lock().is_ok_and(|mut r| {
+        let room = room_for(r.len());
+        if room {
+            r.start_adding();
+        }
+        room
+    });
     if started {
         changed(app);
         focus_front(app);

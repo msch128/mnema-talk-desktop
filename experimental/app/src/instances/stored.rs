@@ -1,6 +1,6 @@
 //! The list at rest: addresses, layout and mutes in one small file.
 use super::mutes::live;
-use super::{MAX_IMPORT_BYTES, MAX_INSTANCES, MAX_STORE_BYTES, Registry, STORE_VERSION};
+use super::{MAX_IMPORT_BYTES, MAX_STORE_BYTES, Registry, STORE_VERSION};
 use crate::rail_layout::Item;
 use crate::rail_sleep::Sleep;
 use serde::{Deserialize, Serialize};
@@ -97,10 +97,10 @@ impl Stored {
 
     fn from_file(stored: StoredFile) -> Stored {
         let mut servers: Vec<Url> = Vec::new();
+        let mut seen = std::collections::HashSet::new();
         for address in stored.servers {
             if let Ok(origin) = crate::web_client::address(&address)
-                && servers.len() < MAX_INSTANCES
-                && !servers.contains(&origin)
+                && seen.insert(origin.clone())
             {
                 servers.push(origin);
             }

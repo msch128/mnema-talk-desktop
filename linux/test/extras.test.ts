@@ -8,7 +8,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, test } from 'node:test'
-import { MAX_IMPORT_BYTES, MAX_INSTANCES, Registry, emptyStored, idFor, loadStored, saveStored, storedFrom, storedText } from '../src/core/instances.ts'
+import { MAX_IMPORT_BYTES, Registry, emptyStored, idFor, loadStored, saveStored, storedFrom, storedText } from '../src/core/instances.ts'
 import { inviteChoice } from '../src/core/invite.ts'
 import { serverMenuAction } from '../src/core/notify.ts'
 import { checkDialogResult, dialogHeight, exportTarget, parseDialogSpec, parseEdit } from '../src/core/railui.ts'
@@ -227,7 +227,7 @@ test('an import without a layout keeps the folders that are here', () => {
   assert.equal(items.length, 2)
 })
 
-test('a hostile list is cleaned or refused, and never starts more than the limit', () => {
+test('a hostile list is cleaned or refused', () => {
   assert.equal(storedFrom('nope'), null)
   assert.equal(storedFrom([]), null)
   assert.equal(storedFrom({ version: 2, servers: [] }), null)
@@ -235,11 +235,10 @@ test('a hostile list is cleaned or refused, and never starts more than the limit
   const servers = [...Array.from({ length: 12 }, (_, n) => `https://s${n}.example/`), 'javascript:alert(1)', 'file:///etc/passwd', 'https://s1.example/', 5, 'https://user:pw@evil.example/']
   const stored = storedFrom({ version: 1, servers, active: 'https://nowhere.example/', aliases: { [id('s0.example')]: '<img>' + 'x'.repeat(100), zz: 'no' }, items: 'rubbish', muted: [1, 2] })
   assert.ok(stored)
-  assert.ok(stored.servers.length <= MAX_INSTANCES)
+  assert.equal(stored.servers.length, 12)
   assert.ok(stored.servers.every((u) => u.protocol === 'https:' && u.username === ''))
   const r = registry('keep.example')
   const added = r.merge(stored)
-  assert.ok(added.length + 1 <= MAX_INSTANCES)
   assert.equal(r.length, added.length + 1)
   const alias = r.rail(true).instances.find((i) => i.id === id('s0.example'))?.alias
   assert.ok(alias === null || Array.from(alias ?? '').length <= 40)

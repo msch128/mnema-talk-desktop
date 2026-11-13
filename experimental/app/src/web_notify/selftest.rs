@@ -35,7 +35,6 @@ fn selftest_server(app: &tauri::AppHandle) -> Option<(String, String)> {
     let mut registry = trusted.registry.lock().ok()?;
     let id = match registry.add(url::Url::parse("https://selftest.invalid/").ok()?) {
         Ok(id) | Err(AddError::Known(id)) => id,
-        Err(AddError::Full) => return None,
     };
     let generation = registry.slot(&id)?.generation.clone();
     Some((id, generation))

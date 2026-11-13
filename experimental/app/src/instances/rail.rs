@@ -1,5 +1,5 @@
 //! What the rail draws for the list of servers.
-use super::{MAX_INSTANCES, Phase, Registry};
+use super::{Phase, Registry};
 use crate::rail_layout::Item;
 use serde::Serialize;
 
@@ -57,7 +57,7 @@ impl Registry {
         RailState {
             active: self.active.clone(),
             adding: self.adding,
-            can_add: can_add && self.slots.len() < MAX_INSTANCES,
+            can_add,
             instances: self
                 .slots
                 .iter()

@@ -201,12 +201,19 @@ test('a read puts the counts on the slot, and a signed-out session clears them',
   const slot = registry.slot(id)!
   slot.phase = { kind: 'ready', session: {} as Session }
   const name = registry.displayName(slot)
-  assert.deepEqual(applyRead(registry, id, { kind: 'counts', unread: 3, mentions: 2 }), { kind: 'shown', rise: 2, name })
+  // The first numbers after the start are what was there already: no toast. A rise after that is news.
+  assert.deepEqual(applyRead(registry, id, { kind: 'counts', unread: 3, mentions: 2 }), { kind: 'shown', rise: null, name })
+  assert.deepEqual(applyRead(registry, id, { kind: 'counts', unread: 3, mentions: 5 }), { kind: 'shown', rise: 3, name })
   assert.deepEqual(applyRead(registry, id, { kind: 'unreachable' }), { kind: 'kept' })
-  assert.deepEqual([slot.unread, slot.mentions], [3, 2], 'no answer keeps them')
+  assert.deepEqual([slot.unread, slot.mentions], [3, 5], 'no answer keeps them')
   assert.deepEqual(applyRead(registry, id, { kind: 'signed_out' }), { kind: 'shown', rise: null, name })
   assert.deepEqual([slot.unread, slot.mentions], [0, 0])
   assert.deepEqual(applyRead(registry, 'gone', { kind: 'counts', unread: 1, mentions: 1 }), { kind: 'gone' })
+  // After a restart of the server the first numbers are a new start.
+  registry.restart(id)
+  slot.phase = { kind: 'ready', session: {} as Session }
+  assert.deepEqual(applyRead(registry, id, { kind: 'counts', unread: 1, mentions: 7 }), { kind: 'shown', rise: null, name })
+  assert.deepEqual(applyRead(registry, id, { kind: 'counts', unread: 1, mentions: 8 }), { kind: 'shown', rise: 1, name })
 })
 
 test('an ending feed forgets only itself', () => {

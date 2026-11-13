@@ -218,7 +218,7 @@ fn external_link(app: &tauri::AppHandle, url: Url) {
             return open_external(&url);
         };
         let listed: Vec<Url> = registry.stored().servers;
-        let room = registry.len() < crate::instances::MAX_INSTANCES && room_for(registry.len());
+        let room = room_for(registry.len());
         (listed, room)
     };
     match invite_decision(&url, &listed, room) {

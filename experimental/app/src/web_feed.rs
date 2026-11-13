@@ -20,6 +20,9 @@ use std::{
 use tauri::Manager;
 use tokio::sync::{Notify, mpsc};
 
+mod live;
+use live::Live;
+
 /// The quiet time after a change before the counts are read again.
 const SETTLE: Duration = Duration::from_secs(2);
 /// The counts are read at least this often.
@@ -199,8 +202,10 @@ pub(crate) async fn pump(
     times: Times,
     mut report: impl FnMut(Read) -> bool,
 ) {
+    // The pokes only wake the loop and may be dropped when many come at once;
+    // whether the socket is open is kept apart (`Live`), so a close is never lost.
     let (poke, mut pokes) = mpsc::channel::<bool>(16);
-    let mut open = false;
+    let live = Arc::new(Live::default());
     let mut failures: u32 = 0;
     loop {
         let read = read_counts(instance).await;
@@ -210,40 +215,40 @@ pub(crate) async fn pump(
         }
         // The socket opens only once the session has answered: a server that
         // is signed out or down is never sent a socket.
-        if !open && !unreachable {
-            open = listen(instance, sockets, poke.clone()).is_ok();
+        if !live.is_open() && !unreachable {
+            listen(instance, sockets, poke.clone(), &live);
         }
         let rest = if unreachable {
             failures += 1;
-            open = false;
+            live.forget();
             sockets.close_all();
             backoff(times, failures, uuid::Uuid::new_v4().as_u64_pair().0)
         } else {
             failures = 0;
-            let Some(changed) = next(stop, &mut pokes, times.every).await else {
+            if !next(stop, &mut pokes, times.every).await {
                 return;
-            };
+            }
             // A change settles first; a closed socket opens again after a while.
-            open &= changed;
-            if changed { times.settle } else { times.reopen }
+            if live.is_open() {
+                times.settle
+            } else {
+                times.reopen
+            }
         };
         if !pause(stop, rest).await {
             return;
         }
-        // A socket that closed meanwhile is opened again on the next good read.
-        while let Ok(alive) = pokes.try_recv() {
-            open &= alive;
-        }
+        while pokes.try_recv().is_ok() {}
     }
 }
 
-/// Waits for a change (`true`), a closed socket (`false`) or `every`
-/// (`true`); `None` when the feed is stopped.
-async fn next(stop: &Notify, pokes: &mut mpsc::Receiver<bool>, every: Duration) -> Option<bool> {
+/// Waits for a change, a closed socket or `every`; `false` when the feed is
+/// stopped.
+async fn next(stop: &Notify, pokes: &mut mpsc::Receiver<bool>, every: Duration) -> bool {
     tokio::select! {
-        () = stop.notified() => None,
-        got = pokes.recv() => Some(got.unwrap_or(false)),
-        () = tokio::time::sleep(every) => Some(true),
+        () = stop.notified() => false,
+        _ = pokes.recv() => true,
+        () = tokio::time::sleep(every) => true,
     }
 }
 
@@ -256,15 +261,19 @@ async fn pause(stop: &Notify, rest: Duration) -> bool {
 }
 
 /// Opens the host's socket for the server: it says the member is idle and
-/// pokes the loop when the counts may have changed (`true`) or it closed (`false`).
+/// pokes the loop when the counts may have changed (`true`) or it closed
+/// (`false`, also noted in `live`).
 fn listen(
     instance: &Arc<crate::web_proxy::Instance>,
     sockets: &Arc<Sockets>,
     poke: mpsc::Sender<bool>,
-) -> Result<u64, String> {
+    live: &Arc<Live>,
+) {
     let speaker = Arc::clone(sockets);
+    let generation = live.begin();
+    let ended = Arc::clone(live);
     // With the conversation query: direct messages count on the rail too.
-    crate::web_ws::open(sockets, Arc::clone(instance), true, move |event| {
+    let opened = crate::web_ws::open(sockets, Arc::clone(instance), true, move |event| {
         match event {
             WsEvent::Open { id } => {
                 let _ = speaker.send(id, IDLE.to_owned());
@@ -275,11 +284,15 @@ fn listen(
                 }
             }
             WsEvent::Close { .. } => {
+                ended.end(generation);
                 let _ = poke.try_send(false);
             }
         }
         true
-    })
+    });
+    if opened.is_err() {
+        live.end(generation);
+    }
 }
 
 /// One answer as JSON: `Err` with what the status means for the feed.
@@ -373,8 +386,10 @@ pub(crate) fn apply(registry: &mut Registry, id: &str, read: Read, now: i64) -> 
     if !matches!(slot.phase, Phase::Ready(_)) {
         return Applied::Kept;
     }
-    let (before, name) = (slot.mentions, slot.name());
-    let muted = registry.is_muted(id, now);
+    // The first numbers since the server started (or since a restart) are
+    // what is there already, not news: they announce nothing.
+    let (before, name, first) = (slot.mentions, slot.name(), !slot.reported);
+    let muted = registry.is_muted(id, now) || first;
     registry.report(id, unread, mentions);
     Applied::Shown(
         mention_rise(before, mentions.min(crate::instances::MAX_COUNT), muted).map(|n| (n, name)),
@@ -784,18 +799,24 @@ mod tests {
     #[test]
     fn a_read_puts_the_counts_on_the_slot_and_a_signed_out_session_clears_them() {
         let mut registry = Registry::default();
-        let (id, _) = crate::instances::testing::ready(&mut registry, "feed.example");
+        let (id, session) = crate::instances::testing::ready(&mut registry, "feed.example");
         let name = registry.slot(&id).unwrap().name();
+        // The first numbers after the start are what was there already: no toast.
         assert_eq!(
             apply(&mut registry, &id, Read::Counts(3, 2), 0),
-            Applied::Shown(Some((2, name)))
+            Applied::Shown(None)
+        );
+        // A rise after that is news.
+        assert_eq!(
+            apply(&mut registry, &id, Read::Counts(3, 5), 0),
+            Applied::Shown(Some((3, name.clone())))
         );
         assert_eq!(
             apply(&mut registry, &id, Read::Unreachable, 0),
             Applied::Kept
         );
         let slot = registry.slot(&id).unwrap();
-        assert_eq!((slot.unread, slot.mentions), (3, 2), "no answer keeps them");
+        assert_eq!((slot.unread, slot.mentions), (3, 5), "no answer keeps them");
         assert_eq!(
             apply(&mut registry, &id, Read::SignedOut, 0),
             Applied::Shown(None)
@@ -805,6 +826,18 @@ mod tests {
         assert_eq!(
             apply(&mut registry, "gone", Read::Counts(1, 1), 0),
             Applied::Gone
+        );
+        // After a restart of the server the first numbers are a new start.
+        let slot = registry.slot_mut(&id).unwrap();
+        slot.restart();
+        slot.phase = Phase::Ready(session);
+        assert_eq!(
+            apply(&mut registry, &id, Read::Counts(1, 7), 0),
+            Applied::Shown(None)
+        );
+        assert_eq!(
+            apply(&mut registry, &id, Read::Counts(1, 8), 0),
+            Applied::Shown(Some((1, name)))
         );
     }
 
@@ -820,5 +853,29 @@ mod tests {
         assert!(running(id), "the newer feed stays");
         stop_quietly(id, &new);
         assert!(!running(id));
+    }
+
+    #[tokio::test]
+    async fn a_close_after_more_changes_than_the_loop_can_hold_still_opens_the_socket_again() {
+        let server = fake().await;
+        let settle = Duration::from_millis(400);
+        let (_reports, _sockets, stop, _task) = feed_with(&server, Times { settle, ..QUICK });
+        until(|| !server.said.lock().unwrap().is_empty()).await;
+        let change = r#"{"type":"message_create","payload":{}}"#;
+        server.push.send(change.to_owned()).unwrap();
+        // The loop now waits for the change to settle; more changes than its
+        // queue holds arrive, then the server closes the socket.
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        for _ in 0..40 {
+            server.push.send(change.to_owned()).unwrap();
+        }
+        server.push.send("CLOSE".to_owned()).unwrap();
+        until(|| server.upgrades.lock().unwrap().len() >= 2).await;
+        stop.notify_one();
+        assert_eq!(
+            server.upgrades.lock().unwrap().len(),
+            2,
+            "the socket is opened again after the next read"
+        );
     }
 }
