@@ -280,11 +280,36 @@ describe('server rail', () => {
       await open(three, 'en-US', { rail_edit: '/home/me/Downloads/mnema-servers.json', rail_dialog: { button: 'ok', value: null, color: null } })
       add().dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }))
       await vi.advanceTimersByTimeAsync(0)
-      expect(texts(shown().spec.items)).toEqual(['Export server list…', 'Import server list…'])
+      expect(texts(shown().spec.items)).toEqual(['Export server list…', 'Import server list…', 'Unload idle servers'])
       pick('export')
       await vi.advanceTimersByTimeAsync(0)
       expect(calls('rail_edit')).toEqual([{ op: 'export' }])
       expect(JSON.parse((calls('rail_dialog')[0] as { spec: string }).spec).message).toBe('Saved to /home/me/Downloads/mnema-servers.json')
+    })
+
+    it('offers when idle servers unload, checks the one in force, and sets another', async () => {
+      await open({ ...three, unload_after: 600 })
+      add().dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }))
+      await vi.advanceTimersByTimeAsync(0)
+      const unload = shown().spec.items.find((i) => i.id === 'unload')!
+      expect(unload.text).toBe('Unload idle servers')
+      expect(unload.items!.map((i) => [i.text, i.checked])).toEqual([['Off', false], ['After 10 minutes', true], ['After 1 hour', false]])
+      pick('unload-2')
+      await vi.advanceTimersByTimeAsync(0)
+      expect(calls('rail_edit')).toEqual([{ op: 'unload_after', until: 3600 }])
+      expect(live()).toBe('Unload idle servers: After 1 hour')
+    })
+
+    it('says the choices in German and checks Off when the host closes no page', async () => {
+      await open({ ...three, unload_after: null }, 'de-DE')
+      add().dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }))
+      await vi.advanceTimersByTimeAsync(0)
+      const unload = shown().spec.items.find((i) => i.id === 'unload')!
+      expect(unload.text).toBe('Inaktive Server entladen')
+      expect(unload.items!.map((i) => [i.text, i.checked])).toEqual([['Aus', true], ['Nach 10 Minuten', false], ['Nach 1 Stunde', false]])
+      pick('unload-0')
+      await vi.advanceTimersByTimeAsync(0)
+      expect(calls('rail_edit')).toEqual([{ op: 'unload_after', until: -1 }])
     })
 
     it('says so when the export fails', async () => {

@@ -35,6 +35,8 @@ pub struct RailState {
     pub instances: Vec<RailInstance>,
     /// How the rail is structured: servers and folders.
     pub items: Vec<Item>,
+    /// After how many seconds hidden a page is closed; none: never.
+    pub unload_after: Option<u64>,
 }
 
 fn initial(name: &str) -> String {
@@ -85,6 +87,7 @@ impl Registry {
                 })
                 .collect(),
             items: self.layout.items.clone(),
+            unload_after: self.sleep.after_secs,
         }
     }
 }

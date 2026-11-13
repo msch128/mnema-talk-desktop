@@ -155,11 +155,26 @@ function importList() {
   });
 }
 
+// After how long hidden a server's page is closed to save memory (seconds; -1 Off), as the host offers it.
+const UNLOAD_CHOICES = [-1, 600, 3600];
+
+// The submenu "Unload idle servers": Off, after 10 minutes, after 1 hour; the one in force is checked.
+function unloadMenu(actions) {
+  const now = typeof state.unload_after === 'number' ? state.unload_after : -1;
+  return {
+    id: 'unload',
+    text: T.unload,
+    items: UNLOAD_CHOICES.map((secs, i) => entry(actions, `unload-${i}`, T.unloadChoices[i], () => {
+      attempt('rail_edit', { op: 'unload_after', until: secs }).then(({ ok }) => { say(ok ? T.unloadSet(T.unloadChoices[i]) : T.editFailed); });
+    }, { checked: secs === now })),
+  };
+}
+
 // The menu of the + button.
 function addMenu(anchor, byKey) {
   const mine = ++menuSeq;
   const actions = new Map();
-  const items = [entry(actions, 'export', T.exportList, exportList), entry(actions, 'import', T.importList, importList)];
+  const items = [entry(actions, 'export', T.exportList, exportList), entry(actions, 'import', T.importList, importList), { separator: true }, unloadMenu(actions)];
   const token = `m${mine}-${Math.random().toString(36).slice(2, 8)}`;
   menu = { token, actions };
   const box = byKey ? anchor.getBoundingClientRect() : null;

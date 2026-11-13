@@ -48,6 +48,10 @@ export async function railEdit(ctx: Context, edit: RailEdit): Promise<null | str
     case 'mark_read': markRead(ctx, edit.id); return null
     case 'export': return exportList(ctx)
     case 'import': return importList(ctx, edit.text)
+    case 'unload_after':
+      if (!registry.setUnloadAfter(edit.until === -1 ? null : edit.until)) throw new Error('The change was refused.')
+      changed(ctx)
+      return null
     default: {
       const fresh = (): string => `f-${randomBytes(4).toString('hex')}`
       let folder = fresh()

@@ -297,4 +297,23 @@ mod tests {
             assert_eq!(Registry::restore(&parsed).sleep(), want, "{raw}");
         }
     }
+
+    #[test]
+    fn unload_idle_servers_offers_off_ten_minutes_and_an_hour_and_keeps_the_number() {
+        let mut registry = listed(&["https://a.example/"]);
+        let keep = registry.sleep().keep;
+        assert_eq!(registry.rail(true).unload_after, Some(600));
+        assert!(registry.set_unload_after(Some(3600)));
+        assert_eq!(registry.rail(true).unload_after, Some(3600));
+        assert!(registry.set_unload_after(None));
+        assert_eq!(registry.rail(true).unload_after, None);
+        for other in [Some(0), Some(60), Some(601), Some(86_400)] {
+            assert!(!registry.set_unload_after(other), "{other:?}");
+        }
+        assert_eq!(registry.sleep().keep, keep);
+        // The choice is kept with the list.
+        let restored =
+            Registry::restore(&Stored::parse(&registry.stored().to_bytes().unwrap()).unwrap());
+        assert_eq!(restored.sleep().after_secs, None);
+    }
 }

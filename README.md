@@ -95,9 +95,10 @@ There is no external security audit.
   exactly as the hidden page did, and sends nothing else. When its mentions
   rise, one quiet notification says "N new mentions on <server>" (no sound,
   none for a muted server, only where the system already lets the app notify). Both values are
-  settings of this device in the list file (`"sleep": {"after_secs": 600,
-  "keep": 4}`; `"after_secs": null` never closes a page; 60 seconds to a day,
-  1 to 200 pages), never part of an exported list. Overlay and
+  settings of this device: the + button's menu has **Unload idle servers**
+  (Off, after 10 minutes, after 1 hour); in the list file they are
+  `"sleep": {"after_secs": 600, "keep": 4}` (`"after_secs": null` never closes
+  a page; 60 seconds to a day, 1 to 200 pages), never part of an exported list. Overlay and
   shortcuts of the gaming integration belong to the server that owns the Talk
   you are in. **Updating from the single-server client (1.1 release note):** that client kept every server in one shared storage and did not record which one it showed, so the storage belongs to no one server. On the first start of this version it is wiped, once, and no server inherits it: you sign in again, and the end-to-end media gets a new device key (messages live on the server and are unaffected). The host's own pages use a separate storage. On macOS before 14 the data stores cannot be separated, so the
   client runs one server there. Servers on different versions work side by side:

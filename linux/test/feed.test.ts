@@ -14,6 +14,7 @@ import { Limits } from '../src/core/proxy.ts'
 import { Turns } from '../src/core/tickets.ts'
 import { flag } from '../src/core/ipcargs.ts'
 import { Registry, storedFrom, storedText } from '../src/core/instances.ts'
+import { parseEdit } from '../src/core/railui.ts'
 
 const open: { server: Server, wss: WebSocketServer }[] = []
 afterEach(async () => {
@@ -136,4 +137,23 @@ test('a rise of the mentions is one quiet toast, a muted server gets none', () =
   assert.equal(mentionRise(0, 9, true), null)
   assert.equal(mentionText(1, 'chat.example'), '1 new mention on chat.example')
   assert.equal(mentionText(3, 'chat.example'), '3 new mentions on chat.example')
+})
+
+test('unload idle servers offers off, ten minutes and an hour, keeps the number of pages, and is kept with the list', () => {
+  const stored = storedFrom({ version: 1, servers: ['https://a.example/'], active: null })
+  assert.ok(stored)
+  const registry = Registry.restore(stored)
+  assert.equal(registry.rail(true).unload_after, 600)
+  assert.equal(registry.setUnloadAfter(3600), true)
+  assert.equal(registry.rail(true).unload_after, 3600)
+  assert.equal(registry.setUnloadAfter(null), true)
+  assert.equal(registry.rail(true).unload_after, null)
+  for (const other of [0, 60, 601, 86_400]) assert.equal(registry.setUnloadAfter(other), false, String(other))
+  assert.equal(registry.sleep.keep, 4)
+  const again = storedFrom(JSON.parse(storedText(registry.stored())))
+  assert.ok(again)
+  assert.equal(Registry.restore(again).sleep.afterSecs, null)
+  assert.deepEqual(parseEdit({ op: 'unload_after', until: -1 }), { op: 'unload_after', until: -1 })
+  assert.deepEqual(parseEdit({ op: 'unload_after', until: 3600 }), { op: 'unload_after', until: 3600 })
+  for (const bad of [0, 1800, '600', null]) assert.throws(() => parseEdit({ op: 'unload_after', until: bad }), /invalid arguments/, String(bad))
 })

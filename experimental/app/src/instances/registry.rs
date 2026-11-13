@@ -48,6 +48,16 @@ impl Registry {
         self.sleep
     }
 
+    /// The rail menu's "Unload idle servers": one of `UNLOAD_CHOICES`, the
+    /// number of pages kept unchanged. Anything else is refused.
+    pub fn set_unload_after(&mut self, after_secs: Option<u64>) -> bool {
+        if !crate::rail_sleep::UNLOAD_CHOICES.contains(&after_secs) {
+            return false;
+        }
+        self.sleep.after_secs = after_secs;
+        true
+    }
+
     pub fn len(&self) -> usize {
         self.slots.len()
     }

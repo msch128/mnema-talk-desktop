@@ -12,7 +12,7 @@ import { type Edit, Layout } from './layout.ts'
 import { MAX_BADGE, badgeCount } from './notify.ts'
 import { isLowerHex } from './encoding.ts'
 import { MAX_INSTANCES, MAX_MUTE_SECONDS, type Stored, liveMutes, shortcutPlace } from './instancestore.ts'
-import { type Sleep, boundedSleep, defaultSleep, storedSleep } from './sleep.ts'
+import { type Sleep, UNLOAD_CHOICES, boundedSleep, defaultSleep, storedSleep } from './sleep.ts'
 import { type RailState, hue, initial } from './railstate.ts'
 import type { Instance } from './proxy.ts'
 import type { Sockets } from './sockets.ts'
@@ -335,6 +335,7 @@ export class Registry {
       adding: this.addingNow,
       can_add: canAdd && this.slots.length < MAX_INSTANCES,
       items: structuredClone(this.layout.items),
+      unload_after: this.sleep.afterSecs,
       instances: this.slots.map((slot) => {
         const original = nameOf(slot)
         const alias = this.layout.aliases.get(slot.id) ?? null
@@ -362,6 +363,13 @@ export class Registry {
     const now = nowSeconds()
     const muted = Object.fromEntries(this.slots.flatMap((s) => { const until = this.mutedAt(s, now); return until === null ? [] : [[s.id, until]] }))
     return { servers: this.slots.map((s) => s.origin), active: front?.origin ?? null, items: structuredClone(this.layout.items), aliases: Object.fromEntries(this.layout.aliases), muted, sleep: storedSleep(this.sleep) }
+  }
+
+  /** The rail menu's "Unload idle servers": one of `UNLOAD_CHOICES`, the number of pages kept unchanged. Anything else is refused. */
+  setUnloadAfter(afterSecs: number | null): boolean {
+    if (!UNLOAD_CHOICES.includes(afterSecs)) return false
+    this.sleep = { ...this.sleep, afterSecs }
+    return true
   }
 
   /** The list as it is exported: the settings of this device stay here. */

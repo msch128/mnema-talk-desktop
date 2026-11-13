@@ -56,6 +56,9 @@ export function boundedSleep(raw: unknown): Sleep {
 /** Whether a page may be closed at all, whatever its age: not the server in front, and only once it said it is idle. Asked again right before a page is closed. */
 export const closable = (inFront: boolean, busy: boolean | null): boolean => !inFront && busy === false
 
+/** The choices of "Unload idle servers" in the rail's menu, in seconds hidden; null is Off. The number of pages kept stays as it is. */
+export const UNLOAD_CHOICES: readonly (number | null)[] = [null, 600, 3600]
+
 /** One server as the rule sees it. `busy`: true a draft, an upload or a Talk; false idle; null the page never said. */
 export interface PageState { id: string, active: boolean, page: boolean, hiddenSince: number | null, busy: boolean | null }
 

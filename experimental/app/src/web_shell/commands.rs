@@ -113,6 +113,8 @@ pub fn rail_edit(
         "mark_read" => return mark_read(&app, id.as_deref()).map(|()| serde_json::Value::Null),
         "export" => return export_list(&app).map(serde_json::Value::from),
         "import" => return import_list(&app, text.as_deref()).map(serde_json::Value::from),
+        // `until`: the seconds hidden after which a page is closed, -1 for never.
+        "unload_after" => return unload_after(&app, until).map(|()| serde_json::Value::Null),
         _ => {}
     }
     let edit = crate::rail_layout::Edit {
@@ -186,6 +188,26 @@ fn mark_read(app: &tauri::AppHandle, id: Option<&str>) -> Result<(), String> {
             .map_err(|_| "The page is not available.".to_owned()),
         _ => Err("The server is not ready.".into()),
     }
+}
+
+/// The rail menu's "Unload idle servers": Off (-1), 600 or 3600 seconds.
+fn unload_after(app: &tauri::AppHandle, until: Option<i64>) -> Result<(), String> {
+    let after = match until {
+        Some(-1) => None,
+        Some(secs) => Some(u64::try_from(secs).map_err(|_| "Unknown choice.")?),
+        None => return Err("Unknown choice.".into()),
+    };
+    let set = app
+        .state::<Trusted>()
+        .registry
+        .lock()
+        .map_err(|_| "busy")?
+        .set_unload_after(after);
+    if !set {
+        return Err("Unknown choice.".into());
+    }
+    changed(app);
+    Ok(())
 }
 
 /// Writes the list of servers to the Downloads folder (else the data folder)

@@ -19,6 +19,7 @@ pub(super) fn rail_snapshot(app: &tauri::AppHandle) -> RailState {
             can_add: false,
             instances: Vec::new(),
             items: Vec::new(),
+            unload_after: None,
         },
     }
 }
@@ -122,6 +123,7 @@ mod tests {
             can_add: true,
             instances: vec![instance("a", "Lantern Fox"), instance("b", "b.example")],
             items: Vec::new(),
+            unload_after: None,
         };
         assert_eq!(window_title(&state), TITLE);
         state.active = Some("b".into());

@@ -72,6 +72,10 @@ impl Sleep {
     }
 }
 
+/// The choices of "Unload idle servers" in the rail's menu, in seconds
+/// hidden; `None` is Off. The number of pages kept stays as it is.
+pub const UNLOAD_CHOICES: [Option<u64>; 3] = [None, Some(600), Some(3600)];
+
 /// One server as the rule sees it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PageState {
