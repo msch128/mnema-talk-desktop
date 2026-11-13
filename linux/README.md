@@ -196,8 +196,10 @@ client and only together with `MNEMA_DESKTOP_ALLOW_REMOTE_DEBUGGING=1`.
 
 One window: the server rail of the host on the left (the same page as in the
 Tauri host), and next to it the page of one server or the page for adding one.
-Each page is a `WebContentsView`. Up to nine servers, switched with Ctrl+1 to
-Ctrl+9 or the rail, added with Ctrl+Shift+N, reordered by dragging or Alt+arrow
+Each page is a `WebContentsView`. Any number of servers (up to 200 per window,
+a bound against a broken or hostile list), switched with Ctrl+1 to Ctrl+8 (the
+first eight), Ctrl+9 (the last) or the rail, which scrolls when they do not fit,
+added with Ctrl+Shift+N, reordered by dragging or Alt+arrow
 and removed from the rail's menu. Servers can be grouped in folders (name,
 colour, open or closed, kept across restarts) and renamed for this device; the
 menu is the system's own popup (`Menu.popup`) and the questions (rename, folder,
@@ -291,7 +293,7 @@ The two-server end-to-end run (`test/e2e/multi.e2e.ts`) signs in to two stand-in
 instances and checks storage, cookies, sockets, counters, switching, reordering and
 removal against the real app.
 
-**Not checked** (no such machine or device in CI): the Ctrl+1 to Ctrl+9 menu accelerators on a real desktop (the action behind them is unit-tested), a real Wayland session and
+**Not checked** (no such machine or device in CI): the Ctrl+1 to Ctrl+9 menu accelerators (1 to 8 the first eight, 9 the last) on a real desktop (the action behind them is unit-tested), a real Wayland session and
 the PipeWire/portal screen picker, X11 screen sharing with real windows,
 microphone and camera hardware, VA-API encoding, libsecret with a running
 keyring (the fallback file was exercised), a private CA, a self-update against

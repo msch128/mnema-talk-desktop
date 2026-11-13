@@ -171,6 +171,28 @@ function folderEntry(f) {
   return item;
 }
 
+// The server in front stays in sight: when it changes (a click, a shortcut, a
+// switch from the menu) the list scrolls just far enough to show it. A redraw
+// for anything else leaves the person's scrolling alone.
+let inView = null;
+function keepActiveInView() {
+  const front = state.adding ? null : state.active;
+  if (front === inView) return;
+  inView = front;
+  // A server inside a closed folder has no tile of its own: the folder stands for it.
+  const tile = front && [...document.querySelectorAll('.tile')].find((t) => t.dataset.id === front);
+  const target = tile || document.querySelector('.folder.current .folder-btn');
+  if (target && target.scrollIntoView) target.scrollIntoView({ block: 'nearest' });
+}
+
+// Which edges of the list have more beyond them, for the fades.
+function markEdges() {
+  const scroll = $('scroll');
+  if (!scroll) return;
+  scroll.classList.toggle('more-above', scroll.scrollTop > 1);
+  scroll.classList.toggle('more-below', scroll.scrollTop + scroll.clientHeight < scroll.scrollHeight - 1);
+}
+
 function render() {
   const list = $('list');
   list.replaceChildren(...entries().map((e) => {
@@ -187,6 +209,8 @@ function render() {
   const text = canClose ? T.addClose : state.can_add ? T.add : T.addDisabled;
   add.setAttribute('aria-label', canClose || state.can_add ? text : `${T.add}. ${T.addDisabled}`);
   add.title = text;
+  keepActiveInView();
+  markEdges();
 }
 
 const buttons = () => [...document.querySelectorAll('.tile, .folder-btn')];

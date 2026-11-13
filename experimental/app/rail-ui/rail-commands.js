@@ -145,7 +145,8 @@ function importList() {
   ask({
     title: T.importTitle,
     message: T.importNote,
-    file: { label: T.importFile, accept: '.json', max: 65536 },
+    // The host's import bound (MAX_IMPORT_BYTES): room for the most servers a window holds.
+    file: { label: T.importFile, accept: '.json', max: 1048576 },
     buttons: [{ id: 'import', text: T.importList.replace(/\s?…$/, ''), primary: true }, { id: 'cancel', text: T.cancel }],
     cancel: 'cancel',
   }).then((answer) => {

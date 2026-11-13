@@ -11,7 +11,7 @@ import { createHash, randomBytes } from 'node:crypto'
 import { type Edit, Layout } from './layout.ts'
 import { MAX_BADGE, badgeCount } from './notify.ts'
 import { isLowerHex } from './encoding.ts'
-import { MAX_INSTANCES, MAX_MUTE_SECONDS, type Stored, liveMutes } from './instancestore.ts'
+import { MAX_INSTANCES, MAX_MUTE_SECONDS, type Stored, liveMutes, shortcutPlace } from './instancestore.ts'
 import { type RailState, hue, initial } from './railstate.ts'
 import type { Instance } from './proxy.ts'
 import type { Sockets } from './sockets.ts'
@@ -19,7 +19,7 @@ import type { Held } from './store.ts'
 
 /** What the badge and the rail show at most. */
 export const MAX_COUNT = MAX_BADGE
-export { MAX_IMPORT_BYTES, MAX_INSTANCES, type Stored, emptyStored, loadStored, saveStored, storedFrom, storedText } from './instancestore.ts'
+export { MAX_IMPORT_BYTES, MAX_INSTANCES, type Stored, emptyStored, loadStored, saveStored, shortcutPlace, storedFrom, storedText } from './instancestore.ts'
 export type { RailState } from './railstate.ts'
 
 /** A server the client talks to and the verified bundle its pages run. */
@@ -188,9 +188,10 @@ export class Registry {
     return true
   }
 
-  /** Ctrl+1 is the first server. */
+  /** The server a number key reaches (`shortcutPlace`): Ctrl+1 is the first, Ctrl+9 the last. */
   activateNth(number: number): string | null {
-    const slot = Number.isInteger(number) && number >= 1 ? this.slots[number - 1] : undefined
+    const place = shortcutPlace(number, this.slots.length)
+    const slot = place === null ? undefined : this.slots[place]
     if (!slot) return null
     this.activate(slot.id)
     return slot.id
@@ -355,4 +356,10 @@ export class Registry {
     const muted = Object.fromEntries(this.slots.flatMap((s) => { const until = this.mutedAt(s, now); return until === null ? [] : [[s.id, until]] }))
     return { servers: this.slots.map((s) => s.origin), active: front?.origin ?? null, items: structuredClone(this.layout.items), aliases: Object.fromEntries(this.layout.aliases), muted }
   }
+}
+
+/** The text of the menu entry for Ctrl+`number`: the 9 says it is the last. The same as the Tauri host. */
+export function menuEntryText(number: number, name: string | null): string {
+  if (number === 9) return name === null ? 'Last server' : `9 \u2014 ${name} (last)`
+  return name === null ? `Server ${number}` : `${number} \u2014 ${name}`
 }

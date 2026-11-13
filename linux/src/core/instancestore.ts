@@ -7,14 +7,26 @@ import { readFileSync, statSync } from 'node:fs'
 import { writeFileAtomic } from './atomic.ts'
 import { parseAddress } from './client.ts'
 
-/** Ctrl+1 to Ctrl+9 reach the servers, so there are at most nine. */
-export const MAX_INSTANCES = 9
+/**
+ * The most servers one window holds. Not a product limit (one client, any
+ * number of servers) but a bound against a hostile list or an import gone
+ * wrong; far above any real use. The same bound as the Tauri host.
+ */
+export const MAX_INSTANCES = 200
 const STORE_VERSION = 1
-const MAX_STORE_BYTES = 32 * 1024
+/** Room for MAX_INSTANCES servers with their names, folders and mutes. */
+const MAX_STORE_BYTES = 1 << 20
 /** A mute may last a year and a day at most; -1 is for ever. */
 export const MAX_MUTE_SECONDS = 366 * 24 * 3600
-/** What an imported list may weigh. */
-export const MAX_IMPORT_BYTES = 64 * 1024
+/** What an imported list may weigh: room for MAX_INSTANCES servers with their names, folders and mutes. */
+export const MAX_IMPORT_BYTES = 1 << 20
+
+/** Where Ctrl+`number` goes among `count` servers: 1 to 8 the server at that place, 9 the last one (as browsers do with tabs). */
+export function shortcutPlace(number: number, count: number): number | null {
+  if (!Number.isInteger(number) || !Number.isInteger(count)) return null
+  if (number >= 1 && number <= 8 && number <= count) return number - 1
+  return number === 9 && count > 0 ? count - 1 : null
+}
 
 /** The list at rest: addresses only. No session, no name the page chose. */
 export interface Stored {

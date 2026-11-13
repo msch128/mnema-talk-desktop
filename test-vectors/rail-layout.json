@@ -1,6 +1,6 @@
 {
  "format": 1,
- "note": "The layout of the server rail: folders, order and local names. Read by the Rust host and the TypeScript client. start is the stored items (null: none stored) and start_aliases the stored names; every case is loaded (normalised), then its ops run in order (ok false: refused and nothing changes), then items, flat (the order of the servers on the rail) and aliases are compared. Folders made by group and new_folder get the id in the op's folder field (the host picks a random one).",
+ "note": "The layout of the server rail: folders, order and local names. Read by the Rust host and the TypeScript client. start is the stored items (null: none stored) and start_aliases the stored names; every case is loaded (normalised), then its ops run in order (ok false: refused and nothing changes), then items, flat (the order of the servers on the rail) and aliases are compared. Folders made by group and new_folder get the id in the op's folder field (the host picks a random one). shortcuts: the place (0-based, null: none) Ctrl+number reaches among count servers; 1 to 8 the server at that place, 9 the last one, as browsers do with tabs.",
  "cases": [
   {
    "name": "a list without a layout becomes the stored order, no folders",
@@ -3426,6 +3426,218 @@
     "d"
    ],
    "aliases": {}
+  }
+ ],
+ "shortcuts": [
+  {
+   "number": 0,
+   "count": 0,
+   "place": null
+  },
+  {
+   "number": 1,
+   "count": 0,
+   "place": null
+  },
+  {
+   "number": 2,
+   "count": 0,
+   "place": null
+  },
+  {
+   "number": 8,
+   "count": 0,
+   "place": null
+  },
+  {
+   "number": 9,
+   "count": 0,
+   "place": null
+  },
+  {
+   "number": 10,
+   "count": 0,
+   "place": null
+  },
+  {
+   "number": 0,
+   "count": 1,
+   "place": null
+  },
+  {
+   "number": 1,
+   "count": 1,
+   "place": 0
+  },
+  {
+   "number": 2,
+   "count": 1,
+   "place": null
+  },
+  {
+   "number": 8,
+   "count": 1,
+   "place": null
+  },
+  {
+   "number": 9,
+   "count": 1,
+   "place": 0
+  },
+  {
+   "number": 10,
+   "count": 1,
+   "place": null
+  },
+  {
+   "number": 0,
+   "count": 3,
+   "place": null
+  },
+  {
+   "number": 1,
+   "count": 3,
+   "place": 0
+  },
+  {
+   "number": 2,
+   "count": 3,
+   "place": 1
+  },
+  {
+   "number": 8,
+   "count": 3,
+   "place": null
+  },
+  {
+   "number": 9,
+   "count": 3,
+   "place": 2
+  },
+  {
+   "number": 10,
+   "count": 3,
+   "place": null
+  },
+  {
+   "number": 0,
+   "count": 8,
+   "place": null
+  },
+  {
+   "number": 1,
+   "count": 8,
+   "place": 0
+  },
+  {
+   "number": 2,
+   "count": 8,
+   "place": 1
+  },
+  {
+   "number": 8,
+   "count": 8,
+   "place": 7
+  },
+  {
+   "number": 9,
+   "count": 8,
+   "place": 7
+  },
+  {
+   "number": 10,
+   "count": 8,
+   "place": null
+  },
+  {
+   "number": 0,
+   "count": 9,
+   "place": null
+  },
+  {
+   "number": 1,
+   "count": 9,
+   "place": 0
+  },
+  {
+   "number": 2,
+   "count": 9,
+   "place": 1
+  },
+  {
+   "number": 8,
+   "count": 9,
+   "place": 7
+  },
+  {
+   "number": 9,
+   "count": 9,
+   "place": 8
+  },
+  {
+   "number": 10,
+   "count": 9,
+   "place": null
+  },
+  {
+   "number": 0,
+   "count": 10,
+   "place": null
+  },
+  {
+   "number": 1,
+   "count": 10,
+   "place": 0
+  },
+  {
+   "number": 2,
+   "count": 10,
+   "place": 1
+  },
+  {
+   "number": 8,
+   "count": 10,
+   "place": 7
+  },
+  {
+   "number": 9,
+   "count": 10,
+   "place": 9
+  },
+  {
+   "number": 10,
+   "count": 10,
+   "place": null
+  },
+  {
+   "number": 0,
+   "count": 200,
+   "place": null
+  },
+  {
+   "number": 1,
+   "count": 200,
+   "place": 0
+  },
+  {
+   "number": 2,
+   "count": 200,
+   "place": 1
+  },
+  {
+   "number": 8,
+   "count": 200,
+   "place": 7
+  },
+  {
+   "number": 9,
+   "count": 200,
+   "place": 199
+  },
+  {
+   "number": 10,
+   "count": 200,
+   "place": null
   }
  ]
 }

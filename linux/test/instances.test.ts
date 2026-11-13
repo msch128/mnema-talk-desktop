@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, test } from 'node:test'
 import { Jar, type Vault } from '../src/core/cookies.ts'
-import { AddError, MAX_COUNT, MAX_INSTANCES, Registry, emptyStored, idFor, loadStored, nameOf, saveStored, type Session } from '../src/core/instances.ts'
+import { AddError, MAX_COUNT, MAX_IMPORT_BYTES, MAX_INSTANCES, Registry, emptyStored, idFor, loadStored, menuEntryText, nameOf, saveStored, shortcutPlace, storedFrom, storedText, type Session } from '../src/core/instances.ts'
 import { Limits, forward } from '../src/core/proxy.ts'
 import { Sockets } from '../src/core/sockets.ts'
 import type { Held } from '../src/core/store.ts'
@@ -41,7 +41,7 @@ test('a server is always the same slot, named by its origin', () => {
   assert.match(id('a.example'), /^[0-9a-f]{16}$/)
 })
 
-test('the same server cannot be added twice and nine is the most', () => {
+test('the same server cannot be added twice and the safety bound is the most', () => {
   const r = registry('a.example')
   assert.throws(() => r.add(url('a.example')), (e: unknown) => e instanceof AddError && e.kind === 'known' && e.id === id('a.example'))
   for (let n = 1; n < MAX_INSTANCES; n++) r.add(url(`s${n}.example`))
@@ -55,8 +55,10 @@ test('switching follows the list and the number keys', () => {
   const r = registry('a.example', 'b.example', 'c.example')
   assert.ok(r.activate(id('b.example')))
   assert.equal(r.activateNth(3), id('c.example'))
+  // Ctrl+9 is the last server, however many there are.
+  assert.equal(r.activateNth(9), id('c.example'))
   assert.equal(r.activateNth(1), id('a.example'))
-  for (const n of [0, 4, 9, 1.5, -1]) assert.equal(r.activateNth(n), null, String(n))
+  for (const n of [0, 4, 8, 10, 1.5, -1]) assert.equal(r.activateNth(n), null, String(n))
   assert.equal(r.active(), id('a.example'))
   assert.equal(r.activate('0000000000000000'), false)
 })
@@ -286,7 +288,7 @@ test('a list that does not hold up is not trusted', () => {
     writeFileSync(file, bad)
     assert.deepEqual(loadStored(file).servers, [], bad)
   }
-  const many = Array.from({ length: 20 }, (_, n) => `https://s${n}.example/`)
+  const many = Array.from({ length: MAX_INSTANCES + 10 }, (_, n) => `https://s${n}.example/`)
   writeFileSync(file, JSON.stringify({ version: 1, servers: ['http://plain.example/', 'https://a.example/path', 'https://a.example/', 'https://a.example/', 'javascript:alert(1)', '', 7, ...many], active: 'https://unknown.example/' }))
   const stored = loadStored(file)
   assert.equal(stored.servers.length, MAX_INSTANCES)
@@ -381,4 +383,23 @@ test('the rail names a server as it names itself, and the address otherwise', ()
   assert.equal(nameOf(slot), 'a.example')
   slot.phase = { kind: 'refused', why: 'no' }
   assert.equal(nameOf(slot), 'a.example')
+})
+
+test('the number keys follow the shared vectors, and the ninth menu entry names the last server', () => {
+  const v = JSON.parse(readFileSync(new URL('../../test-vectors/rail-layout.json', import.meta.url), 'utf8')) as { shortcuts: { number: number, count: number, place: number | null }[] }
+  assert.ok(v.shortcuts.length > 0)
+  for (const c of v.shortcuts) assert.equal(shortcutPlace(c.number, c.count), c.place, JSON.stringify(c))
+  assert.equal(menuEntryText(1, 'a.example'), '1 — a.example')
+  assert.equal(menuEntryText(8, null), 'Server 8')
+  assert.equal(menuEntryText(9, 'z.example'), '9 — z.example (last)')
+  assert.equal(menuEntryText(9, null), 'Last server')
+})
+
+test('a full list of servers with long names, folders and mutes fits an import and reads back whole', () => {
+  const servers = Array.from({ length: MAX_INSTANCES }, (_, n) => new URL(`https://community-number-${String(n).padStart(3, '0')}.a-rather-long-domain-name.example:8443/`))
+  const ids = servers.map((s) => idFor(s))
+  const items = Array.from({ length: Math.ceil(ids.length / 4) }, (_, n) => ({ kind: 'folder', id: `f${String(n).padStart(22, '0')}`, name: 'f'.repeat(40), color: '#2DA771', collapsed: true, servers: ids.slice(n * 4, n * 4 + 4) }))
+  const text = storedText({ ...emptyStored(), servers, items, aliases: Object.fromEntries(ids.map((i) => [i, 'n'.repeat(40)])), muted: Object.fromEntries(ids.map((i) => [i, -1])) })
+  assert.ok(Buffer.byteLength(text) <= MAX_IMPORT_BYTES, `${Buffer.byteLength(text)} bytes`)
+  assert.equal(storedFrom(JSON.parse(text))?.servers.length, MAX_INSTANCES)
 })

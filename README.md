@@ -52,9 +52,12 @@ There is no external security audit.
   Linux where the save dialog says. One download per server runs at a time. A
   download that saved nothing says why and what to do next in an error dialog;
   a partial file is never left behind.
-- **Several servers side by side (1.1).** A rail on the left lists your servers
-  with an unread dot and a mention count each. Add as many as nine, switch with
-  Ctrl+1 to Ctrl+9 (Cmd on macOS), drag or Alt+arrow to reorder, and remove one
+- **One client, any number of servers.** A rail on the left lists your servers
+  with an unread dot and a mention count each. Add as many as you like (a window
+  holds up to 200, a bound against a broken or hostile list, not a plan); the
+  rail scrolls when they do not fit and keeps the server in front in view.
+  Switch with Ctrl+1 to Ctrl+8 for the first eight and Ctrl+9 for the last (Cmd
+  on macOS), as browsers do with tabs, or with Ctrl+K; drag or Alt+arrow to reorder, and remove one
   from its menu (right-click or Delete). The same menu sets your notification
   level for that server (all messages, only mentions, mute) on servers that
   support it (Mnema Talk 1.2 and newer). Group servers in folders (drop one

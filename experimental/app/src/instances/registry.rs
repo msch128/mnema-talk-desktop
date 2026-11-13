@@ -192,9 +192,11 @@ impl Registry {
         true
     }
 
-    /// Ctrl+1 is the first server. `None` if there is none at that place.
+    /// The server a number key reaches (`shortcut_place`): Ctrl+1 is the
+    /// first, Ctrl+9 the last. `None` if there is none at that place.
     pub fn activate_nth(&mut self, number: usize) -> Option<String> {
-        let id = self.slots.get(number.checked_sub(1)?)?.id.clone();
+        let place = super::shortcut_place(number, self.slots.len())?;
+        let id = self.slots.get(place)?.id.clone();
         self.activate(&id);
         Some(id)
     }

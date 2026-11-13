@@ -33,6 +33,8 @@ $('add').addEventListener('contextmenu', (event) => { event.preventDefault(); ad
 $('add').addEventListener('keydown', (event) => {
   if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) { event.preventDefault(); addMenu($('add'), true); }
 });
+$('scroll').addEventListener('scroll', markEdges, { passive: true });
+window.addEventListener('resize', markEdges);
 window.mnemaRail = { set, chosen, quickSwitch };
 render();
 call('rail_state').then(set);

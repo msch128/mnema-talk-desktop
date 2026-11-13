@@ -162,7 +162,7 @@ mod tests {
     }
 
     #[test]
-    fn a_hostile_list_is_cleaned_or_refused_and_never_starts_more_than_nine() {
+    fn a_hostile_list_is_cleaned_or_refused_and_never_starts_more_than_the_bound() {
         // Not a list, wrong version, too large.
         assert!(Stored::parse(b"[]").is_none());
         assert!(Stored::parse(br#"{"version":2,"servers":[],"active":null}"#).is_none());
@@ -184,10 +184,10 @@ mod tests {
         let mut registry = Registry::restore(&Stored::empty());
         registry.merge(&parsed, crate::web_proxy::now());
         assert_eq!(registry.len(), 1);
-        // Ten servers: nine are taken.
+        // One more than the bound: the bound is taken.
         let ten = serde_json::json!({
             "version": 1,
-            "servers": (0..10).map(|n| format!("https://s{n}.example/")).collect::<Vec<_>>(),
+            "servers": (0..=crate::instances::MAX_INSTANCES).map(|n| format!("https://s{n}.example/")).collect::<Vec<_>>(),
             "active": null
         });
         let parsed = Stored::parse(ten.to_string().as_bytes()).unwrap();
@@ -196,11 +196,56 @@ mod tests {
         let mut full = listed(&["https://a.example/", "https://b.example/"]);
         let many = serde_json::json!({
             "version": 1,
-            "servers": (0..9).map(|n| format!("https://s{n}.example/")).collect::<Vec<_>>(),
+            "servers": (0..crate::instances::MAX_INSTANCES).map(|n| format!("https://s{n}.example/")).collect::<Vec<_>>(),
             "active": null
         });
         let added = full.merge(&Stored::parse(many.to_string().as_bytes()).unwrap(), 0);
         assert_eq!(full.len(), crate::instances::MAX_INSTANCES);
         assert_eq!(added.len(), crate::instances::MAX_INSTANCES - 2);
+    }
+
+    #[test]
+    fn a_full_list_with_long_names_folders_and_mutes_fits_the_store_and_an_import() {
+        use crate::instances::{MAX_INSTANCES, Stored};
+        use crate::rail_layout::{Item, MAX_NAME};
+        let servers: Vec<url::Url> = (0..MAX_INSTANCES)
+            .map(|n| {
+                url::Url::parse(&format!(
+                    "https://community-number-{n:03}.a-rather-long-domain-name.example:8443/"
+                ))
+                .unwrap()
+            })
+            .collect();
+        let ids: Vec<String> = servers.iter().map(crate::instances::id_for).collect();
+        let mut stored = Stored::empty();
+        stored.servers = servers;
+        stored.aliases = ids
+            .iter()
+            .map(|id| (id.clone(), "n".repeat(MAX_NAME)))
+            .collect();
+        stored.muted = ids
+            .iter()
+            .map(|id| (id.clone(), crate::instances::FOREVER))
+            .collect();
+        stored.items = Some(
+            ids.chunks(4)
+                .enumerate()
+                .map(|(n, chunk)| Item::Folder {
+                    id: format!("f{n:022}"),
+                    name: "f".repeat(MAX_NAME),
+                    color: Some("#2DA771".into()),
+                    collapsed: true,
+                    servers: chunk.to_vec(),
+                })
+                .collect(),
+        );
+        let bytes = stored.to_bytes().unwrap();
+        assert!(
+            bytes.len() <= crate::instances::MAX_IMPORT_BYTES,
+            "{} bytes",
+            bytes.len()
+        );
+        let parsed = Stored::parse(&bytes).expect("the list reads back");
+        assert_eq!(parsed.servers.len(), MAX_INSTANCES);
     }
 }

@@ -61,8 +61,8 @@ struct File {
     max: usize,
 }
 
-/// The most a chosen file may hold.
-const MAX_FILE: usize = 65536;
+/// The most a chosen file may hold: an exported list of servers.
+const MAX_FILE: usize = crate::instances::MAX_IMPORT_BYTES;
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
 #[serde(deny_unknown_fields)]
@@ -479,7 +479,7 @@ mod tests {
 
     const SWITCH: &str = r##"{"title":"Switch","list":{"label":"Server","choices":[{"id":"a1","text":"One","hint":"one.example"},{"id":"b-2","text":"Two"}]},
         "buttons":[{"id":"cancel","text":"Cancel"}],"cancel":"cancel"}"##;
-    const IMPORT: &str = r##"{"title":"Import","file":{"label":"File","accept":".json","max":65536},
+    const IMPORT: &str = r##"{"title":"Import","file":{"label":"File","accept":".json","max":1048576},
         "buttons":[{"id":"cancel","text":"Cancel"},{"id":"import","text":"Import","primary":true}],"cancel":"cancel"}"##;
 
     #[test]
@@ -497,7 +497,7 @@ mod tests {
             r#"{"title":"x","list":{"label":"l","choices":[{"id":"a","text":""}]},"buttons":[{"id":"a","text":"A"}],"cancel":"a"}"#,
             // A file is a .json of at most 64 KiB.
             r#"{"title":"x","file":{"label":"f","accept":".exe","max":5},"buttons":[{"id":"a","text":"A"}],"cancel":"a"}"#,
-            r#"{"title":"x","file":{"label":"f","accept":".json","max":65537},"buttons":[{"id":"a","text":"A"}],"cancel":"a"}"#,
+            r#"{"title":"x","file":{"label":"f","accept":".json","max":1048577},"buttons":[{"id":"a","text":"A"}],"cancel":"a"}"#,
         ] {
             assert!(parse(bad).is_err(), "{bad}");
         }
@@ -522,7 +522,7 @@ mod tests {
         let import = parse(IMPORT).unwrap();
         let file = |v: String| accept(&import, "import", Some(v), None);
         assert_eq!(file("{}".into()).button, "import");
-        assert_eq!(file("x".repeat(65537)).button, "cancel");
+        assert_eq!(file("x".repeat(MAX_FILE + 1)).button, "cancel");
         // Text where the spec asked for none.
         let confirm =
             parse(r#"{"title":"x","buttons":[{"id":"a","text":"A"}],"cancel":"a"}"#).unwrap();

@@ -8,7 +8,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, test } from 'node:test'
-import { MAX_INSTANCES, Registry, emptyStored, idFor, loadStored, saveStored, storedFrom, storedText } from '../src/core/instances.ts'
+import { MAX_IMPORT_BYTES, MAX_INSTANCES, Registry, emptyStored, idFor, loadStored, saveStored, storedFrom, storedText } from '../src/core/instances.ts'
 import { inviteChoice } from '../src/core/invite.ts'
 import { serverMenuAction } from '../src/core/notify.ts'
 import { checkDialogResult, dialogHeight, exportTarget, parseDialogSpec, parseEdit } from '../src/core/railui.ts'
@@ -97,7 +97,7 @@ test('the page asks for a mute, a mark as read, an export and an import in plain
   assert.deepEqual(parseEdit({ op: 'mark_read', id: a }), { op: 'mark_read', id: a })
   assert.deepEqual(parseEdit({ op: 'export' }), { op: 'export' })
   assert.deepEqual(parseEdit({ op: 'import', text: '{}' }), { op: 'import', text: '{}' })
-  for (const bad of [{ op: 'mute', id: a }, { op: 'mute', id: a, until: '5' }, { op: 'mute', id: a, until: -2 }, { op: 'mute', id: a, until: 1.5 }, { op: 'mute', id: 'x', until: 5 }, { op: 'mark_read', id: 'f-00000000' }, { op: 'import' }, { op: 'import', text: 'x'.repeat(65537) }, { op: 'import', name: '{}' }]) {
+  for (const bad of [{ op: 'mute', id: a }, { op: 'mute', id: a, until: '5' }, { op: 'mute', id: a, until: -2 }, { op: 'mute', id: a, until: 1.5 }, { op: 'mute', id: 'x', until: 5 }, { op: 'mark_read', id: 'f-00000000' }, { op: 'import' }, { op: 'import', text: 'x'.repeat(MAX_IMPORT_BYTES + 1) }, { op: 'import', name: '{}' }]) {
     assert.throws(() => parseEdit(bad), JSON.stringify(bad).slice(0, 60))
   }
 })
@@ -164,7 +164,7 @@ test('a list or file dialog that is not what the rail may ask is refused', () =>
     { ...base, list: { label: 'l', choices: [{ id: 'a', text: 'x'.repeat(101) }] } },
     { ...base, input: { label: 'n', value: '', max: 5 }, list: { label: 'l', choices: [choice(1)] } },
     { ...base, file: { label: 'f', accept: '.exe', max: 10 } },
-    { ...base, file: { label: 'f', accept: '.json', max: 70000 } },
+    { ...base, file: { label: 'f', accept: '.json', max: MAX_IMPORT_BYTES + 1 } },
     { ...base, file: { label: 'f', accept: '.json', max: 0 } },
     { ...base, input: { label: 'n', value: '', max: 5 }, file: { label: 'f', accept: '.json', max: 10 } },
   ]

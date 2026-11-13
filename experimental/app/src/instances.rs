@@ -27,20 +27,34 @@ pub use rail::RailState;
 pub use registry::Registry;
 pub use stored::Stored;
 
-/// Ctrl+1 to Ctrl+9 reach the servers, so there are at most nine.
-pub const MAX_INSTANCES: usize = 9;
+/// The most servers one window holds. Not a product limit (one client,
+/// any number of servers) but a bound against a hostile list or an import
+/// gone wrong; far above any real use. Ctrl+1 to Ctrl+8 reach the first eight
+/// servers and Ctrl+9 the last (`shortcut_place`), as browsers do with tabs.
+pub const MAX_INSTANCES: usize = 200;
+/// Where Ctrl+`number` goes among `count` servers: 1 to 8 the server at that
+/// place, 9 the last one (as browsers do with tabs).
+pub fn shortcut_place(number: usize, count: usize) -> Option<usize> {
+    match number {
+        1..=8 if number <= count => Some(number - 1),
+        9 => count.checked_sub(1),
+        _ => None,
+    }
+}
+
 /// What the badge and the rail show at most.
 pub const MAX_COUNT: u32 = 999;
 const INSTANCE_PREFIX: &str = "i-";
 const ATTACHMENT_PREFIX: &str = "a-";
 const STORE_VERSION: u32 = 1;
-/// The most an imported list may hold.
-pub const MAX_IMPORT_BYTES: usize = 65536;
+/// The most an imported list may hold: room for MAX_INSTANCES servers with
+/// their names, folders and mutes.
+pub const MAX_IMPORT_BYTES: usize = 1 << 20;
 /// A mute with no end.
 pub const FOREVER: i64 = -1;
 /// The longest a mute may last: a year and a day.
 pub const MAX_MUTE_SECS: i64 = 366 * 24 * 3600;
-const MAX_STORE_BYTES: u64 = 16 * 1024;
+const MAX_STORE_BYTES: u64 = 1 << 20;
 
 /// A server the client talks to and the verified bundle its pages run.
 pub struct Session {
@@ -284,7 +298,7 @@ mod tests {
     }
 
     #[test]
-    fn the_same_server_cannot_be_added_twice_and_nine_is_the_most() {
+    fn the_same_server_cannot_be_added_twice_and_the_safety_bound_is_the_most() {
         let mut registry = registry(&["a.example"]);
         assert_eq!(
             registry.add(url("https://a.example/")),
@@ -305,13 +319,29 @@ mod tests {
     }
 
     #[test]
+    fn the_number_keys_follow_the_shared_vectors() {
+        let file: serde_json::Value =
+            serde_json::from_str(include_str!("../../../test-vectors/rail-layout.json")).unwrap();
+        let cases = file["shortcuts"].as_array().unwrap();
+        assert!(!cases.is_empty());
+        for case in cases {
+            let number = case["number"].as_u64().unwrap() as usize;
+            let count = case["count"].as_u64().unwrap() as usize;
+            let place = case["place"].as_u64().map(|p| p as usize);
+            assert_eq!(shortcut_place(number, count), place, "{case}");
+        }
+    }
+
+    #[test]
     fn switching_follows_the_list_and_the_number_keys() {
         let mut registry = registry(&["a.example", "b.example", "c.example"]);
         assert!(registry.activate(&id("b.example")));
         assert_eq!(registry.active(), Some(id("b.example").as_str()));
         assert_eq!(registry.activate_nth(3), Some(id("c.example")));
+        // Ctrl+9 is the last server, however many there are.
+        assert_eq!(registry.activate_nth(9), Some(id("c.example")));
         assert_eq!(registry.activate_nth(1), Some(id("a.example")));
-        for number in [0, 4, 9] {
+        for number in [0, 4, 8, 10] {
             assert_eq!(registry.activate_nth(number), None, "{number}");
         }
         assert_eq!(
@@ -856,7 +886,7 @@ mod tests {
         ]
         .map(String::from)
         .into();
-        servers.extend((0..20).map(|n| format!("https://s{n}.example/")));
+        servers.extend((0..MAX_INSTANCES + 10).map(|n| format!("https://s{n}.example/")));
         write(
             &serde_json::json!({
                 "version": 1,
