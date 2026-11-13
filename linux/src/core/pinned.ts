@@ -25,7 +25,7 @@ export const UPDATER_PUBKEY = 'dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZ
  * clients of this version may be around; the feed is minisign-verified either way.
  */
 export const UPDATER_ENDPOINTS: readonly string[] = [
-  'https://github.com/mnema-xyz/mnema-talk-desktop/releases/latest/download/latest.json',
+  'https://github.com/mnema-xyz/talk-desktop/releases/latest/download/latest.json',
   'https://github.com/msch128/mnema-talk-desktop/releases/latest/download/latest.json'
 ]
 /** The release page that deb installs point their users to. */

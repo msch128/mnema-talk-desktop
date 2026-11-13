@@ -131,7 +131,7 @@ fn the_pinned_key_and_endpoint_in_the_config_are_usable() {
     assert_eq!(
         endpoints,
         [
-            "https://github.com/mnema-xyz/mnema-talk-desktop/releases/latest/download/latest.json",
+            "https://github.com/mnema-xyz/talk-desktop/releases/latest/download/latest.json",
             "https://github.com/msch128/mnema-talk-desktop/releases/latest/download/latest.json",
         ]
     );
