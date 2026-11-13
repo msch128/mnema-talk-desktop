@@ -9,6 +9,7 @@ mod filename;
 mod forward;
 mod jar;
 mod limits;
+mod mark;
 mod resp;
 mod rules;
 #[cfg(test)]
@@ -24,6 +25,8 @@ pub use filename::{directly_in, free_name};
 pub use forward::{Instance, forward};
 pub use jar::Jar;
 pub use limits::Limits;
+#[cfg(target_os = "macos")]
+pub use mark::mark;
 pub use resp::Resp;
 
 use std::time::{SystemTime, UNIX_EPOCH};

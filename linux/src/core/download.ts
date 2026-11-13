@@ -26,8 +26,18 @@ import { type Instance, requestHeaders, target } from './proxy.ts'
 export const DOWNLOAD_CAP = (2048 + 1) * 2 ** 20
 /** How long the instance may stay silent while the body is being written. */
 export const IDLE_MS = 60_000
-/** The end of the hidden file a transfer is written to before it gets its name. */
+/** The end of the hidden file a transfer is written to before it gets its name: `.` + 32 hex digits + this. */
 export const PARTIAL_SUFFIX = '.mnema-download'
+/**
+ * How old a partial file must be before a download removes it as a leftover of
+ * a client that was closed mid-transfer. Far above any gap of a running
+ * transfer (another server's download may share the folder); crash leftovers
+ * can wait.
+ */
+export const STALE_PARTIAL_MS = 6 * 3600 * 1000
+
+/** Whether `name` is one of the host's partial files, and nothing a person named. */
+export const isPartialName = (name: string): boolean => /^\.[0-9a-f]{32}\.mnema-download$/i.test(name)
 
 export interface DownloadLimits { cap: number, idleMs: number }
 
@@ -54,8 +64,8 @@ function serverMessage(body: Uint8Array | null): string | null {
 
 /**
  * Removes the hidden files of transfers that ended without cleaning up (the
- * client was closed mid-download). A running transfer writes at least once per
- * idle limit, so a file untouched for longer is nobody's.
+ * client was closed mid-download): only names of the host's own partial files,
+ * untouched for longer than `olderThanMs`.
  */
 export async function removeStalePartials(dir: string, olderThanMs: number): Promise<void> {
   let names: string[]
@@ -65,7 +75,7 @@ export async function removeStalePartials(dir: string, olderThanMs: number): Pro
     return
   }
   for (const name of names) {
-    if (!name.startsWith('.') || !name.endsWith(PARTIAL_SUFFIX)) continue
+    if (!isPartialName(name)) continue
     const path = join(dir, name)
     try {
       if (Date.now() - (await stat(path)).mtimeMs > olderThanMs) await rm(path, { force: true })
@@ -120,6 +130,8 @@ async function fetchInto(instance: Instance, url: URL, temp: string, limits: Dow
       url,
       headers: requestHeaders(instance, []),
       connectTimeoutMs: 10_000,
+      // A server that never answers ends the download (and frees the server for the next one) after the idle time.
+      headersTimeoutMs: limits.idleMs,
       // The idle timeout bounds each piece; the whole transfer only needs an upper bound that is never the reason it ends.
       totalTimeoutMs: 2 ** 31 - 1,
       agent: instance.agent,
@@ -155,22 +167,24 @@ export async function downloadInto(instance: Instance, pathAndQuery: string, des
   const temp = join(dir, `.${randomBytes(16).toString('hex')}${PARTIAL_SUFFIX}`)
   try {
     await mkdir(dir, { recursive: true })
-    await removeStalePartials(dir, limits.idleMs * 2)
+    await removeStalePartials(dir, STALE_PARTIAL_MS)
     await (await open(temp, 'wx')).close()
   } catch (error) {
     return diskError(error)
   }
-  let saved = await fetchInto(instance, url, temp, limits)
-  if (saved.ok) {
+  try {
+    const saved = await fetchInto(instance, url, temp, limits)
+    if (!saved.ok) return saved
     try {
       // The person chose this path in the save dialog (which asked before replacing a file).
       await rename(temp, dest)
+      return saved
     } catch (error) {
-      saved = diskError(error)
+      return diskError(error)
     }
+  } finally {
+    await rm(temp, { force: true }).catch(() => undefined)
   }
-  await rm(temp, { force: true }).catch(() => undefined)
-  return saved
 }
 
 /**

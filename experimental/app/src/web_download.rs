@@ -5,7 +5,6 @@
 //! Explorer; a download that saved nothing says why in an error dialog.
 //! Downloads the webview still makes itself (a file the page made, `blob:`;
 //! an attachment window on macOS) get the same feedback.
-mod mark;
 mod text;
 
 pub use text::sentence;
@@ -62,12 +61,13 @@ pub async fn desktop_download(
     let Some(_running) = Running::start(webview.label()) else {
         return fail(text::text("busy"));
     };
-    let Ok(dir) = webview.app_handle().path().download_dir() else {
+    let app = webview.app_handle();
+    let Ok(dir) = app.path().download_dir() else {
         return fail(text::text("no_folder"));
     };
-    match download_to(&session.instance, &path, &dir, &name).await {
+    let agent = app.package_info().name.clone();
+    match download_to(&session.instance, &path, &dir, &name, &agent).await {
         Ok(saved) => {
-            mark::mark(&saved);
             reveal(&saved);
             Ok(saved.display().to_string())
         }
@@ -101,7 +101,7 @@ pub fn no_folder(url: &url::Url) {
 /// The outcome of a download the webview made itself: the saved file is
 /// marked and shown, a failed one is reported (unless the host refused it).
 #[cfg(target_os = "macos")]
-pub fn finished(url: &url::Url, path: Option<&Path>, success: bool) {
+pub fn finished(app: &tauri::AppHandle, url: &url::Url, path: Option<&Path>, success: bool) {
     let picked = UNDER_WAY.lock().ok().and_then(|mut list| {
         let at = list.iter().position(|(u, _)| u == url.as_str())?;
         Some(list.remove(at).1)
@@ -111,7 +111,7 @@ pub fn finished(url: &url::Url, path: Option<&Path>, success: bool) {
     }
     match path.map(Path::to_path_buf).or(picked.flatten()) {
         Some(path) if success && path.exists() => {
-            mark::mark(&path);
+            crate::web_proxy::mark(&path, &app.package_info().name);
             reveal(&path);
         }
         _ => crate::web_client::show_error(&text::text("webview_failed")),

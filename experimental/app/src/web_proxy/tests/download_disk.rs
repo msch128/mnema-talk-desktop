@@ -3,7 +3,7 @@
 //! the file can be written.
 use super::*;
 use crate::web_proxy::download::{
-    Bounds, Failure, PARTIAL_SUFFIX, download_with, remove_stale_partials,
+    Bounds, Failure, PARTIAL_SUFFIX, download_with, is_partial_name, remove_stale_partials,
 };
 
 fn folder() -> PathBuf {
@@ -64,7 +64,15 @@ async fn a_downloads_folder_that_does_not_exist_yet_is_made_and_gets_the_file() 
     ))
     .await;
     let dir = folder().join("Downloads");
-    let got = download_with(&instance_at(origin), EXPORT, &dir, "", &Bounds::default()).await;
+    let got = download_with(
+        &instance_at(origin),
+        EXPORT,
+        &dir,
+        "",
+        "test",
+        &Bounds::default(),
+    )
+    .await;
     assert_eq!(got, Ok(dir.join("mnema-talk-export.zip")));
     assert_eq!(
         std::fs::read(dir.join("mnema-talk-export.zip")).unwrap(),
@@ -87,6 +95,7 @@ async fn a_folder_that_cannot_be_written_asks_the_server_for_nothing() {
         EXPORT,
         &blocker.join("Downloads"),
         "",
+        "test",
         &Bounds::default(),
     )
     .await;
@@ -108,7 +117,15 @@ async fn a_read_only_folder_is_a_disk_failure_in_plain_words_and_asks_for_nothin
     let dir = folder();
     std::fs::create_dir_all(&dir).unwrap();
     std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o500)).unwrap();
-    let got = download_with(&instance_at(origin), EXPORT, &dir, "", &Bounds::default()).await;
+    let got = download_with(
+        &instance_at(origin),
+        EXPORT,
+        &dir,
+        "",
+        "test",
+        &Bounds::default(),
+    )
+    .await;
     std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700)).unwrap();
     assert_eq!(got, Err(Failure::Disk(crate::web_proxy::Disk::Denied)));
     assert_eq!(*accepted.lock().unwrap(), 0);
@@ -124,6 +141,7 @@ async fn a_body_shorter_than_its_declared_length_is_cut() {
         EXPORT,
         &dir,
         "",
+        "test",
         &bounds(1 << 20, 2_000),
     )
     .await;
@@ -142,6 +160,7 @@ async fn a_server_that_stops_sending_is_cut_after_the_idle_limit() {
         EXPORT,
         &dir,
         "",
+        "test",
         &bounds(1 << 20, 300),
     )
     .await;
@@ -159,7 +178,15 @@ async fn an_answer_of_unknown_length_over_the_cap_is_refused_and_leaves_nothing(
     )
     .await;
     let dir = folder();
-    let got = download_with(&instance_at(origin), EXPORT, &dir, "", &bounds(1000, 2_000)).await;
+    let got = download_with(
+        &instance_at(origin),
+        EXPORT,
+        &dir,
+        "",
+        "test",
+        &bounds(1000, 2_000),
+    )
+    .await;
     assert_eq!(got, Err(Failure::TooLarge));
     assert!(names(&dir).is_empty());
 }
@@ -177,6 +204,7 @@ async fn an_existing_file_or_link_of_that_name_is_never_written_over() {
         "/api/media/x",
         &dir,
         "a.zip",
+        "test",
         &Bounds::default(),
     )
     .await;
@@ -191,12 +219,128 @@ async fn an_existing_file_or_link_of_that_name_is_never_written_over() {
     );
 }
 
+/// A partial name as the host makes it.
+fn partial(id: char) -> String {
+    format!(".{}{PARTIAL_SUFFIX}", id.to_string().repeat(32))
+}
+
+fn age(path: &std::path::Path, seconds: u64) {
+    let past = std::time::SystemTime::now() - Duration::from_secs(seconds);
+    std::fs::File::options()
+        .write(true)
+        .open(path)
+        .unwrap()
+        .set_modified(past)
+        .unwrap();
+}
+
+#[tokio::test]
+async fn a_download_removes_partial_files_left_by_an_earlier_run_and_nothing_else() {
+    let (origin, _) = serve_once(reply("200 OK", &[], "PK")).await;
+    let dir = folder();
+    std::fs::create_dir_all(&dir).unwrap();
+    let leftover = dir.join(partial('a'));
+    let running = dir.join(partial('b'));
+    // Old, but no name the host makes: a person's files stay whatever their age.
+    let persons = [
+        ".old.mnema-download",
+        ".AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAG.mnema-download",
+        "a.mnema-download",
+    ];
+    for path in [&leftover, &running] {
+        std::fs::write(path, b"x").unwrap();
+    }
+    for name in persons {
+        std::fs::write(dir.join(name), b"x").unwrap();
+        age(&dir.join(name), 7 * 3600);
+    }
+    age(&leftover, 7 * 3600);
+    // Another server's download that has waited an hour for its first byte.
+    age(&running, 3600);
+    let got = download_with(
+        &instance_at(origin),
+        "/api/media/x",
+        &dir,
+        "x.zip",
+        "test",
+        &Bounds::default(),
+    )
+    .await;
+    assert_eq!(got, Ok(dir.join("x.zip")));
+    let mut expected: Vec<String> = persons.iter().map(|n| (*n).to_owned()).collect();
+    expected.extend([partial('b'), "x.zip".to_owned()]);
+    expected.sort();
+    assert_eq!(names(&dir), expected);
+}
+
+#[tokio::test]
+async fn two_servers_downloading_into_one_folder_keep_each_others_partial() {
+    // A answers late; B starts while A still waits for its headers.
+    let late = reply(
+        "200 OK",
+        &["content-disposition: attachment; filename=\"a.zip\""],
+        "PK a",
+    );
+    let (slow, _) = serve_slowly(vec![(Duration::from_millis(400), late)], Duration::ZERO).await;
+    let (quick, _) = serve_once(reply(
+        "200 OK",
+        &["content-disposition: attachment; filename=\"b.zip\""],
+        "PK b",
+    ))
+    .await;
+    let dir = folder();
+    let tight = bounds(1 << 20, 2_000);
+    let (slow, quick) = (instance_at(slow), instance_at(quick));
+    let a = download_with(&slow, "/api/a", &dir, "", "test", &tight);
+    let b = async {
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        download_with(&quick, "/api/b", &dir, "", "test", &tight).await
+    };
+    let (a, b) = tokio::join!(a, b);
+    assert_eq!((a, b), (Ok(dir.join("a.zip")), Ok(dir.join("b.zip"))));
+}
+
+#[tokio::test]
+async fn the_saved_file_is_marked_as_downloaded() {
+    let (origin, _) = serve_once(reply("200 OK", &[], "PK")).await;
+    let dir = folder();
+    let saved = download_with(
+        &instance_at(origin),
+        "/api/media/x",
+        &dir,
+        "x.zip",
+        "test",
+        &Bounds::default(),
+    )
+    .await
+    .unwrap();
+    assert!(crate::web_proxy::mark::marked(&saved));
+}
+
+#[test]
+fn only_the_hosts_own_partial_names_count_as_partials() {
+    assert!(is_partial_name(&partial('0')));
+    assert!(is_partial_name(&format!(
+        ".{}{PARTIAL_SUFFIX}",
+        "0123456789abcdef".repeat(2)
+    )));
+    for name in [
+        ".old.mnema-download",
+        "x.mnema-download",
+        &format!(".{}{PARTIAL_SUFFIX}", "a".repeat(31)),
+        &format!(".{}{PARTIAL_SUFFIX}", "g".repeat(32)),
+        &format!("{}{PARTIAL_SUFFIX}", "a".repeat(32)),
+    ] {
+        assert!(!is_partial_name(name), "{name}");
+    }
+}
+
 #[tokio::test]
 async fn partial_files_left_by_an_earlier_run_are_removed_and_fresh_ones_kept() {
     let dir = folder();
     std::fs::create_dir_all(&dir).unwrap();
-    let old = dir.join(format!(".old{PARTIAL_SUFFIX}"));
-    let fresh = dir.join(format!(".fresh{PARTIAL_SUFFIX}"));
+    let old = dir.join(partial('c'));
+    let fresh = dir.join(partial('d'));
     std::fs::write(&old, b"x").unwrap();
     std::fs::write(&fresh, b"x").unwrap();
     std::fs::write(dir.join("mine.zip"), b"x").unwrap();
@@ -208,8 +352,5 @@ async fn partial_files_left_by_an_earlier_run_are_removed_and_fresh_ones_kept() 
         .set_modified(past)
         .unwrap();
     remove_stale_partials(&dir, Duration::from_secs(240)).await;
-    assert_eq!(
-        names(&dir),
-        [format!(".fresh{PARTIAL_SUFFIX}"), "mine.zip".to_owned()]
-    );
+    assert_eq!(names(&dir), [partial('d'), "mine.zip".to_owned()]);
 }

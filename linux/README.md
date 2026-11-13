@@ -166,8 +166,10 @@ export unspent on the server (it spends one once it sent the last byte). The
 body is streamed into the temporary file next to the target, which is renamed
 once the whole body has arrived; it is bounded by the server's own ceiling
 (2048 MiB plus 1 MiB) and by an idle timeout per piece, and a failure removes
-the partial file. Partial files an earlier run left behind are removed at the
-next download into that folder. The proposed name follows the `download`
+the partial file; a server that sends no answer within the idle time ends the
+download. Partial files an earlier run left behind (only the client's own
+names, `.` + 32 hex digits + `.mnema-download`, untouched for six hours) are
+removed at the next download into that folder. The proposed name follows the `download`
 attribute and the last path segment (the dialog comes before the server's
 `Content-Disposition`; the Tauri host, which has no dialog, reads `filename*`
 and `filename` first), cut down to one plain name that is safe on

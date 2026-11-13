@@ -7,7 +7,7 @@ import { basename, dirname, join, resolve } from 'node:path'
 import { afterEach, test } from 'node:test'
 import { runInNewContext } from 'node:vm'
 import { Jar } from '../src/core/cookies.ts'
-import { PARTIAL_SUFFIX, downloadInto, downloadRequest, removeStalePartials, saveDownload } from '../src/core/download.ts'
+import { PARTIAL_SUFFIX, downloadInto, downloadRequest, isPartialName, saveDownload } from '../src/core/download.ts'
 import { REASONS, SENTENCES, cleanMessage, refusalMessage } from '../src/core/downloadtext.ts'
 import { MAX_NAME_BYTES, downloadName, inFolder } from '../src/core/downloadname.ts'
 import { Limits, type Instance } from '../src/core/proxy.ts'
@@ -137,7 +137,6 @@ const answer = (status: number, headers: Record<string, string>, ...pieces: Buff
 }
 
 const EXPORT = '/api/users/me/export/download'
-const visible = (dir: string) => readdirSync(dir).filter((name) => !name.endsWith(PARTIAL_SUFFIX))
 
 test('a complete body becomes the file, byte for byte, and no temporary file is left', async () => {
   const body = randomBytes(3 << 20)
@@ -239,17 +238,48 @@ test('a body above the cap is refused, announced or not, and leaves nothing', as
   assert.deepEqual(readdirSync(dir), [])
 })
 
-test('partial files of an earlier run are removed, fresh ones and other files kept', async () => {
+const partial = (c: string) => `.${c.repeat(32)}${PARTIAL_SUFFIX}`
+const ageBy = (path: string, ms: number) => {
+  const past = new Date(Date.now() - ms)
+  utimesSync(path, past, past)
+}
+
+test('a download removes partial files left by an earlier run, and nothing a person named or another download still writes', async () => {
+  const { instance } = await instanceFor(reply(200, {}, 'PK'))
   const dir = folder()
-  const old = join(dir, `.old${PARTIAL_SUFFIX}`)
-  writeFileSync(old, 'x')
-  writeFileSync(join(dir, `.fresh${PARTIAL_SUFFIX}`), 'x')
-  writeFileSync(join(dir, 'mine.zip'), 'x')
-  const past = new Date(Date.now() - 3_600_000)
-  utimesSync(old, past, past)
-  await removeStalePartials(dir, 240_000)
-  assert.deepEqual(readdirSync(dir).sort(), [`.fresh${PARTIAL_SUFFIX}`, 'mine.zip'])
-  assert.deepEqual(visible(dir), ['mine.zip'])
+  const leftover = join(dir, partial('a'))
+  const running = join(dir, partial('b'))
+  const persons = ['.old.mnema-download', `.${'g'.repeat(32)}${PARTIAL_SUFFIX}`, 'a.mnema-download']
+  for (const path of [leftover, running, ...persons.map((n) => join(dir, n))]) writeFileSync(path, 'x')
+  for (const name of persons) ageBy(join(dir, name), 7 * 3600_000)
+  ageBy(leftover, 7 * 3600_000)
+  // Another server's download that has waited an hour for its first byte.
+  ageBy(running, 3600_000)
+  assert.deepEqual(await downloadInto(instance, '/api/media/x', join(dir, 'x.zip')), { ok: true, bytes: 2 })
+  assert.deepEqual(readdirSync(dir).sort(), [...persons, partial('b'), 'x.zip'].sort())
+  assert.equal(isPartialName(partial('0')), true)
+  for (const name of persons) assert.equal(isPartialName(name), false, name)
+})
+
+test('a server that sends no answer ends the download after the idle time and leaves nothing', async () => {
+  const { instance } = await instanceFor(() => { /* never answers */ })
+  const dir = folder()
+  const started = Date.now()
+  assert.deepEqual(await downloadInto(instance, EXPORT, join(dir, 'x.zip'), { cap: 1 << 20, idleMs: 150 }), { ok: false, error: SENTENCES.unreachable })
+  assert.ok(Date.now() - started < 3000)
+  assert.deepEqual(readdirSync(dir), [])
+})
+
+test('two servers downloading into one folder keep each other\'s partial file', async () => {
+  const late = await instanceFor((_request, res) => { setTimeout(() => { res.writeHead(200, {}); res.end('PK a') }, 400) })
+  const quick = await instanceFor(reply(200, {}, 'PK b'))
+  const dir = folder()
+  const limits = { cap: 1 << 20, idleMs: 2000 }
+  const a = downloadInto(late.instance, '/api/a', join(dir, 'a.zip'), limits)
+  await new Promise((resolve) => setTimeout(resolve, 300))
+  const b = await downloadInto(quick.instance, '/api/b', join(dir, 'b.zip'), limits)
+  assert.deepEqual([await a, b], [{ ok: true, bytes: 4 }, { ok: true, bytes: 4 }])
+  assert.deepEqual(readdirSync(dir).sort(), ['a.zip', 'b.zip'])
 })
 
 test('only /api/ of the server can be asked for, and nothing is written for anything else', async () => {

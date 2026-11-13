@@ -8,6 +8,7 @@ use super::{
     filename::{directly_in, file_name, nth_name},
     forward::{IDLE_TIMEOUT, Instance, build_request, keep_cookies},
     limits::{MAX_ANNOUNCED_MB, MULTIPART_OVERHEAD},
+    mark::mark,
     rules::target,
 };
 use std::{
@@ -21,8 +22,23 @@ use tokio::io::AsyncWriteExt;
 /// framing around it. An export is at most 64 MiB.
 pub const MAX_DOWNLOAD: u64 = (MAX_ANNOUNCED_MB << 20) + MULTIPART_OVERHEAD as u64;
 
-/// The end of the hidden file a transfer is written to before it gets its name.
+/// The end of the hidden file a transfer is written to before it gets its
+/// name: `.` + 32 hex digits + this.
 pub(super) const PARTIAL_SUFFIX: &str = ".mnema-download";
+
+/// How old a partial file must be before a download removes it as a leftover
+/// of a client that was closed mid-transfer. Far above any gap of a running
+/// transfer (another server's download may share the folder), and crash
+/// leftovers can wait.
+pub(super) const STALE_PARTIAL: Duration = Duration::from_secs(6 * 3600);
+
+/// Whether `name` is one of the host's partial files (and nothing a person
+/// named): `.` + 32 hex digits + PARTIAL_SUFFIX.
+pub(super) fn is_partial_name(name: &str) -> bool {
+    name.strip_prefix('.')
+        .and_then(|rest| rest.strip_suffix(PARTIAL_SUFFIX))
+        .is_some_and(|id| id.len() == 32 && id.bytes().all(|b| b.is_ascii_hexdigit()))
+}
 
 /// Longest message of the server that is passed on, in characters.
 const MAX_MESSAGE_CHARS: usize = 300;
@@ -92,15 +108,18 @@ impl Default for Bounds {
 /// GETs `path_and_query` from the instance like the proxy would (its cookies,
 /// its origin) and streams the body into `dir`, under the name `file_name`
 /// picks from the answer and the page's `download` attribute. The file appears
-/// under its final name only once it is complete, never over an existing one;
-/// anything less leaves no file behind.
+/// under its final name only once it is complete, never over an existing one,
+/// and marked as downloaded by `agent` (see `mark`); anything less leaves no
+/// file behind.
 pub async fn download_to(
     instance: &Instance,
     path_and_query: &str,
     dir: &Path,
     attribute: &str,
+    agent: &str,
 ) -> Result<PathBuf, Failure> {
-    download_with(instance, path_and_query, dir, attribute, &Bounds::default()).await
+    let bounds = Bounds::default();
+    download_with(instance, path_and_query, dir, attribute, agent, &bounds).await
 }
 
 pub(super) async fn download_with(
@@ -108,11 +127,12 @@ pub(super) async fn download_with(
     path_and_query: &str,
     dir: &Path,
     attribute: &str,
+    agent: &str,
     bounds: &Bounds,
 ) -> Result<PathBuf, Failure> {
     let url = target(&instance.origin, path_and_query).ok_or(Failure::Path)?;
     tokio::fs::create_dir_all(dir).await.map_err(disk)?;
-    remove_stale_partials(dir, bounds.idle * 2).await;
+    remove_stale_partials(dir, STALE_PARTIAL).await;
     let partial = dir.join(format!(
         ".{}{PARTIAL_SUFFIX}",
         uuid::Uuid::new_v4().simple()
@@ -125,7 +145,11 @@ pub(super) async fn download_with(
         .map_err(disk)?;
     let name = fetch_into(instance, url, file, attribute, bounds).await;
     let saved = match name {
-        Ok(name) => place(dir, &partial, &name).await,
+        Ok(name) => {
+            // Before it gets its name: a hard link shares the mark.
+            mark(&partial, agent);
+            place(dir, &partial, &name, agent).await
+        }
         Err(failure) => Err(failure),
     };
     let _ = tokio::fs::remove_file(&partial).await;
@@ -185,7 +209,7 @@ async fn fetch_into(
 /// file: a hard link fails on any existing entry (a dangling link included),
 /// and the next free name is tried. Where the disk has no hard links, the
 /// bytes are copied into a file created new.
-async fn place(dir: &Path, partial: &Path, name: &str) -> Result<PathBuf, Failure> {
+async fn place(dir: &Path, partial: &Path, name: &str, agent: &str) -> Result<PathBuf, Failure> {
     for n in 1..=10_000 {
         let candidate = nth_name(dir, name, n);
         // The name is plain by construction; never write outside the folder.
@@ -198,7 +222,10 @@ async fn place(dir: &Path, partial: &Path, name: &str) -> Result<PathBuf, Failur
             Err(_) => {}
         }
         match copy_new(partial, &candidate).await {
-            Ok(()) => return Ok(candidate),
+            Ok(()) => {
+                mark(&candidate, agent);
+                return Ok(candidate);
+            }
             Err(e) if e.kind() == ErrorKind::AlreadyExists => continue,
             Err(e) => return Err(disk(e)),
         }
@@ -224,16 +251,16 @@ async fn copy_new(from: &Path, to: &Path) -> std::io::Result<()> {
     copied
 }
 
-/// Removes the hidden files of transfers that ended without cleaning up
-/// (the client was closed mid-download). A running transfer writes at least
-/// once per idle limit, so a file untouched for longer is nobody's.
+/// Removes the hidden files of transfers that ended without cleaning up (the
+/// client was closed mid-download): only names of the host's own partial
+/// files, untouched for longer than `older_than`.
 pub(super) async fn remove_stale_partials(dir: &Path, older_than: Duration) {
     let Ok(mut entries) = tokio::fs::read_dir(dir).await else {
         return;
     };
     while let Ok(Some(entry)) = entries.next_entry().await {
         let name = entry.file_name().to_string_lossy().into_owned();
-        if !(name.starts_with('.') && name.ends_with(PARTIAL_SUFFIX)) {
+        if !is_partial_name(&name) {
             continue;
         }
         let stale = entry

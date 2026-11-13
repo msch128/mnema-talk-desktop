@@ -13,6 +13,8 @@ export interface HttpOptions {
   headers?: Record<string, string>
   body?: Uint8Array | null
   connectTimeoutMs: number
+  /** How long to wait for the response headers once the request is sent; unbounded (only the total) if absent. */
+  headersTimeoutMs?: number
   totalTimeoutMs: number
   agent?: HttpAgent
 }
@@ -52,6 +54,7 @@ export function send(options: HttpOptions): Promise<HttpResponse> {
       // Never a system proxy, never a redirect: the caller decides.
       agent: options.agent ?? (secure ? sharedHttps : false),
     }, (res) => {
+      clearTimeout(answer)
       const length = Number(res.headers['content-length'])
       const setCookie = res.headers['set-cookie'] ?? []
       resolve({
@@ -64,12 +67,13 @@ export function send(options: HttpOptions): Promise<HttpResponse> {
       })
     })
     const connect = setTimeout(() => req.destroy(new HttpError('connect timeout')), options.connectTimeoutMs)
+    const answer = options.headersTimeoutMs === undefined ? undefined : setTimeout(() => req.destroy(new HttpError('no answer')), options.headersTimeoutMs)
     req.once('socket', (socket) => {
       if (!socket.connecting) { clearTimeout(connect); return }
       socket.once(secure ? 'secureConnect' : 'connect', () => clearTimeout(connect))
     })
-    req.once('error', (error) => { clearTimeout(connect); reject(error) })
-    req.once('close', () => clearTimeout(connect))
+    req.once('error', (error) => { clearTimeout(connect); clearTimeout(answer); reject(error) })
+    req.once('close', () => { clearTimeout(connect); clearTimeout(answer) })
     req.end(options.body && options.body.length > 0 ? options.body : undefined)
   })
 }

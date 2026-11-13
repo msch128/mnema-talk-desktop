@@ -26,7 +26,7 @@ async fn fetch(
 ) -> (Result<PathBuf, Failure>, PathBuf, String) {
     let (origin, request) = serve_once(reply).await;
     let dir = folder();
-    let got = download_to(&instance_at(origin), path, &dir, attribute).await;
+    let got = download_to(&instance_at(origin), path, &dir, attribute, "test").await;
     (got, dir, request.await.unwrap_or_default())
 }
 
@@ -64,7 +64,7 @@ async fn a_file_of_that_name_is_kept_and_the_new_one_numbered() {
     let (origin, _) = serve_once(reply("200 OK", &[], "new")).await;
     let dir = folder();
     std::fs::write(dir.join("a.zip"), b"old").unwrap();
-    let got = download_to(&instance_at(origin), "/api/media/x", &dir, "a.zip").await;
+    let got = download_to(&instance_at(origin), "/api/media/x", &dir, "a.zip", "test").await;
     assert_eq!(got.unwrap(), dir.join("a (2).zip"));
     assert_eq!(std::fs::read(dir.join("a.zip")).unwrap(), b"old");
 }
@@ -123,7 +123,7 @@ async fn only_the_instances_api_can_be_downloaded() {
         "/api\\x",
     ] {
         assert_eq!(
-            download_to(&instance, path, &dir, "").await,
+            download_to(&instance, path, &dir, "", "test").await,
             Err(Failure::Path),
             "{path}"
         );

@@ -149,7 +149,7 @@ fn save_download(
             true
         }
         Finished { url, path, success } => {
-            crate::web_download::finished(&url, path.as_deref(), success);
+            crate::web_download::finished(app, &url, path.as_deref(), success);
             if crate::instances::id_of_attachment_label(label).is_some()
                 && let Some(window) = app.get_webview_window(label)
             {
