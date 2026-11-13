@@ -80,7 +80,7 @@ test('the feed reads the counts with the conversations, again after a change, an
   assert.deepEqual(server.said, [IDLE], 'the host never sends typing, reads or anything else')
 })
 
-test('a signed-out session ends the feed once, and the counts are cleared', async () => {
+test('a signed-out session ends the feed once, and is never sent a socket', async () => {
   const server = await fakeServer(() => [], () => [], () => 401)
   const reports: Read[] = []
   const feed = new Feed(server.instance, (r) => reports.push(r), QUICK)
@@ -89,6 +89,19 @@ test('a signed-out session ends the feed once, and the counts are cleared', asyn
   await sleep(100)
   assert.deepEqual(reports, [{ kind: 'signed_out' }])
   assert.equal(feed.running, false)
+  assert.equal(server.sockets.length, 0)
+})
+
+test('a server that is down is never sent a socket', async () => {
+  const server = await fakeServer(() => [], () => [], () => 502)
+  const reports: Read[] = []
+  const feed = new Feed(server.instance, (r) => reports.push(r), QUICK)
+  feed.start()
+  for (let i = 0; i < 100 && reports.length < 1; i++) await sleep(20)
+  await sleep(100)
+  feed.stop()
+  assert.deepEqual(reports, [{ kind: 'unreachable' }])
+  assert.equal(server.sockets.length, 0)
 })
 
 test('an unreachable server is asked later and later, with jitter, up to a bound', () => {

@@ -191,13 +191,15 @@ pub(crate) async fn pump(
     let mut open = false;
     let mut failures: u32 = 0;
     loop {
-        if !open {
-            open = listen(instance, sockets, poke.clone()).is_ok();
-        }
         let read = read_counts(instance).await;
         let (signed_out, unreachable) = (read == Read::SignedOut, read == Read::Unreachable);
         if !report(read) || signed_out {
             return;
+        }
+        // The socket opens only once the session has answered: a server that
+        // is signed out or down is never sent a socket.
+        if !open && !unreachable {
+            open = listen(instance, sockets, poke.clone()).is_ok();
         }
         let rest = if unreachable {
             failures += 1;
@@ -410,6 +412,8 @@ mod tests {
         /// What every answer but the socket says: 200, or 401 for a signed-out session.
         status: Arc<std::sync::atomic::AtomicU32>,
         reads: Arc<std::sync::atomic::AtomicU32>,
+        /// How many sockets the host opened.
+        upgrades: Arc<std::sync::atomic::AtomicU32>,
         said: Arc<Mutex<Vec<String>>>,
         push: mpsc::UnboundedSender<String>,
     }
@@ -425,16 +429,22 @@ mod tests {
         let dm_mentions = Arc::new(std::sync::atomic::AtomicU32::new(0));
         let status = Arc::new(std::sync::atomic::AtomicU32::new(200));
         let reads = Arc::new(std::sync::atomic::AtomicU32::new(0));
+        let upgrades = Arc::new(std::sync::atomic::AtomicU32::new(0));
         let said = Arc::new(Mutex::new(Vec::new()));
         let (push, pushed) = mpsc::unbounded_channel::<String>();
         let pushed = Arc::new(tokio::sync::Mutex::new(pushed));
         let (m, r, w) = (Arc::clone(&mentions), Arc::clone(&reads), Arc::clone(&said));
-        let (dm, code) = (Arc::clone(&dm_mentions), Arc::clone(&status));
+        let (dm, code, up) = (
+            Arc::clone(&dm_mentions),
+            Arc::clone(&status),
+            Arc::clone(&upgrades),
+        );
         tokio::spawn(async move {
             while let Ok((mut stream, _)) = listener.accept().await {
                 let mut head = [0u8; 64];
                 let n = stream.peek(&mut head).await.unwrap_or(0);
                 if String::from_utf8_lossy(&head[..n]).starts_with("GET /api/ws") {
+                    up.fetch_add(1, Ordering::SeqCst);
                     let (said, pushed) = (Arc::clone(&w), Arc::clone(&pushed));
                     tokio::spawn(async move {
                         let ws = tokio_tungstenite::accept_async(stream).await.unwrap();
@@ -461,18 +471,11 @@ mod tests {
                     let mut buf = vec![0u8; 4096];
                     let n = stream.read(&mut buf).await.unwrap_or(0);
                     let asked = String::from_utf8_lossy(&buf[..n]).into_owned();
-                    let body = if asked.starts_with("GET /api/dms") {
-                        format!(
-                            r#"[{{"id":"d1","unread_count":1,"mention_count":{},"notify_level":"inherit"}}]"#,
-                            dm.load(Ordering::SeqCst)
-                        )
-                    } else {
+                    let dms = asked.starts_with("GET /api/dms");
+                    if !dms {
                         r.fetch_add(1, Ordering::SeqCst);
-                        format!(
-                            r#"[{{"unread_count":3,"mention_count":{},"notify_level":"all"}},{{"unread_count":9,"mention_count":0,"notify_level":"mute"}}]"#,
-                            m.load(Ordering::SeqCst)
-                        )
-                    };
+                    }
+                    let body = answer(dms, dm.load(Ordering::SeqCst), m.load(Ordering::SeqCst));
                     let status = code.load(Ordering::SeqCst);
                     let reply = format!(
                         "HTTP/1.1 {status} X\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
@@ -488,8 +491,22 @@ mod tests {
             dm_mentions,
             status,
             reads,
+            upgrades,
             said,
             push,
+        }
+    }
+
+    /// The fake's answer: the one conversation (`dms`) or the read state.
+    fn answer(dms: bool, dm_mentions: u32, mentions: u32) -> String {
+        if dms {
+            format!(
+                r#"[{{"id":"d1","unread_count":1,"mention_count":{dm_mentions},"notify_level":"inherit"}}]"#
+            )
+        } else {
+            format!(
+                r#"[{{"unread_count":3,"mention_count":{mentions},"notify_level":"all"}},{{"unread_count":9,"mention_count":0,"notify_level":"mute"}}]"#
+            )
         }
     }
 
@@ -603,7 +620,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_signed_out_session_ends_the_feed_once() {
+    async fn a_signed_out_session_ends_the_feed_once_and_is_never_sent_a_socket() {
         use std::sync::atomic::Ordering;
         let server = fake().await;
         server.status.store(401, Ordering::SeqCst);
@@ -613,6 +630,26 @@ mod tests {
             .expect("the feed ends by itself")
             .unwrap();
         assert_eq!(*reports.lock().unwrap(), [Read::SignedOut]);
+        // Time for a socket to arrive, had one been opened.
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        assert_eq!(server.upgrades.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn a_server_that_is_down_is_never_sent_a_socket() {
+        use std::sync::atomic::Ordering;
+        let server = fake().await;
+        server.status.store(502, Ordering::SeqCst);
+        let (reports, _sockets, stop, task) = feed(&server);
+        until(|| !reports.lock().unwrap().is_empty()).await;
+        assert_eq!(*reports.lock().unwrap(), [Read::Unreachable]);
+        stop.notify_one();
+        tokio::time::timeout(Duration::from_secs(5), task)
+            .await
+            .unwrap()
+            .unwrap();
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        assert_eq!(server.upgrades.load(Ordering::SeqCst), 0);
     }
 
     #[test]

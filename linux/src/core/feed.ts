@@ -93,7 +93,6 @@ export class Feed {
   }
 
   start(): void {
-    this.listen()
     void this.refresh()
   }
 
@@ -125,7 +124,7 @@ export class Feed {
     return true
   }
 
-  /** Reads the counts after `ms` (an earlier read already due stays), opening a closed socket again first. */
+  /** Reads the counts after `ms` (an earlier read already due stays). */
   private again(ms: number): void {
     if (this.stopped) return
     const at = Date.now() + ms
@@ -134,7 +133,6 @@ export class Feed {
     this.due = at
     this.timer = setTimeout(() => {
       this.timer = null
-      if (this.socket === null) this.listen()
       void this.refresh()
     }, ms)
   }
@@ -154,6 +152,8 @@ export class Feed {
       return
     }
     this.failures = 0
+    // The socket opens only once the session has answered: a server that is signed out or down is never sent a socket.
+    if (this.socket === null) this.listen()
     if (!this.timer) this.again(this.times.everyMs)
   }
 }
