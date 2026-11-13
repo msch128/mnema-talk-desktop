@@ -28,18 +28,23 @@ const SERVER: &str = match option_env!("MNEMA_SELFTEST_SERVER") {
     None => "http://127.0.0.1:8765",
 };
 
-/// How long the picker stays on screen before the server is opened, so that
-/// CI can take its screenshot.
-const PICKER_TIME: Duration = Duration::from_secs(20);
+/// How long the picker stays on screen, counted from the page loading its
+/// identity as the picker, before the server is opened: a cold emulator or
+/// simulator needs seconds to run the bundle's scripts, and CI takes its
+/// screenshot 10 seconds in.
+const PICKER_TIME: Duration = Duration::from_secs(25);
 
-#[derive(Default)]
 struct Progress {
+    /// The picker's document was served.
     picker: bool,
+    /// The page loaded its identity as the picker.
+    selector: bool,
     proxied: bool,
 }
 
 static PROGRESS: Mutex<Progress> = Mutex::new(Progress {
     picker: false,
+    selector: false,
     proxied: false,
 });
 
@@ -68,8 +73,8 @@ pub fn start(app: &tauri::AppHandle) {
     tauri::async_runtime::spawn(async move {
         record(&app, "started", SERVER);
         record(&app, "tls", &tls_probe().await);
-        for _ in 0..120 {
-            if PROGRESS.lock().is_ok_and(|p| p.picker) {
+        for _ in 0..240 {
+            if PROGRESS.lock().is_ok_and(|p| p.selector) {
                 break;
             }
             tokio::time::sleep(Duration::from_millis(500)).await;
@@ -123,5 +128,10 @@ pub fn proxied(app: &tauri::AppHandle, method: &str, path: &str, status: u16) {
 
 /// The page loaded the identity script for a role.
 pub fn identity(app: &tauri::AppHandle, role: &str) {
+    if role == "selector"
+        && let Ok(mut progress) = PROGRESS.lock()
+    {
+        progress.selector = true;
+    }
     record(app, "identity", role);
 }

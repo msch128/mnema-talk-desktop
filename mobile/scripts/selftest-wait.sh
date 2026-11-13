@@ -34,8 +34,10 @@ poll() {
   return 1
 }
 
-if poll picker 90; then
-  sleep 2
+# The app keeps the picker for 25 seconds after it loaded as the picker
+# (src/selftest.rs); the screenshot is taken 10 seconds in.
+if poll identity 90; then
+  sleep 10
   bash -c "$shoot $out/picker.png" || true
   # What the app had done when the picker was taken: no "opened" line yet.
   bash -c "$read_log" > "$out/picker.jsonl" 2>/dev/null || true
