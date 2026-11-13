@@ -110,6 +110,8 @@ src/core        no Electron: runs in plain Node, where the tests run
   store.ts        verified bundles, cache, floor, high-water marks, selection  (web_bundle.rs, Store)
   trust.ts        trust statement, TrustState, updater key choice  (web_trust.rs)
   proxy.ts        serve the bundle, forward /api/, limits, response filter  (web_proxy.rs)
+  download.ts     a download link of /api/ taken over by the host: streamed to disk, never held in memory
+  downloadname.ts the saved file's name from Content-Disposition, the download attribute, the address
   cookies.ts      the jar, vault or 0600 file  (web_proxy.rs, web_vault.rs)
   sockets.ts      /api/ws relay  (web_ws.rs)
   updates.ts      newer bundles and the trust statement from GitHub  (web_updates.rs)
@@ -144,6 +146,36 @@ so has every server and its attachment window, so what a page can fetch does not
 depend on a label it could claim. The server sessions are persistent: the app
 keeps the state of its end-to-end encryption in the browser storage of that
 partition, as on the other platforms.
+
+## Downloads
+
+The proxy holds a whole answer in memory (one without a length up to 32 MiB), so
+a download through it is not a way to save an export of up to 64 MiB, and
+Chromium tells the person nothing when such a download fails. The host
+therefore takes over the downloads of the app's own API. The preload (instance
+pages only) catches a plain primary-button click on an `a[download]` whose
+address is on the app origin under `/api/` and sends `desktop_download` with the
+path and the suggested name; blobs, other addresses and clicks with a modifier
+key are left to the page. The main process (`src/main/download.ts`) answers only
+the instance page of a server, requests the path of **that** server with its
+session (the proxy's request rules: its cookie, the instance's origin, only
+`/api/`), asks where to save the file (a save dialog in the Downloads folder;
+cancelling cancels the request quietly), streams the body into a temporary file
+next to the target and renames it once the whole body has arrived. The body is
+bounded by the server's own ceiling (2048 MiB plus 1 MiB) and by an idle timeout
+per piece; a failure removes the partial file. The server drops an export after
+it was sent completely once, so nothing is asked for before the person has
+chosen a place. The name follows `filename*`, `filename`, the `download`
+attribute and the last path segment, cut down to a plain name; the cases are
+shared with the Rust host in [`../test-vectors/proxy.json`](../test-vectors/proxy.json) (`download_names`).
+
+A download ends in one of two ways: the file manager shows the file (and a
+notice names it), or an error dialog says what failed (nothing left to download
+for a 404, the server's own message or the HTTP status, an interrupted
+transfer, a disk problem). Downloads Chromium starts itself (a blob) get the
+same feedback when they end. The end-to-end run sets `MNEMA_DESKTOP_DOWNLOAD_DIR`
+to save into a folder without a dialog; it is honoured only together with
+`MNEMA_DESKTOP_ALLOW_REMOTE_DEBUGGING=1`.
 
 ## Several servers side by side
 
@@ -219,6 +251,7 @@ Without `bundle/builtin.zip` the client still starts and has to download a bundl
 | `MNEMA_DESKTOP_DATA_DIR` | another data directory (tests use a temporary one) |
 | `MNEMA_DESKTOP_NO_VAULT=1` | session in the private file, not the secret service |
 | `MNEMA_DEBUG_PROTOCOL=1` | log what the client serves |
+| `MNEMA_DESKTOP_DOWNLOAD_DIR` | end-to-end only: save downloads here without a dialog (needs `MNEMA_DESKTOP_ALLOW_REMOTE_DEBUGGING=1`) |
 | `MNEMA_DESKTOP_ALLOW_NO_SANDBOX=1` | start although the sandbox is off |
 | `MNEMA_DESKTOP_ALLOW_REMOTE_DEBUGGING=1` | let a packaged client open a debugging port (the end-to-end run needs it) |
 | `MNEMA_DESKTOP_DEVTOOLS=1` | developer tools in an unpackaged run |

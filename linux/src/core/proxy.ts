@@ -125,7 +125,7 @@ export async function forward(
 }
 
 /** What of the page's request headers goes to the instance, and the headers only the host may set. */
-function requestHeaders(instance: Instance, headers: readonly (readonly [string, string])[]): Record<string, string> {
+export function requestHeaders(instance: Instance, headers: readonly (readonly [string, string])[]): Record<string, string> {
   const out: Record<string, string> = {}
   for (const [name, value] of headers) {
     const lower = name.toLowerCase()

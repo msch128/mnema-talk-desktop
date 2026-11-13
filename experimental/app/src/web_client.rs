@@ -19,6 +19,7 @@ pub(crate) use address::{address, invite_code, join_page};
 #[cfg(target_os = "macos")]
 pub(crate) use commands::own_blob;
 pub(crate) use commands::{allow_permission, app_api, instance_page};
+pub(crate) use dialog::show_error;
 pub(crate) use discover::{NO_HTTPS, SELECTOR_ONLY, discover, is_transport_failure};
 pub(crate) use links::{Link, confirm_add, invite_decision, navigation_allowed, open_external};
 pub(crate) use rounds::choose;

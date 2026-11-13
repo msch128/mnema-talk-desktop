@@ -14,6 +14,7 @@ use tokio::{
 use url::Url;
 
 mod bundle;
+mod download;
 mod forward;
 mod jar;
 mod rules;

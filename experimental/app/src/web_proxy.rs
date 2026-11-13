@@ -4,6 +4,7 @@
 //! code (mnema-talk `doc/desktop-trusted-client.md`).
 mod bundle;
 mod client;
+mod download;
 mod forward;
 mod jar;
 mod limits;
@@ -14,6 +15,7 @@ mod tests;
 
 pub use bundle::serve_bundle;
 pub use client::{client, client_builder};
+pub use download::{Failure, download_to, free_name};
 pub use forward::{Instance, forward};
 pub use jar::Jar;
 pub use limits::Limits;

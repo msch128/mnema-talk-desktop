@@ -46,6 +46,7 @@ const COMMANDS: &[&str] = &[
     "native_update_state",
     "native_update_action",
     "desktop_ws_open",
+    "desktop_download",
     "desktop_ws_send",
     "desktop_ws_close",
     "desktop_notify_open",

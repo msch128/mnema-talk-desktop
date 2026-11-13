@@ -12,6 +12,14 @@ pub(super) enum Dialog {
     Add,
 }
 
+/// Says that something went wrong in the platform's own error dialog, without
+/// holding up the caller (the dialog waits for its button on a thread of its
+/// own, never the one that runs the window).
+pub(crate) fn show_error(text: &str) {
+    let text = text.to_owned();
+    std::thread::spawn(move || show_dialog(Dialog::Error, &text));
+}
+
 /// A modal dialog of the platform. `true` unless a question was answered no
 /// (or could not be asked).
 pub(super) fn show_dialog(kind: Dialog, text: &str) -> bool {

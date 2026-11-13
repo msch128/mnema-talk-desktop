@@ -7,11 +7,13 @@
  */
 import { type IpcMainEvent, type IpcMainInvokeEvent, type WebContents, ipcMain, shell } from 'electron'
 import { SELECTOR_ONLY } from '../core/client.ts'
+import { downloadRequest } from '../core/download.ts'
 import { type Args, wholeNumber } from '../core/ipcargs.ts'
 import { socketRequest, type WsEvent } from '../core/sockets.ts'
 import { bundled, localOrigin, pickerUi, updateUi } from '../core/origin.ts'
 import { RELEASES_PAGE, releasePage } from '../core/pinned.ts'
 import type { Context, Role } from './context.ts'
+import { download } from './download.ts'
 import { handle, mainFrameUrl } from './handle.ts'
 import { pickerChoose, pickerSources } from './permissions.ts'
 import { notify, notifyOpen, notifyPermission } from './notify.ts'
@@ -125,6 +127,9 @@ async function run(ctx: Context, from: Caller, command: string, args: Args): Pro
       only('instance')
       own().sockets.close(wholeNumber(args, 'id'))
       return null
+    case 'desktop_download':
+      // Judged by the caller's kind and server, never by the page's word; the answer is nothing, the host tells the person.
+      return download(ctx, own(), downloadRequest(role, from.server, args))
     case 'desktop_notify_open':
       only('instance')
       own()

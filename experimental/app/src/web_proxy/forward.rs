@@ -77,7 +77,7 @@ fn parse_method(method: &str) -> Option<reqwest::Method> {
 
 /// The request to the instance: the few headers of the page that may pass, the
 /// origin and the cookie of the host's own making.
-fn build_request(
+pub(super) fn build_request(
     instance: &Instance,
     method: reqwest::Method,
     url: Url,
@@ -121,7 +121,7 @@ async fn send(request: reqwest::RequestBuilder, has_body: bool) -> Result<reqwes
 }
 
 /// Keeps the cookies the instance set (to rest on a blocking thread).
-async fn keep_cookies(instance: &Instance, response: &reqwest::Response) {
+pub(super) async fn keep_cookies(instance: &Instance, response: &reqwest::Response) {
     let set_cookie: Vec<String> = response
         .headers()
         .get_all("set-cookie")
