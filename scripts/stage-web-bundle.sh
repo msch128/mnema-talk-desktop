@@ -15,7 +15,7 @@
 # bundle either way. The chosen release and the SHA-256 of the bundle go to the step summary.
 set -euo pipefail
 dir="${BUNDLE_DIR:-experimental/app/bundle}"
-repo=msch128/mnema-talk
+repo=mnema-xyz/talk
 mkdir -p "$dir"
 found=""
 wait_max="${WEB_BUNDLE_WAIT:-900}"

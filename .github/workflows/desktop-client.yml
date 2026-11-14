@@ -102,7 +102,7 @@ jobs:
       # repo's main.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          repository: msch128/mnema-talk
+          repository: mnema-xyz/talk
           ref: ${{ inputs.acceptance_release || 'main' }}
           path: mnema-talk
           persist-credentials: false
@@ -201,7 +201,7 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release download "v$FIXTURE_VERSION" --repo msch128/mnema-talk-desktop --dir signed-package --pattern "Mnema-Desktop-DEV_${FIXTURE_VERSION}_x64-setup.exe*"
+        run: gh release download "v$FIXTURE_VERSION" --repo "$GITHUB_REPOSITORY" --dir signed-package --pattern "Mnema-Desktop-DEV_${FIXTURE_VERSION}_x64-setup.exe*"
       - name: Check and link the actual shared-client Tauri host
         if: inputs.acceptance_release == ''
         shell: pwsh
@@ -609,7 +609,7 @@ jobs:
         run: |
           set -euo pipefail
           old="Mnema-Desktop-DEV_${LAST_DEV_VERSION}_x64-setup.exe"
-          gh release download "v$LAST_DEV_VERSION" --repo msch128/mnema-talk-desktop --dir "$RUNNER_TEMP/old" --pattern "$old" --pattern SHA256SUMS
+          gh release download "v$LAST_DEV_VERSION" --repo "$GITHUB_REPOSITORY" --dir "$RUNNER_TEMP/old" --pattern "$old" --pattern SHA256SUMS
           cd "$RUNNER_TEMP/old" && grep -E "  ${old//./\\.}\$" SHA256SUMS | sha256sum -c -
       - name: The last release named DEV updates in place and uninstalls cleanly
         shell: pwsh
@@ -987,7 +987,7 @@ jobs:
           ref: ${{ inputs.ref || github.sha }}
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          repository: msch128/mnema-talk
+          repository: mnema-xyz/talk
           ref: ${{ env.REAL_SERVER_REV }}
           path: server
           persist-credentials: false
@@ -1085,7 +1085,7 @@ jobs:
           ref: ${{ inputs.ref || github.sha }}
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          repository: msch128/mnema-talk
+          repository: mnema-xyz/talk
           ref: ${{ env.REAL_SERVER_REV }}
           path: server
           persist-credentials: false
@@ -1186,7 +1186,7 @@ jobs:
       - name: Fetch a signed release package for the signature tests
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release download "v$FIXTURE_VERSION" --repo msch128/mnema-talk-desktop --dir signed-package --pattern "Mnema-Desktop-DEV_${FIXTURE_VERSION}_aarch64.app.tar.gz*"
+        run: gh release download "v$FIXTURE_VERSION" --repo "$GITHUB_REPOSITORY" --dir signed-package --pattern "Mnema-Desktop-DEV_${FIXTURE_VERSION}_aarch64.app.tar.gz*"
       - name: Test and lint the shared-client host for macOS
         env:
           # A release build must embed a bundle; the test checks that the pinned key verifies it.

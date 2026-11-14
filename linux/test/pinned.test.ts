@@ -28,6 +28,6 @@ test('the package version is the version of the Tauri app', () => {
 })
 
 test('the release page of a version is built from the fixed repository address', () => {
-  assert.equal(releasePage('1.4.2'), 'https://github.com/msch128/mnema-talk-desktop/releases/tag/v1.4.2')
+  assert.equal(releasePage('1.4.2'), 'https://github.com/mnema-xyz/talk-desktop/releases/tag/v1.4.2')
   for (const odd of ['', 'latest', '1.4', '1.4.2-rc1', '../../evil', '1.4.2/../x', 'v1.4.2', '01.4.2']) assert.equal(releasePage(odd), RELEASES_PAGE, odd)
 })

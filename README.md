@@ -1,11 +1,12 @@
 # Mnema Talk desktop
 
-The desktop client for [Mnema Talk](https://github.com/msch128/mnema-talk), a
+The desktop client for [Mnema Talk](https://github.com/mnema-xyz/talk), a
 lightweight, self-hosted, single-server Discord alternative. It wraps the same
 Vue web app as the browser, with two additions: it removes server-served
 JavaScript from the trust equation, and it helps you stay in a Talk while you
 play. Windows and macOS run it in a Tauri host. Linux runs it in Electron,
-because the WebKitGTK that Tauri uses on Linux has no WebRTC.
+because the WebKitGTK that Tauri uses on Linux has no WebRTC. The repository
+moved from msch128/mnema-talk-desktop; old links redirect.
 
 **Status: Beta, unsigned.** The
 browser app is the primary, fully supported client. This client is Beta: usable
@@ -21,7 +22,7 @@ request on WebView2's own prompt, which the check does not click, and the
 other windows are refused. A human permission prompt, physical devices and
 sealed media on real hardware are still outstanding. The macOS build has
 had less testing still (see [macOS](#macos)). See the
-[product status](https://github.com/msch128/mnema-talk/blob/main/doc/product-status.md).
+[product status](https://github.com/mnema-xyz/talk/blob/main/doc/product-status.md).
 There is no external security audit.
 
 ## What it adds to the browser
@@ -33,7 +34,7 @@ There is no external security audit.
   bundle is checked against the server's API version and a rising security
   floor, older bundles are refused, and updates come from the Mnema Talk
   releases. Design and threat model:
-  [desktop-trusted-client.md](https://github.com/msch128/mnema-talk/blob/main/doc/desktop-trusted-client.md).
+  [desktop-trusted-client.md](https://github.com/mnema-xyz/talk/blob/main/doc/desktop-trusted-client.md).
 - **The session stays in the OS keychain** (Windows Credential Manager, macOS
   Keychain, the secret service on Linux), not in a web profile.
 - **OS notifications and an app badge.** Messages that would raise a browser
@@ -110,13 +111,13 @@ There is no external security audit.
   client runs one server there. Servers on different versions work side by side:
   each runs the verified web app that fits it, and one that is too old or too
   new says so in its own tab. See
-  [desktop-trusted-client.md](https://github.com/msch128/mnema-talk/blob/main/doc/desktop-trusted-client.md#several-servers-at-once).
+  [desktop-trusted-client.md](https://github.com/mnema-xyz/talk/blob/main/doc/desktop-trusted-client.md#several-servers-at-once).
 - **Gaming integration (Windows).** A left-hand sidepeek shows who is in your
   Talk, who is speaking and who is sharing, and `Alt+M` opens an interactive
   overlay with Talk controls, while you have a connected Talk and a detected
   foreground game. Shortcuts for mute, deafen, push-to-talk and the overlay are
   configurable. See the
-  [gaming guide](https://github.com/msch128/mnema-talk/blob/main/doc/desktop-app.md#windows-gaming-dev)
+  [gaming guide](https://github.com/mnema-xyz/talk/blob/main/doc/desktop-app.md#windows-gaming-dev)
   for setup and its limits (topmost windows, not exclusive fullscreen).
   Game detection and push-to-talk are event driven (no polling, no process
   enumeration, no injection, no keyboard hook); [GAMING.md](GAMING.md) is the
@@ -142,18 +143,18 @@ versioned one next to it and listed in the release's `SHA256SUMS`):
 
 | Platform | Direct link |
 | --- | --- |
-| Windows installer (x64) | [mnema-desktop-windows-x64-setup.exe](https://github.com/msch128/mnema-talk-desktop/releases/latest/download/mnema-desktop-windows-x64-setup.exe) |
-| Windows portable ZIP (x64) | [mnema-desktop-windows-x64-portable.zip](https://github.com/msch128/mnema-talk-desktop/releases/latest/download/mnema-desktop-windows-x64-portable.zip) |
-| macOS (Apple silicon) | [mnema-desktop-macos-arm64.dmg](https://github.com/msch128/mnema-talk-desktop/releases/latest/download/mnema-desktop-macos-arm64.dmg) |
-| Linux .deb (x86_64) | [mnema-desktop-linux-x64.deb](https://github.com/msch128/mnema-talk-desktop/releases/latest/download/mnema-desktop-linux-x64.deb) |
-| Linux .deb (arm64) | [mnema-desktop-linux-arm64.deb](https://github.com/msch128/mnema-talk-desktop/releases/latest/download/mnema-desktop-linux-arm64.deb) |
-| Linux AppImage (x86_64) | [mnema-desktop-linux-x64.AppImage](https://github.com/msch128/mnema-talk-desktop/releases/latest/download/mnema-desktop-linux-x64.AppImage) |
-| Linux AppImage (arm64) | [mnema-desktop-linux-arm64.AppImage](https://github.com/msch128/mnema-talk-desktop/releases/latest/download/mnema-desktop-linux-arm64.AppImage) |
+| Windows installer (x64) | [mnema-desktop-windows-x64-setup.exe](https://github.com/mnema-xyz/talk-desktop/releases/latest/download/mnema-desktop-windows-x64-setup.exe) |
+| Windows portable ZIP (x64) | [mnema-desktop-windows-x64-portable.zip](https://github.com/mnema-xyz/talk-desktop/releases/latest/download/mnema-desktop-windows-x64-portable.zip) |
+| macOS (Apple silicon) | [mnema-desktop-macos-arm64.dmg](https://github.com/mnema-xyz/talk-desktop/releases/latest/download/mnema-desktop-macos-arm64.dmg) |
+| Linux .deb (x86_64) | [mnema-desktop-linux-x64.deb](https://github.com/mnema-xyz/talk-desktop/releases/latest/download/mnema-desktop-linux-x64.deb) |
+| Linux .deb (arm64) | [mnema-desktop-linux-arm64.deb](https://github.com/mnema-xyz/talk-desktop/releases/latest/download/mnema-desktop-linux-arm64.deb) |
+| Linux AppImage (x86_64) | [mnema-desktop-linux-x64.AppImage](https://github.com/mnema-xyz/talk-desktop/releases/latest/download/mnema-desktop-linux-x64.AppImage) |
+| Linux AppImage (arm64) | [mnema-desktop-linux-arm64.AppImage](https://github.com/mnema-xyz/talk-desktop/releases/latest/download/mnema-desktop-linux-arm64.AppImage) |
 
 The updater feed and its signatures name only the versioned files.
 
 Download `Mnema-Desktop_<version>_x64-setup.exe` from the
-[latest release](https://github.com/msch128/mnema-talk-desktop/releases/latest)
+[latest release](https://github.com/mnema-xyz/talk-desktop/releases/latest)
 and run it once. It installs for the current user only (no administrator
 prompt) and updates itself from then on. SmartScreen warns because the installer
 has no Authenticode certificate; the self-update does not depend on one (see
@@ -161,13 +162,13 @@ below). The portable ZIP of each release updates itself as well: it downloads th
 source, see [experimental/README.md](experimental/README.md#mnema-desktop):
 Rust and Node, with mnema-talk checked out next to this repository. The older
 Windows DEV ZIP attached to
-[mnema-talk releases through v0.7.3](https://github.com/msch128/mnema-talk/releases)
+[mnema-talk releases through v0.7.3](https://github.com/mnema-xyz/talk/releases)
 still loads the server's JavaScript and predates the signed bundle.
 
 ### macOS
 
 Download `Mnema-Desktop_<version>_aarch64.dmg` from the
-[latest release](https://github.com/msch128/mnema-talk-desktop/releases/latest)
+[latest release](https://github.com/mnema-xyz/talk-desktop/releases/latest)
 (Apple silicon, M1 or newer, macOS 12 or newer), open it and drag the
 app to Applications. It updates itself from then on.
 
@@ -194,7 +195,7 @@ in again. There is no gaming overlay on macOS.
 
 ### Linux
 
-Download from the [latest release](https://github.com/msch128/mnema-talk-desktop/releases/latest)
+Download from the [latest release](https://github.com/mnema-xyz/talk-desktop/releases/latest)
 the file for your machine, x86_64 (also called amd64) or arm64:
 
 * **AppImage**, `Mnema-Desktop_<version>_x86_64.AppImage` or `..._arm64.AppImage`:
@@ -260,7 +261,7 @@ port and does not accept `ELECTRON_RUN_AS_NODE`, `NODE_OPTIONS` or `--inspect`.
 Two things update, both from GitHub, both verified before use:
 
 * **The web app** (the signed bundle) as described in
-  [doc/desktop-trusted-client.md](https://github.com/msch128/mnema-talk/blob/main/doc/desktop-trusted-client.md).
+  [doc/desktop-trusted-client.md](https://github.com/mnema-xyz/talk/blob/main/doc/desktop-trusted-client.md).
 * **The program itself** through the official Tauri updater (Windows installer,
   macOS), from its own signed ZIP (Windows portable copy) or, on Linux, the same
   signed feed read by the Electron client (below). The client checks
@@ -420,9 +421,9 @@ prove who built it.
 | `scripts` | Build, release and verification tooling and its tests |
 | `experimental/licenses`, `THIRD_PARTY_NOTICES.md` | Dependency licenses shipped with a build |
 
-The Vue app itself lives in [mnema-talk](https://github.com/msch128/mnema-talk);
+The Vue app itself lives in [mnema-talk](https://github.com/mnema-xyz/talk);
 CI checks it out at `mnema-talk/` and embeds the signed bundle. Read the
-server's [SECURITY.md](https://github.com/msch128/mnema-talk/blob/main/SECURITY.md)
+server's [SECURITY.md](https://github.com/mnema-xyz/talk/blob/main/SECURITY.md)
 before relying on any end-to-end claim. Licensed under the
 [AGPL-3.0](LICENSE).
 
@@ -462,7 +463,7 @@ The app icons are generated from the project's existing `web/public/favicon.svg`
 
 `node --test scripts/*.test.mjs` tests the license inventory checker.
 `node experimental/scripts/collect-licenses.mjs --check` (with
-[mnema-talk](https://github.com/msch128/mnema-talk) checked out at `mnema-talk/`
+[mnema-talk](https://github.com/mnema-xyz/talk) checked out at `mnema-talk/`
 and `npm ci` run in `mnema-talk/web`) verifies the notices in
 `experimental/licenses` against the locked dependency graph of the host and the
 web app's production packages. Distribute that directory, the notice file and

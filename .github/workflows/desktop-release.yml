@@ -18,7 +18,7 @@ name: Desktop release
 # Linux here is the Electron client. The Tauri host on Linux stays off: its
 # WebKitGTK has no WebRTC, and resuming it needs Tauri's move to GTK4
 # (doc/security-review-1.2.md). Installed clients find the feed at
-# https://github.com/msch128/mnema-talk-desktop/releases/latest/download/latest.json
+# https://github.com/mnema-xyz/talk-desktop/releases/latest/download/latest.json
 # and verify it against the public key pinned in tauri.conf.json.
 on:
   push:
@@ -521,8 +521,8 @@ jobs:
           macos="$(ls release/*.app.tar.gz)"
           linux_x64="$(ls release/*_x86_64.AppImage)"
           linux_arm64="$(ls release/*_arm64.AppImage)"
-          deb_x64="$(ls release/*.deb | grep -E '_(amd64|x86_64|x64)\.deb$')"
-          deb_arm64="$(ls release/*.deb | grep -E '_(arm64|aarch64)\.deb$')"
+          deb_x64="$(printf '%s\n' release/*.deb | grep -E '_(amd64|x86_64|x64)\.deb$')"
+          deb_arm64="$(printf '%s\n' release/*.deb | grep -E '_(arm64|aarch64)\.deb$')"
           node scripts/update-manifest.mjs --version "$version" --repo "$GITHUB_REPOSITORY" \
             --installer "$installer" --sig "$installer.sig" --portable "$portable" --portable-sig "$portable.sig" \
             --mac "$macos" --mac-sig "$macos.sig" \

@@ -25,7 +25,7 @@ old_deb="${old}_${deb_arch}.deb"
 old_appimage="${old}_${appimage_arch}.AppImage"
 dir="$(mktemp -d)"
 trap 'rm -rf -- "$dir"' EXIT
-gh release download "v$from" --repo msch128/mnema-talk-desktop --dir "$dir" \
+gh release download "v$from" --repo mnema-xyz/talk-desktop --dir "$dir" \
   --pattern "$old_deb" --pattern "$old_appimage" --pattern SHA256SUMS
 (cd "$dir" && grep -E "  (${old_deb}|${old_appimage})\$" SHA256SUMS | sha256sum -c -)
 

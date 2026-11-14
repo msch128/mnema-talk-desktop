@@ -7,7 +7,7 @@
   "type": "module",
   "license": "AGPL-3.0-only",
   "author": "Mnema Talk <noreply@users.noreply.github.com>",
-  "homepage": "https://github.com/msch128/mnema-talk-desktop",
+  "homepage": "https://github.com/mnema-xyz/talk-desktop",
   "main": "dist/main/main.js",
   "scripts": {
     "build": "tsc -p tsconfig.build.json",

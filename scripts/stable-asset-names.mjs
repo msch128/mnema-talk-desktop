@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Every release also carries the user-facing installers under names without the
 // version, so that
-// https://github.com/msch128/mnema-talk-desktop/releases/latest/download/<name>
+// https://github.com/mnema-xyz/talk-desktop/releases/latest/download/<name>
 // always serves the newest one (the website links there). Each copy is
 // byte-identical to its versioned file. The updater feed (latest.json) and the
 // .sig files keep pointing at the versioned files: nothing here touches them.

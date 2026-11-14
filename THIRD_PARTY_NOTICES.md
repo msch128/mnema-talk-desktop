@@ -22,7 +22,7 @@ project under the repository licence; no third-party list is included (see its
 `provenance` header and [GAMING.md](GAMING.md)).
 
 The web app that the host runs from a signed bundle comes from
-[mnema-talk](https://github.com/msch128/mnema-talk); its production npm closure and
+[mnema-talk](https://github.com/mnema-xyz/talk); its production npm closure and
 the Inter font (OFL-1.1, [@fontsource/inter 5.3.0](https://www.npmjs.com/package/@fontsource/inter/v/5.3.0),
 Copyright 2016 The Inter Project Authors) are covered by the same license bundle
 ([INTER-OFL.txt](experimental/licenses/INTER-OFL.txt), `supplemental.json`), which also

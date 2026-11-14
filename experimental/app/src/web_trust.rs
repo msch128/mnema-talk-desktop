@@ -29,9 +29,9 @@ use std::{
 const ROOT: &str = "0c6b31c234adbeb1449c63acd03fcd044d7b15b640607f9943a1e3f6a819ed77";
 
 pub const TRUST_URL: &str =
-    "https://raw.githubusercontent.com/msch128/mnema-talk/main/desktop-trust/trust.json";
+    "https://raw.githubusercontent.com/mnema-xyz/talk/main/desktop-trust/trust.json";
 pub const TRUST_SIG_URL: &str =
-    "https://raw.githubusercontent.com/msch128/mnema-talk/main/desktop-trust/trust.json.sig";
+    "https://raw.githubusercontent.com/mnema-xyz/talk/main/desktop-trust/trust.json.sig";
 pub const MAX_STATEMENT: usize = 64 << 10;
 
 const STATEMENT_FILE: &str = "trust.json";

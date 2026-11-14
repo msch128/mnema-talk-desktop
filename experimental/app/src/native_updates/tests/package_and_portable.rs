@@ -94,7 +94,7 @@ fn only_a_marker_file_next_to_the_executable_makes_a_copy_portable() {
 fn the_release_page_is_built_only_from_a_plain_version() {
     assert_eq!(
         release_page("1.4.2").unwrap().as_str(),
-        "https://github.com/msch128/mnema-talk-desktop/releases/tag/v1.4.2"
+        "https://github.com/mnema-xyz/talk-desktop/releases/tag/v1.4.2"
     );
     for odd in ["", "1.4", "v1.4.2", "1.4.2/../x", "1.4.2?x=1", "1.4.2#a"] {
         assert!(release_page(odd).is_none(), "{odd}");

@@ -167,6 +167,6 @@ test('the license check is pinned to a full mnema-talk commit that the workflow 
   assert.match(pin, /^[0-9a-f]{40}$/);
   const workflow = readFileSync(join(root, '.github/workflows/advisories.yml'), 'utf8');
   assert.match(workflow, /web-source\.txt/);
-  assert.match(workflow, /fetch --quiet --depth=1 https:\/\/github\.com\/msch128\/mnema-talk\.git "\$sha"/);
+  assert.match(workflow, /fetch --quiet --depth=1 https:\/\/github\.com\/mnema-xyz\/talk\.git "\$sha"/);
   assert.doesNotMatch(workflow, /ref: main/);
 });

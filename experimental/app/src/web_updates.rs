@@ -7,7 +7,7 @@ use serde::Deserialize;
 use std::time::Duration;
 use url::Url;
 
-const LATEST: &str = "https://api.github.com/repos/msch128/mnema-talk/releases/latest";
+const LATEST: &str = "https://api.github.com/repos/mnema-xyz/talk/releases/latest";
 const MAX_RELEASE_JSON: usize = 1 << 20;
 const MAX_DOWNLOAD: usize = 96 << 20;
 
