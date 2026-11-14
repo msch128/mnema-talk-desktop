@@ -11,14 +11,27 @@
 //!
 //! "On next start" keeps the verified installer on disk. It is verified again
 //! against a freshly fetched manifest before it runs.
+//!
+//! The portable Windows copy reads its own entry of the feed, a signed ZIP,
+//! and replaces its own files (`portable.rs`). An offered update shows as a
+//! pill in the server rail (`rail.rs`) and in the app menu (`menu.rs`);
+//! "Update now" asks first while a Talk is running (`now.rs`).
 mod check;
 mod install;
 mod logic;
+mod menu;
+mod menu_text;
+mod now;
+mod portable;
+mod rail;
+#[cfg(feature = "update-selftest")]
+mod selftest;
 mod state;
 mod window;
 
 pub use logic::is_portable;
-pub use state::{MENU_ID, menu_item};
+pub use menu::{is_menu_id, menu};
+pub use rail::*;
 pub use window::*;
 
 use crate::storage;
@@ -27,10 +40,12 @@ use install::apply_pending;
 use logic::{check_due, disabled};
 use state::{NativeUpdates, Source, now};
 use std::time::Duration;
-use tauri::{AppHandle, Manager, Runtime};
+use tauri::{AppHandle, Manager};
 
-/// Poll granularity of the scheduler; a check runs when the six-hour interval
-/// shared with the web bundles has passed.
+/// Poll granularity of the scheduler. A check runs at every start, then
+/// whenever six hours (the interval shared with the web bundles) have passed
+/// since the last one that completed; a failed check is tried again at the
+/// next poll.
 const POLL: Duration = Duration::from_secs(15 * 60);
 const CHECK_TIMEOUT: Duration = Duration::from_secs(30);
 const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(15 * 60);
@@ -41,14 +56,26 @@ const PENDING_FILE: &str = "native-update.pending";
 
 /// Registers the state, applies an installer kept for this start and starts
 /// the scheduler. Call once from `setup`.
-pub fn setup<R: Runtime>(app: &AppHandle<R>) {
+pub fn setup(app: &AppHandle) {
     let Ok(source) = Source::pinned(app) else {
         eprintln!("Mnema Desktop: native updates are not configured.");
         return;
     };
+    if source.portable
+        && let Ok(exe) = std::env::current_exe()
+    {
+        // What the last update replaced.
+        portable::clean_up_soon(exe);
+    }
     let dir = storage::data_dir(app);
     let current = app.package_info().version.to_string();
-    app.manage(NativeUpdates::new(current, dir, source));
+    let updates = NativeUpdates::new(current, dir, source);
+    let talk = app.clone();
+    updates.set_talk_probe(move || crate::web_gaming::in_talk(&talk));
+    app.manage(updates);
+    rail::push_to_rail(app);
+    #[cfg(feature = "update-selftest")]
+    selftest::start(app);
     if disabled() {
         return;
     }

@@ -1,0 +1,22 @@
+/* The update pill at the foot of the rail: one calm accent, no motion beyond the fill. */
+:root { --update-soft: rgba(45, 167, 113, .16); --update-line: rgba(45, 167, 113, .55); --update-fill: rgba(45, 167, 113, .34); }
+@media (prefers-color-scheme: light) {
+  :root { --update-soft: rgba(31, 138, 91, .12); --update-line: rgba(31, 138, 91, .5); --update-fill: rgba(31, 138, 91, .26); }
+}
+/* The tiles scroll above the pill, never under it. */
+body.has-update #rail { padding-bottom: 52px; }
+.update {
+  position: fixed; left: 50%; bottom: 12px; transform: translateX(-50%);
+  width: 54px; min-height: 26px; padding: 4px 3px; border-radius: 999px;
+  border: 1px solid var(--update-line); color: var(--text); cursor: pointer;
+  background: linear-gradient(to right, var(--update-fill) var(--fill, 0%), var(--update-soft) var(--fill, 0%));
+  font: 600 11px/1.15 Inter, "Segoe UI", system-ui, sans-serif; text-align: center; overflow-wrap: anywhere;
+  transition: background .2s ease;
+}
+.update[hidden] { display: none; }
+.update:hover { border-color: var(--accent); }
+.update:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.update.offer { color: var(--accent); }
+.update.busy { color: var(--muted); }
+.update.failed { border-color: var(--warn); color: var(--warn); background: transparent; }
+@media (prefers-reduced-motion: reduce) { .update { transition: none; } }

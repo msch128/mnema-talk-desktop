@@ -101,13 +101,27 @@ fn the_release_page_is_built_only_from_a_plain_version() {
     }
 }
 
+/// The folder of a portable copy before the update: the program, its marker,
+/// a notice and the data folder with the servers and sign-ins.
+fn portable_folder(dir: &Path) -> PathBuf {
+    let app = dir.join("app");
+    std::fs::create_dir_all(app.join("mnema-data/data")).unwrap();
+    std::fs::write(app.join(PORTABLE_EXE), b"old program").unwrap();
+    std::fs::write(app.join(PORTABLE_MARKER), b"portable\n").unwrap();
+    std::fs::write(app.join("LICENSE"), b"old licence").unwrap();
+    std::fs::write(app.join("mnema-data/data/servers.json"), b"my servers").unwrap();
+    app
+}
+
 #[test]
-fn a_portable_copy_announces_a_release_but_never_runs_an_installer() {
+fn a_portable_copy_downloads_its_signed_zip_replaces_its_program_and_keeps_its_data() {
     let keys = keys();
     let dir = data_dir("portable");
-    let rel = release("0.2.0", &keys);
+    let folder = portable_folder(&dir);
+    let mut rel = release("0.2.0", &keys);
+    rel.portable = Some(portable_zip(b"new program"));
     let port = publish(&rel);
-    // A leftover from before: it must neither be offered nor run.
+    // A leftover installer from before: it must neither be offered nor run.
     std::fs::write(dir.join(PENDING_FILE), &rel.bytes).unwrap();
     Persisted {
         pending: Some(Pending {
@@ -120,9 +134,16 @@ fn a_portable_copy_announces_a_release_but_never_runs_an_installer() {
     let app = app_built(&keys, port, &dir, false, true);
     let handle = app.handle().clone();
     let state = handle.state::<NativeUpdates>();
+    let restarted = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let flag = restarted.clone();
+    *state.restart.lock().unwrap() = Some(Arc::new(move || {
+        flag.store(true, std::sync::atomic::Ordering::SeqCst);
+    }));
     let snap = state.snapshot();
     assert_eq!((snap.phase, snap.portable), (Phase::Idle, true));
     assert!(!dir.join(PENDING_FILE).exists());
+    assert!(run(prepare_pending(&handle)).is_none());
+    run(apply_pending(&handle));
 
     assert!(run(look(&handle, false)), "the new version is announced");
     let snap = state.snapshot();
@@ -130,57 +151,181 @@ fn a_portable_copy_announces_a_release_but_never_runs_an_installer() {
         (snap.phase, snap.version.as_deref()),
         (Phase::Available, Some("0.2.0"))
     );
-    assert_eq!(
-        menu_text(snap.phase, snap.portable),
-        "Download update \u{2022}"
-    );
+    assert!(menu_view(&snap, false).now_enabled);
 
-    // Neither choice downloads or keeps anything.
-    for mode in [Mode::Now, Mode::Later] {
-        run(install(&handle, mode));
-        let snap = state.snapshot();
-        assert_eq!(snap.phase, Phase::Available, "{snap:?}");
-        assert_eq!(snap.received, 0);
-        assert!(!dir.join(PENDING_FILE).exists());
-    }
-    assert!(run(prepare_pending(&handle)).is_none());
-    // Nor does the start-up path that applies a kept installer.
-    run(apply_pending(&handle));
+    // "On next start" is not for a portable copy: nothing is kept.
+    run(install(&handle, Mode::Later));
     assert_eq!(state.snapshot().phase, Phase::Available);
-    assert_eq!(Persisted::load(Some(&dir)).pending, None);
     assert!(!dir.join(PENDING_FILE).exists());
 
-    // Skipping the version works here too and survives a restart, so a copy
-    // that is not updated stops announcing the same release at every start.
-    skip(&handle);
+    run(install(&handle, Mode::Now));
+    assert!(
+        restarted.load(std::sync::atomic::Ordering::SeqCst),
+        "{:?}",
+        state.snapshot()
+    );
+    assert_replaced(&folder);
+}
+
+/// The new files are in place, the data folder is untouched, and the next
+/// start deletes the program that was replaced.
+fn assert_replaced(folder: &Path) {
+    let read = |name: &str| std::fs::read(folder.join(name)).unwrap();
+    assert_eq!(read(PORTABLE_EXE), b"new program");
+    assert_eq!(read(&format!("{PORTABLE_EXE}{OLD_SUFFIX}")), b"old program");
+    assert_eq!(read("LICENSE"), b"new licence");
+    assert_eq!(read("licenses/new.txt"), b"added");
+    assert_eq!(read(PORTABLE_MARKER), b"portable\n");
+    assert_eq!(read("mnema-data/data/servers.json"), b"my servers");
+    assert!(!folder.join(STAGE).exists());
+    // The next start deletes what was replaced.
+    assert!(clean_up(&folder.join(PORTABLE_EXE)));
+    assert!(!folder.join(format!("{PORTABLE_EXE}{OLD_SUFFIX}")).exists());
+    assert_eq!(read(PORTABLE_EXE), b"new program");
+}
+
+#[test]
+fn an_installed_copy_takes_the_installer_and_never_the_portable_zip() {
+    let keys = keys();
+    let dir = data_dir("installed-not-zip");
+    let mut rel = release("0.2.0", &keys);
+    rel.portable = Some(portable_zip(b"new program"));
+    let port = publish(&rel);
+    let app = app_with(&keys, port, &dir);
+    let handle = app.handle().clone();
+    run(look(&handle, true));
+    run(install(&handle, Mode::Later));
+    assert_eq!(std::fs::read(dir.join(PENDING_FILE)).unwrap(), rel.bytes);
+}
+
+#[test]
+fn a_tampered_portable_zip_is_refused_and_nothing_changes() {
+    let keys = keys();
+    let dir = data_dir("portable-tampered");
+    let folder = portable_folder(&dir);
+    // The feed carries the signature of one ZIP, the server hands out another.
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let feed = serde_json::json!({
+        "version": "0.2.0",
+        "platforms": { PORTABLE_TARGET: {
+            "signature": keys.sign(&portable_zip(b"new program"), "0.2.0"),
+            "url": format!("http://127.0.0.1:{port}/portable.zip"),
+        }}
+    });
+    let mut routes = HashMap::new();
+    routes.insert("/latest.json".to_owned(), feed.to_string().into_bytes());
+    routes.insert("/portable.zip".to_owned(), portable_zip(b"evil program"));
+    serve_on(listener, routes);
+    let app = app_built(&keys, port, &dir, false, true);
+    let handle = app.handle().clone();
+    run(look(&handle, true));
+    run(install(&handle, Mode::Now));
+    let snap = handle.state::<NativeUpdates>().snapshot();
     assert_eq!(
-        Persisted::load(Some(&dir)).skipped.as_deref(),
-        Some("0.2.0")
+        (snap.phase, snap.error),
+        (Phase::Failed, Some(Failure::Verify))
+    );
+    assert_eq!(
+        std::fs::read(folder.join(PORTABLE_EXE)).unwrap(),
+        b"old program"
+    );
+    assert!(!folder.join(STAGE).exists());
+}
+
+#[test]
+fn the_menu_offers_update_now_only_when_a_version_waits_in_both_languages() {
+    let snap = |phase, version: Option<&str>| Snapshot {
+        current: "1.3.5".into(),
+        phase,
+        version: version.map(str::to_owned),
+        notes: None,
+        received: 0,
+        total: None,
+        mode: None,
+        error: None,
+        portable: false,
+        confirm_call: false,
+        skipped: false,
+    };
+    let idle = menu_view(&snap(Phase::Idle, None), false);
+    assert_eq!(
+        (
+            idle.title,
+            idle.now_enabled,
+            idle.check,
+            idle.version.as_str()
+        ),
+        (
+            "Updates",
+            false,
+            "Check for updates…",
+            "Mnema Desktop 1.3.5"
+        )
+    );
+    for phase in [
+        Phase::Available,
+        Phase::Ready,
+        Phase::Waiting,
+        Phase::Failed,
+    ] {
+        let view = menu_view(&snap(phase, Some("1.3.6")), false);
+        assert_eq!(
+            (view.title, view.now_enabled),
+            ("Update available •", true),
+            "{phase:?}"
+        );
+    }
+    // A failed check names no version: there is nothing to install.
+    assert!(!menu_view(&snap(Phase::Failed, None), false).now_enabled);
+    for phase in [
+        Phase::Checking,
+        Phase::Downloading,
+        Phase::Installing,
+        Phase::UpToDate,
+    ] {
+        assert!(
+            !menu_view(&snap(phase, Some("1.3.6")), false).now_enabled,
+            "{phase:?}"
+        );
+    }
+    let german = menu_view(&snap(Phase::Available, Some("1.3.6")), true);
+    assert_eq!(
+        (german.title, german.now, german.check),
+        (
+            "Update verfügbar •",
+            "Jetzt aktualisieren",
+            "Nach Updates suchen …"
+        )
     );
 }
 
+/// The release workflow is what puts the marker into the portable ZIP, signs
+/// the ZIP for the updater and keeps the marker out of the installer; this ties
+/// its spelling to the one the program reads.
 #[test]
-fn an_installed_copy_still_offers_the_installer() {
-    assert_eq!(menu_text(Phase::Available, false), "Update \u{2022}");
-    assert_eq!(menu_text(Phase::Idle, true), "Updates");
-}
-
-/// The release workflow is what puts the marker into the portable ZIP and keeps
-/// it out of the installer; this ties its spelling to the one the program reads.
-#[test]
-fn the_release_workflow_marks_the_portable_zip_and_checks_the_installer_has_none() {
+fn the_release_workflow_marks_and_signs_the_portable_zip_and_checks_the_installer_has_none() {
     let workflow = include_str!("../../../../../.github/workflows/desktop-release.yml");
     let marked = workflow
         .lines()
         .filter(|l| l.contains(PORTABLE_MARKER))
         .count();
     assert!(
-        marked >= 3,
-        "write, ZIP check and installer check: {marked}"
+        marked >= 4,
+        "write, two ZIP checks and the installer check: {marked}"
     );
     let write = workflow
-        .find(&format!("> \"portable/{PORTABLE_MARKER}\""))
+        .find(&format!("'{PORTABLE_MARKER}'), \"portable`n\")"))
         .unwrap();
-    let zip = workflow.find("-windows-x64-portable.zip\" .)").unwrap();
-    assert!(write < zip, "the marker is written before the ZIP is made");
+    let pack = workflow.find("& tar.exe -a -c -f $zip").unwrap();
+    let sign = workflow
+        .find("signer sign --app-version $version $zip")
+        .unwrap();
+    assert!(
+        write < pack && pack < sign,
+        "marked, then packed, then signed"
+    );
+    // The feed names the ZIP under the key the portable copy reads.
+    assert!(workflow.contains(&format!("windows-x86_64 {PORTABLE_TARGET} ")));
+    assert!(workflow.contains("--portable \"$portable\" --portable-sig \"$portable.sig\""));
 }

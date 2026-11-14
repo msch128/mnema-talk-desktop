@@ -16,6 +16,8 @@ real-selftest = ["web-client"]
 gaming-selftest = ["web-client"]
 # Test-only: the app posts one toast on its own and records the outcome (src/web_notify/selftest.rs). Never in a shipped build.
 notify-selftest = ["web-client"]
+# Test-only: an old build updates itself from a feed on the CI machine, signed with a throwaway key, to a new build and restarts (src/native_updates/selftest.rs). Never in a shipped build.
+update-selftest = ["web-client"]
 # Test-only: the WebView2 startup check sets MNEMA_WEBVIEW_PROBE to read the permission decision (src/web_permissions.rs). Compiled out of every shipped build.
 webview-probe = ["web-client"]
 custom-protocol = ["shell", "tauri/custom-protocol"]

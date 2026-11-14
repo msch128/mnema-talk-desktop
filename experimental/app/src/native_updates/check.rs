@@ -2,7 +2,6 @@
 //! trust statement, and what a check does to the state.
 use super::logic::{download_url_ok, is_skipped, offerable};
 use super::state::{Failure, NativeUpdates, Phase, Source};
-use super::window::open_window;
 use super::{CHECK_TIMEOUT, DOWNLOAD_TIMEOUT, NOTES_MAX, PENDING_FILE, now};
 use std::time::Duration;
 use tauri::{AppHandle, Manager, Runtime};
@@ -91,12 +90,11 @@ pub(super) fn trim_notes(body: Option<String>) -> Option<String> {
     .filter(|b: &String| !b.trim().is_empty())
 }
 
-/// Look for a newer version. `manual` shows the outcome (also failures);
-/// a background check stays silent unless it finds something new.
+/// Look for a newer version. `manual` shows the outcome (also failures) in
+/// the update window, which the person opened. A background check opens no
+/// window: what it finds shows as the pill in the rail and in the menu.
 pub async fn check<R: Runtime>(app: &AppHandle<R>, manual: bool) {
-    if look(app, manual).await {
-        let _ = open_window(app, false);
-    }
+    look(app, manual).await;
 }
 
 /// The check itself; true when a new, not skipped version should be announced.
@@ -139,6 +137,8 @@ pub(super) async fn look<R: Runtime>(app: &AppHandle<R>, manual: bool) -> bool {
                 i.snapshot.total = None;
                 i.snapshot.mode = None;
                 i.snapshot.error = None;
+                i.snapshot.confirm_call = false;
+                i.snapshot.skipped = is_skipped(i.persisted.skipped.as_deref(), &version);
                 i.snapshot.phase = if ready {
                     Phase::Ready
                 } else {

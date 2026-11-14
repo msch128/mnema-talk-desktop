@@ -2,11 +2,14 @@
  * The vocabulary of the self-updater: its phases, what the update window shows
  * and what it needs from its surroundings.
  */
+import { MENU_DE, MENU_EN } from './menutext.ts'
 import type { FetchOptions } from './updates.ts'
 import type { Statement } from './trust.ts'
 
-export type Phase = 'idle' | 'checking' | 'up_to_date' | 'available' | 'downloading' | 'ready' | 'installing' | 'failed'
-export type Mode = 'now' | 'later'
+/** `waiting`: downloaded and verified, installs once the Talk has ended. */
+export type Phase = 'idle' | 'checking' | 'up_to_date' | 'available' | 'downloading' | 'ready' | 'waiting' | 'installing' | 'failed'
+/** `after_call`: download and verify now, install when the Talk has ended. */
+export type Mode = 'now' | 'later' | 'after_call'
 /** `untrusted`: no current trust statement could be fetched, so nothing new is installed (the signature is not at fault). */
 export type Failure = 'offline' | 'verify' | 'untrusted' | 'install' | 'unknown'
 
@@ -22,11 +25,19 @@ export interface Snapshot {
   error: Failure | null
   /** The package manager owns this installation: the window points to the download page instead of installing. */
   external: boolean
+  /** "Update now" was asked for during a Talk: the page asks whether to wait for its end. */
+  confirm_call: boolean
+  /** The person skipped this version: the rail shows no pill for it. */
+  skipped: boolean
 }
 
-/** A dot marks a waiting update; the word is the same in every language. */
-export function menuText(phase: Phase): string {
-  return phase === 'available' || phase === 'ready' || phase === 'failed' ? 'Update •' : 'Updates'
+/** What the update entries of the app menu say, as in the Tauri host (`native_updates/menu.rs`). A dot marks a waiting update. */
+export interface MenuView { title: string, now: string, nowEnabled: boolean, check: string, version: string }
+
+export function menuView(snapshot: Snapshot, german: boolean): MenuView {
+  const offered = ['available', 'ready', 'waiting', 'failed'].includes(snapshot.phase) && snapshot.version !== null
+  const text = german ? MENU_DE : MENU_EN
+  return { title: offered ? text.offered : text.idle, now: text.now, nowEnabled: offered, check: text.check, version: `Mnema Desktop ${snapshot.current}` }
 }
 
 /** What the updater needs from its surroundings. */
@@ -62,6 +73,10 @@ export interface UpdaterEnv {
   /** An update to announce (a new version, not skipped, found by a background check). */
   announce?(snapshot: Snapshot): void
   disabled?(): boolean
+  /** Whether the person is in a Talk right now; without it, never. */
+  inTalk?(): boolean
+  /** How often a waiting update looks whether the Talk has ended (tests shorten it). */
+  talkPollMs?: number
 }
 
 export class FailureError extends Error {

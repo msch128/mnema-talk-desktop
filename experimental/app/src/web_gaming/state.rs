@@ -81,6 +81,19 @@ impl Default for Gaming {
 }
 
 impl Gaming {
+    /// A server's page reported a live Talk within `fresh`.
+    pub fn talking(&self, fresh: Duration) -> bool {
+        self.owner.is_some() && self.voice.connected && self.updated.elapsed() < fresh
+    }
+
+    /// Tests elsewhere: a page has just reported a Talk (or its end).
+    #[cfg(test)]
+    pub fn test_talk(&mut self, connected: bool) {
+        self.owner = connected.then(|| "test".to_owned());
+        self.voice.connected = connected;
+        self.updated = Instant::now();
+    }
+
     /// A page reports its Talk. The page must hold the token of its own
     /// server, and while another server's Talk is live that one keeps gaming:
     /// this page's state is ignored, not mixed in.

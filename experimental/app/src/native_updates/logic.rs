@@ -1,5 +1,7 @@
 //! The decisions of the self-update that need no app: the schedule, which versions
-//! are offered, where an installer may come from and the signature check.
+//! are offered, what "Update now" does, where an installer may come from and the
+//! signature check.
+use super::state::Phase;
 use crate::web_bundle::{CHECK_INTERVAL_SECS, Version};
 use base64::Engine as _;
 use std::path::Path;
@@ -10,12 +12,15 @@ use url::Url;
 pub(super) const MAX_INSTALLER: u64 = 512 * 1024 * 1024;
 
 /// Shipped only inside the portable ZIP, next to the executable, by the release
-/// workflow. The installer never carries it, so an installed copy keeps
-/// updating itself; planting the file can only switch updating off.
+/// workflow. The installer never carries it. A copy with the marker never runs
+/// the installer (a second copy would be installed beside it): it replaces its
+/// own files from the signed portable ZIP instead.
 pub const PORTABLE_MARKER: &str = "mnema-portable.marker";
 
-/// Where a release is announced to a portable copy, which must not run the
-/// installer: a second copy would be installed beside it.
+/// The entry of the feed that names the signed portable ZIP.
+pub const PORTABLE_TARGET: &str = "windows-x86_64-portable";
+
+/// The page of a release, linked from the update window.
 pub(super) const RELEASE_PAGE: &str =
     "https://github.com/msch128/mnema-talk-desktop/releases/tag/v";
 
@@ -48,6 +53,44 @@ pub fn release_page(version: &str) -> Option<Url> {
 /// Whether the interval has passed. A clock set back counts as due.
 pub fn check_due(last_check: u64, now: u64) -> bool {
     last_check > now || now - last_check >= CHECK_INTERVAL_SECS
+}
+
+/// What "Update now" does.
+#[derive(Debug, PartialEq, Eq)]
+pub enum NowChoice {
+    /// Download, verify, install and restart.
+    Install,
+    /// A Talk is running: ask first ("after the call" or "update now").
+    AskAboutTalk,
+    /// Already verified and waiting for the Talk to end: stop waiting.
+    StopWaiting,
+    /// Nothing to install (checking, busy or up to date): show the window.
+    Show,
+}
+
+/// "Update now" in `phase`. `confirmed` is the answer "update now anyway" to
+/// the question about the running Talk.
+pub fn now_choice(phase: Phase, offered: bool, in_talk: bool, confirmed: bool) -> NowChoice {
+    match phase {
+        Phase::Waiting => NowChoice::StopWaiting,
+        Phase::Available | Phase::Ready | Phase::Failed if offered => {
+            if in_talk && !confirmed {
+                NowChoice::AskAboutTalk
+            } else {
+                NowChoice::Install
+            }
+        }
+        _ => NowChoice::Show,
+    }
+}
+
+/// How many polls in a row must see no Talk before a waiting update installs:
+/// a page that misses one report is not taken for the end of the Talk.
+pub const QUIET_POLLS: u32 = 3;
+
+/// Whether the wait for the end of the Talk is over.
+pub fn call_over(quiet_polls: u32, forced: bool) -> bool {
+    forced || quiet_polls >= QUIET_POLLS
 }
 
 /// The candidate version when it is strictly newer than `current`. Native

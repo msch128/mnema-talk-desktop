@@ -20,29 +20,29 @@
  */
 import { readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
+import { type NowChoice, nowChoice, waitForCallEnd } from './aftercall.ts'
 import { verifyPackage } from './minisign.ts'
 import { chooseUpdaterKey } from './trust.ts'
 import { fetchLimited, updatesDisabled } from './updates.ts'
-import { type Update, checkDue, downloadUrlOk, isSkipped, offerable, parseFeed } from './updatefeed.ts'
+import { type Update, checkDue, isSkipped, offerable } from './updatefeed.ts'
+import { DOWNLOAD_TIMEOUT_MS, MAX_PACKAGE, START_TIMEOUT_MS, fetchUpdate } from './updatefetch.ts'
 import { PENDING_FILE, STATE_FILE, type Persisted, loadPersisted, writeAtomic } from './updaterstate.ts'
 import { type Failure, type Mode, type Snapshot, type UpdaterEnv, FailureError, classify, withTimeout } from './updatertypes.ts'
 
 export { checkDue, downloadUrlOk, isSkipped, offerable, parseFeed, platformKey, trimNotes, type Update } from './updatefeed.ts'
 export { replaceAppImage } from './appimage.ts'
-export { type Failure, type Mode, type Phase, type Snapshot, type UpdaterEnv, menuText } from './updatertypes.ts'
+export { type NowChoice } from './aftercall.ts'
+export { type Failure, type Mode, type Phase, type Snapshot, type UpdaterEnv, menuView } from './updatertypes.ts'
 
 export const POLL_MS = 15 * 60 * 1000
-const CHECK_TIMEOUT_MS = 30_000
-const DOWNLOAD_TIMEOUT_MS = 15 * 60 * 1000
-const START_TIMEOUT_MS = 8_000
-const MAX_FEED = 1 << 20
-const MAX_PACKAGE = 512 << 20
 
 export class SelfUpdater {
   private persisted: Persisted
   private snap: Snapshot
   private update: Update | null = null
   private busy = false
+  /** "Update now" while waiting for the end of a Talk. */
+  private forceNow = false
   private readonly env: UpdaterEnv
 
   constructor(env: UpdaterEnv) {
@@ -64,6 +64,8 @@ export class SelfUpdater {
       mode: null,
       error: null,
       external: env.external,
+      confirm_call: false,
+      skipped: false,
     }
   }
 
@@ -88,28 +90,8 @@ export class SelfUpdater {
   // ---------------------------------------------------------- operations
 
   /** The feed, and the key the trust statement allows for the announced signature. */
-  async fetch(): Promise<Update | null> {
-    const platform = this.env.platform
-    if (platform === null) return null
-    let feedBytes: Buffer | null = null
-    let failure: unknown = null
-    for (const endpoint of this.env.endpoints) {
-      try {
-        feedBytes = await fetchLimited(endpoint, 'application/json', MAX_FEED, { ...this.env.fetchOptions, timeoutMs: CHECK_TIMEOUT_MS })
-        break
-      } catch (error) {
-        failure = error
-      }
-    }
-    if (!feedBytes) throw failure ?? new FailureError('offline')
-    const found = parseFeed(feedBytes, platform)
-    if (!found || offerable(this.env.current, found.version) === null) return null
-    // The trust statement decides which updater key an update may be signed
-    // with: a revoked key is refused, a listed replacement key is used.
-    const chosen = chooseUpdaterKey(this.env.pubkey, this.env.statement(), found.signature)
-    if (!chosen.ok) throw new FailureError('verify')
-    if (this.env.githubOnly && !downloadUrlOk(found.url)) return null
-    return { ...found, key: chosen.key }
+  fetch(): Promise<Update | null> {
+    return fetchUpdate(this.env)
   }
 
   /** Look for a newer version. `manual` shows the outcome (also failures); a background check stays silent unless it finds something new. */
@@ -156,9 +138,11 @@ export class SelfUpdater {
     this.snap.total = null
     this.snap.mode = null
     this.snap.error = null
+    this.snap.confirm_call = false
+    this.snap.skipped = isSkipped(this.persisted.skipped, version)
     this.snap.phase = ready ? 'ready' : 'available'
     this.update = found
-    return !ready && !isSkipped(this.persisted.skipped, version)
+    return !ready && !this.snap.skipped
   }
 
   private lookNothing(manual: boolean): void {
@@ -174,7 +158,16 @@ export class SelfUpdater {
     this.snap.phase = manual ? 'up_to_date' : 'idle'
   }
 
-  /** Download, verify and either install at once (`now`) or keep the verified package for the next start (`later`). */
+  /** "Update now" from the rail, the menu or the window: asks first during a Talk, ends a wait for one. */
+  requestNow(confirmed: boolean): NowChoice {
+    const choice = nowChoice(this.snap.phase, this.snap.version !== null, this.env.inTalk?.() ?? false, confirmed)
+    if (choice === 'stop_waiting') this.forceNow = true
+    else if (choice === 'ask_about_talk') this.change(() => { this.snap.confirm_call = true })
+    else if (choice === 'install') void this.install('now')
+    return choice
+  }
+
+  /** Download, verify and install at once (`now`), once the Talk has ended (`after_call`), or keep the verified package for the next start (`later`). */
   async install(mode: Mode): Promise<void> {
     // After a restart a held package has no feed entry in memory yet.
     if (this.update === null && !this.busy) await this.check(false)
@@ -187,12 +180,20 @@ export class SelfUpdater {
       this.snap.received = 0
       this.snap.total = null
       this.snap.error = null
+      this.snap.confirm_call = false
     })
     const bytes = await this.obtainPackage(update)
     if (bytes === null) return
     if (mode === 'later') {
       this.keepForLater(update, bytes)
       return
+    }
+    if (mode === 'after_call') {
+      this.forceNow = false
+      this.change(() => { this.snap.phase = 'waiting' })
+      await waitForCallEnd(() => this.env.inTalk?.() ?? false, () => this.forceNow, this.env.talkPollMs)
+      // The wait may have been long: the trust statement must still be fresh.
+      if (!this.env.installsAllowed()) return this.fail('untrusted')
     }
     await this.installNow(update, bytes)
   }
@@ -377,6 +378,6 @@ export class SelfUpdater {
   }
 
   isBusyOrWaiting(): boolean {
-    return ['available', 'ready', 'downloading', 'installing'].includes(this.snap.phase)
+    return ['available', 'ready', 'downloading', 'waiting', 'installing'].includes(this.snap.phase)
   }
 }

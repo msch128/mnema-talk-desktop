@@ -64,6 +64,11 @@ static CURRENT: Mutex<Option<Statement>> = Mutex::new(None);
 
 /// Makes the statement in force visible to the native updater.
 pub fn publish(statement: Option<&Statement>) {
+    // The update self-test signs its feed with a throwaway key that no real
+    // statement lists; only that test build (never shipped) leaves it out.
+    if cfg!(feature = "update-selftest") {
+        return;
+    }
     if let Ok(mut current) = CURRENT.lock() {
         *current = statement.cloned();
     }

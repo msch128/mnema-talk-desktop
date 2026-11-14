@@ -21,13 +21,18 @@ export const MAC_PLATFORMS = ['darwin-aarch64'];
 // the package manager, so Tauri clients and the AppImage never pick it up.
 export const LINUX_PLATFORMS = ['linux-x86_64', 'linux-aarch64', 'linux-x86_64-deb', 'linux-aarch64-deb'];
 
+// The portable Windows copy replaces its own files from the signed portable ZIP
+// (experimental/app/src/native_updates/portable.rs). Its own key keeps the
+// installed copy on the installer and the portable copy off it.
+export const PORTABLE_PLATFORM = 'windows-x86_64-portable';
+
 function checkedSignature(signature, what) {
   const sig = signature.trim();
   if (!SIGNATURE.test(sig) || sig.length < 100) throw new Error(`${what} signature must be the base64 text of a Tauri .sig file.`);
   return sig;
 }
 
-export function buildManifest({ version, repo, installerName, signature, mac, linux = [], notes = '', date }) {
+export function buildManifest({ version, repo, installerName, signature, mac, portable, linux = [], notes = '', date }) {
   if (!VERSION.test(version)) throw new Error('Version must be MAJOR.MINOR.PATCH.');
   if (!REPO.test(repo)) throw new Error('Repository must be owner/name.');
   if (!NAME.test(installerName)) throw new Error('Installer name must use portable filename characters only.');
@@ -45,6 +50,13 @@ export function buildManifest({ version, repo, installerName, signature, mac, li
     for (const platform of MAC_PLATFORMS) {
       platforms[platform] = { signature: macSig, url: `https://github.com/${repo}/releases/download/v${version}/${mac.name}` };
     }
+  }
+  if (portable) {
+    if (!NAME.test(portable.name) || !portable.name.endsWith('.zip')) throw new Error('The portable ZIP name must be a portable .zip filename.');
+    platforms[PORTABLE_PLATFORM] = {
+      signature: checkedSignature(portable.signature, 'Portable ZIP'),
+      url: `https://github.com/${repo}/releases/download/v${version}/${portable.name}`
+    };
   }
   const seen = new Set();
   for (const entry of linux) {
@@ -82,11 +94,12 @@ export function parseArgs(argv) {
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const args = parseArgs(process.argv.slice(2));
-  const { version, repo, installer, sig, notes, out, mac, 'mac-sig': macSig } = args;
+  const { version, repo, installer, sig, notes, out, mac, 'mac-sig': macSig, portable, 'portable-sig': portableSig } = args;
   if (!version || !repo || !installer || !sig || !out) {
-    throw new Error('Usage: update-manifest.mjs --version X.Y.Z --repo owner/name --installer <file> --sig <file> [--mac <app.tar.gz> --mac-sig <file>] [--linux-x86_64 <AppImage> --linux-x86_64-sig <file>] [--linux-aarch64 <AppImage> --linux-aarch64-sig <file>] [--linux-x86_64-deb <deb> --linux-x86_64-deb-sig <file>] [--linux-aarch64-deb <deb> --linux-aarch64-deb-sig <file>] [--notes <file>] --out latest.json');
+    throw new Error('Usage: update-manifest.mjs --version X.Y.Z --repo owner/name --installer <file> --sig <file> [--mac <app.tar.gz> --mac-sig <file>] [--portable <zip> --portable-sig <file>] [--linux-x86_64 <AppImage> --linux-x86_64-sig <file>] [--linux-aarch64 <AppImage> --linux-aarch64-sig <file>] [--linux-x86_64-deb <deb> --linux-x86_64-deb-sig <file>] [--linux-aarch64-deb <deb> --linux-aarch64-deb-sig <file>] [--notes <file>] --out latest.json');
   }
   if (Boolean(mac) !== Boolean(macSig)) throw new Error('--mac and --mac-sig go together.');
+  if (Boolean(portable) !== Boolean(portableSig)) throw new Error('--portable and --portable-sig go together.');
   const linux = [];
   for (const platform of LINUX_PLATFORMS) {
     const file = args[platform];
@@ -100,6 +113,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     installerName: basename(installer),
     signature: readFileSync(sig, 'utf8'),
     mac: mac ? { name: basename(mac), signature: readFileSync(macSig, 'utf8') } : undefined,
+    portable: portable ? { name: basename(portable), signature: readFileSync(portableSig, 'utf8') } : undefined,
     linux,
     notes: notes ? readFileSync(notes, 'utf8') : '',
     date: new Date()

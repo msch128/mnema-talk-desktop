@@ -63,3 +63,16 @@ pub use commands::*;
 pub use setup::setup;
 pub use state::{Gaming, bind, clear, forget};
 pub use surface::{menu_items, open_probe_surfaces, open_settings};
+
+/// How long a page's last report of its Talk counts. Pages report every half
+/// second; a page that stopped reporting (closed, crashed) is not in a Talk.
+const TALK_FRESH: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// Whether the person is in a Talk on any server right now. The self-update
+/// asks before it restarts the app during one.
+pub fn in_talk<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> bool {
+    use tauri::Manager;
+    app.try_state::<std::sync::Mutex<Gaming>>()
+        .and_then(|g| g.lock().ok().map(|g| g.talking(TALK_FRESH)))
+        .unwrap_or(false)
+}

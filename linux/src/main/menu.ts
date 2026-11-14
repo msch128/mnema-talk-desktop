@@ -1,10 +1,11 @@
 import { Menu, app } from 'electron'
-import { menuText } from '../core/selfupdate.ts'
+import { menuView } from '../core/selfupdate.ts'
 import { serverMenuAction } from '../core/notify.ts'
 import { menuEntryText, shortcutPlace } from '../core/instances.ts'
 import type { Context } from './context.ts'
 import { quickSwitch } from './shell.ts'
 import { activateNth, startAdding } from './shelllayout.ts'
+import { menuGerman, updateNow } from './updater.ts'
 import { openUpdater } from './windows.ts'
 
 /** Ctrl+1 to Ctrl+8 reach the first eight servers and Ctrl+9 the last, named as the rail names them; Ctrl+Shift+N adds one. */
@@ -27,14 +28,29 @@ export function serverMenuClicked(ctx: Context, id: string): void {
   else if (action) activateNth(ctx, action.number)
 }
 
+/** The update entries, as in the Tauri host: "Update now", "Check for updates" and the installed version; a dot in the title marks a waiting update. */
+function updateMenu(ctx: Context): Electron.MenuItemConstructorOptions {
+  const snapshot = ctx.updater?.snapshot()
+  const view = snapshot ? menuView(snapshot, menuGerman()) : null
+  if (!view) return { label: 'Updates', enabled: false }
+  return {
+    label: view.title,
+    submenu: [
+      { id: 'native-update-now', label: view.now, enabled: view.nowEnabled, click: () => { updateNow(ctx, false) } },
+      { id: 'native-update', label: view.check, click: () => menuClicked(ctx) },
+      { type: 'separator' },
+      { label: view.version, enabled: false },
+    ],
+  }
+}
+
 /** The window menu: servers, updates, the usual editing commands, zoom and full screen. No reload and no developer tools. */
 export function buildMenu(ctx: Context): void {
-  const phase = ctx.updater?.snapshot().phase ?? 'idle'
   Menu.setApplicationMenu(Menu.buildFromTemplate([
     {
       label: 'Mnema Desktop',
       submenu: [
-        { id: 'native-update', label: menuText(phase), click: () => menuClicked(ctx) },
+        updateMenu(ctx),
         { type: 'separator' },
         { label: 'Quit', accelerator: 'CmdOrCtrl+Q', click: () => app.quit() },
       ],

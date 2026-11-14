@@ -157,7 +157,7 @@ Download `Mnema-Desktop_<version>_x64-setup.exe` from the
 and run it once. It installs for the current user only (no administrator
 prompt) and updates itself from then on. SmartScreen warns because the installer
 has no Authenticode certificate; the self-update does not depend on one (see
-below). The portable ZIP of each release does not update itself; it tells you when a newer version exists and opens the release page. It keeps its settings, server list and browser data in a `mnema-data` folder beside the program (or in the absolute folder named by `MNEMA_DESKTOP_DATA_DIR`). The first start copies the client's own files that an earlier portable version kept in `%LOCALAPPDATA%\com.mnema.desktop.shareddev` and `%APPDATA%\com.mnema.desktop.shareddev` (not the browser engine's data, so you sign in to your servers again); it does that once, and it does not delete them: remove those two folders by hand when you no longer need them. Deleting `mnema-data` resets the portable copy. Saved passwords live in the Windows credential store, as for any Windows program. To build from
+below). The portable ZIP of each release updates itself as well: it downloads the signed portable ZIP of the new release, verifies it against the same pinned key, puts the new program in place of the old one (the old one is deleted at the next start) and restarts; the folder has to be one you can write to. It keeps its settings, server list and browser data in a `mnema-data` folder beside the program (or in the absolute folder named by `MNEMA_DESKTOP_DATA_DIR`). The first start copies the client's own files that an earlier portable version kept in `%LOCALAPPDATA%\com.mnema.desktop.shareddev` and `%APPDATA%\com.mnema.desktop.shareddev` (not the browser engine's data, so you sign in to your servers again); it does that once, and it does not delete them: remove those two folders by hand when you no longer need them. Deleting `mnema-data` resets the portable copy. Saved passwords live in the Windows credential store, as for any Windows program. To build from
 source, see [experimental/README.md](experimental/README.md#mnema-desktop):
 Rust and Node, with mnema-talk checked out next to this repository. The older
 Windows DEV ZIP attached to
@@ -261,16 +261,34 @@ Two things update, both from GitHub, both verified before use:
 
 * **The web app** (the signed bundle) as described in
   [doc/desktop-trusted-client.md](https://github.com/msch128/mnema-talk/blob/main/doc/desktop-trusted-client.md).
-* **The program itself** through the official Tauri updater (Windows, macOS)
-  or, on Linux, the same signed feed read by the Electron client (below). The client checks
+* **The program itself** through the official Tauri updater (Windows installer,
+  macOS), from its own signed ZIP (Windows portable copy) or, on Linux, the same
+  signed feed read by the Electron client (below). The client checks
   `releases/latest/download/latest.json` of this repository at every start and
-  then every six hours (the same interval as the bundles). When a newer
-  version exists, a small window offers **Update now** (download, install,
-  restart), **On next start** (download now, install when the client is next
-  started) and **Skip this version**; the menu entry **Update** reopens it. The
-  window links to the release page. A failed attempt shows what went wrong,
-  lets you copy the error, and can be retried. `MNEMA_DESKTOP_NO_UPDATE_CHECK=1`
-  turns both checks off.
+  then every six hours (the same interval as the bundles; a failed check is
+  tried again after 15 minutes). When a newer version exists, a calm
+  **Update** pill appears at the foot of the server rail and stays until the
+  update is done or skipped, and the app menu (**Updates** on Windows and
+  Linux, the application menu on macOS) gets a dot, **Update now**, **Check for
+  updates…** and the installed version. No window opens by itself.
+  **Update now** (the pill or the menu) downloads with progress in the pill,
+  verifies, installs and restarts the app; the servers, sign-ins and settings
+  stay. During a Talk it asks first: **After the call** downloads and verifies
+  now and installs once the Talk has ended, **Update now** installs at once. The
+  update window (a click on the pill while an update runs, waits or failed)
+  also offers **On next start** (download now, install when the client is next
+  started; not for the portable copy) and **Skip this version**, and links to
+  the release page. A failed attempt says in a plain sentence what went wrong
+  and what to do next, lets you copy the error, and can be retried.
+  `MNEMA_DESKTOP_NO_UPDATE_CHECK=1` turns both checks off.
+
+  | Installed from | What **Update now** does |
+  |---|---|
+  | Windows installer | runs the signed new installer (per user, no administrator prompt), which restarts the app |
+  | Windows portable ZIP | downloads the signed portable ZIP, renames the running program aside, puts the new one and its files in place (never `mnema-data`) and restarts; the old program is deleted at the next start |
+  | macOS disk image | replaces the app in place from the signed app archive and restarts |
+  | Linux AppImage | replaces the AppImage file it was started from and restarts |
+  | Linux `.deb` | verifies the signed `.deb`, then the system asks for your password (polkit) and the package manager installs it; without polkit the package opens in the software installer |
 
 ### From "Mnema Desktop DEV"
 
@@ -312,7 +330,7 @@ offline backup.
    the tested executable into an NSIS installer, signs it in the protected
    environment, smoke-installs it per user on a Windows runner, checks that
    `latest.json` verifies against the pinned key and publishes the installer,
-   its `.sig` file, `latest.json`, a portable ZIP, the macOS disk image and
+   its `.sig` file, `latest.json`, a portable ZIP and its `.sig` file, the macOS disk image and
    updater archive, the Linux AppImages and `.deb` packages, unversioned copies
    of those seven installers (`scripts/stable-asset-names.mjs`, for the links
    under [Get it](#get-it)), and `SHA256SUMS`.
@@ -370,8 +388,11 @@ minisign signature must verify against the pinned key (or a replacement key
 the trust statement lists, and never a revoked one), the version recorded inside
 the signature must equal the announced one, the version must be newer than the
 running one, the download must be an HTTPS URL on `github.com`, and nothing new
-is installed without a trust statement fetched in the current run. The window
-offers the same choices (**Update now**, **On next start**, **Skip this version**).
+is installed without a trust statement fetched in the current run. The pill,
+the menu and the window offer the same choices (**Update now**, **After the
+call**, **On next start**, **Skip this version**). The Linux client counts a
+Talk as running while a server's page plays media (the voices of the others);
+alone in a Talk nothing plays, and the update does not wait.
 **Update now** replaces the AppImage file it was started from (a failed write
 leaves the installed one untouched) and restarts it; **On next start** keeps the
 verified AppImage and installs it, after verifying it again, at the next start.

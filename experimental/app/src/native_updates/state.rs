@@ -1,6 +1,7 @@
-//! The state of the self-update: what is persisted, what the update window
-//! shows and the menu entry that announces a waiting update.
-use super::logic::{is_portable, offerable};
+//! The state of the self-update: what is persisted and what the update window,
+//! the rail and the menu show.
+use super::logic::{PORTABLE_TARGET, is_portable, offerable};
+use super::menu::Menu;
 use super::{PENDING_FILE, STATE_FILE};
 use crate::web_bundle::write_atomic;
 use serde::{Deserialize, Serialize};
@@ -9,11 +10,9 @@ use std::{
     sync::{Arc, Mutex},
     time::{SystemTime, UNIX_EPOCH},
 };
-use tauri::{AppHandle, Manager, Runtime};
+use tauri::{AppHandle, Runtime};
 use tauri_plugin_updater::Update;
 use url::Url;
-
-pub const MENU_ID: &str = "native-update";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -24,6 +23,8 @@ pub enum Phase {
     Available,
     Downloading,
     Ready,
+    /// Downloaded and verified; installs as soon as the Talk has ended.
+    Waiting,
     Installing,
     Failed,
 }
@@ -33,6 +34,8 @@ pub enum Phase {
 pub enum Mode {
     Now,
     Later,
+    /// Download and verify now, install when the Talk has ended.
+    AfterCall,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
@@ -44,6 +47,8 @@ pub enum Failure {
     /// installed; the signature is not at fault.
     Untrusted,
     Install,
+    /// The portable copy cannot write to its own folder, so it cannot replace itself.
+    Folder,
     Unknown,
 }
 
@@ -58,8 +63,12 @@ pub struct Snapshot {
     pub total: Option<u64>,
     pub mode: Option<Mode>,
     pub error: Option<Failure>,
-    /// The portable build never runs an installer: it only points to the release.
+    /// The portable build replaces its own files instead of running an installer.
     pub portable: bool,
+    /// "Update now" was asked for during a Talk: the page asks whether to wait for its end.
+    pub confirm_call: bool,
+    /// The person skipped this version: the rail shows no pill for it.
+    pub skipped: bool,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -98,6 +107,8 @@ pub(super) struct Inner {
     pub(super) snapshot: Snapshot,
     pub(super) update: Option<Update>,
     pub(super) busy: bool,
+    /// "Update now" while waiting for a Talk to end: install without waiting.
+    pub(super) force_now: bool,
 }
 
 /// The pinned public key and endpoints, normally read from `tauri.conf.json`.
@@ -133,37 +144,43 @@ impl Source {
             .flatten()
             .filter_map(|e| e.as_str().and_then(|s| Url::parse(s).ok()))
             .collect::<Vec<_>>();
-        if endpoints.is_empty() || endpoints.iter().any(|e| e.scheme() != "https") {
+        // Only the update self-test (a build feature no release enables) may
+        // read a feed on this machine, which its CI job serves.
+        let loopback = cfg!(feature = "update-selftest")
+            && !endpoints.is_empty()
+            && endpoints
+                .iter()
+                .all(|e| e.scheme() == "http" && e.host_str() == Some("127.0.0.1"));
+        if endpoints.is_empty() || !(loopback || endpoints.iter().all(|e| e.scheme() == "https")) {
             return Err("The updater needs HTTPS endpoints.".into());
         }
+        // The portable copy reads its own entry of the feed, the signed ZIP.
+        let portable = cfg!(windows) && is_portable();
         Ok(Source {
             endpoints,
             pubkey,
-            github_only: true,
-            target: None,
+            github_only: !loopback,
+            target: portable.then(|| PORTABLE_TARGET.to_owned()),
             executable_path: None,
-            portable: is_portable(),
+            portable,
         })
     }
 }
 
-/// Sets the text of one menu entry (every window has its own menu).
-pub(super) type MenuText = Arc<dyn Fn(&str) + Send + Sync>;
-
-/// The menu entries and the text they show now. Setting a text is a round
-/// trip to the main thread, so it is only done when the text changes and never
-/// with the lock held.
-#[derive(Default)]
-pub(super) struct Menu {
-    pub(super) items: Vec<MenuText>,
-    shown: Option<&'static str>,
-}
+/// Whether the person is in a Talk right now.
+pub(super) type TalkProbe = Arc<dyn Fn() -> bool + Send + Sync>;
+/// Shows a new state where it is drawn outside the update window (the rail).
+pub(super) type Push = Arc<dyn Fn(&Snapshot) + Send + Sync>;
 
 pub struct NativeUpdates {
     pub(super) inner: Mutex<Inner>,
     pub(super) dir: Option<PathBuf>,
     pub(super) source: Source,
     pub(super) menu: Mutex<Menu>,
+    pub(super) talk: Mutex<TalkProbe>,
+    pub(super) push: Mutex<Option<Push>>,
+    /// Replaces the restart after an install (the update self-test records first; tests stay alive).
+    pub(super) restart: Mutex<Option<Arc<dyn Fn() + Send + Sync>>>,
 }
 
 pub(super) fn now() -> u64 {
@@ -210,13 +227,19 @@ impl NativeUpdates {
                     mode: None,
                     error: None,
                     portable,
+                    confirm_call: false,
+                    skipped: false,
                 },
                 update: None,
                 busy: false,
+                force_now: false,
             }),
             dir,
             source,
             menu: Mutex::new(Menu::default()),
+            talk: Mutex::new(Arc::new(|| false)),
+            push: Mutex::new(None),
+            restart: Mutex::new(None),
         }
     }
 
@@ -234,6 +257,8 @@ impl NativeUpdates {
                 mode: None,
                 error: Some(Failure::Unknown),
                 portable: false,
+                confirm_call: false,
+                skipped: false,
             })
     }
 
@@ -241,54 +266,32 @@ impl NativeUpdates {
         let mut inner = self.inner.lock().ok()?;
         let out = f(&mut inner);
         drop(inner);
-        self.refresh_menu();
+        self.changed();
         Some(out)
     }
 
-    pub(super) fn refresh_menu(&self) {
-        let snapshot = self.snapshot();
-        let text = menu_text(snapshot.phase, snapshot.portable);
-        let items = match self.menu.lock() {
-            Ok(mut menu) if menu.shown != Some(text) => {
-                menu.shown = Some(text);
-                menu.items.clone()
-            }
-            _ => return,
-        };
-        for set in items {
-            set(text);
+    /// The state changed: the menu and the rail follow.
+    pub(super) fn changed(&self) {
+        self.refresh_menu();
+        let push = self.push.lock().ok().and_then(|p| p.clone());
+        if let Some(push) = push {
+            push(&self.snapshot());
+        }
+    }
+
+    pub(super) fn in_talk(&self) -> bool {
+        let probe = self.talk.lock().ok().map(|t| t.clone());
+        probe.is_some_and(|t| t())
+    }
+
+    /// Sets how the app learns whether a Talk is running (the server pages report it).
+    pub fn set_talk_probe(&self, probe: impl Fn() -> bool + Send + Sync + 'static) {
+        if let Ok(mut t) = self.talk.lock() {
+            *t = Arc::new(probe);
         }
     }
 
     pub(super) fn pending_path(&self) -> Option<PathBuf> {
         self.dir.as_ref().map(|d| d.join(PENDING_FILE))
     }
-}
-
-/// A dot marks a waiting update; the word is the same in every language. A
-/// portable copy says it only has a download to offer.
-pub(super) fn menu_text(phase: Phase, portable: bool) -> &'static str {
-    match phase {
-        Phase::Available if portable => "Download update \u{2022}",
-        Phase::Available | Phase::Ready | Phase::Failed => "Update \u{2022}",
-        _ => "Updates",
-    }
-}
-
-pub fn menu_item<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<tauri::menu::MenuItem<R>> {
-    let state = app.state::<NativeUpdates>();
-    let item = tauri::menu::MenuItem::with_id(
-        app,
-        MENU_ID,
-        menu_text(state.snapshot().phase, state.snapshot().portable),
-        true,
-        None::<&str>,
-    )?;
-    let handle = item.clone();
-    if let Ok(mut menu) = state.menu.lock() {
-        menu.items.push(Arc::new(move |text| {
-            let _ = handle.set_text(text);
-        }));
-    }
-    Ok(item)
 }
