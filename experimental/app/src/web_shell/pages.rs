@@ -8,22 +8,67 @@ use super::storage::isolate;
 use super::{RAIL_WIDTH, SHELL};
 use crate::instances::{Session, attachment_label, id_for, instance_label};
 use crate::web_client::{Trusted, app_api, app_url, bundled};
-use std::sync::Arc;
+use std::{
+    collections::HashSet,
+    sync::{Arc, Mutex},
+    time::Duration,
+};
 use tauri::{
     LogicalPosition, LogicalSize, Manager, WebviewUrl, WebviewWindowBuilder,
     webview::WebviewBuilder,
 };
 use url::Url;
 
-/// Creates the webview of a running server.
+/// Servers whose page is being made right now.
+static MAKING: Mutex<Option<HashSet<String>>> = Mutex::new(None);
+
+/// The right to make the page of one server; given back when dropped.
+struct Turn(String);
+
+impl Drop for Turn {
+    fn drop(&mut self) {
+        if let Ok(mut making) = MAKING.lock()
+            && let Some(making) = making.as_mut()
+        {
+            making.remove(&self.0);
+        }
+    }
+}
+
+fn claim(id: &str) -> Option<Turn> {
+    let mut making = MAKING.lock().ok()?;
+    let fresh = making
+        .get_or_insert_with(HashSet::new)
+        .insert(id.to_owned());
+    fresh.then(|| Turn(id.to_owned()))
+}
+
+/// Waits for the right to make the page of `id`. Two paths can make the
+/// same page at once (adding a server, and the server in front getting its
+/// page on first show); the second one waits and then finds the page made.
+/// Making it twice would fail the second time, after binding a new gaming
+/// token the first page does not know.
+async fn wait_turn(id: &str) -> Result<Turn, String> {
+    for _ in 0..500 {
+        if let Some(turn) = claim(id) {
+            return Ok(turn);
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    Err("The server is still opening.".into())
+}
+
+/// Creates the webview of a running server: `true` when this call made it,
+/// `false` when it was there already.
 pub(super) async fn open_page(
     app: &tauri::AppHandle,
     id: &str,
     session: &Arc<Session>,
     invite: Option<&str>,
-) -> Result<(), String> {
+) -> Result<bool, String> {
+    let _turn = wait_turn(id).await?;
     if app.get_webview(&instance_label(id)).is_some() {
-        return Ok(());
+        return Ok(false);
     }
     let window = app.get_window(SHELL).ok_or("The window is gone.")?;
     let builder = page_builder(app, id, session, invite)?;
@@ -36,7 +81,7 @@ pub(super) async fn open_page(
         .map_err(|_| "Unable to open the server. Check the WebView2 runtime.")?;
     let _ = page.hide();
     layout(app);
-    Ok(())
+    Ok(true)
 }
 
 fn page_builder(
@@ -173,7 +218,7 @@ fn external_link(app: &tauri::AppHandle, url: Url) {
             return open_external(&url);
         };
         let listed: Vec<Url> = registry.stored().servers;
-        let room = registry.len() < crate::instances::MAX_INSTANCES && room_for(registry.len());
+        let room = room_for(registry.len());
         (listed, room)
     };
     match invite_decision(&url, &listed, room) {
@@ -238,5 +283,28 @@ fn new_window(
     match child {
         Ok(window) => Create { window },
         Err(_) => Deny,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn the_page_of_a_server_is_made_by_one_path_at_a_time() {
+        let first = wait_turn("pages-turn-test").await.unwrap();
+        assert!(claim("pages-turn-test").is_none(), "a second path waits");
+        assert!(
+            claim("pages-turn-other").is_some(),
+            "another server does not"
+        );
+        let waiting = tokio::spawn(async { wait_turn("pages-turn-test").await.is_ok() });
+        tokio::time::sleep(Duration::from_millis(60)).await;
+        assert!(!waiting.is_finished());
+        drop(first);
+        assert!(
+            waiting.await.unwrap(),
+            "its turn comes once the first is done"
+        );
     }
 }

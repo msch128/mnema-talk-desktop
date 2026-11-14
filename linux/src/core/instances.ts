@@ -11,7 +11,8 @@ import { createHash, randomBytes } from 'node:crypto'
 import { type Edit, Layout } from './layout.ts'
 import { MAX_BADGE, badgeCount } from './notify.ts'
 import { isLowerHex } from './encoding.ts'
-import { MAX_INSTANCES, MAX_MUTE_SECONDS, type Stored, liveMutes } from './instancestore.ts'
+import { MAX_MUTE_SECONDS, type Stored, liveMutes, shortcutPlace } from './instancestore.ts'
+import { type Sleep, UNLOAD_CHOICES, boundedSleep, defaultSleep, storedSleep } from './sleep.ts'
 import { type RailState, hue, initial } from './railstate.ts'
 import type { Instance } from './proxy.ts'
 import type { Sockets } from './sockets.ts'
@@ -19,7 +20,7 @@ import type { Held } from './store.ts'
 
 /** What the badge and the rail show at most. */
 export const MAX_COUNT = MAX_BADGE
-export { MAX_IMPORT_BYTES, MAX_INSTANCES, type Stored, emptyStored, loadStored, saveStored, storedFrom, storedText } from './instancestore.ts'
+export { MAX_IMPORT_BYTES, type Stored, emptyStored, loadStored, saveStored, shortcutPlace, storedFrom, storedText } from './instancestore.ts'
 export type { RailState } from './railstate.ts'
 
 /** A server the client talks to and the verified bundle its pages run. */
@@ -66,14 +67,16 @@ export interface Slot {
   mutedUntil: number | null
   /** The page asked for notifications: its callback channel and the next message index it expects. */
   clicks: { channel: number, index: number } | null
+  /** What the page last said: busy (a draft, an upload, a Talk) or idle; null until it says (an older bundle never does, and its page is never closed for being hidden). */
+  busy: boolean | null
 }
 
 export class AddError extends Error {
-  readonly kind: 'known' | 'full'
+  readonly kind: 'known'
   readonly id: string
 
-  constructor(kind: 'known' | 'full', id = '') {
-    super(kind === 'known' ? 'This server is already in the list.' : `At most ${MAX_INSTANCES} servers fit in one window.`)
+  constructor(kind: 'known', id = '') {
+    super('This server is already in the list.')
     this.kind = kind
     this.id = id
   }
@@ -99,29 +102,32 @@ function nowSeconds(): number {
 }
 
 function fresh(origin: URL): Slot {
-  return { id: idFor(origin), origin, phase: { kind: 'starting' }, unread: 0, mentions: 0, reported: false, generation: randomBytes(16).toString('hex'), icon: null, mutedUntil: null, clicks: null }
+  return { id: idFor(origin), origin, phase: { kind: 'starting' }, unread: 0, mentions: 0, reported: false, generation: randomBytes(16).toString('hex'), icon: null, mutedUntil: null, clicks: null, busy: null }
 }
 
 export class Registry {
   private slots: Slot[] = []
+  /** The slots by id, so that a list of any length is looked up in constant time. */
+  private readonly byId = new Map<string, Slot>()
   private layout = new Layout()
   private front: string | null = null
   private addingNow = false
   /** Whether the list this one was restored from was read in full (see `Stored.complete`). */
   private loadedInFull = true
+  /** When hidden pages close. */
+  sleep: Sleep = defaultSleep()
 
   static restore(stored: Stored): Registry {
     const registry = new Registry()
     registry.loadedInFull = stored.complete !== false
-    for (const origin of stored.servers) {
-      try { registry.add(origin) } catch { /* a duplicate */ }
-    }
+    registry.append(stored.servers)
     registry.layout = Layout.load(stored.items, stored.aliases, registry.ids(), registry.ids())
     registry.sort()
     for (const [id, until] of liveMutes(stored.muted, (x) => registry.contains(x), nowSeconds())) registry.mute(id, until)
     const wanted = stored.active ? idFor(stored.active) : null
     registry.front = wanted !== null && registry.contains(wanted) ? wanted : (registry.slots[0]?.id ?? null)
     registry.addingNow = registry.front === null
+    registry.sleep = boundedSleep(stored.sleep)
     return registry
   }
 
@@ -135,7 +141,7 @@ export class Registry {
   }
 
   contains(id: string): boolean {
-    return this.slots.some((s) => s.id === id)
+    return this.byId.has(id)
   }
 
   ids(): string[] {
@@ -143,7 +149,7 @@ export class Registry {
   }
 
   slot(id: string): Slot | undefined {
-    return this.slots.find((s) => s.id === id)
+    return this.byId.get(id)
   }
 
   /** The running session of a server, or none if it is not (or no longer) in the list, still starting or refused. */
@@ -163,10 +169,22 @@ export class Registry {
   add(origin: URL): string {
     const id = idFor(origin)
     if (this.contains(id)) throw new AddError('known', id)
-    if (this.slots.length >= MAX_INSTANCES) throw new AddError('full')
-    this.slots.push(fresh(origin))
+    this.append([origin])
     this.layout.add(id)
     return id
+  }
+
+  /** Adds the servers of a list that are not here yet, at the end, in linear time; the layout is the caller's (`restore` and `merge` make it anew). */
+  private append(origins: readonly URL[]): Slot[] {
+    const added: Slot[] = []
+    for (const origin of origins) {
+      if (this.byId.has(idFor(origin))) continue
+      const slot = fresh(origin)
+      this.byId.set(slot.id, slot)
+      this.slots.push(slot)
+      added.push(slot)
+    }
+    return added
   }
 
   /** Takes a server out of the list and gives its slot back to be wiped. The neighbour takes over the front. */
@@ -174,6 +192,7 @@ export class Registry {
     const index = this.slots.findIndex((s) => s.id === id)
     if (index < 0) return null
     const [slot] = this.slots.splice(index, 1)
+    this.byId.delete(id)
     this.layout.remove(id)
     this.sort()
     if (this.front === id) this.front = this.slots[Math.min(index, this.slots.length - 1)]?.id ?? null
@@ -188,18 +207,17 @@ export class Registry {
     return true
   }
 
-  /** Ctrl+1 is the first server. */
+  /** The server a number key reaches (`shortcutPlace`): Ctrl+1 is the first, Ctrl+9 the last. */
   activateNth(number: number): string | null {
-    const slot = Number.isInteger(number) && number >= 1 ? this.slots[number - 1] : undefined
+    const place = shortcutPlace(number, this.slots.length)
+    const slot = place === null ? undefined : this.slots[place]
     if (!slot) return null
     this.activate(slot.id)
     return slot.id
   }
 
-  startAdding(): boolean {
-    if (this.slots.length >= MAX_INSTANCES) return false
+  startAdding(): void {
     this.addingNow = true
-    return true
   }
 
   stopAdding(): void {
@@ -208,8 +226,8 @@ export class Registry {
 
   /** The servers stand in the order of the rail, so Ctrl+1 is the one at the top. */
   private sort(): void {
-    const order = this.layout.flat()
-    this.slots.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id))
+    const place = new Map(this.layout.flat().map((id, n) => [id, n]))
+    this.slots.sort((a, b) => (place.get(a.id) ?? -1) - (place.get(b.id) ?? -1))
   }
 
   /** Changes how the servers sit on the rail. `folder` is the id a new folder gets. False: refused, nothing changed. */
@@ -255,17 +273,11 @@ export class Registry {
    * front and the pages stay as they are.
    */
   merge(stored: Stored, now = nowSeconds()): Slot[] {
-    const added: Slot[] = []
-    for (const origin of stored.servers) {
-      try {
-        const id = this.add(origin)
-        const slot = this.slot(id)
-        if (slot) added.push(slot)
-      } catch { /* known, or no room */ }
-    }
+    const added = this.append(stored.servers)
     const here = this.layout
     const inFile = stored.servers.map(idFor)
-    const order = [...inFile, ...this.ids().filter((id) => !inFile.includes(id))].filter((id) => this.contains(id))
+    const named = new Set(inFile)
+    const order = [...inFile, ...this.ids().filter((id) => !named.has(id))]
     const aliases = { ...Object.fromEntries(here.aliases), ...(typeof stored.aliases === 'object' && stored.aliases !== null && !Array.isArray(stored.aliases) ? stored.aliases : {}) }
     this.layout = Layout.load(stored.items ?? structuredClone(here.items), aliases, this.ids(), order)
     this.sort()
@@ -308,6 +320,7 @@ export class Registry {
     slot.mentions = 0
     slot.reported = false
     slot.clicks = null
+    slot.busy = null
     slot.generation = randomBytes(16).toString('hex')
   }
 
@@ -325,8 +338,9 @@ export class Registry {
     return {
       active: this.front,
       adding: this.addingNow,
-      can_add: canAdd && this.slots.length < MAX_INSTANCES,
+      can_add: canAdd,
       items: structuredClone(this.layout.items),
+      unload_after: this.sleep.afterSecs,
       instances: this.slots.map((slot) => {
         const original = nameOf(slot)
         const alias = this.layout.aliases.get(slot.id) ?? null
@@ -353,6 +367,26 @@ export class Registry {
     const front = this.front ? this.slot(this.front) : undefined
     const now = nowSeconds()
     const muted = Object.fromEntries(this.slots.flatMap((s) => { const until = this.mutedAt(s, now); return until === null ? [] : [[s.id, until]] }))
-    return { servers: this.slots.map((s) => s.origin), active: front?.origin ?? null, items: structuredClone(this.layout.items), aliases: Object.fromEntries(this.layout.aliases), muted }
+    return { servers: this.slots.map((s) => s.origin), active: front?.origin ?? null, items: structuredClone(this.layout.items), aliases: Object.fromEntries(this.layout.aliases), muted, sleep: storedSleep(this.sleep) }
   }
+
+  /** The rail menu's "Unload idle servers": one of `UNLOAD_CHOICES`, the number of pages kept unchanged. Anything else is refused. */
+  setUnloadAfter(afterSecs: number | null): boolean {
+    if (!UNLOAD_CHOICES.includes(afterSecs)) return false
+    this.sleep = { ...this.sleep, afterSecs }
+    return true
+  }
+
+  /** The list as it is exported: the settings of this device stay here. */
+  exported(): Stored {
+    const list = this.stored()
+    delete list.sleep
+    return list
+  }
+}
+
+/** The text of the menu entry for Ctrl+`number`: the 9 says it is the last. The same as the Tauri host. */
+export function menuEntryText(number: number, name: string | null): string {
+  if (number === 9) return name === null ? 'Last server' : `9 \u2014 ${name} (last)`
+  return name === null ? `Server ${number}` : `${number} \u2014 ${name}`
 }

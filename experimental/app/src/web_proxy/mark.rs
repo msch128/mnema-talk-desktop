@@ -46,7 +46,9 @@ pub fn mark(path: &Path, agent: &str) {
             return;
         };
         // SAFETY: both strings are NUL-terminated and live across the call;
-        // the value is read for exactly its length.
+        // the value is read for exactly its length. XATTR_NOFOLLOW: a link
+        // put at the path (the webview's own downloads land where it was told)
+        // is marked itself, never the file it points to.
         let _ = unsafe {
             libc::setxattr(
                 file.as_ptr(),
@@ -54,7 +56,7 @@ pub fn mark(path: &Path, agent: &str) {
                 value.as_ptr().cast(),
                 value.len(),
                 0,
-                0,
+                libc::XATTR_NOFOLLOW,
             )
         };
     }
@@ -98,6 +100,42 @@ mod tests {
             "0081;65500000;Mnema Desktop;"
         );
         assert_eq!(quarantine_value(1, "a;b\nc"), "0081;00000001;abc;");
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn a_link_at_the_path_is_never_followed() {
+        let dir =
+            std::env::temp_dir().join(format!("mnema-mark-{}", uuid::Uuid::new_v4().simple()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let elsewhere = dir.join("someone-elses.txt");
+        std::fs::write(&elsewhere, b"x").unwrap();
+        let link = dir.join("download.zip");
+        std::os::unix::fs::symlink(&elsewhere, &link).unwrap();
+        mark(&link, "Mnema test");
+        let followed = marked(&elsewhere);
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(!followed, "the file behind the link was marked");
+    }
+
+    /// libc is needed for setxattr only, so only macOS builds depend on it.
+    #[test]
+    fn libc_is_a_dependency_of_the_macos_build_only() {
+        let manifest = include_str!("../../Cargo.toml");
+        let mut table = "";
+        for line in manifest.lines() {
+            let line = line.trim();
+            if line.starts_with('[') {
+                table = line;
+            } else if line.starts_with("libc") {
+                assert_eq!(
+                    table, "[target.'cfg(target_os=\"macos\")'.dependencies]",
+                    "{line}"
+                );
+                return;
+            }
+        }
+        panic!("no libc dependency");
     }
 
     #[test]

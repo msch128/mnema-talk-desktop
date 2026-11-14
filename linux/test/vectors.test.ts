@@ -14,7 +14,7 @@ import { Jar } from '../src/core/cookies.ts'
 import { verifyPackage } from '../src/core/minisign.ts'
 import { Limits, clampRange, inlineSafe, mimeFor, serveBundle, target } from '../src/core/proxy.ts'
 import { INVALID_RESPONSE, NAT_HINT, UNAVAILABLE, unreachableReason } from '../src/core/discover.ts'
-import { AddError, MAX_INSTANCES } from '../src/core/instances.ts'
+import { AddError } from '../src/core/instances.ts'
 import { Store, refusalText } from '../src/core/store.ts'
 import { WITHDRAWN } from '../src/core/trusted.ts'
 import { bundleAsset } from '../src/core/updates.ts'
@@ -239,7 +239,7 @@ test('minisign vectors', () => {
  */
 test('the sentences the connect page can receive are exactly the listed ones', () => {
   const list = load('host-errors')
-  const render = (text: string): string => text.replace('{version}', '0.8.9').replace('{count}', String(MAX_INSTANCES))
+  const render = (text: string): string => text.replace('{version}', '0.8.9')
   const error = (code: string): Error => Object.assign(new Error('x'), { code })
   const message = (run: () => unknown): string => {
     try { run() } catch (e) { return (e as Error).message }
@@ -265,7 +265,6 @@ test('the sentences the connect page can receive are exactly the listed ones', (
     signerWithdrawn: refusalText({ kind: 'signer_withdrawn' }),
     rolledBack: refusalText({ kind: 'rolled_back' }),
     alreadyListed: new AddError('known').message,
-    maxServers: new AddError('full').message,
     withdrawn: WITHDRAWN,
     selectorOnly: SELECTOR_ONLY,
   }

@@ -3,11 +3,13 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "description": "Behaviour tests of the plain pages the host serves (the server rail and the update page).",
+  "description": "Behaviour tests of the plain pages the host serves (the server rail and the update page), in happy-dom and, for layout and scrolling, in WebKit and Chromium.",
   "scripts": {
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:browser": "playwright test"
   },
   "devDependencies": {
+    "@playwright/test": "1.65.0",
     "happy-dom": "21.0.4",
     "vitest": "5.1.0"
   }

@@ -137,8 +137,11 @@ fn present_pages(app: &tauri::AppHandle) -> Vec<String> {
 /// Puts the rail on the left, the page in front next to it and hides the
 /// others. Hidden pages are not suspended: their sockets and counters stay
 /// alive (they feed the rail's dots and the toasts), the engine only stops
-/// painting them and slows their timers. A minimised window hides all of them.
+/// painting them and slows their timers; a page hidden for a while may be
+/// closed (`sleep`), and the server in front gets its page if it has none.
+/// A minimised window hides all of them.
 pub fn layout(app: &tauri::AppHandle) {
+    super::sleep::after_layout(app);
     let Some(window) = app.get_window(SHELL) else {
         return;
     };

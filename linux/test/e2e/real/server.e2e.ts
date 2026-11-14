@@ -77,7 +77,34 @@ after(async () => {
   rmSync(downloads, { recursive: true, force: true })
 })
 
+/**
+ * What the app's processes hold (proportional set size, so shared pages count
+ * once), summed over the process tree of the app, in MiB. Logged for the
+ * record; no check depends on it.
+ */
+function memory(): string {
+  const parents = new Map<number, number>()
+  for (const name of readdirSync('/proc')) {
+    if (!/^\d+$/.test(name)) continue
+    try {
+      const stat = readFileSync(`/proc/${name}/stat`, 'utf8')
+      parents.set(Number(name), Number(stat.slice(stat.lastIndexOf(')') + 2).split(' ')[1]))
+    } catch { /* gone */ }
+  }
+  const tree = new Set([app.child.pid as number])
+  for (let grew = true; grew;) {
+    grew = false
+    for (const [pid, parent] of parents) if (tree.has(parent) && !tree.has(pid)) { tree.add(pid); grew = true }
+  }
+  let pss = 0
+  for (const pid of tree) {
+    try { pss += Number(/^Pss:\s+(\d+)/m.exec(readFileSync(`/proc/${pid}/smaps_rollup`, 'utf8'))?.[1] ?? 0) } catch { /* gone */ }
+  }
+  return `pss_mb=${Math.round(pss / 1024)} processes=${tree.size}`
+}
+
 test('the server is added by its typed address and the bundle runs as an instance', { skip }, async () => {
+  console.log(`memory no-server: ${memory()}`)
   const selector = await app.role('selector')
   const opened = await selector.evaluate<string>(`window.__TAURI_INTERNALS__.invoke('desktop_open_instance', { address: ${JSON.stringify(address)} }).then(() => 'ok', (e) => String(e))`)
   assert.equal(opened, 'ok')
@@ -100,6 +127,13 @@ test('sign-in works and the session lists channels', { skip }, async () => {
 
 test('the WebSocket opens and a sent message is pushed to it', { skip }, async () => {
   await chat('first')
+})
+
+test('memory of one signed-in server at rest (for the record)', { skip }, async () => {
+  await sleep(20_000)
+  console.log(`memory one-server-idle-20s: ${memory()}`)
+  await sleep(40_000)
+  console.log(`memory one-server-idle-60s: ${memory()}`)
 })
 
 test('the server restarts: the socket ends, requests fail meanwhile, the session survives and a new socket works', { skip }, async () => {

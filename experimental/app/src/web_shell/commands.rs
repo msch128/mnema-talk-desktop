@@ -59,11 +59,13 @@ pub fn rail_activate(webview: Webview, id: String) -> Result<(), String> {
 }
 
 pub(super) fn start_adding(app: &tauri::AppHandle) {
-    let started = app
-        .state::<Trusted>()
-        .registry
-        .lock()
-        .is_ok_and(|mut r| room_for(r.len()) && r.start_adding());
+    let started = app.state::<Trusted>().registry.lock().is_ok_and(|mut r| {
+        let room = room_for(r.len());
+        if room {
+            r.start_adding();
+        }
+        room
+    });
     if started {
         changed(app);
         focus_front(app);
@@ -93,8 +95,10 @@ pub fn rail_cancel_add(webview: Webview) -> Result<(), String> {
 /// See `rail_layout::apply` for what is asked and what is refused.
 #[tauri::command]
 // One argument per field the rail page sends; Tauri fills them by name.
+// Async, so that it runs off the main thread: an import may bring thousands
+// of servers (merged in linear time, `Registry::merge`).
 #[allow(clippy::too_many_arguments)]
-pub fn rail_edit(
+pub async fn rail_edit(
     webview: Webview,
     op: String,
     id: Option<String>,
@@ -113,6 +117,8 @@ pub fn rail_edit(
         "mark_read" => return mark_read(&app, id.as_deref()).map(|()| serde_json::Value::Null),
         "export" => return export_list(&app).map(serde_json::Value::from),
         "import" => return import_list(&app, text.as_deref()).map(serde_json::Value::from),
+        // `until`: the seconds hidden after which a page is closed, -1 for never.
+        "unload_after" => return unload_after(&app, until).map(|()| serde_json::Value::Null),
         _ => {}
     }
     let edit = crate::rail_layout::Edit {
@@ -188,6 +194,26 @@ fn mark_read(app: &tauri::AppHandle, id: Option<&str>) -> Result<(), String> {
     }
 }
 
+/// The rail menu's "Unload idle servers": Off (-1), 600 or 3600 seconds.
+fn unload_after(app: &tauri::AppHandle, until: Option<i64>) -> Result<(), String> {
+    let after = match until {
+        Some(-1) => None,
+        Some(secs) => Some(u64::try_from(secs).map_err(|_| "Unknown choice.")?),
+        None => return Err("Unknown choice.".into()),
+    };
+    let set = app
+        .state::<Trusted>()
+        .registry
+        .lock()
+        .map_err(|_| "busy")?
+        .set_unload_after(after);
+    if !set {
+        return Err("Unknown choice.".into());
+    }
+    changed(app);
+    Ok(())
+}
+
 /// Writes the list of servers to the Downloads folder (else the data folder)
 /// and gives the path.
 fn export_list(app: &tauri::AppHandle) -> Result<String, String> {
@@ -196,7 +222,7 @@ fn export_list(app: &tauri::AppHandle) -> Result<String, String> {
         .registry
         .lock()
         .map_err(|_| "busy")?
-        .stored()
+        .exported()
         .to_bytes()
         .map_err(|_| "The list could not be written.")?;
     let dir = app

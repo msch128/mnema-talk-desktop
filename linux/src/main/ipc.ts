@@ -8,7 +8,7 @@
 import { type IpcMainEvent, type IpcMainInvokeEvent, type WebContents, ipcMain, shell } from 'electron'
 import { SELECTOR_ONLY } from '../core/client.ts'
 import { downloadRequest } from '../core/download.ts'
-import { type Args, wholeNumber } from '../core/ipcargs.ts'
+import { type Args, flag, wholeNumber } from '../core/ipcargs.ts'
 import { socketRequest, type WsEvent } from '../core/sockets.ts'
 import { bundled, localOrigin, pickerUi, updateUi } from '../core/origin.ts'
 import { RELEASES_PAGE, releasePage } from '../core/pinned.ts'
@@ -52,8 +52,8 @@ function identity(ctx: Context, event: IpcMainEvent): object | null {
     commit: held.bundle.commit,
     role: from.role === 'selector' ? 'selector' : 'instance',
     // What the host offers this window beyond the common surface; the web app detects it instead of a version bump.
-    // `unread`: the page reports unread channels and mentions for the server rail. `ws_query`: the socket may ask for conversation events.
-    capabilities: from.role === 'instance' ? ['notify', 'unread', 'ws_query'] : [],
+    // `unread`: the page reports unread channels and mentions for the server rail. `ws_query`: the socket may ask for conversation events. `busy`: the page says whether it holds a draft, an upload or a Talk, so a hidden one that does not may be closed.
+    capabilities: from.role === 'instance' ? ['notify', 'unread', 'ws_query', 'busy'] : [],
   }
 }
 
@@ -148,6 +148,12 @@ async function run(ctx: Context, from: Caller, command: string, args: Args): Pro
       ctx.trusted.registry.report(own().id, wholeNumber(args, 'unread'), wholeNumber(args, 'mentions'))
       countsChanged(ctx)
       return null
+    case 'desktop_report_busy': {
+      only('instance')
+      const slot = ctx.trusted.registry.slot(own().id)
+      if (slot) slot.busy = flag(args, 'draft') || flag(args, 'upload') || flag(args, 'talk')
+      return null
+    }
     case 'desktop_set_badge':
       only('instance')
       ctx.trusted.registry.reportBadge(own().id, wholeNumber(args, 'count'))

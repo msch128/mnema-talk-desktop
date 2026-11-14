@@ -39,9 +39,28 @@ body {
   user-select: none;
 }
 #rail {
-  height: 100%; display: flex; flex-direction: column; align-items: center; gap: 8px;
-  padding: 12px 0; border-right: 1px solid var(--hairline); overflow-y: auto; overflow-x: hidden;
+  height: 100%; display: flex; flex-direction: column; align-items: center;
+  border-right: 1px solid var(--hairline); overflow: hidden;
 }
+/* The servers scroll when they do not fit; the add button stays below them.
+   No scrollbar takes width from the centred tiles: a soft fade at an edge
+   says there is more that way, and the wheel, the keys and a focused tile
+   scroll the list. The padding leaves room for the pills, badges, focus rings
+   and drop lines, so nothing is cut at an edge. */
+.scroll {
+  flex: 1 1 auto; min-height: 0; width: 100%; padding: 12px 0 10px;
+  overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none;
+}
+.scroll::-webkit-scrollbar { display: none; }
+.scroll.more-above { -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 28px); mask-image: linear-gradient(to bottom, transparent 0, #000 28px); }
+.scroll.more-below { -webkit-mask-image: linear-gradient(to top, transparent 0, #000 28px); mask-image: linear-gradient(to top, transparent 0, #000 28px); }
+.scroll.more-above.more-below {
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 28px, #000 calc(100% - 28px), transparent 100%);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 28px, #000 calc(100% - 28px), transparent 100%);
+}
+.add { flex: none; margin: 4px 0 12px; }
+/* Scrolled to (the server in front, a focused tile), a tile stops clear of the fade. */
+.tile, .folder-btn { scroll-margin-block: 28px; }
 .list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; width: 100%; align-items: center; }
 .list li { position: relative; width: 100%; display: flex; justify-content: center; }
 .tile {
@@ -74,10 +93,12 @@ body {
 }
 .list li.unread::before { height: 8px; }
 .list li.current::before { height: 28px; background: var(--accent); }
+/* Anchored just past the tile's corner (the tile is 44 px, centred in its row)
+   and growing to the left, so even "99+" stays inside the 68 px rail. */
 .badge {
-  position: absolute; right: -6px; bottom: -6px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px;
-  display: grid; place-items: center; background: var(--danger); color: #fff; font: 700 11px/1 Inter, system-ui, sans-serif;
-  border: 2px solid var(--canvas);
+  position: absolute; right: calc(50% - 26px); bottom: -6px; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 9px;
+  display: grid; place-items: center; background: var(--danger); color: #fff; font: 700 10.5px/1 Inter, system-ui, sans-serif;
+  letter-spacing: -.01em; white-space: nowrap; border: 2px solid var(--canvas);
 }
 .badge.warn { background: var(--warn); color: #1b1300; }
 .add {

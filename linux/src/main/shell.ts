@@ -15,18 +15,19 @@ import { existsSync } from 'node:fs'
 import { BaseWindow, WebContentsView, app } from 'electron'
 import { inviteCode, parseAddress } from '../core/client.ts'
 import { writeFileAtomic } from '../core/atomic.ts'
-import { AddError, MAX_IMPORT_BYTES, MAX_INSTANCES, type Slot, idFor, storedFrom, storedText } from '../core/instances.ts'
+import { AddError, MAX_IMPORT_BYTES, type Slot, idFor, storedFrom, storedText } from '../core/instances.ts'
 import { type RailEdit, exportTarget } from '../core/railui.ts'
 import { APP_URL } from '../core/origin.ts'
 import { closeSocketsWithDocument } from '../core/pagesockets.ts'
 import { isTransportFailure, retries } from '../core/retry.ts'
-import { Tickets } from '../core/tickets.ts'
+import { Tickets, Turns } from '../core/tickets.ts'
 import { TITLE } from '../core/title.ts'
 import { PARTITIONS, type Context } from './context.ts'
 import { prepare, prepareServer } from './sessions.ts'
 import { appHandler, assetHandler, HOST_PAGE_CSP } from './protocol.ts'
 import { loadAssets } from './assets.ts'
-import { bringForward, changed, countsChanged, focusFront, layout, pushRail } from './shelllayout.ts'
+import { bringForward, changed, countsChanged, focusFront, layout, onLayout, pushRail } from './shelllayout.ts'
+import { afterLayout, stopFeed, wantsPage, watch, withoutPage } from './sleep.ts'
 import { removeServer, sweepOrphans } from './shellwipe.ts'
 import { appPreload, harden, pagePreferences, railPreload } from './windows.ts'
 
@@ -47,6 +48,10 @@ export async function railEdit(ctx: Context, edit: RailEdit): Promise<null | str
     case 'mark_read': markRead(ctx, edit.id); return null
     case 'export': return exportList(ctx)
     case 'import': return importList(ctx, edit.text)
+    case 'unload_after':
+      if (!registry.setUnloadAfter(edit.until === -1 ? null : edit.until)) throw new Error('The change was refused.')
+      changed(ctx)
+      return null
     default: {
       const fresh = (): string => `f-${randomBytes(4).toString('hex')}`
       let folder = fresh()
@@ -73,7 +78,7 @@ function exportList(ctx: Context): string {
     if (!dir) continue
     try {
       const path = exportTarget(dir, existsSync)
-      writeFileAtomic(path, Buffer.from(storedText(ctx.trusted.registry.stored())), { dirMode: 0o700 })
+      writeFileAtomic(path, Buffer.from(storedText(ctx.trusted.registry.exported())), { dirMode: 0o700 })
       return path
     } catch (error) { failure = error }
   }
@@ -145,6 +150,9 @@ export function createShell(ctx: Context, assets: (name: string) => ReturnType<t
   window.on('focus', () => focusFront(ctx))
   window.on('closed', () => shutDown(ctx))
   sweepOrphans(ctx)
+  onLayout((c) => afterLayout(c, (id) => openPage(c, id)))
+  const stopWatching = watch(ctx)
+  window.on('closed', stopWatching)
   for (const id of ctx.trusted.registry.ids()) void startServer(ctx, id)
   layout(ctx)
   pushRail(ctx)
@@ -186,6 +194,8 @@ function offerInvite(ctx: Context, id: string, code: string | null): void {
 /** Creates the page of a running server, in a session of its own. */
 function openPage(ctx: Context, id: string, code: string | null = null): void {
   if (ctx.shell.pages.has(id) || !ctx.shell.window) return
+  // The page reports its counts itself from now on.
+  stopFeed(ctx, id)
   const partition = prepareServer(ctx, id)
   const view = hostView(ctx, partition, appPreload())
   ctx.servers.set(view.webContents.id, id)
@@ -201,6 +211,7 @@ function openPage(ctx: Context, id: string, code: string | null = null): void {
 // ------------------------------------------------------------------- servers
 
 const starts = new Tickets()
+const connecting = new Turns(4)
 
 /** Says why a server could not be started; one that could not be reached is tried again soon, one refused for a lasting reason waits for a person. */
 function refuse(ctx: Context, id: string, slot: Slot, error: unknown, attempt: number): void {
@@ -226,7 +237,8 @@ export async function startServer(ctx: Context, id: string, attempt = 0): Promis
   slot.phase = { kind: 'starting' }
   pushRail(ctx)
   try {
-    const session = await ctx.trusted.connect(slot.origin)
+    // A few at a time: a list of many servers does not ask them all at once.
+    const session = await connecting.run(() => ctx.trusted.connect(slot.origin))
     const current = registry.slot(id)
     if (!current || !starts.current(id, ticket)) { session.sockets.closeAll(); return }
     registry.restart(id)
@@ -239,8 +251,10 @@ export async function startServer(ctx: Context, id: string, attempt = 0): Promis
   }
   const page = ctx.shell.pages.get(id)
   if (registry.session(id)) {
+    // A page only for the server in front: every other server's counts come from the host.
     if (page) void page.webContents.loadURL(APP_URL)
-    else openPage(ctx, id)
+    else if (wantsPage(ctx, id)) openPage(ctx, id)
+    else withoutPage(ctx, id)
   } else if (page) {
     void page.webContents.loadURL(APP_URL)
   }
@@ -259,7 +273,6 @@ export async function addServer(ctx: Context, address: string): Promise<void> {
     bringForward(ctx, id)
     return
   }
-  if (registry.length >= MAX_INSTANCES) throw new AddError('full')
   const session = await ctx.trusted.connect(origin)
   try {
     registry.add(origin)

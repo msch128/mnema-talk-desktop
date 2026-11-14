@@ -8,8 +8,15 @@ import { buildMenu } from './menu.ts'
 import { pageShown, railShown } from '../core/visibility.ts'
 import { windowTitle } from '../core/title.ts'
 import type { Context } from './context.ts'
+import { Coalesce, PUSH_AFTER_MS } from '../core/coalesce.ts'
 
 export const RAIL_WIDTH = 68
+
+/** What runs before each placement (the shell makes the page of the server in front there). */
+const afterLayoutHooks: ((ctx: Context) => void)[] = []
+export function onLayout(hook: (ctx: Context) => void): void {
+  afterLayoutHooks.push(hook)
+}
 
 function frontKey(ctx: Context): string | null {
   const registry = ctx.trusted.registry
@@ -19,6 +26,7 @@ function frontKey(ctx: Context): string | null {
 
 /** Puts the rail on the left, the page in front next to it and hides the others (all of them while the window is minimised). Hidden pages keep running, throttled: the engine stops painting them and slows their timers. */
 export function layout(ctx: Context): void {
+  for (const hook of afterLayoutHooks) hook(ctx)
   const { window, rail, selector, pages } = ctx.shell
   if (!window || window.isDestroyed()) return
   const { width, height } = window.getContentBounds()
@@ -44,8 +52,16 @@ export function railSnapshot(ctx: Context) {
 /** What the rail was last told, so that a report that changes nothing (the page reports on every change) pushes nothing. */
 const pushed = new WeakMap<Context, string>()
 
-/** Shows the rail what it should draw. */
+const pushes = new WeakMap<Context, Coalesce>()
+
+/** Shows the rail what it should draw: shortly, together with the other changes of that moment (`Coalesce`). */
 export function pushRail(ctx: Context): void {
+  let coalesce = pushes.get(ctx)
+  if (!coalesce) { coalesce = new Coalesce(() => pushNow(ctx), PUSH_AFTER_MS); pushes.set(ctx, coalesce) }
+  coalesce.request()
+}
+
+function pushNow(ctx: Context): void {
   const snapshot = railSnapshot(ctx)
   const state = JSON.stringify(snapshot)
   if (pushed.get(ctx) === state) return
@@ -98,7 +114,9 @@ export function activateNth(ctx: Context, number: number): void {
 }
 
 export function startAdding(ctx: Context): void {
-  if (ctx.trusted.registry.startAdding()) { changed(ctx); focusFront(ctx) }
+  ctx.trusted.registry.startAdding()
+  changed(ctx)
+  focusFront(ctx)
 }
 
 export function cancelAdding(ctx: Context): void {

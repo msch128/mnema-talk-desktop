@@ -1,5 +1,5 @@
 //! What the rail draws for the list of servers.
-use super::{MAX_INSTANCES, Phase, Registry};
+use super::{Phase, Registry};
 use crate::rail_layout::Item;
 use serde::Serialize;
 
@@ -35,6 +35,8 @@ pub struct RailState {
     pub instances: Vec<RailInstance>,
     /// How the rail is structured: servers and folders.
     pub items: Vec<Item>,
+    /// After how many seconds hidden a page is closed; none: never.
+    pub unload_after: Option<u64>,
 }
 
 fn initial(name: &str) -> String {
@@ -55,7 +57,7 @@ impl Registry {
         RailState {
             active: self.active.clone(),
             adding: self.adding,
-            can_add: can_add && self.slots.len() < MAX_INSTANCES,
+            can_add,
             instances: self
                 .slots
                 .iter()
@@ -85,6 +87,7 @@ impl Registry {
                 })
                 .collect(),
             items: self.layout.items.clone(),
+            unload_after: self.sleep.after_secs,
         }
     }
 }

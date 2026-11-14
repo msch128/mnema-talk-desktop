@@ -13,7 +13,7 @@ const script = [...html.matchAll(/<script src="([^"]+)">/g)].map((m) => readFile
 
 export interface Server { id: string, name: string, original: string, alias: string | null, initial: string, hue: number, status: string, message: string | null, unread: number, mentions: number, icon: string | null, muted_until?: number | null }
 export type Item = { kind: 'server', id: string } | { kind: 'folder', id: string, name: string, color: string | null, collapsed: boolean, servers: string[] }
-export interface State { active: string | null, adding: boolean, can_add: boolean, instances: Server[], items?: Item[] }
+export interface State { active: string | null, adding: boolean, can_add: boolean, instances: Server[], items?: Item[], unload_after?: number | null }
 
 export const server = (id: string, extra: Partial<Server> = {}): Server => ({ id, name: `${id}.example`, original: `${id}.example`, alias: null, initial: id[0]!.toUpperCase(), hue: 120, status: 'ready', message: null, unread: 0, mentions: 0, icon: null, ...extra })
 export const folder = (id: string, servers: string[], extra: Partial<Extract<Item, { kind: 'folder' }>> = {}): Item => ({ kind: 'folder', id, name: '', color: null, collapsed: false, servers, ...extra })

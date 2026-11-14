@@ -74,6 +74,7 @@ async fn drive(app: &tauri::AppHandle, account: &Account) {
     {
         return;
     }
+    measure(account, "no-server").await;
     let Some(label) = open_server(app, account).await else {
         return;
     };
@@ -81,10 +82,30 @@ async fn drive(app: &tauri::AppHandle, account: &Account) {
         return;
     };
     target.chat("first").await;
+    // A signed-in server's page at rest: what one more server costs.
+    tokio::time::sleep(std::time::Duration::from_secs(20)).await;
+    measure(account, "one-server-idle-20s").await;
+    tokio::time::sleep(std::time::Duration::from_secs(40)).await;
+    measure(account, "one-server-idle-60s").await;
     target.export().await;
     restart::through(&target).await;
     target.chat("second").await;
     target.history_and_sign_out().await;
+}
+
+/// Asks the script to note the memory of the host's processes now (a line in
+/// the CI log, no check) and waits until it has, at most half a minute.
+async fn measure(account: &Account, label: &str) {
+    record(&format!("measure {label}"));
+    let answer = format!("measured {label}");
+    for _ in 0..300 {
+        let done = std::fs::read_to_string(&account.control)
+            .is_ok_and(|text| text.lines().any(|line| line == answer));
+        if done {
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
 }
 
 /// Adds the server by the address a person types and waits for its page.

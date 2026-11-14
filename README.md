@@ -52,9 +52,13 @@ There is no external security audit.
   Linux where the save dialog says. One download per server runs at a time. A
   download that saved nothing says why and what to do next in an error dialog;
   a partial file is never left behind.
-- **Several servers side by side (1.1).** A rail on the left lists your servers
-  with an unread dot and a mention count each. Add as many as nine, switch with
-  Ctrl+1 to Ctrl+9 (Cmd on macOS), drag or Alt+arrow to reorder, and remove one
+- **One client, any number of servers.** A rail on the left lists your servers
+  with an unread dot and a mention count each. Add as many as you like: there
+  is no server limit; the list file can be up to 8 MiB (room for 100 000
+  servers and more), and an import of thousands is taken at once. The rail scrolls when they do not fit and keeps
+  the server in front in view.
+  Switch with Ctrl+1 to Ctrl+8 for the first eight and Ctrl+9 for the last (Cmd
+  on macOS), as browsers do with tabs, or with Ctrl+K; drag or Alt+arrow to reorder, and remove one
   from its menu (right-click or Delete). The same menu sets your notification
   level for that server (all messages, only mentions, mute) on servers that
   support it (Mnema Talk 1.2 and newer). Group servers in folders (drop one
@@ -76,8 +80,31 @@ There is no external security audit.
   14 and newer, a session partition on Linux) and its own connection. Removing a
   server wipes its stored session and its local data from this device. The
   taskbar or dock badge is the sum of the mentions; a toast names its server
-  and brings it to the front when used. Servers in the background keep running
-  (hidden, not stopped), so their counts and calls stay live. Overlay and
+  and brings it to the front when used. A server's page costs about 110 to
+  260 MB, so pages are made only when needed and closed when idle: at start
+  only the server in front loads, an imported list adds servers to the rail
+  and opens nothing, and a page hidden for more than 10 minutes is closed
+  while more than 4 run, unless it holds an unsent draft, an upload or a Talk
+  (it says so itself; a page from an older web app never does and is never
+  closed). Opening the server loads its page again. Until then the client
+  keeps its counts on the rail and the badge itself, from the server's own
+  unread summary and direct messages, read again whenever the server says
+  something changed (a signed-out session clears them until the page is opened
+  again; an unreachable server is asked again later and later, up to five
+  minutes); it
+  listens on a socket of its own that tells the server you are away there,
+  exactly as the hidden page did, and sends nothing else. The 64 servers used
+  most recently keep such a socket; the others are read every minute instead,
+  without a socket. Your presence on those servers is then not kept up: they
+  show you as offline rather than away until you open them again. A long list
+  costs neither open files nor a socket on every server (on macOS the client
+  also raises its open-file limit from the 256 an app gets). The first counts after a server starts announce nothing. When its mentions
+  rise, one quiet notification says "N new mentions on <server>" (no sound,
+  none for a muted server, only where the system already lets the app notify). Both values are
+  settings of this device: the + button's menu has **Unload idle servers**
+  (Off, after 10 minutes, after 1 hour); in the list file they are
+  `"sleep": {"after_secs": 600, "keep": 4}` (`"after_secs": null` never closes
+  a page; another time reads as the nearest of the three; at least one page), never part of an exported list. Overlay and
   shortcuts of the gaming integration belong to the server that owns the Talk
   you are in. **Updating from the single-server client (1.1 release note):** that client kept every server in one shared storage and did not record which one it showed, so the storage belongs to no one server. On the first start of this version it is wiped, once, and no server inherits it: you sign in again, and the end-to-end media gets a new device key (messages live on the server and are unaffected). The host's own pages use a separate storage. On macOS before 14 the data stores cannot be separated, so the
   client runs one server there. Servers on different versions work side by side:

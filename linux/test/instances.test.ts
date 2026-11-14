@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, test } from 'node:test'
 import { Jar, type Vault } from '../src/core/cookies.ts'
-import { AddError, MAX_COUNT, MAX_INSTANCES, Registry, emptyStored, idFor, loadStored, nameOf, saveStored, type Session } from '../src/core/instances.ts'
+import { AddError, MAX_COUNT, MAX_IMPORT_BYTES, Registry, emptyStored, idFor, loadStored, menuEntryText, nameOf, saveStored, shortcutPlace, storedFrom, storedText, type Session } from '../src/core/instances.ts'
 import { Limits, forward } from '../src/core/proxy.ts'
 import { Sockets } from '../src/core/sockets.ts'
 import type { Held } from '../src/core/store.ts'
@@ -41,22 +41,32 @@ test('a server is always the same slot, named by its origin', () => {
   assert.match(id('a.example'), /^[0-9a-f]{16}$/)
 })
 
-test('the same server cannot be added twice and nine is the most', () => {
+test('the same server cannot be added twice, and there is no limit on how many', () => {
   const r = registry('a.example')
   assert.throws(() => r.add(url('a.example')), (e: unknown) => e instanceof AddError && e.kind === 'known' && e.id === id('a.example'))
-  for (let n = 1; n < MAX_INSTANCES; n++) r.add(url(`s${n}.example`))
-  assert.equal(r.length, MAX_INSTANCES)
-  assert.throws(() => r.add(url('more.example')), (e: unknown) => e instanceof AddError && e.kind === 'full')
-  assert.equal(r.startAdding(), false)
-  assert.equal(r.rail(true).can_add, false)
+  const started = performance.now()
+  for (let n = 1; n < 500; n++) r.add(url(`s${n}.example`))
+  r.add(url('more.example'))
+  assert.equal(r.length, 501)
+  r.startAdding()
+  const rail = r.rail(true)
+  assert.equal(rail.can_add, true)
+  assert.equal(rail.instances.length, 501)
+  // Ctrl+9 still reaches the last one.
+  assert.equal(r.activateNth(9), id('more.example'))
+  // A list this long stays quick to keep: the window waits for it.
+  assert.equal(Registry.restore(storedFrom(JSON.parse(storedText(r.stored())))!).length, 501)
+  assert.ok(performance.now() - started < 2000, `${performance.now() - started} ms`)
 })
 
 test('switching follows the list and the number keys', () => {
   const r = registry('a.example', 'b.example', 'c.example')
   assert.ok(r.activate(id('b.example')))
   assert.equal(r.activateNth(3), id('c.example'))
+  // Ctrl+9 is the last server, however many there are.
+  assert.equal(r.activateNth(9), id('c.example'))
   assert.equal(r.activateNth(1), id('a.example'))
-  for (const n of [0, 4, 9, 1.5, -1]) assert.equal(r.activateNth(n), null, String(n))
+  for (const n of [0, 4, 8, 10, 1.5, -1]) assert.equal(r.activateNth(n), null, String(n))
   assert.equal(r.active(), id('a.example'))
   assert.equal(r.activate('0000000000000000'), false)
 })
@@ -64,14 +74,14 @@ test('switching follows the list and the number keys', () => {
 test('the page for adding a server comes and goes without losing the front', () => {
   const r = registry('a.example')
   r.activate(id('a.example'))
-  assert.ok(r.startAdding())
+  r.startAdding()
   assert.equal(r.adding(), true)
   assert.equal(r.active(), id('a.example'))
   r.stopAdding()
   assert.equal(r.adding(), false)
   const empty = new Registry()
   empty.stopAdding()
-  assert.ok(empty.startAdding())
+  empty.startAdding()
   assert.equal(empty.rail(true).adding, true)
 })
 
@@ -215,7 +225,7 @@ test('the rail has the shape the rail page reads', () => {
   assert.deepEqual(rail.instances.map((i) => i.status), ['starting', 'refused', 'starting'])
   assert.equal(rail.instances[1]!.message, 'Too old.')
   assert.ok(rail.instances.every((i) => i.hue >= 0 && i.hue < 360))
-  assert.deepEqual(Object.keys(rail).sort(), ['active', 'adding', 'can_add', 'instances', 'items'])
+  assert.deepEqual(Object.keys(rail).sort(), ['active', 'adding', 'can_add', 'instances', 'items', 'unload_after'])
   assert.deepEqual(Object.keys(rail.instances[0]!).sort(), ['alias', 'hue', 'icon', 'id', 'initial', 'mentions', 'message', 'muted_until', 'name', 'original', 'status', 'unread'])
   assert.equal(r.rail(false).can_add, false)
 })
@@ -286,10 +296,10 @@ test('a list that does not hold up is not trusted', () => {
     writeFileSync(file, bad)
     assert.deepEqual(loadStored(file).servers, [], bad)
   }
-  const many = Array.from({ length: 20 }, (_, n) => `https://s${n}.example/`)
+  const many = Array.from({ length: 510 }, (_, n) => `https://s${n}.example/`)
   writeFileSync(file, JSON.stringify({ version: 1, servers: ['http://plain.example/', 'https://a.example/path', 'https://a.example/', 'https://a.example/', 'javascript:alert(1)', '', 7, ...many], active: 'https://unknown.example/' }))
   const stored = loadStored(file)
-  assert.equal(stored.servers.length, MAX_INSTANCES)
+  assert.equal(stored.servers.length, 512, 'every server, however many')
   // Plain http becomes https and a path is the same server. Duplicates and non-addresses are dropped.
   assert.equal(stored.servers[0]!.href, 'https://plain.example/')
   assert.equal(stored.servers[1]!.href, 'https://a.example/')
@@ -381,4 +391,39 @@ test('the rail names a server as it names itself, and the address otherwise', ()
   assert.equal(nameOf(slot), 'a.example')
   slot.phase = { kind: 'refused', why: 'no' }
   assert.equal(nameOf(slot), 'a.example')
+})
+
+test('the number keys follow the shared vectors, and the ninth menu entry names the last server', () => {
+  const v = JSON.parse(readFileSync(new URL('../../test-vectors/rail-layout.json', import.meta.url), 'utf8')) as { shortcuts: { number: number, count: number, place: number | null }[] }
+  assert.ok(v.shortcuts.length > 0)
+  for (const c of v.shortcuts) assert.equal(shortcutPlace(c.number, c.count), c.place, JSON.stringify(c))
+  assert.equal(menuEntryText(1, 'a.example'), '1 — a.example')
+  assert.equal(menuEntryText(8, null), 'Server 8')
+  assert.equal(menuEntryText(9, 'z.example'), '9 — z.example (last)')
+  assert.equal(menuEntryText(9, null), 'Last server')
+})
+
+test('an import of 20 000 servers is taken in linear time', () => {
+  const started = performance.now()
+  const parsed = storedFrom({ version: 1, servers: Array.from({ length: 20_000 }, (_, n) => `https://s${n}.example/`), active: null })
+  assert.ok(parsed)
+  const r = registry('a.example', 's7.example')
+  assert.equal(r.merge(parsed).length, 19_999, 's7 was there already')
+  assert.equal(r.length, 20_001)
+  const restored = Registry.restore(storedFrom(JSON.parse(storedText(r.stored())))!)
+  assert.equal(restored.length, 20_001)
+  assert.equal(restored.rail(true).instances.length, 20_001)
+  // Quadratic work would take minutes here.
+  assert.ok(performance.now() - started < 5000, `${performance.now() - started} ms`)
+})
+
+test('a list of many servers with long names, folders and mutes fits an import and reads back whole', () => {
+  // The file bound is no limit on servers: 20 000 at the longest names fit.
+  const many = 20_000
+  const servers = Array.from({ length: many }, (_, n) => new URL(`https://community-number-${String(n).padStart(5, '0')}.a-rather-long-domain-name.example:8443/`))
+  const ids = servers.map((s) => idFor(s))
+  const items = Array.from({ length: Math.ceil(ids.length / 4) }, (_, n) => ({ kind: 'folder', id: `f${String(n).padStart(22, '0')}`, name: 'f'.repeat(40), color: '#2DA771', collapsed: true, servers: ids.slice(n * 4, n * 4 + 4) }))
+  const text = storedText({ ...emptyStored(), servers, items, aliases: Object.fromEntries(ids.map((i) => [i, 'n'.repeat(40)])), muted: Object.fromEntries(ids.map((i) => [i, -1])) })
+  assert.ok(Buffer.byteLength(text) <= MAX_IMPORT_BYTES, `${Buffer.byteLength(text)} bytes`)
+  assert.equal(storedFrom(JSON.parse(text))?.servers.length, many)
 })
