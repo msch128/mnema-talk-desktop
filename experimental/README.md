@@ -10,7 +10,7 @@ system has none, and files from older versions move into the keychain)
 and relays the WebSocket, so the instance supplies data and never code.
 Normal production instances advertise `web_client_api` and `version` in
 `/api/health`; no server change is needed. Design and threat model:
-[doc/desktop-trusted-client.md](https://github.com/msch128/mnema-talk/blob/main/doc/desktop-trusted-client.md).
+[doc/desktop-trusted-client.md](https://github.com/mnema-xyz/talk/blob/main/doc/desktop-trusted-client.md).
 
 - **Bundle source.** One signed bundle (a release asset of mnema-talk,
   `mnema-web-<version>.zip`) is built into the executable; newer ones are
@@ -32,7 +32,7 @@ Normal production instances advertise `web_client_api` and `version` in
   `http://127.0.0.1:<port>`; every other address must be HTTPS.
 
 Download the installer for your platform from the
-[desktop releases](https://github.com/msch128/mnema-talk-desktop/releases); the
+[desktop releases](https://github.com/mnema-xyz/talk-desktop/releases); the
 [main README](../README.md#get-it) lists the files. Each release also has a
 portable Windows ZIP that does not update itself. The server is supplied as a
 Linux Docker image for amd64 and arm64. On Windows the client requires the
@@ -71,11 +71,11 @@ stored session and its browser storage. It uses the machine's own profile on
 Windows, so it refuses to run outside CI there.
 The check does not qualify a human permission prompt, a physical device,
 sealed media, a real game, login, screensharing or E2EE.
-A separate [published v0.7.1 Windows acceptance](https://github.com/msch128/mnema-talk/actions/runs/37888635202)
+A separate [published v0.7.1 Windows acceptance](https://github.com/mnema-xyz/talk/actions/runs/37888635202)
 has since verified generated-account login, persisted chat, live peer receipt
 without history fallback, and logout against an isolated normal server.
 It used PostgreSQL 17.11 and in-memory test media storage. This does not qualify
-S3 uploads, media capture, E2EE or games. [Product status](https://github.com/msch128/mnema-talk/blob/main/doc/product-status.md)
+S3 uploads, media capture, E2EE or games. [Product status](https://github.com/mnema-xyz/talk/blob/main/doc/product-status.md)
 is the current evidence reference. The earlier acceptance runs predate the
 signed bundle: the instance then supplied the web code. The verified-bundle
 path has macOS development runs and unit tests. Windows CI checks the

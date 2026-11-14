@@ -21,8 +21,7 @@ pub const PORTABLE_MARKER: &str = "mnema-portable.marker";
 pub const PORTABLE_TARGET: &str = "windows-x86_64-portable";
 
 /// The page of a release, linked from the update window.
-pub(super) const RELEASE_PAGE: &str =
-    "https://github.com/msch128/mnema-talk-desktop/releases/tag/v";
+pub(super) const RELEASE_PAGE: &str = "https://github.com/mnema-xyz/talk-desktop/releases/tag/v";
 
 pub fn disabled() -> bool {
     crate::web_updates::disabled()

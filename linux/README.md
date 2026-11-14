@@ -1,6 +1,6 @@
 # Mnema Desktop for Linux (Electron)
 
-The Linux client of [Mnema Talk](https://github.com/msch128/mnema-talk). It does
+The Linux client of [Mnema Talk](https://github.com/mnema-xyz/talk). It does
 what the [Tauri host](../experimental/README.md) does on Windows and macOS, with
 the same security guarantees, on Chromium instead of the system WebView:
 Tauri on Linux uses WebKitGTK, which has no WebRTC, so voice, camera and
@@ -13,7 +13,7 @@ people who change the client.
 ## What it guarantees
 
 The same as the Tauri host (the design and threat model are in mnema-talk
-[`doc/desktop-trusted-client.md`](https://github.com/msch128/mnema-talk/blob/main/doc/desktop-trusted-client.md)):
+[`doc/desktop-trusted-client.md`](https://github.com/mnema-xyz/talk/blob/main/doc/desktop-trusted-client.md)):
 
 * It runs **only the signed web bundle** (`manifest.json`, `manifest.sig`,
   `app/...` in one zip; Ed25519), verified against keys pinned in the program.

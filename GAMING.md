@@ -3,7 +3,7 @@
 The gaming integration (sidepeek, overlay, global shortcuts, push-to-talk) is
 Beta and Windows-first. This page is the reference for the desktop client. The
 user-facing setup guide is in the main repository
-([desktop-app.md](https://github.com/msch128/mnema-talk/blob/main/doc/desktop-app.md#windows-gaming-dev)).
+([desktop-app.md](https://github.com/mnema-xyz/talk/blob/main/doc/desktop-app.md#windows-gaming-dev)).
 
 ## Anti-cheat safety statement
 

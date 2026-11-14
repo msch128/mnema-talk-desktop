@@ -48,7 +48,7 @@ if ($VoiceAcceptance -and (!$fixture -or $fixture.voice_enabled -ne $true -or $f
 $directory = Join-Path $env:RUNNER_TEMP 'windows-release-acceptance'
 New-Item -ItemType Directory -Path $directory | Out-Null
 $zipName = "Mnema-Desktop-DEV-$Tag-windows-x64.zip"
-gh release download $Tag --repo msch128/mnema-talk --dir $directory --pattern $zipName --pattern WINDOWS-DESKTOP-SHA256SUMS
+gh release download $Tag --repo mnema-xyz/talk --dir $directory --pattern $zipName --pattern WINDOWS-DESKTOP-SHA256SUMS
 if ($LASTEXITCODE -ne 0) { throw 'Release download failed' }
 $checksum = (Get-Content (Join-Path $directory 'WINDOWS-DESKTOP-SHA256SUMS') -Raw).Trim()
 if ($checksum -notmatch ('^([a-f0-9]{64})  ' + [regex]::Escape($zipName) + '$')) { throw 'Invalid release checksum file' }
@@ -98,7 +98,7 @@ try {
   }
 } finally { $archive.Dispose() }
 $receipt = Get-Content (Join-Path $package 'DEV-BUILD.json') -Raw | ConvertFrom-Json
-$tagJson = gh api "repos/msch128/mnema-talk/git/ref/tags/$Tag"
+$tagJson = gh api "repos/mnema-xyz/talk/git/ref/tags/$Tag"
 if ($LASTEXITCODE -ne 0) { throw 'Release tag lookup failed' }
 $env:GH_TOKEN = $null
 $tagObject = $tagJson | ConvertFrom-Json

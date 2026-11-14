@@ -213,7 +213,7 @@ jobs:
           ref: ${{ inputs.ref || github.sha }}
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          repository: msch128/mnema-talk
+          repository: mnema-xyz/talk
           ref: ${{ env.REAL_SERVER_REV }}
           path: server
           persist-credentials: false
