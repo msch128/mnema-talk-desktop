@@ -151,6 +151,16 @@ test('a newer version is found, announced once and downloaded, verified and inst
   assert.equal(h.changes.filter((s) => s.phase === 'downloading').at(-1)?.received, PKG.length)
 })
 
+test('the feed endpoints are tried in order: a missing first one falls back to the next', async () => {
+  // Before the repository moves, its new address answers 404; the old one works.
+  const missing = await feed(() => null)
+  const old = await feed(() => ({ version: '0.2.0', package: PKG }))
+  const h = harness(old, dir(), { endpoints: [new URL('/latest.json', missing.origin), new URL('/latest.json', old.origin)] })
+  await h.updater.check(false)
+  assert.equal(h.updater.snapshot().phase, 'available')
+  assert.equal(h.updater.snapshot().version, '0.2.0')
+})
+
 test('nothing newer, no entry for this platform and an unreachable feed', async () => {
   const same = await feed(() => ({ version: '0.1.0', package: PKG }))
   const h = harness(same, null)
