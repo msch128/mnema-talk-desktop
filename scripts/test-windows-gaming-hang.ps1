@@ -204,7 +204,7 @@ try {
       $probes++
       $title = [Win]::Title($h)
       if ($title -like '*Sidepeek*') { $sidepeekSeen = $true }
-      if ($title -like '*Gaming DEV*') { $overlaySeen = $true }
+      if ($title -like '*Mnema Gaming*') { $overlaySeen = $true }
       if ([Win]::IsHungAppWindow($h)) { $failures += "hung window '$title' at $($clock.ElapsedMilliseconds) ms (foreground: '$([Win]::Title([Win]::GetForegroundWindow()))', $($shown.Elapsed.TotalSeconds.ToString('0.0')) s since the host showed a window)" }
       elseif (-not [Win]::Answers($h, 1000)) { $failures += "no answer from '$title' within 1 s at $($clock.ElapsedMilliseconds) ms (foreground: '$([Win]::Title([Win]::GetForegroundWindow()))', $($shown.Elapsed.TotalSeconds.ToString('0.0')) s since the host showed a window)" }
     }

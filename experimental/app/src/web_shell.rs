@@ -48,8 +48,8 @@ pub(crate) const RAIL: &str = "rail";
 /// The page for adding a server keeps the label of the old instance selector.
 const ADD: &str = "main";
 /// The Windows startup check looks for a window of this name.
-const TITLE: &str = "Mnema Desktop DEV \u{2014} Instance";
-const PRODUCT: &str = "Mnema Desktop DEV";
+const TITLE: &str = "Mnema Desktop \u{2014} Instance";
+const PRODUCT: &str = "Mnema Desktop";
 pub(crate) const NEEDS_NEWER_MACOS: &str = "Several servers at once need macOS 14 or newer.";
 
 #[cfg(test)]

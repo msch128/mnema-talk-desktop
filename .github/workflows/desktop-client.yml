@@ -73,6 +73,8 @@ env:
   REAL_SERVER_REV: 7a513234eb3035233f05f4bfa46272826310f3ad
   # SeaweedFS (the server's object storage) as a release binary, with its digest.
   SEAWEEDFS_VERSION: '4.52'
+  # The last release named "Mnema Desktop DEV": its installed copies must update in place.
+  LAST_DEV_VERSION: '1.3.5'
 
 concurrency:
   group: shared-desktop-${{ inputs.acceptance_release && format('{0}-{1}', inputs.acceptance_release, github.sha) || inputs.tag || github.ref }}
@@ -227,15 +229,15 @@ jobs:
           cargo build --locked --release --manifest-path experimental/app/Cargo.toml --features shell,web-client,custom-protocol
           if ($LASTEXITCODE -ne 0) { throw 'Shared Windows executable build failed' }
           if (!(Test-Path 'experimental/app/target/release/mnema-native-client-preview.exe')) { throw 'Shared executable missing' }
-          'Unsigned DEV web-client host linked from experimental/app with the embedded signed web bundle. The next step checks the WebView2 origin and the media-permission decision with a synthetic capture device. It does not click a prompt and does not qualify a physical device, sealed media, multi-device E2EE, real games, fullscreen overlays or distribution licenses. The installer of a release updates itself; this portable executable does not.' | Out-File -Append $env:GITHUB_STEP_SUMMARY
-      - name: Prepare unsigned Windows DEV artifact
+          'Unsigned web-client host linked from experimental/app with the embedded signed web bundle. The next step checks the WebView2 origin and the media-permission decision with a synthetic capture device. It does not click a prompt and does not qualify a physical device, sealed media, multi-device E2EE, real games, fullscreen overlays or distribution licenses. The installer of a release updates itself; this portable executable does not.' | Out-File -Append $env:GITHUB_STEP_SUMMARY
+      - name: Prepare the unsigned portable Windows artifact
         if: inputs.acceptance_release == ''
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           $devOutput = Join-Path $env:RUNNER_TEMP 'mnema-desktop-windows-dev'
           New-Item -ItemType Directory -Path $devOutput -Force | Out-Null
-          $devExe = Join-Path $devOutput 'Mnema Desktop DEV.exe'
+          $devExe = Join-Path $devOutput 'Mnema Desktop.exe'
           Copy-Item 'experimental/app/target/release/mnema-native-client-preview.exe' $devExe
           # The probe is compiled out of the shipped executable. A separate build
           # with the feature on is what the check starts.
@@ -249,7 +251,7 @@ jobs:
           }
           $probeOutput = Join-Path $env:RUNNER_TEMP 'mnema-desktop-probe'
           New-Item -ItemType Directory -Path $probeOutput -Force | Out-Null
-          $probeExe = Join-Path $probeOutput 'Mnema Desktop DEV.exe'
+          $probeExe = Join-Path $probeOutput 'Mnema Desktop.exe'
           Copy-Item (Join-Path $probeTarget 'release/mnema-native-client-preview.exe') $probeExe
           $probeLog = Join-Path $env:RUNNER_TEMP 'webview-probe.log'
           if (Test-Path $probeLog) { Remove-Item $probeLog }
@@ -270,11 +272,11 @@ jobs:
                 $process.Refresh()
                 if ($process.HasExited) { throw "Desktop exited before opening its window: $($process.ExitCode)" }
                 $byProcess = [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::ProcessIdProperty, $process.Id)
-                $byName = [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::NameProperty, 'Mnema Desktop DEV — Instance')
+                $byName = [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::NameProperty, 'Mnema Desktop — Instance')
                 $selector = [System.Windows.Automation.AutomationElement]::RootElement.FindFirst(
                   [System.Windows.Automation.TreeScope]::Children,
                   [System.Windows.Automation.AndCondition]::new($byProcess, $byName))
-                if ($null -ne $selector -or $process.MainWindowTitle -eq 'Mnema Desktop DEV — Instance') { $windowReady = $true; break }
+                if ($null -ne $selector -or $process.MainWindowTitle -eq 'Mnema Desktop — Instance') { $windowReady = $true; break }
               }
               if (!$windowReady) { throw 'Desktop selector window did not appear' }
               $probeReady = $false
@@ -304,10 +306,10 @@ jobs:
           Copy-Item 'experimental/THIRD_PARTY_NOTICES.md' (Join-Path $devOutput 'NATIVE_THIRD_PARTY_NOTICES.md')
           Copy-Item 'experimental/README.md' (Join-Path $devOutput 'SOURCE_STATUS.md')
           $devReceipt = [ordered]@{
-            kind = 'unsigned-development-web-desktop-client'
+            kind = 'unsigned-web-desktop-client'
             revision = '${{ steps.source.outputs.sha }}'
             target = 'x86_64-pc-windows-msvc'
-            executable = 'Mnema Desktop DEV.exe'
+            executable = 'Mnema Desktop.exe'
             executable_sha256 = (Get-FileHash -Algorithm SHA256 $devExe).Hash.ToLowerInvariant()
             shared_frontend = 'web/src'
             instance_transport = 'verified-bundle-native-proxy'
@@ -330,9 +332,9 @@ jobs:
             signed = $false
             automatic_updater_package = $false
           }
-          $devReceipt | ConvertTo-Json | Set-Content -Encoding utf8 (Join-Path $devOutput 'DEV-BUILD.json')
+          $devReceipt | ConvertTo-Json | Set-Content -Encoding utf8 (Join-Path $devOutput 'BUILD.json')
           @'
-          Mnema Desktop DEV — unsigned development build
+          Mnema Desktop — portable build, not code-signed
 
           This is the canonical Mnema Vue client in the experimental Tauri host.
           The web app runs from a signed bundle that the client verifies against a
@@ -347,11 +349,11 @@ jobs:
           device, sealed media, multi-device E2EE, restored history and real
           games are not qualified. This portable ZIP does not update itself; the installer of a release does.
 
-          Check DEV-BUILD.json for the source revision and executable SHA-256.
+          Check BUILD.json for the source revision and executable SHA-256.
           Source and dependency notices accompany this build. The existing prebuilt
           DeepFilterNet WASM still has an incomplete transitive provenance inventory;
           this build does not claim final distribution-license qualification.
-          '@ | Set-Content -Encoding utf8 (Join-Path $devOutput 'README-DEV.txt')
+          '@ | Set-Content -Encoding utf8 (Join-Path $devOutput 'README.txt')
       # What a person does with the portable ZIP of a release: unpack it anywhere
       # and start the program. It is packed here the way desktop-release.yml packs
       # it (the marker beside the executable), and it must run from the unpacked
@@ -374,10 +376,10 @@ jobs:
           Remove-Item $zip -Force -ErrorAction SilentlyContinue
           Compress-Archive -Path (Join-Path $pack '*') -DestinationPath $zip
           Expand-Archive $zip $unpacked
-          $exe = Join-Path $unpacked 'Mnema Desktop DEV.exe'
+          $exe = Join-Path $unpacked 'Mnema Desktop.exe'
           if (!(Test-Path $exe)) { throw 'The unpacked ZIP has no program' }
           if (!(Test-Path (Join-Path $unpacked 'mnema-portable.marker'))) { throw 'The unpacked ZIP has no portable marker' }
-          function Installed { Get-ChildItem $env:LOCALAPPDATA -Include 'mnema-native-client-preview.exe','Mnema Desktop DEV.exe' -Recurse -Depth 3 -ErrorAction SilentlyContinue }
+          function Installed { Get-ChildItem $env:LOCALAPPDATA -Include 'mnema-native-client-preview.exe','Mnema Desktop.exe' -Recurse -Depth 3 -ErrorAction SilentlyContinue }
           if (Installed) { throw 'A copy is installed before the portable program ran' }
           # The portable copy keeps its files beside the program. Earlier steps of
           # this job started other builds and left their folders in the profile
@@ -427,11 +429,11 @@ jobs:
             ForEach-Object { Get-ChildItem $_.FullName -Recurse -File -Force -ErrorAction SilentlyContinue } |
             Where-Object { $_.LastWriteTime -ge $started })
           if (!$engine) { throw 'The browser engine of the portable program wrote nothing beside it' }
-      - name: Upload explicitly unsigned Windows DEV artifact
+      - name: Upload the unsigned portable Windows artifact
         if: inputs.acceptance_release == ''
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: mnema-desktop-windows-DEV-UNSIGNED-${{ steps.source.outputs.sha }}
+          name: mnema-desktop-windows-portable-${{ steps.source.outputs.sha }}
           path: ${{ runner.temp }}/mnema-desktop-windows-dev/
           if-no-files-found: error
           retention-days: 7
@@ -511,6 +513,109 @@ jobs:
           $ErrorActionPreference = 'Stop'
           & ./scripts/test-windows-notify.ps1 -Installer (Join-Path $env:RUNNER_TEMP 'notify-setup.exe')
           if ($LASTEXITCODE -ne $null -and $LASTEXITCODE -ne 0) { throw 'The notification check failed' }
+
+  # Up to 1.3.5 the app was called "Mnema Desktop DEV", and the installer names
+  # its folder, its entry under Installed apps and its shortcuts after the
+  # product. The installer of this build, signed with a throwaway updater key
+  # the way a release rehearsal is, must update an installed copy of that
+  # release in place (experimental/app/windows/installer-hooks.nsh):
+  # scripts/test-windows-rename-update.ps1 installs it, updates it through a
+  # feed made by scripts/update-manifest.mjs and checked by
+  # scripts/verify-updater-signatures.mjs, and uninstalls.
+  windows-update-from-dev:
+    if: inputs.acceptance_release == ''
+    runs-on: windows-2025
+    timeout-minutes: 60
+    env:
+      RUST_VERSION: 1.99.1
+      CARGO_TARGET_DIR: ${{ github.workspace }}/experimental/app/target
+      MNEMA_DESKTOP_NO_UPDATE_CHECK: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.ref || github.sha }}
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - name: Select pinned Rust toolchain
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          rustup toolchain install $env:RUST_VERSION --profile minimal
+          if ($LASTEXITCODE -ne 0) { throw 'Rust installation failed' }
+          rustup default $env:RUST_VERSION
+          if ($LASTEXITCODE -ne 0) { throw 'Rust selection failed' }
+      # Restored on pull requests, saved only on main.
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: experimental/app -> target
+          key: ${{ hashFiles('**/Cargo.lock') }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Stage the signed web bundle
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/stage-web-bundle.sh
+      - name: Install the pinned Tauri CLI
+        working-directory: ui
+        shell: pwsh
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          if ($LASTEXITCODE -ne 0) { throw 'CLI install failed' }
+          node ../scripts/ensure-npm-optional.mjs .
+          if ($LASTEXITCODE -ne 0) { throw 'Tauri CLI platform package missing' }
+      - name: Build the installer, sign it with a throwaway key and write its feed
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $features = 'shell,web-client,custom-protocol'
+          cargo build --locked --release --manifest-path experimental/app/Cargo.toml --features $features
+          if ($LASTEXITCODE -ne 0) { throw 'Host build failed' }
+          $password = node -e "console.log(require('crypto').randomBytes(16).toString('hex'))"
+          Write-Host "::add-mask::$password"
+          $keyFile = Join-Path $env:RUNNER_TEMP 'throwaway.key'
+          node ui/node_modules/@tauri-apps/cli/tauri.js signer generate --ci -w $keyFile -p $password | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw 'Key generation failed' }
+          $env:TAURI_SIGNING_PRIVATE_KEY = (Get-Content -Raw $keyFile).Trim()
+          Write-Host "::add-mask::$env:TAURI_SIGNING_PRIVATE_KEY"
+          $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = $password
+          Push-Location experimental/app
+          node ../../ui/node_modules/@tauri-apps/cli/tauri.js bundle --bundles nsis --features $features
+          if ($LASTEXITCODE -ne 0) { throw 'Installer build failed' }
+          Pop-Location
+          Remove-Item Env:TAURI_SIGNING_PRIVATE_KEY, Env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+          $setup = Get-ChildItem (Join-Path $env:CARGO_TARGET_DIR 'release/bundle/nsis') -Filter '*-setup.exe' | Select-Object -First 1
+          if (!$setup -or !(Test-Path "$($setup.FullName).sig")) { throw 'Signed installer missing' }
+          $version = node -p "require('./experimental/app/tauri.conf.json').version"
+          $update = Join-Path $env:RUNNER_TEMP 'update'
+          New-Item -ItemType Directory -Path $update -Force | Out-Null
+          $name = "Mnema-Desktop_${version}_x64-setup.exe"
+          Copy-Item $setup.FullName (Join-Path $update $name)
+          Copy-Item "$($setup.FullName).sig" (Join-Path $update "$name.sig")
+          $feed = Join-Path $update 'latest.json'
+          node scripts/update-manifest.mjs --version $version --repo $env:GITHUB_REPOSITORY --installer (Join-Path $update $name) --sig (Join-Path $update "$name.sig") --out $feed
+          if ($LASTEXITCODE -ne 0) { throw 'Feed build failed' }
+          $env:UPDATER_PUBKEYS = (Get-Content -Raw "$keyFile.pub").Trim()
+          node scripts/verify-updater-signatures.mjs $feed $update windows-x86_64
+          if ($LASTEXITCODE -ne 0) { throw 'The feed does not verify' }
+      - name: Fetch the Windows installer of the last release named DEV
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          old="Mnema-Desktop-DEV_${LAST_DEV_VERSION}_x64-setup.exe"
+          gh release download "v$LAST_DEV_VERSION" --repo msch128/mnema-talk-desktop --dir "$RUNNER_TEMP/old" --pattern "$old" --pattern SHA256SUMS
+          cd "$RUNNER_TEMP/old" && grep -E "  ${old//./\\.}\$" SHA256SUMS | sha256sum -c -
+      - name: The last release named DEV updates in place and uninstalls cleanly
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $old = Join-Path $env:RUNNER_TEMP "old/Mnema-Desktop-DEV_$($env:LAST_DEV_VERSION)_x64-setup.exe"
+          & ./scripts/test-windows-rename-update.ps1 -OldInstaller $old -Feed (Join-Path $env:RUNNER_TEMP 'update/latest.json')
 
   # A game takes the focus. A build with the test-only `gaming-selftest` feature
   # (never in a shipped build) simulates a Talk with gaming on and knows a

@@ -1,6 +1,6 @@
 {
   "name": "mnema-desktop-linux",
-  "productName": "Mnema Desktop DEV",
+  "productName": "Mnema Desktop",
   "description": "Mnema Talk desktop client for Linux (Electron). Runs only the signed web bundle.",
   "version": "1.3.5",
   "private": true,

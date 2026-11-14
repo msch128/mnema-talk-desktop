@@ -27,7 +27,7 @@ pub fn open_window<R: Runtime>(app: &AppHandle<R>, focus: bool) -> tauri::Result
         crate::storage::window_on_default_storage(
             WebviewWindowBuilder::new(app, WINDOW, WebviewUrl::CustomProtocol(url))
                 .use_https_scheme(true)
-                .title("Mnema Desktop DEV \u{2014} Update")
+                .title("Mnema Desktop \u{2014} Update")
                 .inner_size(440.0, 320.0)
                 .resizable(false)
                 .maximizable(false)

@@ -78,12 +78,12 @@ fn a_package_signed_by_the_release_pipeline_verifies_and_every_wrong_form_is_ref
 #[test]
 fn only_a_marker_file_next_to_the_executable_makes_a_copy_portable() {
     let dir = data_dir("marker");
-    let exe = dir.join("Mnema Desktop DEV.exe");
+    let exe = dir.join("Mnema Desktop.exe");
     assert!(!portable_at(&exe), "an installed copy has no marker");
     std::fs::write(dir.join(PORTABLE_MARKER), b"portable\n").unwrap();
     assert!(portable_at(&exe));
     // Elsewhere, or as a directory, the name means nothing.
-    assert!(!portable_at(&dir.join("sub/Mnema Desktop DEV.exe")));
+    assert!(!portable_at(&dir.join("sub/Mnema Desktop.exe")));
     std::fs::remove_file(dir.join(PORTABLE_MARKER)).unwrap();
     std::fs::create_dir(dir.join(PORTABLE_MARKER)).unwrap();
     assert!(!portable_at(&exe));

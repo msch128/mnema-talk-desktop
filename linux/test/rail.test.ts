@@ -139,8 +139,8 @@ test('the picker cannot leave a screen share request unanswered', () => {
 })
 
 test('the window title is defined once', () => {
-  for (const file of ['main.ts', 'shell.ts', 'windows.ts']) assert.doesNotMatch(read(`../src/main/${file}`), /'Mnema Desktop DEV'/, file)
-  assert.match(read('../src/core/title.ts'), /export const TITLE = 'Mnema Desktop DEV'/)
+  for (const file of ['main.ts', 'shell.ts', 'windows.ts']) assert.doesNotMatch(read(`../src/main/${file}`), /'Mnema Desktop'/, file)
+  assert.match(read('../src/core/title.ts'), /export const TITLE = 'Mnema Desktop'/)
 })
 
 test('the rail edits through one command that may answer with a path or a count, and the extras stay behind the same checks', () => {

@@ -1,4 +1,4 @@
-# Mnema Desktop DEV
+# Mnema Desktop
 
 The client uses Tauri to run the Vue web app from a **signed bundle** that it
 verifies itself, instead of loading JavaScript from the selected instance.
@@ -88,7 +88,7 @@ HTTPS chat links to other sites open in the default Windows browser after an
 explicit confirmation, and a `mailto:` address opens in the mail program the
 same way. Same-origin attachments open in a restricted child window sharing the app session;
 the chat window remains open. Non-HTTPS
-external links and other custom URI schemes (`tel:`, `file:`, ...) are blocked in this DEV build.
+external links and other custom URI schemes (`tel:`, `file:`, ...) are blocked.
 Voice uses the instance's browser path: DTLS-SRTP to the SFU, with microphone,
 camera and screen payloads sealed in WebView2 before the SFU forwards them
 (trust limits: mnema-talk `SECURITY.md`). Sealed media is not yet qualified
@@ -103,8 +103,8 @@ npm --prefix mnema-talk/web run build
 cargo build --locked --release --manifest-path experimental/app/Cargo.toml --features shell,web-client,custom-protocol
 ```
 
-All desktop packages are unsigned DEV builds (no platform code-signing
-certificate). The program updates itself from releases signed with the pinned
+No desktop package carries a platform code-signing certificate (no
+Authenticode, no notarization). The program updates itself from releases signed with the pinned
 minisign key; see [Updates in the main README](../README.md#updates). The existing DeepFilterNet WASM transitive provenance
 inventory remains incomplete; this is not a claim of final license closure.
 Windows and macOS run this Tauri host. Linux runs the Electron client in
@@ -123,12 +123,12 @@ From this repository's root, install the web app's dependencies with
 `npm ci --prefix mnema-talk/web` and build it, then build the host with
 `cargo build --locked --manifest-path experimental/app/Cargo.toml --features shell,web-client,custom-protocol`.
 Builds use Rust 1.99.1 and the committed Cargo lockfile. The result is an
-unsigned DEV executable that checks for updates like a release build does (signed
+unsigned executable that checks for updates like a release build does (signed
 with the pinned minisign key). Operating-system
 toolchains are required for native dependency compilation.
 
 The `Shared desktop client DEV builds` workflow builds this mode on Windows and
-macOS. Matching pushes to `main` and `codex/**` produce short-lived unsigned DEV
+macOS. Matching pushes to `main` and `codex/**` produce short-lived unsigned
 artifacts with source revision/hash receipts and dependency notices. The managed
 release workflow also calls it for a release tag; the release then carries the
 installers, the signed update files and a portable ZIP (see "Releasing" in the

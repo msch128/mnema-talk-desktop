@@ -52,6 +52,8 @@ env:
   REAL_SERVER_REV: 7a513234eb3035233f05f4bfa46272826310f3ad
   # SeaweedFS (the server's object storage) as a release binary, with its digest.
   SEAWEEDFS_VERSION: '4.52'
+  # The last release named "Mnema Desktop DEV": its installed copies must update in place.
+  LAST_DEV_VERSION: '1.3.5'
 
 concurrency:
   group: linux-client-${{ inputs.tag || github.ref }}
@@ -66,9 +68,13 @@ jobs:
           - runner: ubuntu-24.04
             arch: x64
             unpacked: linux-unpacked
+            deb_arch: amd64
+            appimage_arch: x86_64
           - runner: ubuntu-24.04-arm
             arch: arm64
             unpacked: linux-arm64-unpacked
+            deb_arch: arm64
+            appimage_arch: arm64
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
     defaults:
@@ -147,6 +153,18 @@ jobs:
           set -eu
           xvfb-run -a bash scripts/refuse.sh 'browser sandbox is turned off' "$APP" --no-sandbox
           xvfb-run -a bash scripts/refuse.sh 'does not open a remote debugging port' "$APP" --remote-debugging-port=0
+      # Up to 1.3.5 the client was called "Mnema Desktop DEV". An installed .deb
+      # of that release must be upgraded in place by this build's (the same
+      # package), and its AppImage replaced where it lies must start.
+      - name: The .deb and the AppImage of the last release named DEV upgrade in place
+        if: hashFiles('linux/bundle/builtin.zip') != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MNEMA_DEBUG_PROTOCOL: '1'
+          MNEMA_DESKTOP_NO_UPDATE_CHECK: '1'
+          MNEMA_DESKTOP_NO_VAULT: '1'
+          MNEMA_DESKTOP_DATA_DIR: ${{ runner.temp }}/upgrade
+        run: bash scripts/upgrade-from-dev.sh "$LAST_DEV_VERSION" ${{ matrix.deb_arch }} ${{ matrix.appimage_arch }}
       - name: The AppImage and the installed .deb start and show the instance selector
         if: hashFiles('linux/bundle/builtin.zip') != ''
         env:
@@ -162,11 +180,11 @@ jobs:
           if apparmor_status --enabled >/dev/null 2>&1; then
             test -f /etc/apparmor.d/mnema-desktop-dev || { echo '::error::the AppArmor profile is not installed'; exit 1; }
           fi
-          xvfb-run -a bash scripts/smoke.sh "/opt/Mnema Desktop DEV/mnema-desktop-dev"
+          xvfb-run -a bash scripts/smoke.sh "/opt/Mnema Desktop/mnema-desktop-dev"
           # Started with the soft open-file limit a desktop session may give (256),
           # the program holds 8192: Chromium raises its own, and every server
           # without a page may keep a socket (up to 64, src/core/feedbudget.ts).
-          bash -c 'ulimit -Sn 256 && SMOKE_FD_MIN=8192 exec xvfb-run -a bash scripts/smoke.sh "/opt/Mnema Desktop DEV/mnema-desktop-dev"'
+          bash -c 'ulimit -Sn 256 && SMOKE_FD_MIN=8192 exec xvfb-run -a bash scripts/smoke.sh "/opt/Mnema Desktop/mnema-desktop-dev"'
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: inputs.tag != ''
         with:

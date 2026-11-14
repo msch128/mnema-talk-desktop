@@ -148,14 +148,14 @@ mod tests {
         };
         assert_eq!(window_title(&state), TITLE);
         state.active = Some("b".into());
-        assert_eq!(window_title(&state), "b.example \u{2014} Mnema Desktop DEV");
+        assert_eq!(window_title(&state), "b.example \u{2014} Mnema Desktop");
         state.active = Some("a".into());
         assert!(window_title(&state).starts_with("Lantern Fox"));
     }
 
     #[test]
     fn the_window_keeps_the_title_the_startup_check_looks_for() {
-        assert_eq!(TITLE, "Mnema Desktop DEV \u{2014} Instance");
+        assert_eq!(TITLE, "Mnema Desktop \u{2014} Instance");
         const { assert!(RAIL_WIDTH > 40.0 && RAIL_WIDTH < 120.0) };
     }
 }

@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Mnema Desktop DEV",
+  "productName": "Mnema Desktop",
   "identifier": "com.mnema.desktop.shareddev",
   "version": "1.3.5",
   "build": {
@@ -39,7 +39,8 @@
     "windows": {
       "nsis": {
         "installMode": "currentUser",
-        "displayLanguageSelector": false
+        "displayLanguageSelector": false,
+        "installerHooks": "windows/installer-hooks.nsh"
       }
     }
   },

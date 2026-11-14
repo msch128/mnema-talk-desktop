@@ -1,8 +1,12 @@
 # AppImage (updates itself) and .deb (updated by the package manager), for
 # Linux only; Windows and macOS stay on the Tauri host. The fuses below are
 # flipped by electron-builder after packaging.
+# The identifier, the program's name, the package name and the window class
+# keep the names they had up to 1.3.5 ("-dev"): the data, a pinned launcher and
+# the upgrade path of an installed .deb (same package, upgraded in place)
+# depend on them. Only what people read changed to "Mnema Desktop".
 appId: com.mnema.desktop.shareddev
-productName: Mnema Desktop DEV
+productName: Mnema Desktop
 executableName: mnema-desktop-dev
 copyright: Mnema Talk contributors
 directories:
@@ -52,15 +56,15 @@ linux:
   description: Runs the signed web app of Mnema Talk, a lightweight self-hosted community server, and reaches the instance through the client.
   desktop:
     entry:
-      Name: Mnema Desktop DEV
+      Name: Mnema Desktop
       Comment: Mnema Talk
       Categories: Network;Chat;InstantMessaging;
       StartupWMClass: mnema-desktop-dev
 # Updates come from the signed feed of this client, not from AppImageUpdate.
 appImage:
-  artifactName: Mnema-Desktop-DEV_${version}_${arch}.${ext}
+  artifactName: Mnema-Desktop_${version}_${arch}.${ext}
 deb:
-  artifactName: Mnema-Desktop-DEV_${version}_${arch}.${ext}
+  artifactName: Mnema-Desktop_${version}_${arch}.${ext}
   packageName: mnema-desktop-dev
   depends:
     - libgtk-3-0 | libgtk-3-0t64

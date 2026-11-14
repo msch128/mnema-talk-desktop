@@ -12,7 +12,7 @@ required with -RequireClick, because a runner's desktop may not show banners.
 param(
   [Parameter(Mandatory = $true)][string]$Installer,
   [string]$AppId = 'com.mnema.desktop.shareddev',
-  [string]$Product = 'Mnema Desktop DEV',
+  [string]$Product = 'Mnema Desktop',
   [switch]$RequireClick
 )
 $ErrorActionPreference = 'Stop'

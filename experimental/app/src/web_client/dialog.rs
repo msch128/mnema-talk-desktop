@@ -1,6 +1,6 @@
 //! The platform's own modal dialogs, for what the host itself has to say.
 /// The name the host shows in its own dialogs.
-pub(super) const APP_TITLE: &str = "Mnema Desktop DEV";
+pub(super) const APP_TITLE: &str = "Mnema Desktop";
 
 #[derive(Clone, Copy)]
 pub(super) enum Dialog {

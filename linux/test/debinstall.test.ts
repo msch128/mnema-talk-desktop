@@ -11,8 +11,8 @@ const DEB = Buffer.concat([Buffer.from('!<arch>\n'), Buffer.from('payload')])
 const always = () => true
 
 test('a .deb install is recognised by its path, never when started as an AppImage', () => {
-  assert.ok(isDebInstall('/opt/Mnema Desktop DEV/mnema-desktop-dev', {}, always))
-  assert.ok(!isDebInstall('/opt/Mnema Desktop DEV/mnema-desktop-dev', { APPIMAGE: '/x.AppImage' }, always))
+  assert.ok(isDebInstall('/opt/Mnema Desktop/mnema-desktop-dev', {}, always))
+  assert.ok(!isDebInstall('/opt/Mnema Desktop/mnema-desktop-dev', { APPIMAGE: '/x.AppImage' }, always))
   assert.ok(!isDebInstall('/home/u/app/mnema-desktop-dev', {}, always))
   assert.ok(!isDebInstall('/opt/x/mnema-desktop-dev', {}, () => false))
 })
